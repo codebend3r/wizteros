@@ -1,0 +1,21 @@
+# secrets
+.env
+.env.local
+*.pem
+
+# runtime data
+wizarr-data/
+tautulli-config/
+
+# python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
