@@ -1,3 +1,20 @@
-const App = () => <main>Westeroz</main>
+import Hero from './components/Hero/Hero'
+import Support from './components/Support/Support'
+import Footer from './components/Footer/Footer'
+import { siteConfig } from './site.config'
+import styles from './App.module.scss'
+
+const App = () => (
+  <main className={styles.page}>
+    <Hero
+      brandName={siteConfig.brandName}
+      tagline={siteConfig.tagline}
+      priceLabel={siteConfig.priceLabel}
+      paymentLinkUrl={siteConfig.paymentLinkUrl}
+    />
+    <Support items={siteConfig.supportItems} />
+    <Footer memberUrl={siteConfig.memberUrl} />
+  </main>
+)
 
 export default App
