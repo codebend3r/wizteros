@@ -309,7 +309,7 @@ Expected: FAIL — cannot resolve `./site.config`.
 
 - [ ] **Step 3: Create `web/src/site.config.ts`**
 
-Note on `env`: `import.meta.env.VITE_*` is typed `any` via `vite/client`'s index signature. Assigning `import.meta.env` to a `RawEnv`-typed local narrows it to `string | undefined` fields without an explicit `any` or a cast, satisfying the constraints.
+Note on `env`: `import.meta.env.VITE_*` is typed `any` via `vite/client`'s index signature. Read the two fields into a fresh `RawEnv` object literal — that narrows them to `string | undefined` without an explicit `any` or a cast. Do NOT assign `import.meta.env` directly to a `RawEnv` local: it fails to compile (`TS2559`) because `RawEnv` is an all-optional "weak type" and `ImportMetaEnv` shares no required property with it.
 
 ```ts
 type SupportItem = {
@@ -359,7 +359,10 @@ export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
   supportItems: SUPPORT_ITEMS,
 })
 
-const env: RawEnv = import.meta.env
+const env: RawEnv = {
+  VITE_PAYMENT_LINK_URL: import.meta.env.VITE_PAYMENT_LINK_URL,
+  VITE_MEMBER_URL: import.meta.env.VITE_MEMBER_URL,
+}
 
 export const siteConfig = resolveConfig({ env })
 
