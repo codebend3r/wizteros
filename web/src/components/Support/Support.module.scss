@@ -1,0 +1,25 @@
+.support {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  padding: var(--space-6) var(--space-3);
+}
+
+.item {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.itemTitle {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+}
+
+.itemDetail {
+  font-size: var(--font-size-sm);
+  color: var(--color-muted);
+}
