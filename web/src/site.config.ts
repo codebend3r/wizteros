@@ -39,7 +39,7 @@ export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
   brandName: 'Westeroz',
   tagline:
     'A community-run media server. Contribute to the cost of keeping it online.',
-  priceLabel: '$X / month',
+  priceLabel: '$8 / month',
   paymentLinkUrl: env.VITE_PAYMENT_LINK_URL ?? DEFAULT_PAYMENT_LINK_URL,
   memberUrl: env.VITE_MEMBER_URL ?? null,
   supportItems: SUPPORT_ITEMS,
