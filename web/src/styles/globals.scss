@@ -1,0 +1,39 @@
+:root {
+  --color-bg: #0b0d12;
+  --color-surface: #141821;
+  --color-border: #232838;
+  --color-text: #e7e9ee;
+  --color-muted: #9aa3b2;
+  --color-accent: #d64545;
+  --color-accent-text: #ffffff;
+
+  --space-1: 0.5rem;
+  --space-2: 1rem;
+  --space-3: 1.5rem;
+  --space-4: 2rem;
+  --space-6: 3rem;
+  --space-8: 5rem;
+
+  --radius-md: 12px;
+  --radius-lg: 20px;
+
+  --font-size-hero: clamp(2.5rem, 6vw, 4rem);
+  --font-size-lg: 1.25rem;
+  --font-size-md: 1rem;
+  --font-size-sm: 0.875rem;
+
+  --max-width: 64rem;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: var(--font-size-md);
+  line-height: 1.5;
+}
