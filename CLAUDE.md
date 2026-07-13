@@ -26,13 +26,13 @@ The bridge is intentionally small. It does not persist its own state — it look
 
 - 5 Synology NASes on `192.168.50.0/24`, each running its own Plex server. Naming theme: Game of Thrones dragons. 3 are connected to Wizarr (Meleys, Vermithor, Vhagar); 2 more to be added.
 - Wizarr is reachable internally; no public hostname yet.
-- Domain `cjrivas.io` is registered at name.com with default name.com nameservers. No live DNS records — Titan Email Premium subscription is attached but never configured (paid through 2027-01-30). Migration to Cloudflare is the planned path.
+- A domain is registered at name.com with default name.com nameservers. No live DNS records — Titan Email Premium subscription is attached but never configured (paid through 2027-01-30). Migration to Cloudflare is the planned path.
 - GitHub: `codebend3r`. Repo is private.
 
 ## Planned tooling decisions
 
 - Public reachability via **Cloudflare Tunnel** (chosen over ngrok and Tailscale Funnel for stable URLs at no recurring cost, plus real TLS certs via Cloudflare)
-- Subdomains: `invite.cjrivas.io` -> `wizarr:5690`, `webhook.cjrivas.io` -> `stripe-bridge:8000`
+- Subdomains: `invite.<domain>` -> `wizarr:5690`, `webhook.<domain>` -> `stripe-bridge:8000`
 - Stripe Payment Links (no custom checkout), webhook events: `checkout.session.completed` + `customer.subscription.deleted`
 
 ## Conventions
@@ -47,13 +47,13 @@ The bridge is intentionally small. It does not persist its own state — it look
 Done:
 - Repo scaffolded, README + Dockerfile + compose + bridge committed
 - 3/5 Plex servers added in Wizarr
-- DNS state on `cjrivas.io` verified clean (safe to migrate)
+- DNS state on the domain verified clean (safe to migrate)
 
 Next (in order):
-1. Add `cjrivas.io` to Cloudflare, swap nameservers at name.com
-2. Create Cloudflare Tunnel, add `cloudflared` service to `docker-compose.yml`, route `invite.cjrivas.io` and `webhook.cjrivas.io`
+1. Add the domain to Cloudflare, swap nameservers at name.com
+2. Create Cloudflare Tunnel, add `cloudflared` service to `docker-compose.yml`, route `invite.<domain>` and `webhook.<domain>`
 3. Generate Wizarr API key, fill `.env`
-4. Create Stripe product + Payment Link + webhook endpoint pointing at `https://webhook.cjrivas.io/stripe/webhook`
+4. Create Stripe product + Payment Link + webhook endpoint pointing at `https://webhook.<domain>/stripe/webhook`
 5. Test end-to-end with Stripe CLI (`stripe trigger ...`) in test mode
 6. Switch to Stripe live keys, announce to a small trusted group
 7. Add remaining 2 Plex servers in Wizarr
