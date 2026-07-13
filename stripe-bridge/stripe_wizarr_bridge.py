@@ -76,6 +76,11 @@ def resolve_user_id(client, store_path: str, customer_id: str, email: str | None
 
 
 def handle_event(event: dict) -> None:
+    event_id = event.get("id")
+    if event_id and not store.mark_event_processed(MAP_DB_PATH, event_id):
+        log.info("skipping already-processed event %s", event_id)
+        return
+
     etype = event["type"]
     obj = event["data"]["object"]
     log.info("stripe event: %s", etype)
@@ -89,7 +94,8 @@ def handle_event(event: dict) -> None:
         invite = client.create_invite(INVITE_DAYS, ACCESS_DURATION)
         if customer_id:
             store.upsert_pending(MAP_DB_PATH, customer_id, email, invite["code"])
-        send_invite_email(email, invite["url"])
+        invite_url = f"{PUBLIC_INVITE_BASE}/j/{invite['code']}"
+        send_invite_email(email, invite_url)
         log.info("sent invite to %s", email)
 
     elif etype == "invoice.paid":

@@ -23,3 +23,11 @@ def test_upsert_get_and_backfill(tmp_path):
     # backfill resolved user id
     store.set_user_id(db, "cus_1", 42)
     assert store.get_mapping(db, "cus_1")["wizarr_user_id"] == 42
+
+
+def test_mark_event_processed_dedup(tmp_path):
+    db = str(tmp_path / "bridge.db")
+    store.init_db(db)
+
+    assert store.mark_event_processed(db, "evt_1") is True
+    assert store.mark_event_processed(db, "evt_1") is False

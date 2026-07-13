@@ -38,7 +38,8 @@ class WizarrClient:
 
     def find_user_id_by_email(self, email: str) -> int | None:
         for u in self._users({"email": email}):
-            return u["id"]
+            if (u.get("email") or "").lower() == email.lower():
+                return u["id"]
         return None
 
     def find_user_id_by_invite(self, code: str) -> int | None:

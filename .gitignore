@@ -6,6 +6,7 @@
 # runtime data
 wizarr-data/
 tautulli-config/
+stripe-bridge-data/
 
 # python
 __pycache__/

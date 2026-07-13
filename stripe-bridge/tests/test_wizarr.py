@@ -30,6 +30,11 @@ def test_find_user_id_by_email_hit_and_miss():
     responses.get(f"{BASE}/api/users", json={"users": []})
     assert client().find_user_id_by_email("nope@x.com") is None
 
+    responses.reset()
+    responses.get(f"{BASE}/api/users",
+                  json={"users": [{"id": 9, "username": "cj", "email": "other@x.com"}]})
+    assert client().find_user_id_by_email("nope@x.com") is None
+
 
 @responses.activate
 def test_find_user_id_by_invite_walks_used_by():

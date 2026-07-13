@@ -31,9 +31,10 @@ def bridge(tmp_path, monkeypatch):
 
 
 def test_checkout_creates_invite_and_stores_mapping(bridge):
-    bridge.client.create_invite.return_value = {"code": "abc", "url": "http://inv.test/j/abc"}
+    bridge.client.create_invite.return_value = {"code": "abc", "url": "http://wizarr-lan:5690/j/abc"}
     bridge.handle_event({
         "type": "checkout.session.completed",
+        "id": "evt_checkout_1",
         "data": {"object": {"id": "cs_1", "customer": "cus_1",
                             "customer_details": {"email": "a@x.com"}}},
     })
@@ -46,6 +47,7 @@ def test_checkout_creates_invite_and_stores_mapping(bridge):
 def test_invoice_paid_first_charge_is_skipped(bridge):
     bridge.handle_event({
         "type": "invoice.paid",
+        "id": "evt_inv_skip",
         "data": {"object": {"customer": "cus_1", "customer_email": "a@x.com",
                             "billing_reason": "subscription_create"}},
     })
@@ -58,9 +60,25 @@ def test_invoice_paid_renewal_extends(bridge):
     bridge.client.find_user_id_by_email.return_value = 9
     bridge.handle_event({
         "type": "invoice.paid",
+        "id": "evt_inv_cycle",
         "data": {"object": {"customer": "cus_1", "customer_email": "a@x.com",
                             "billing_reason": "subscription_cycle"}},
     })
+    bridge.client.extend_user.assert_called_once_with(9, 35)
+
+
+def test_duplicate_event_is_ignored(bridge):
+    import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "a@x.com", "abc")
+    bridge.client.find_user_id_by_email.return_value = 9
+    event = {
+        "type": "invoice.paid",
+        "id": "evt_inv_cycle_dup",
+        "data": {"object": {"customer": "cus_1", "customer_email": "a@x.com",
+                            "billing_reason": "subscription_cycle"}},
+    }
+    bridge.handle_event(event)
+    bridge.handle_event(event)
     bridge.client.extend_user.assert_called_once_with(9, 35)
 
 
@@ -71,6 +89,7 @@ def test_subscription_deleted_disables_user(bridge, monkeypatch):
     monkeypatch.setattr(bridge, "customer_email", lambda cid: "a@x.com")
     bridge.handle_event({
         "type": "customer.subscription.deleted",
+        "id": "evt_cancel",
         "data": {"object": {"customer": "cus_1"}},
     })
     bridge.client.disable_user.assert_called_once_with(9)
