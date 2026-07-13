@@ -114,3 +114,16 @@ Framing payments as "contributions toward infrastructure" does not exempt you fr
 ## License
 
 No license is currently attached to this repository. Treat it as all rights reserved unless one is added.
+
+## Landing page (`web/`)
+
+Static Vite + React landing page for `westeroz.netlify.app` that funnels
+visitors to the Stripe Payment Link.
+
+- Develop: `cd web && npm install && npm run dev`
+- Test: `cd web && npm test`
+- Build: `cd web && npm run build` (outputs `web/dist/`)
+
+Deploy: Netlify builds from the repo using `netlify.toml` (base `web/`,
+publish `web/dist`). Set `VITE_PAYMENT_LINK_URL` (and later `VITE_MEMBER_URL`)
+in the Netlify UI to switch the test link for the live one — no code change.
