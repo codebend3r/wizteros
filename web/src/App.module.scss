@@ -1,0 +1,8 @@
+.page {
+  display: grid;
+  gap: var(--space-4);
+  width: 100%;
+  max-width: var(--max-width);
+  margin-inline: auto;
+  padding-inline: var(--space-2);
+}
