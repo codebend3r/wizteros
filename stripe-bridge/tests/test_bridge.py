@@ -30,9 +30,10 @@ def bridge(tmp_path, monkeypatch):
     return b
 
 
-def test_checkout_creates_invite_for_all_servers_and_stores_mapping(bridge):
+def test_checkout_brand_new_member_invites_without_time_boxing(bridge):
     bridge.client.list_server_ids.return_value = [1, 2, 3, 4, 5]
     bridge.client.create_invite.return_value = {"code": "abc", "url": "http://wizarr-lan:5690/j/abc"}
+    bridge.client.find_user_ids_by_email.return_value = []  # no existing records yet
     bridge.handle_event({
         "type": "checkout.session.completed",
         "id": "evt_checkout_1",
@@ -42,8 +43,26 @@ def test_checkout_creates_invite_for_all_servers_and_stores_mapping(bridge):
     # "all" mode -> invite targets every verified server discovered from Wizarr
     bridge.client.create_invite.assert_called_once_with([1, 2, 3, 4, 5], 7, "35")
     bridge.send_invite_email.assert_called_once_with("a@x.com", "http://inv.test/j/abc")
+    # brand-new member has no records to time-box; invite redemption sets expiry
+    bridge.client.extend_user.assert_not_called()
     import store
     assert store.get_mapping(bridge.MAP_DB_PATH, "cus_1")["invite_code"] == "abc"
+
+
+def test_checkout_existing_member_time_boxes_all_records(bridge):
+    bridge.client.list_server_ids.return_value = [1, 2, 3, 4, 5]
+    bridge.client.create_invite.return_value = {"code": "abc", "url": "http://x/j/abc"}
+    bridge.client.find_user_ids_by_email.return_value = [147, 57, 106, 155, 204]
+    bridge.handle_event({
+        "type": "checkout.session.completed",
+        "id": "evt_checkout_existing",
+        "data": {"object": {"id": "cs_1", "customer": "cus_1",
+                            "customer_details": {"email": "a@x.com"}}},
+    })
+    # every one of the member's server records gets time-boxed
+    assert sorted(c.args[0] for c in bridge.client.extend_user.call_args_list) == [57, 106, 147, 155, 204]
+    for c in bridge.client.extend_user.call_args_list:
+        assert c.args[1] == 35
 
 
 def test_invoice_paid_first_charge_is_skipped(bridge):
@@ -59,20 +78,21 @@ def test_invoice_paid_first_charge_is_skipped(bridge):
 def test_invoice_paid_renewal_extends(bridge):
     import store
     store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "a@x.com", "abc")
-    bridge.client.find_user_id_by_email.return_value = 9
+    bridge.client.find_user_ids_by_email.return_value = [9, 10]
     bridge.handle_event({
         "type": "invoice.paid",
         "id": "evt_inv_cycle",
         "data": {"object": {"customer": "cus_1", "customer_email": "a@x.com",
                             "billing_reason": "subscription_cycle"}},
     })
-    bridge.client.extend_user.assert_called_once_with(9, 35)
+    # renewal extends every server record for the member
+    assert sorted(c.args for c in bridge.client.extend_user.call_args_list) == [(9, 35), (10, 35)]
 
 
 def test_duplicate_event_is_ignored(bridge):
     import store
     store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "a@x.com", "abc")
-    bridge.client.find_user_id_by_email.return_value = 9
+    bridge.client.find_user_ids_by_email.return_value = [9]
     event = {
         "type": "invoice.paid",
         "id": "evt_inv_cycle_dup",
@@ -84,17 +104,17 @@ def test_duplicate_event_is_ignored(bridge):
     bridge.client.extend_user.assert_called_once_with(9, 35)
 
 
-def test_subscription_deleted_disables_user(bridge, monkeypatch):
+def test_subscription_deleted_disables_all_records(bridge):
     import store
     store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "a@x.com", "abc")
-    bridge.client.find_user_id_by_email.return_value = 9
-    monkeypatch.setattr(bridge, "customer_email", lambda cid: "a@x.com")
+    bridge.client.find_user_ids_by_email.return_value = [147, 57, 106, 155, 204]
     bridge.handle_event({
         "type": "customer.subscription.deleted",
         "id": "evt_cancel",
         "data": {"object": {"customer": "cus_1"}},
     })
-    bridge.client.disable_user.assert_called_once_with(9)
+    # cancel must disable every server record, not just the first
+    assert sorted(c.args[0] for c in bridge.client.disable_user.call_args_list) == [57, 106, 147, 155, 204]
 
 
 def test_webhook_route_handles_stripe_object_event(bridge, monkeypatch):
@@ -152,12 +172,12 @@ def test_resolve_server_ids_explicit_list_overrides_discovery(bridge, monkeypatc
     bridge.client.list_server_ids.assert_not_called()
 
 
-def test_resolve_prefers_cache_then_email_then_invite(bridge):
+def test_resolve_falls_back_from_email_to_invite(bridge):
     import store
     store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "a@x.com", "abc")
-    # email miss, invite hit -> backfills cache
-    bridge.client.find_user_id_by_email.return_value = None
-    bridge.client.find_user_id_by_invite.return_value = 7
-    uid = bridge.resolve_user_id(bridge.client, bridge.MAP_DB_PATH, "cus_1", "a@x.com")
-    assert uid == 7
-    assert store.get_mapping(bridge.MAP_DB_PATH, "cus_1")["wizarr_user_id"] == 7
+    # email miss (Stripe email != Plex email) -> resolve via the stored invite code
+    bridge.client.find_user_ids_by_email.return_value = []
+    bridge.client.find_user_ids_by_invite.return_value = [7, 8]
+    ids = bridge.resolve_user_ids(bridge.client, bridge.MAP_DB_PATH, "cus_1", "a@x.com")
+    assert ids == [7, 8]
+    bridge.client.find_user_ids_by_invite.assert_called_once_with("abc")

@@ -36,22 +36,27 @@ class WizarrClient:
         return {"code": inv["code"], "url": inv["url"]}
 
     def _users(self, params: dict) -> list:
+        # /api/users is slow (Wizarr reconciles with each Plex server per call),
+        # routinely ~15s, so allow generous headroom.
         r = requests.get(
             f"{self.base_url}/api/users",
             headers=self._headers(),
             params=params,
-            timeout=10,
+            timeout=45,
         )
         r.raise_for_status()
         return r.json().get("users", [])
 
-    def find_user_id_by_email(self, email: str) -> int | None:
-        for u in self._users({"email": email}):
-            if (u.get("email") or "").lower() == email.lower():
-                return u["id"]
-        return None
+    def find_user_ids_by_email(self, email: str) -> list[int]:
+        """All record ids for an email (one record per server)."""
+        return [u["id"] for u in self._users({"email": email})
+                if (u.get("email") or "").lower() == email.lower()]
 
-    def find_user_id_by_invite(self, code: str) -> int | None:
+    def find_user_ids_by_invite(self, code: str) -> list[int]:
+        """All record ids for the Plex account that redeemed the invite.
+
+        Fallback for when the Stripe email differs from the Plex account email.
+        """
         r = requests.get(
             f"{self.base_url}/api/invitations",
             headers=self._headers(),
@@ -64,10 +69,8 @@ class WizarrClient:
                 used_by = inv.get("used_by")
                 break
         if not used_by:
-            return None
-        for u in self._users({"username": used_by}):
-            return u["id"]
-        return None
+            return []
+        return [u["id"] for u in self._users({"username": used_by})]
 
     def extend_user(self, user_id: int, days: int) -> None:
         r = requests.post(

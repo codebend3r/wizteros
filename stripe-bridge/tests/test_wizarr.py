@@ -38,28 +38,36 @@ def test_list_server_ids_returns_only_verified():
 
 
 @responses.activate
-def test_find_user_id_by_email_hit_and_miss():
+def test_find_user_ids_by_email_returns_all_matching_records():
+    # One email maps to one record per server; return every matching id.
     responses.get(f"{BASE}/api/users",
-                  json={"users": [{"id": 9, "username": "cj", "email": "a@x.com"}]})
-    assert client().find_user_id_by_email("a@x.com") == 9
+                  json={"users": [
+                      {"id": 9, "username": "cj", "email": "a@x.com", "server": "Meleys"},
+                      {"id": 12, "username": "cj", "email": "a@x.com", "server": "Vhagar"},
+                      {"id": 3, "username": "other", "email": "other@x.com", "server": "Meleys"},
+                  ]})
+    assert client().find_user_ids_by_email("a@x.com") == [9, 12]
 
     responses.reset()
     responses.get(f"{BASE}/api/users", json={"users": []})
-    assert client().find_user_id_by_email("nope@x.com") is None
-
-    responses.reset()
-    responses.get(f"{BASE}/api/users",
-                  json={"users": [{"id": 9, "username": "cj", "email": "other@x.com"}]})
-    assert client().find_user_id_by_email("nope@x.com") is None
+    assert client().find_user_ids_by_email("nope@x.com") == []
 
 
 @responses.activate
-def test_find_user_id_by_invite_walks_used_by():
+def test_find_user_ids_by_invite_walks_used_by_returns_all():
     responses.get(f"{BASE}/api/invitations",
                   json={"invitations": [{"code": "abc123", "used_by": "cj"}]})
     responses.get(f"{BASE}/api/users",
-                  json={"users": [{"id": 9, "username": "cj", "email": "a@x.com"}]})
-    assert client().find_user_id_by_invite("abc123") == 9
+                  json={"users": [
+                      {"id": 9, "username": "cj", "email": "a@x.com", "server": "Meleys"},
+                      {"id": 12, "username": "cj", "email": "a@x.com", "server": "Vhagar"},
+                  ]})
+    assert client().find_user_ids_by_invite("abc123") == [9, 12]
+
+    responses.reset()
+    responses.get(f"{BASE}/api/invitations",
+                  json={"invitations": [{"code": "abc123", "used_by": None}]})
+    assert client().find_user_ids_by_invite("abc123") == []
 
 
 @responses.activate

@@ -74,16 +74,18 @@ def customer_email(customer_id: str) -> str | None:
     return getattr(stripe.Customer.retrieve(customer_id), "email", None)
 
 
-def resolve_user_id(client, store_path: str, customer_id: str, email: str | None) -> int | None:
-    m = store.get_mapping(store_path, customer_id)
-    if m and m["wizarr_user_id"]:
-        return m["wizarr_user_id"]
-    uid = client.find_user_id_by_email(email) if email else None
-    if not uid and m and m["invite_code"]:
-        uid = client.find_user_id_by_invite(m["invite_code"])
-    if uid:
-        store.set_user_id(store_path, customer_id, uid)
-    return uid
+def resolve_user_ids(client, store_path: str, customer_id: str, email: str | None) -> list[int]:
+    """All Wizarr record ids for a member (one per server), resolved live.
+
+    Prefer email; fall back to the stored invite code (Stripe email may differ
+    from the Plex account email).
+    """
+    ids = client.find_user_ids_by_email(email) if email else []
+    if not ids:
+        m = store.get_mapping(store_path, customer_id)
+        if m and m["invite_code"]:
+            ids = client.find_user_ids_by_invite(m["invite_code"])
+    return ids
 
 
 def handle_event(event: dict) -> None:
@@ -108,6 +110,14 @@ def handle_event(event: dict) -> None:
         invite_url = f"{PUBLIC_INVITE_BASE}/j/{invite['code']}"
         send_invite_email(email, invite_url)
         log.info("sent invite to %s", email)
+        # Existing members are already shared, so invite redemption won't apply
+        # the duration — time-box every one of their server records now.
+        existing = resolve_user_ids(client, MAP_DB_PATH, customer_id, email)
+        for uid in existing:
+            client.extend_user(uid, int(ACCESS_DURATION))
+        if existing:
+            log.info("time-boxed %d existing record(s) for %s (+%s days)",
+                     len(existing), email, ACCESS_DURATION)
 
     elif etype == "invoice.paid":
         if obj.get("billing_reason") == "subscription_create":
@@ -115,20 +125,23 @@ def handle_event(event: dict) -> None:
             return
         customer_id = obj["customer"]
         email = obj.get("customer_email") or customer_email(customer_id)
-        uid = resolve_user_id(client, MAP_DB_PATH, customer_id, email)
-        if uid:
+        ids = resolve_user_ids(client, MAP_DB_PATH, customer_id, email)
+        for uid in ids:
             client.extend_user(uid, int(ACCESS_DURATION))
-            log.info("extended user %s (+%s days)", uid, ACCESS_DURATION)
+        if ids:
+            log.info("extended %d record(s) for %s (+%s days)", len(ids), email, ACCESS_DURATION)
         else:
             log.warning("renewal: no wizarr user for %s / %s", customer_id, email)
 
     elif etype == "customer.subscription.deleted":
         customer_id = obj["customer"]
-        email = customer_email(customer_id)
-        uid = resolve_user_id(client, MAP_DB_PATH, customer_id, email)
-        if uid:
+        m = store.get_mapping(MAP_DB_PATH, customer_id)
+        email = (m and m["email"]) or customer_email(customer_id)
+        ids = resolve_user_ids(client, MAP_DB_PATH, customer_id, email)
+        for uid in ids:
             client.disable_user(uid)
-            log.info("disabled user %s (%s)", uid, email)
+        if ids:
+            log.info("disabled %d record(s) for %s", len(ids), email)
         else:
             log.info("cancel: no wizarr user for %s / %s", customer_id, email)
 
