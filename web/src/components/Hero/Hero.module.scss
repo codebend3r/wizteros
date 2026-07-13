@@ -1,0 +1,35 @@
+.hero {
+  display: grid;
+  gap: var(--space-3);
+  justify-items: center;
+  text-align: center;
+  padding: var(--space-8) var(--space-3);
+}
+
+.brand {
+  font-size: var(--font-size-hero);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.tagline {
+  font-size: var(--font-size-lg);
+  color: var(--color-muted);
+  max-width: 32rem;
+}
+
+.price {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+}
+
+.cta {
+  display: inline-grid;
+  align-items: center;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+  font-weight: 600;
+  text-decoration: none;
+}
