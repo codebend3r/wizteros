@@ -9,7 +9,7 @@ import pytest
 os.environ.update({
     "STRIPE_API_KEY": "sk_test_x", "STRIPE_WEBHOOK_SECRET": "whsec_x",
     "WIZARR_BASE_URL": "http://wizarr.test", "WIZARR_API_KEY": "k",
-    "WIZARR_SERVER_ID": "1", "INVITE_EXPIRES_DAYS": "7", "ACCESS_DURATION": "35",
+    "WIZARR_SERVER_IDS": "all", "INVITE_EXPIRES_DAYS": "7", "ACCESS_DURATION": "35",
     "SMTP_HOST": "smtp.test", "SMTP_PORT": "587", "SMTP_USER": "u",
     "SMTP_PASS": "p", "FROM_ADDR": "server@test", "PUBLIC_INVITE_BASE": "http://inv.test",
     "MAP_DB_PATH": "/tmp/does-not-matter.db",
@@ -30,7 +30,8 @@ def bridge(tmp_path, monkeypatch):
     return b
 
 
-def test_checkout_creates_invite_and_stores_mapping(bridge):
+def test_checkout_creates_invite_for_all_servers_and_stores_mapping(bridge):
+    bridge.client.list_server_ids.return_value = [1, 2, 3, 4, 5]
     bridge.client.create_invite.return_value = {"code": "abc", "url": "http://wizarr-lan:5690/j/abc"}
     bridge.handle_event({
         "type": "checkout.session.completed",
@@ -38,7 +39,8 @@ def test_checkout_creates_invite_and_stores_mapping(bridge):
         "data": {"object": {"id": "cs_1", "customer": "cus_1",
                             "customer_details": {"email": "a@x.com"}}},
     })
-    bridge.client.create_invite.assert_called_once()
+    # "all" mode -> invite targets every verified server discovered from Wizarr
+    bridge.client.create_invite.assert_called_once_with([1, 2, 3, 4, 5], 7, "35")
     bridge.send_invite_email.assert_called_once_with("a@x.com", "http://inv.test/j/abc")
     import store
     assert store.get_mapping(bridge.MAP_DB_PATH, "cus_1")["invite_code"] == "abc"
@@ -93,6 +95,12 @@ def test_subscription_deleted_disables_user(bridge, monkeypatch):
         "data": {"object": {"customer": "cus_1"}},
     })
     bridge.client.disable_user.assert_called_once_with(9)
+
+
+def test_resolve_server_ids_explicit_list_overrides_discovery(bridge, monkeypatch):
+    monkeypatch.setattr(bridge, "WIZARR_SERVER_IDS", "1,3,5")
+    assert bridge.resolve_server_ids() == [1, 3, 5]
+    bridge.client.list_server_ids.assert_not_called()
 
 
 def test_resolve_prefers_cache_then_email_then_invite(bridge):

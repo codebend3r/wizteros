@@ -2,20 +2,29 @@ import requests
 
 
 class WizarrClient:
-    def __init__(self, base_url: str, api_key: str, server_id: int):
+    def __init__(self, base_url: str, api_key: str):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
-        self.server_id = server_id
 
     def _headers(self) -> dict:
         return {"X-API-Key": self.api_key, "Content-Type": "application/json"}
 
-    def create_invite(self, expires_in_days: int, duration, unlimited: bool = False) -> dict:
+    def list_server_ids(self) -> list:
+        """Return the ids of all verified media servers."""
+        r = requests.get(
+            f"{self.base_url}/api/servers",
+            headers=self._headers(),
+            timeout=10,
+        )
+        r.raise_for_status()
+        return [s["id"] for s in r.json().get("servers", []) if s.get("verified")]
+
+    def create_invite(self, server_ids, expires_in_days: int, duration, unlimited: bool = False) -> dict:
         r = requests.post(
             f"{self.base_url}/api/invitations",
             headers=self._headers(),
             json={
-                "server_ids": [self.server_id],
+                "server_ids": list(server_ids),
                 "expires_in_days": expires_in_days,
                 "duration": duration,
                 "unlimited": unlimited,

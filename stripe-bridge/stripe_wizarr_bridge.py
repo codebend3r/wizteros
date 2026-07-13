@@ -14,7 +14,9 @@ STRIPE_WEBHOOK_SECRET = os.environ["STRIPE_WEBHOOK_SECRET"]
 
 WIZARR_BASE_URL = os.environ["WIZARR_BASE_URL"].rstrip("/")
 WIZARR_API_KEY = os.environ["WIZARR_API_KEY"]
-WIZARR_SERVER_ID = int(os.environ.get("WIZARR_SERVER_ID", "1"))
+# Empty or "all" => grant every verified server (discovered at invite time).
+# Otherwise a comma-separated list of server ids, e.g. "1,3,5".
+WIZARR_SERVER_IDS = os.environ.get("WIZARR_SERVER_IDS", "").strip()
 INVITE_DAYS = int(os.environ.get("INVITE_EXPIRES_DAYS", "7"))
 ACCESS_DURATION = os.environ.get("ACCESS_DURATION", "35")
 
@@ -31,10 +33,17 @@ stripe.api_key = STRIPE_API_KEY
 log = logging.getLogger("bridge")
 logging.basicConfig(level=logging.INFO)
 
-client = WizarrClient(WIZARR_BASE_URL, WIZARR_API_KEY, WIZARR_SERVER_ID)
+client = WizarrClient(WIZARR_BASE_URL, WIZARR_API_KEY)
 store.init_db(MAP_DB_PATH)
 
 app = FastAPI()
+
+
+def resolve_server_ids() -> list:
+    """Which Wizarr servers an invite should grant access to."""
+    if WIZARR_SERVER_IDS and WIZARR_SERVER_IDS.lower() != "all":
+        return [int(x) for x in WIZARR_SERVER_IDS.split(",") if x.strip()]
+    return client.list_server_ids()
 
 
 def send_invite_email(to_addr: str, invite_url: str) -> None:
@@ -91,7 +100,7 @@ def handle_event(event: dict) -> None:
         if not email:
             log.warning("no email on session %s", obj.get("id"))
             return
-        invite = client.create_invite(INVITE_DAYS, ACCESS_DURATION)
+        invite = client.create_invite(resolve_server_ids(), INVITE_DAYS, ACCESS_DURATION)
         if customer_id:
             store.upsert_pending(MAP_DB_PATH, customer_id, email, invite["code"])
         invite_url = f"{PUBLIC_INVITE_BASE}/j/{invite['code']}"
