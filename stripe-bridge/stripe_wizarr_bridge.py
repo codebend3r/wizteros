@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import smtplib
+from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 
 import stripe
@@ -74,6 +75,11 @@ def customer_email(customer_id: str) -> str | None:
     return getattr(stripe.Customer.retrieve(customer_id), "email", None)
 
 
+def access_expiry_iso() -> str:
+    """Absolute expiry for a paid record: the update time plus ACCESS_DURATION."""
+    return (datetime.now(timezone.utc) + timedelta(days=int(ACCESS_DURATION))).isoformat()
+
+
 def resolve_user_ids(client, store_path: str, customer_id: str, email: str | None) -> list[int]:
     """All Wizarr record ids for a member (one per server), resolved live.
 
@@ -113,11 +119,12 @@ def handle_event(event: dict) -> None:
         # Existing members are already shared, so invite redemption won't apply
         # the duration — time-box every one of their server records now.
         existing = resolve_user_ids(client, MAP_DB_PATH, customer_id, email)
+        expires = access_expiry_iso()
         for uid in existing:
-            client.extend_user(uid, int(ACCESS_DURATION))
+            client.set_expiry(uid, expires)
         if existing:
-            log.info("time-boxed %d existing record(s) for %s (+%s days)",
-                     len(existing), email, ACCESS_DURATION)
+            log.info("time-boxed %d existing record(s) for %s (expires %s)",
+                     len(existing), email, expires)
 
     elif etype == "invoice.paid":
         if obj.get("billing_reason") == "subscription_create":
@@ -126,10 +133,11 @@ def handle_event(event: dict) -> None:
         customer_id = obj["customer"]
         email = obj.get("customer_email") or customer_email(customer_id)
         ids = resolve_user_ids(client, MAP_DB_PATH, customer_id, email)
+        expires = access_expiry_iso()
         for uid in ids:
-            client.extend_user(uid, int(ACCESS_DURATION))
+            client.set_expiry(uid, expires)
         if ids:
-            log.info("extended %d record(s) for %s (+%s days)", len(ids), email, ACCESS_DURATION)
+            log.info("renewed %d record(s) for %s (expires %s)", len(ids), email, expires)
         else:
             log.warning("renewal: no wizarr user for %s / %s", customer_id, email)
 

@@ -28,33 +28,41 @@ access**.
   `GET /api/users` hangs and must not be used.
 - `POST /api/users/{id}/extend {"days": n}`:
   - on a `null`-expiry record → **sets** expiry to `now + n days`.
-  - on a record that already has an expiry → **adds** n days (compounds).
-- `POST /api/users/{id}/disable` acts on a single record.
+  - on a record that already has an expiry → **adds** n days (compounds) — so it
+    is NOT used; see below.
+- `PUT /api/users/{id}/update-expiry {"expires": <ISO>}` sets an **absolute**
+  expiry. An **empty body** `{}` sets "unlimited"; an explicit `null` is rejected
+  (the swagger doc is wrong on this).
+- `POST /api/users/{id}/disable` / `/enable` act on a single record.
 - `POST /api/invitations` with `duration` correctly records the duration on the
   invite; redemption only applies it for brand-new memberships.
 
 ## Enforcement model: time-boxed / fail-safe
 
 Access is guaranteed to lapse for a non-paying member because every paid member's
-records carry an `expires` in the near future that only paid events push forward.
-If any webhook is missed, access self-expires — the service fails closed.
+records carry an `expires` in the near future. Each paid event **sets** that expiry
+to `update-time + ACCESS_DURATION` — absolute, not additive — so a record always
+expires exactly `ACCESS_DURATION` days after the last payment. If any webhook is
+missed, access self-expires within `ACCESS_DURATION` days — the service fails
+closed, with a bounded exposure window.
 
 | Stripe event | Bridge action (across **all** of the member's records) |
 |---|---|
-| `checkout.session.completed` | Create + email an invite (brand-new members redeem it for their initial expiry). Resolve existing records by email; if any exist (existing member), `extend` each by `ACCESS_DURATION` to time-box immediately. Store `customer_id → (email, invite_code)`. |
-| `invoice.paid` (skip first `subscription_create`) | Resolve all records; `extend` each by `ACCESS_DURATION`. |
+| `checkout.session.completed` | Create + email an invite (brand-new members redeem it for their initial expiry). Resolve existing records by email; if any exist (existing member), **set** each record's expiry to `now + ACCESS_DURATION` to time-box immediately. Store `customer_id → (email, invite_code)`. |
+| `invoice.paid` (skip first `subscription_create`) | Resolve all records; **set** each to `now + ACCESS_DURATION`. |
 | `customer.subscription.deleted` | Resolve all records; `disable` each. |
 
-`extend` compounding is acceptable: a paying member always stays ahead of `now`;
-a member who stops paying lapses at their last-set expiry. Cancel disables
+Set (not extend) is deliberate: expiry is deterministic (`update date + duration`),
+identical across all of a member's records, and the fail-safe window stays bounded
+at `ACCESS_DURATION` rather than drifting forward with each renewal. Cancel disables
 immediately regardless of remaining expiry.
 
 **Locked decisions:**
 - Cancel **disables** records (reversible, matches existing endpoint); it does not
   delete them.
 - No separate checkout-time time-box for brand-new members: they have no records
-  yet at checkout, so `extend` is naturally a no-op and invite redemption sets
-  their initial expiry.
+  yet at checkout, so the set-expiry loop is naturally a no-op and invite
+  redemption sets their initial expiry.
 
 ## Identity model — resolve to all records
 
@@ -64,7 +72,9 @@ immediately regardless of remaining expiry.
 - `find_user_ids_by_invite(code) -> list[int]` — resolve the Plex username via the
   invite's `used_by`, then return all records for that username. Fallback for when
   the Stripe email differs from the Plex account email.
-- `extend_user(id, days)` and `disable_user(id)` remain per-record; callers loop.
+- `set_expiry(id, expires_iso)` (PUT update-expiry, absolute) and
+  `disable_user(id)` remain per-record; callers loop. The bridge computes one
+  `now + ACCESS_DURATION` timestamp per event and applies it to every record.
 
 `stripe_wizarr_bridge.py`:
 - `resolve_user_ids(client, db, customer_id, email) -> list[int]` — try email, then
@@ -84,7 +94,7 @@ unchanged.
 ## Edge cases
 
 - **Brand-new member, invite not yet redeemed at checkout** → email lookup returns
-  `[]`, `extend` is skipped, invite redemption sets the initial expiry.
+  `[]`, the set-expiry loop is skipped, invite redemption sets the initial expiry.
 - **Stripe email ≠ Plex email** → invite-code fallback resolves the username, then
   its records.
 - **Duplicate/retried events** → guarded by the existing `mark_event_processed`
@@ -94,15 +104,16 @@ unchanged.
 
 ## Testing / verification
 
-- **Unit** (extend existing suite): resolve-all-by-email, resolve-all-by-invite
-  fallback, `extend` loops over all ids, `disable` loops over all ids, checkout
+- **Unit**: resolve-all-by-email, resolve-all-by-invite fallback, `set_expiry`
+  loops over all ids with one absolute date, `disable` loops over all ids, checkout
   time-boxes an existing member (records exist) but is a no-op for a brand-new
-  member (no records), new-user invite path unchanged. Keep the two StripeObject
-  regression tests already added.
-- **End-to-end** on `codebenderinc@gmail.com` (5 records; id 147 already extended
-  to ~Sep 21 from API probes; its Stripe subscription is currently canceled): start
-  a fresh test subscription, confirm a renewal `extend`s **all 5** records and a
-  cancel `disable`s **all 5**.
+  member (no records), new-user invite path unchanged, plus the StripeObject
+  regression tests.
+- **End-to-end** on `codebenderinc@gmail.com` (5 records): a repeatable Node command
+  (`npm run retest`) resets all records to a clean baseline (enable + unlimited),
+  drives signed `checkout.session.completed` + `invoice.paid` webhooks through the
+  bridge, and asserts every record is set to `~now + ACCESS_DURATION` (identical
+  absolute expiry across all five).
 
 ## Out of scope
 

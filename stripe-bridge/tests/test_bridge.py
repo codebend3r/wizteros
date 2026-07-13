@@ -44,12 +44,14 @@ def test_checkout_brand_new_member_invites_without_time_boxing(bridge):
     bridge.client.create_invite.assert_called_once_with([1, 2, 3, 4, 5], 7, "35")
     bridge.send_invite_email.assert_called_once_with("a@x.com", "http://inv.test/j/abc")
     # brand-new member has no records to time-box; invite redemption sets expiry
-    bridge.client.extend_user.assert_not_called()
+    bridge.client.set_expiry.assert_not_called()
     import store
     assert store.get_mapping(bridge.MAP_DB_PATH, "cus_1")["invite_code"] == "abc"
 
 
 def test_checkout_existing_member_time_boxes_all_records(bridge):
+    from datetime import datetime, timezone
+
     bridge.client.list_server_ids.return_value = [1, 2, 3, 4, 5]
     bridge.client.create_invite.return_value = {"code": "abc", "url": "http://x/j/abc"}
     bridge.client.find_user_ids_by_email.return_value = [147, 57, 106, 155, 204]
@@ -59,10 +61,12 @@ def test_checkout_existing_member_time_boxes_all_records(bridge):
         "data": {"object": {"id": "cs_1", "customer": "cus_1",
                             "customer_details": {"email": "a@x.com"}}},
     })
-    # every one of the member's server records gets time-boxed
-    assert sorted(c.args[0] for c in bridge.client.extend_user.call_args_list) == [57, 106, 147, 155, 204]
-    for c in bridge.client.extend_user.call_args_list:
-        assert c.args[1] == 35
+    # every server record is set to the same absolute expiry ~ now + 35 days
+    calls = bridge.client.set_expiry.call_args_list
+    assert sorted(c.args[0] for c in calls) == [57, 106, 147, 155, 204]
+    for c in calls:
+        days_out = (datetime.fromisoformat(c.args[1]) - datetime.now(timezone.utc)).days
+        assert 34 <= days_out <= 35
 
 
 def test_invoice_paid_first_charge_is_skipped(bridge):
@@ -72,7 +76,7 @@ def test_invoice_paid_first_charge_is_skipped(bridge):
         "data": {"object": {"customer": "cus_1", "customer_email": "a@x.com",
                             "billing_reason": "subscription_create"}},
     })
-    bridge.client.extend_user.assert_not_called()
+    bridge.client.set_expiry.assert_not_called()
 
 
 def test_invoice_paid_renewal_extends(bridge):
@@ -85,8 +89,10 @@ def test_invoice_paid_renewal_extends(bridge):
         "data": {"object": {"customer": "cus_1", "customer_email": "a@x.com",
                             "billing_reason": "subscription_cycle"}},
     })
-    # renewal extends every server record for the member
-    assert sorted(c.args for c in bridge.client.extend_user.call_args_list) == [(9, 35), (10, 35)]
+    # renewal sets expiry on every server record, all to the same absolute date
+    calls = bridge.client.set_expiry.call_args_list
+    assert sorted(c.args[0] for c in calls) == [9, 10]
+    assert len({c.args[1] for c in calls}) == 1  # one expiry applied uniformly
 
 
 def test_duplicate_event_is_ignored(bridge):
@@ -101,7 +107,8 @@ def test_duplicate_event_is_ignored(bridge):
     }
     bridge.handle_event(event)
     bridge.handle_event(event)
-    bridge.client.extend_user.assert_called_once_with(9, 35)
+    bridge.client.set_expiry.assert_called_once()
+    assert bridge.client.set_expiry.call_args.args[0] == 9
 
 
 def test_subscription_deleted_disables_all_records(bridge):

@@ -107,11 +107,12 @@ async function main() {
     data: { object: { object: 'invoice', customer: CUSTOMER, customer_email: EMAIL, billing_reason: 'subscription_cycle' } },
   }));
 
-  // Assert: every record now expires ~ now + 2*DURATION (checkout + renewal).
-  const target = Date.now() + 2 * DURATION * DAY;
-  const toleranceDays = 3;
+  // set-expiry is absolute (not additive): every paid event sets expiry to
+  // update-time + DURATION, so after the flow each record is ~ now + DURATION.
+  const target = Date.now() + DURATION * DAY;
+  const toleranceDays = 2;
   recs = await recordsFor(EMAIL);
-  console.log(`\nAfter flow (expected ~ ${new Date(target).toISOString().slice(0, 10)}, i.e. now + ${2 * DURATION}d):`);
+  console.log(`\nAfter flow (expected ~ ${new Date(target).toISOString().slice(0, 10)}, i.e. now + ${DURATION}d):`);
   console.log(recs.map(fmt).join('\n'));
 
   const failures = recs.filter((u) => {
@@ -121,11 +122,11 @@ async function main() {
   });
 
   if (failures.length) {
-    console.error(`\nFAIL: ${failures.length}/${recs.length} record(s) not time-boxed to ~now+${2 * DURATION}d:`);
+    console.error(`\nFAIL: ${failures.length}/${recs.length} record(s) not set to ~now+${DURATION}d:`);
     console.error(failures.map(fmt).join('\n'));
     process.exit(1);
   }
-  console.log(`\nPASS: all ${recs.length} server record(s) time-boxed to ~now + ${2 * DURATION} days.`);
+  console.log(`\nPASS: all ${recs.length} server record(s) expire ~now + ${DURATION} days (update date + ${DURATION}).`);
 }
 
 main().catch((e) => {

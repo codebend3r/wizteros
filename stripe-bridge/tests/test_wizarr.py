@@ -71,11 +71,12 @@ def test_find_user_ids_by_invite_walks_used_by_returns_all():
 
 
 @responses.activate
-def test_extend_and_disable_call_correct_paths():
-    responses.post(f"{BASE}/api/users/9/extend",
-                   json={"message": "ok", "new_expiry": "2026-09-01"})
+def test_set_expiry_and_disable_call_correct_paths():
+    responses.put(f"{BASE}/api/users/9/update-expiry",
+                  json={"message": "ok", "new_expiry": "2026-08-17T00:00:00+00:00"})
     responses.post(f"{BASE}/api/users/9/disable", json={"message": "ok"})
-    client().extend_user(9, 35)
+    client().set_expiry(9, "2026-08-17T00:00:00+00:00")
     client().disable_user(9)
-    assert responses.calls[0].request.url == f"{BASE}/api/users/9/extend"
+    assert responses.calls[0].request.url == f"{BASE}/api/users/9/update-expiry"
+    assert json.loads(responses.calls[0].request.body)["expires"] == "2026-08-17T00:00:00+00:00"
     assert responses.calls[1].request.url == f"{BASE}/api/users/9/disable"

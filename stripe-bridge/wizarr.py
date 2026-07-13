@@ -72,11 +72,12 @@ class WizarrClient:
             return []
         return [u["id"] for u in self._users({"username": used_by})]
 
-    def extend_user(self, user_id: int, days: int) -> None:
-        r = requests.post(
-            f"{self.base_url}/api/users/{user_id}/extend",
+    def set_expiry(self, user_id: int, expires_iso: str) -> None:
+        """Set a record's expiry to an absolute ISO datetime (not additive)."""
+        r = requests.put(
+            f"{self.base_url}/api/users/{user_id}/update-expiry",
             headers=self._headers(),
-            json={"days": days},
+            json={"expires": expires_iso},
             timeout=10,
         )
         r.raise_for_status()
