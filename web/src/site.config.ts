@@ -45,7 +45,10 @@ export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
   supportItems: SUPPORT_ITEMS,
 })
 
-const env: RawEnv = import.meta.env
+const env: RawEnv = {
+  VITE_PAYMENT_LINK_URL: import.meta.env.VITE_PAYMENT_LINK_URL,
+  VITE_MEMBER_URL: import.meta.env.VITE_MEMBER_URL,
+}
 
 export const siteConfig = resolveConfig({ env })
 
