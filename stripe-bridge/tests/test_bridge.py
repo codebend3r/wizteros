@@ -128,6 +128,24 @@ def test_webhook_route_handles_stripe_object_event(bridge, monkeypatch):
     bridge.send_invite_email.assert_called_once_with("a@x.com", "http://inv.test/j/abc")
 
 
+def test_customer_email_reads_stripe_object(bridge, monkeypatch):
+    # Customer.retrieve returns a StripeObject (no dict .get); customer_email
+    # must read the field without crashing, and tolerate a missing email.
+    import stripe
+
+    monkeypatch.setattr(
+        bridge.stripe.Customer, "retrieve",
+        lambda cid: stripe.Customer.construct_from({"id": cid, "email": "c@x.com"}, "sk"),
+    )
+    assert bridge.customer_email("cus_1") == "c@x.com"
+
+    monkeypatch.setattr(
+        bridge.stripe.Customer, "retrieve",
+        lambda cid: stripe.Customer.construct_from({"id": cid}, "sk"),
+    )
+    assert bridge.customer_email("cus_1") is None
+
+
 def test_resolve_server_ids_explicit_list_overrides_discovery(bridge, monkeypatch):
     monkeypatch.setattr(bridge, "WIZARR_SERVER_IDS", "1,3,5")
     assert bridge.resolve_server_ids() == [1, 3, 5]

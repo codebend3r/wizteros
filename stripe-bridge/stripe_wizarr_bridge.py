@@ -70,7 +70,8 @@ If you cancel your contribution, access will be removed at the end of the curren
 
 
 def customer_email(customer_id: str) -> str | None:
-    return stripe.Customer.retrieve(customer_id).get("email")
+    # retrieve() returns a StripeObject (no dict .get); read the field directly.
+    return getattr(stripe.Customer.retrieve(customer_id), "email", None)
 
 
 def resolve_user_id(client, store_path: str, customer_id: str, email: str | None) -> int | None:
