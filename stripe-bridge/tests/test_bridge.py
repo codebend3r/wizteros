@@ -97,6 +97,37 @@ def test_subscription_deleted_disables_user(bridge, monkeypatch):
     bridge.client.disable_user.assert_called_once_with(9)
 
 
+def test_webhook_route_handles_stripe_object_event(bridge, monkeypatch):
+    # Real Stripe webhooks arrive as a StripeObject (no dict .get), not a plain
+    # dict — construct_event returns one. Drive the actual route to prove the
+    # handler tolerates it and doesn't 500.
+    import asyncio
+    import json
+
+    import stripe
+
+    bridge.client.list_server_ids.return_value = [1, 2, 3]
+    bridge.client.create_invite.return_value = {"code": "abc", "url": "http://x/j/abc"}
+    payload = json.dumps({
+        "id": "evt_route_1", "type": "checkout.session.completed",
+        "data": {"object": {"id": "cs_1", "customer": "cus_1",
+                            "customer_details": {"email": "a@x.com"}}},
+    }).encode()
+
+    monkeypatch.setattr(
+        bridge.stripe.Webhook, "construct_event",
+        lambda payload, sig, secret: stripe.Event.construct_from(json.loads(payload), "sk"),
+    )
+
+    class _Req:
+        async def body(self):
+            return payload
+
+    resp = asyncio.run(bridge.stripe_webhook(_Req(), "t=1,v1=x"))
+    assert resp == {"ok": True}
+    bridge.send_invite_email.assert_called_once_with("a@x.com", "http://inv.test/j/abc")
+
+
 def test_resolve_server_ids_explicit_list_overrides_discovery(bridge, monkeypatch):
     monkeypatch.setattr(bridge, "WIZARR_SERVER_IDS", "1,3,5")
     assert bridge.resolve_server_ids() == [1, 3, 5]

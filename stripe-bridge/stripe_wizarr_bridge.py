@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import smtplib
@@ -135,8 +136,10 @@ def handle_event(event: dict) -> None:
 async def stripe_webhook(request: Request, stripe_signature: str = Header(None)):
     payload = await request.body()
     try:
-        event = stripe.Webhook.construct_event(payload, stripe_signature, STRIPE_WEBHOOK_SECRET)
+        stripe.Webhook.construct_event(payload, stripe_signature, STRIPE_WEBHOOK_SECRET)
     except (ValueError, stripe.error.SignatureVerificationError):
         raise HTTPException(400, "invalid signature")
-    handle_event(event)
+    # construct_event returns a StripeObject (no dict .get); the verified raw
+    # payload is the same bytes, so decode it into a plain dict for handling.
+    handle_event(json.loads(payload))
     return {"ok": True}
