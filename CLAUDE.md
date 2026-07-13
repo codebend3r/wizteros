@@ -58,8 +58,34 @@ Next (in order):
 6. Switch to Stripe live keys, announce to a small trusted group
 7. Add remaining 2 Plex servers in Wizarr
 
-## When helping with this repo
+## Typescript
 
-- If the operator asks "where were we", check this file's "Next" list and the GitHub repo state, not just chat history.
-- The bridge is small on purpose. Resist suggesting frameworks, ORMs, queues, or test scaffolds unless the operator asks.
-- For commit messages: short subject, optional bullet body. No Co-Authored-By or agent attribution trailers.
+- Always use type aliases. Never use TypeScript interfaces anywhere, including `declare global` augmentations; lint enforces this (`@typescript-eslint/consistent-type-definitions`).
+- Use type guards wherever possible.
+- Never use `any` types; prefer type narrowing or type guards
+- Never under any circumstance cast types and never double cast: `as any as string`
+- If type can't be inferred and type narrowing is not an option, use `unknown` types
+
+## CSS
+
+- Use SCSS modules (`*.module.scss`) for component styles
+- Only use global stylesheets (`styles/globals.scss`) for design tokens and true typographic primitives
+- Use a container driven approach, meaning the container will define the width and height and the children will be positioned within it, this means if/when the children are moved to different containers they may be laid out differently depending on what the container specificies
+- Prefer using CSS display grid for layout with the gap property for spacing between grid items; avoid using margins for spacing
+- Second preferred display value is flex
+- Avoid using plain divs; meaing divs with no class or id defined
+- Always use token values from `styles/globals.scss` when defining font sizes, colors, and other design tokens like padding, margin, gap, and border radius
+
+## Code style
+
+- Prefer `reduce` over `for` loops when possible. Never use `for/in` or `for/of` loops; reach for `Array.prototype` methods (`map`, `filter`, `reduce`, `flatMap`, etc.) when the value is an array.
+- Prefer double-bang (`!!value`) for boolean conversion.
+- Prefer short-circuit (`&&`) over a ternary when the else branch is `null` or `undefined`, especially in React rendering. Do: `{isActive && <Badge />}`. Don't: `{isActive ? <Badge /> : null}`. Guard the condition so it is a real boolean (`!!count && ...`), never a bare number that could render `0`.
+- Prefer optional chaining (`?.`). When optional chaining is used, ALWAYS pair it with nullish coalescing (`??`) to supply a fallback.
+- Prefer a single configurable object parameter over multiple positional parameters so argument order doesn't matter. Don't: `doSomething(foo, bar, hello)`. Do: `doSomething({ foo, bar, hello })`.
+
+## Commits
+
+- Create a commit after every logical change, batch if they are related.
+- Subject must start with `WZ:` followed by a short title (e.g., `WZ: a short title`).
+- Favor bullet points in the body. Keep it concise and easy to read.
