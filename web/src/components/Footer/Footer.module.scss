@@ -1,0 +1,21 @@
+.footer {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: center;
+  text-align: center;
+  padding: var(--space-6) var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.member {
+  color: var(--color-text);
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.disclaimer {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+  max-width: 34rem;
+}
