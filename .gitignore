@@ -8,6 +8,9 @@ wizarr-data/
 tautulli-config/
 stripe-bridge-data/
 
+# node
+node_modules/
+
 # python
 __pycache__/
 *.pyc
