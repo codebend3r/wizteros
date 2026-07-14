@@ -22,19 +22,21 @@ Stripe checkout → webhook → stripe-bridge → Wizarr API → Plex (invite or
 
 The bridge is intentionally small. It does not persist its own state — it looks up Wizarr users by email at cancellation time. If that becomes fragile, the documented next step is a SQLite mapping of `stripe_customer_id` -> Wizarr user id.
 
-## Operator context (as of 2026-05-24)
+## Operator context (as of 2026-07-14)
 
 - 5 Synology NASes on `192.168.50.0/24`, each running its own Plex server. Naming theme: Game of Thrones dragons. All 5 are connected to Wizarr (Caraxes, Meleys, Syrax, Vermithor, Vhagar).
 - The management stack (Wizarr, Tautulli, stripe-bridge) runs on **Meleys** (`192.168.50.2`) under Container Manager, at `/volume1/docker/wizteros`. Deployed via SSH key auth for `crivas@192.168.50.2`; push code updates with `npm run deploy:nas` over the mounted `docker` SMB share.
 - Wizarr is reachable internally; public ingress via Tailscale Funnel is the chosen path (see below).
 - No custom domain in use — the operator is not purchasing one. This ruled out Cloudflare Tunnel (needs a domain) in favor of Tailscale Funnel.
+- Public URL: `https://meleys.tail5586d4.ts.net` (Tailscale Funnel, live and verified).
+- Stripe has exactly two environments: **Test mode** and **Live** — both under the "Westeroz" account. A third ("Westeroz sandbox") existed and was deleted on 2026-07-14; never create sandboxes again, they cause environment misalignment (keys/payment links/webhooks must all live in the same environment).
 - GitHub: `codebend3r`. Repo is private.
 
 ## Planned tooling decisions
 
 - Public reachability via **Tailscale Funnel** on the Meleys host — chosen over Cloudflare/ngrok because it needs no custom domain (free, stable `<node>.<tailnet>.ts.net` URL with real TLS). See `docs/tailscale-funnel.md`.
-- One hostname, port 443, path-mounted: `/` -> `wizarr:5690`, `/stripe/webhook` -> `stripe-bridge:8000`
-- Stripe Payment Links (no custom checkout), webhook events: `checkout.session.completed` + `customer.subscription.deleted`
+- One hostname, port 443, path-mounted: `/` -> `wizarr:5690`, `/stripe/webhook` -> `stripe-bridge:8000` (Funnel strips the `/stripe` prefix, so the bridge serves both `/stripe/webhook` and `/webhook`)
+- Stripe Payment Links (no custom checkout), webhook events: `checkout.session.completed` + `invoice.paid` (renewals) + `customer.subscription.deleted`
 
 ## Conventions
 
@@ -52,12 +54,14 @@ Done:
 - Wizarr API key generated, `.env` filled
 - Management stack migrated to Meleys NAS; core services (Wizarr, Tautulli, stripe-bridge) running there
 - Chose Tailscale Funnel for public ingress (no domain); `cloudflared` removed from compose
+- Tailscale Funnel live on Meleys: `/` -> Wizarr, `/stripe/webhook` -> bridge, verified publicly
+- Stripe webhook endpoint, `PUBLIC_INVITE_BASE`, Netlify `VITE_MEMBER_URL` + `VITE_PAYMENT_LINK_URL` all pointed at `https://meleys.tail5586d4.ts.net` / the Test-mode payment link
+- **End-to-end signup flow verified in Test mode (2026-07-14)**: real test checkout -> webhook -> invite email -> Wizarr join -> Plex OAuth, all passed
 
 Next (in order):
-1. Set up Tailscale Funnel on Meleys (see `docs/tailscale-funnel.md`): install the package, expose `/` -> `wizarr:5690` and `/stripe/webhook` -> `stripe-bridge:8000` on 443
-2. Point Stripe webhook, Netlify `VITE_MEMBER_URL`, and `PUBLIC_INVITE_BASE` at the `<node>.<tailnet>.ts.net` URL
-3. Test end-to-end with Stripe CLI (`stripe trigger ...`) in test mode
-4. Switch to Stripe live keys, announce to a small trusted group
+1. (Optional) Verify the cancellation flow: cancel the test subscription in Stripe, confirm the bridge disables the Wizarr user
+2. Switch to live: create a live webhook endpoint (same URL/events), put live `sk_live_` key + live webhook secret in the NAS `.env`, point Netlify `VITE_PAYMENT_LINK_URL` at the live payment link, force-recreate the bridge
+3. Announce to a small trusted group
 
 See `docs/nas-deployment.md` (NAS migration) and `docs/tailscale-funnel.md` (public ingress).
 
