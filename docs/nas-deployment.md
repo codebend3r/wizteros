@@ -140,6 +140,9 @@ SSH into the NAS and start everything. Synology puts docker at
 ```sh
 ssh <NAS_USER>@<NAS_IP>
 cd /volume1/docker/wizteros
+# Synology's Docker won't auto-create bind-mount dirs (Docker Desktop does).
+# Pre-create the ones that don't come from the data copy:
+mkdir -p tautulli-config stripe-bridge-data
 sudo docker compose up -d --build        # --build compiles the stripe-bridge image on the NAS
 sudo docker compose ps                    # all four services should be "running"/"healthy"
 sudo docker compose logs -f cloudflared   # look for "Registered tunnel connection"
