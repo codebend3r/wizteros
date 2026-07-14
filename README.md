@@ -28,7 +28,7 @@ It glues together three things:
                                       +----------+
 ```
 
-On `checkout.session.completed` the bridge creates a Wizarr invite and emails it to the customer. On `customer.subscription.deleted` the bridge looks up the Plex user by email in Wizarr and removes them.
+On `checkout.session.completed` the bridge creates a Wizarr invite and emails it to the customer. On `invoice.paid` (skipping the signup invoice) it extends the member's access for another cycle. On `customer.subscription.deleted` the bridge looks up the Plex user by email in Wizarr and removes them.
 
 ## Prerequisites
 
@@ -82,6 +82,7 @@ All bridge configuration lives in `.env` (see `.env.example` for the template):
 2. Create a Payment Link for the price. Enable "Collect customer email".
 3. Add a webhook endpoint pointing at `https://<your-public-host>/stripe/webhook` with these events:
    - `checkout.session.completed`
+   - `invoice.paid` (renewals — without it, members expire after their first cycle)
    - `customer.subscription.deleted`
 4. Copy the signing secret into `STRIPE_WEBHOOK_SECRET` in `.env`.
 
