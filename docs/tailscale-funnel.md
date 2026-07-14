@@ -12,8 +12,10 @@ domain we don't have.
 - Funnel only allows public ports `443`, `8443`, `10000`. We use **443 only** —
   Stripe webhook endpoints on non-standard ports are unreliable.
 - Both services share one hostname via `--set-path` mount points. Tailscale
-  forwards the **full path** to the backend, so the bridge's existing
-  `/stripe/webhook` route lines up 1:1 — no bridge code change.
+  **strips the mount prefix** before forwarding, so a request to
+  `/stripe/webhook` reaches the bridge as `/webhook`. The bridge answers at
+  **both** `/stripe/webhook` and `/webhook`, so direct/local calls and
+  Funnel-proxied calls both land on the same handler.
 
 ```
  Stripe  ─┐
@@ -59,17 +61,19 @@ sudo tailscale funnel status                                          # prints t
 ```
 
 Longest-prefix match sends `/stripe/...` to the bridge and everything else to
-Wizarr. Verify the bridge actually receives the full path:
+Wizarr. Tailscale strips the `/stripe` prefix, so the bridge receives
+`/webhook` — which it also serves (see `stripe_wizarr_bridge.py`), so no
+funnel-side path juggling is needed. Verify:
 
 ```sh
 curl -s https://meleys.<tailnet>.ts.net/stripe/webhook -X POST -d '{}'
-# expect the bridge's own response (e.g. 400 "missing signature"), NOT a 404.
+# expect the bridge's own response (400 "invalid signature"), NOT a 404.
 ```
 
-- **Bridge responds** → the path maps through correctly. Done.
-- **404 from the bridge** → this Tailscale build stripped the `/stripe` prefix;
-  add a `/webhook` alias route to the bridge (one line) and re-test. The public
-  Stripe URL stays `.../stripe/webhook` either way.
+- **Bridge responds (400)** → the path maps through correctly. Done.
+- **404 from the bridge** → the bridge image predates the dual-path route;
+  rebuild it (`sudo docker compose up -d --build stripe-bridge`) and re-test.
+  The public Stripe URL stays `.../stripe/webhook` either way.
 
 To change a mount later: re-run with the new target. To tear down: `sudo
 tailscale funnel --set-path=/stripe off` (and `/`).

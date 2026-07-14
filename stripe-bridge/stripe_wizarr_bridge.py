@@ -154,7 +154,12 @@ def handle_event(event: dict) -> None:
             log.info("cancel: no wizarr user for %s / %s", customer_id, email)
 
 
+# Public URL is /stripe/webhook. Tailscale Funnel mounts the bridge with
+# --set-path=/stripe and strips that prefix, so behind Funnel the request
+# arrives as /webhook. Accept both paths so direct/local calls (README,
+# `stripe listen`) and Funnel-proxied calls hit the same handler.
 @app.post("/stripe/webhook")
+@app.post("/webhook")
 async def stripe_webhook(request: Request, stripe_signature: str = Header(None)):
     payload = await request.body()
     try:
