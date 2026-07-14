@@ -8,8 +8,8 @@ services:
     volumes:
       - ./wizarr-data:/data
     environment:
-      - PUID=1000
-      - PGID=1000
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
       - TZ=${TZ:-America/New_York}
       - DISABLE_BUILTIN_AUTH=false
 
@@ -22,8 +22,8 @@ services:
     volumes:
       - ./tautulli-config:/config
     environment:
-      - PUID=1000
-      - PGID=1000
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
       - TZ=${TZ:-America/New_York}
 
   stripe-bridge:
@@ -38,3 +38,16 @@ services:
       - ./stripe-bridge-data:/data
     depends_on:
       - wizarr
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: unless-stopped
+    # Dials OUT to Cloudflare — no published ports, no inbound firewall holes.
+    # Reaches wizarr/stripe-bridge over the compose network by service name.
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    depends_on:
+      - wizarr
+      - stripe-bridge
