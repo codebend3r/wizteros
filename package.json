@@ -11,7 +11,10 @@
     "bridge:logs": "docker logs -f stripe-bridge-e2e",
     "test:unit": "docker run --rm -v \"$PWD/stripe-bridge:/app\" -w /app stripe-bridge sh -c 'pip install -q pytest responses >/dev/null 2>&1 && python -m pytest -q'",
     "test:e2e": "node --env-file=.env scripts/e2e-retest.mjs",
-    "retest": "npm run bridge:build && npm run bridge:up && npm run test:e2e",
+    "retest": "run-s bridge:build bridge:up test:e2e",
     "deploy:nas": "bash scripts/deploy-nas.sh"
+  },
+  "devDependencies": {
+    "npm-run-all2": "^9.0.2"
   }
 }
