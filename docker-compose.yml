@@ -39,15 +39,7 @@ services:
     depends_on:
       - wizarr
 
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: cloudflared
-    restart: unless-stopped
-    # Dials OUT to Cloudflare — no published ports, no inbound firewall holes.
-    # Reaches wizarr/stripe-bridge over the compose network by service name.
-    command: tunnel --no-autoupdate run
-    environment:
-      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
-    depends_on:
-      - wizarr
-      - stripe-bridge
+  # Public ingress is handled by Tailscale Funnel running on the NAS host
+  # (Synology package), not a container. It serves the host-published ports
+  # 5690 (wizarr) and 8000 (stripe-bridge) at https://<node>.<tailnet>.ts.net.
+  # See docs/tailscale-funnel.md.
