@@ -36,9 +36,12 @@ the tunnel and Stripe cancellations stop reaching Wizarr. Note its LAN IP.
    **Docker** — same engine.) This provides both `docker` and `docker compose`.
 2. **Enable SSH.** DSM → *Control Panel* → *Terminal & SNMP* → check
    **Enable SSH service**. Note the port (default `22`).
-3. **Create the project folder.** DSM → *File Station* → in the `docker`
-   shared folder, create `wizteros`. Full path will be
-   `/volume1/docker/wizteros` (adjust `volume1` if your volume differs).
+3. **Create the `docker` shared folder.** Container Manager does not always
+   create one. DSM → *Control Panel* → *Shared Folder* → **Create** → name it
+   `docker` on the Meleys volume (defaults are fine; give your admin user
+   Read/Write). Full path becomes `/volume1/docker` (adjust `volume1` if your
+   volume differs). You don't need to create the `wizteros` sub-folder by hand —
+   the `rsync` in Phase 2 creates it.
 4. **Find your UID/GID.** SSH in and run `id`:
    ```sh
    ssh <NAS_USER>@<NAS_IP>
