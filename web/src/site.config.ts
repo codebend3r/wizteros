@@ -18,7 +18,7 @@ type RawEnv = {
 }
 
 export const DEFAULT_PAYMENT_LINK_URL =
-  'https://buy.stripe.com/test_bJe6oG2Yte2m7l1f721Nu00'
+  'https://buy.stripe.com/test_28EaEW9nG7Zjb1Z6BE1VK00'
 
 const SUPPORT_ITEMS: ReadonlyArray<SupportItem> = [
   {
