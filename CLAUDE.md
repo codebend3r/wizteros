@@ -24,7 +24,8 @@ The bridge is intentionally small. It does not persist its own state — it look
 
 ## Operator context (as of 2026-05-24)
 
-- 5 Synology NASes on `192.168.50.0/24`, each running its own Plex server. Naming theme: Game of Thrones dragons. 3 are connected to Wizarr (Meleys, Vermithor, Vhagar); 2 more to be added.
+- 5 Synology NASes on `192.168.50.0/24`, each running its own Plex server. Naming theme: Game of Thrones dragons. All 5 are connected to Wizarr (Caraxes, Meleys, Syrax, Vermithor, Vhagar).
+- The management stack (Wizarr, Tautulli, stripe-bridge, cloudflared) runs on **Meleys** (`192.168.50.2`) under Container Manager, at `/volume1/docker/wizteros`. Deployed via SSH key auth for `crivas@192.168.50.2`; push code updates with `npm run deploy:nas` over the mounted `docker` SMB share.
 - Wizarr is reachable internally; no public hostname yet.
 - A domain is registered at name.com with default name.com nameservers. No live DNS records — Titan Email Premium subscription is attached but never configured (paid through 2027-01-30). Migration to Cloudflare is the planned path.
 - GitHub: `codebend3r`. Repo is private.
@@ -46,17 +47,20 @@ The bridge is intentionally small. It does not persist its own state — it look
 
 Done:
 - Repo scaffolded, README + Dockerfile + compose + bridge committed
-- 3/5 Plex servers added in Wizarr
+- All 5 Plex servers added in Wizarr
 - DNS state on the domain verified clean (safe to migrate)
+- Wizarr API key generated, `.env` filled
+- Management stack migrated to Meleys NAS; core services (Wizarr, Tautulli, stripe-bridge) running there
+- `cloudflared` service added to `docker-compose.yml` (token-managed; awaiting tunnel token)
 
 Next (in order):
 1. Add the domain to Cloudflare, swap nameservers at name.com
-2. Create Cloudflare Tunnel, add `cloudflared` service to `docker-compose.yml`, route `invite.<domain>` and `webhook.<domain>`
-3. Generate Wizarr API key, fill `.env`
-4. Create Stripe product + Payment Link + webhook endpoint pointing at `https://webhook.<domain>/stripe/webhook`
-5. Test end-to-end with Stripe CLI (`stripe trigger ...`) in test mode
-6. Switch to Stripe live keys, announce to a small trusted group
-7. Add remaining 2 Plex servers in Wizarr
+2. Create Cloudflare Tunnel, set `TUNNEL_TOKEN` in `.env`, start cloudflared, route `invite.<domain>` -> `wizarr:5690` and `webhook.<domain>` -> `stripe-bridge:8000`
+3. Point Stripe webhook, Netlify `VITE_MEMBER_URL`, and `PUBLIC_INVITE_BASE` at the tunnel
+4. Test end-to-end with Stripe CLI (`stripe trigger ...`) in test mode
+5. Switch to Stripe live keys, announce to a small trusted group
+
+See `docs/nas-deployment.md` for the full NAS + tunnel runbook.
 
 ## Typescript
 
