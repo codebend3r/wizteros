@@ -36,7 +36,7 @@ On `checkout.session.completed` the bridge creates a Wizarr invite and emails it
 - A Plex Media Server you administer (and a Plex token for Wizarr setup)
 - A Stripe account with a recurring product configured (see _Stripe setup_ below)
 - An SMTP server for outbound mail (Fastmail, SendGrid, Mailgun, Gmail app password, etc.)
-- A public hostname pointing at the host so Stripe can reach the webhook (Cloudflare Tunnel, Caddy, Traefik, or any reverse proxy works)
+- A way to reach the webhook from the public internet so Stripe can deliver events (this stack uses **Tailscale Funnel** — free, no domain; see `docs/tailscale-funnel.md` — but any tunnel/reverse proxy works)
 
 ## Quick start
 
