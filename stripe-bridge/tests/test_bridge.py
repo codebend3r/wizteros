@@ -188,3 +188,138 @@ def test_resolve_falls_back_from_email_to_invite(bridge):
     ids = bridge.resolve_user_ids(bridge.client, bridge.MAP_DB_PATH, "cus_1", "a@x.com")
     assert ids == [7, 8]
     bridge.client.find_user_ids_by_invite.assert_called_once_with("abc")
+
+
+def test_webhook_route_rejects_invalid_signature(bridge, monkeypatch):
+    import asyncio
+
+    import stripe
+    from fastapi import HTTPException
+
+    def _raise(payload, sig, secret):
+        raise stripe.error.SignatureVerificationError("bad sig", sig)
+
+    monkeypatch.setattr(bridge.stripe.Webhook, "construct_event", _raise)
+
+    class _Req:
+        async def body(self):
+            return b"{}"
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(bridge.stripe_webhook(_Req(), "t=1,v1=bad"))
+    assert exc.value.status_code == 400
+    bridge.client.create_invite.assert_not_called()
+
+
+def test_webhook_served_on_both_funnel_paths(bridge):
+    # Tailscale Funnel strips the /stripe prefix; direct/local calls don't.
+    # Both paths must route to the same handler.
+    paths = {route.path for route in bridge.app.routes}
+    assert {"/stripe/webhook", "/webhook"} <= paths
+
+
+def test_checkout_without_email_creates_nothing(bridge):
+    bridge.handle_event({
+        "type": "checkout.session.completed",
+        "id": "evt_no_email",
+        "data": {"object": {"id": "cs_1", "customer": "cus_1"}},
+    })
+    bridge.client.create_invite.assert_not_called()
+    bridge.send_invite_email.assert_not_called()
+
+
+def test_checkout_falls_back_to_customer_email_field(bridge):
+    # Some checkout sessions carry customer_email instead of customer_details.
+    bridge.client.list_server_ids.return_value = [1]
+    bridge.client.create_invite.return_value = {"code": "abc", "url": "http://x/j/abc"}
+    bridge.client.find_user_ids_by_email.return_value = []
+    bridge.handle_event({
+        "type": "checkout.session.completed",
+        "id": "evt_fallback_email",
+        "data": {"object": {"id": "cs_1", "customer": "cus_1", "customer_email": "b@x.com"}},
+    })
+    bridge.send_invite_email.assert_called_once_with("b@x.com", "http://inv.test/j/abc")
+
+
+def test_invoice_paid_renewal_with_no_records_is_noop(bridge):
+    bridge.client.find_user_ids_by_email.return_value = []
+    bridge.handle_event({
+        "type": "invoice.paid",
+        "id": "evt_inv_orphan",
+        "data": {"object": {"customer": "cus_missing", "customer_email": "ghost@x.com",
+                            "billing_reason": "subscription_cycle"}},
+    })
+    bridge.client.set_expiry.assert_not_called()
+
+
+def test_cancel_with_no_records_is_noop(bridge, monkeypatch):
+    monkeypatch.setattr(bridge, "customer_email", lambda cid: "ghost@x.com")
+    bridge.client.find_user_ids_by_email.return_value = []
+    bridge.handle_event({
+        "type": "customer.subscription.deleted",
+        "id": "evt_cancel_orphan",
+        "data": {"object": {"customer": "cus_missing"}},
+    })
+    bridge.client.disable_user.assert_not_called()
+
+
+def test_cancel_prefers_stored_email_over_stripe_lookup(bridge, monkeypatch):
+    import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "a@x.com", "abc")
+    stripe_lookup = MagicMock()
+    monkeypatch.setattr(bridge, "customer_email", stripe_lookup)
+    bridge.client.find_user_ids_by_email.return_value = [9]
+    bridge.handle_event({
+        "type": "customer.subscription.deleted",
+        "id": "evt_cancel_mapped",
+        "data": {"object": {"customer": "cus_1"}},
+    })
+    # mapping has the email, so no Stripe API round-trip is needed
+    stripe_lookup.assert_not_called()
+    bridge.client.find_user_ids_by_email.assert_called_once_with("a@x.com")
+    bridge.client.disable_user.assert_called_once_with(9)
+
+
+def test_resolve_server_ids_empty_env_discovers_from_wizarr(bridge, monkeypatch):
+    # Empty WIZARR_SERVER_IDS behaves like "all": discover at invite time.
+    monkeypatch.setattr(bridge, "WIZARR_SERVER_IDS", "")
+    bridge.client.list_server_ids.return_value = [1, 2]
+    assert bridge.resolve_server_ids() == [1, 2]
+    bridge.client.list_server_ids.assert_called_once_with()
+
+
+def test_send_invite_email_sends_via_smtp_starttls(monkeypatch):
+    import importlib
+    import stripe_wizarr_bridge as b
+    importlib.reload(b)
+
+    sent = {}
+
+    class FakeSMTP:
+        def __init__(self, host, port):
+            sent["host"], sent["port"] = host, port
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def starttls(self):
+            sent["starttls"] = True
+
+        def login(self, user, password):
+            sent["login"] = (user, password)
+
+        def send_message(self, msg):
+            sent["msg"] = msg
+
+    monkeypatch.setattr(b.smtplib, "SMTP", FakeSMTP)
+    b.send_invite_email("to@x.com", "http://inv.test/j/abc")
+
+    assert (sent["host"], sent["port"]) == ("smtp.test", 587)
+    assert sent["starttls"] is True
+    assert sent["login"] == ("u", "p")
+    assert sent["msg"]["To"] == "to@x.com"
+    assert sent["msg"]["From"] == "server@test"
+    assert "http://inv.test/j/abc" in sent["msg"].get_content()

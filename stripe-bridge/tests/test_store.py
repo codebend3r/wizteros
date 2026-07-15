@@ -18,6 +18,10 @@ def test_upsert_and_get(tmp_path):
     store.upsert_pending(db, "cus_1", "b@example.com", "abc123")
     assert store.get_mapping(db, "cus_1")["email"] == "b@example.com"
 
+    # a new checkout re-points the mapping at the fresh invite code
+    store.upsert_pending(db, "cus_1", "b@example.com", "xyz789")
+    assert store.get_mapping(db, "cus_1")["invite_code"] == "xyz789"
+
 
 def test_mark_event_processed_dedup(tmp_path):
     db = str(tmp_path / "bridge.db")
