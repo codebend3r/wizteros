@@ -1,5 +1,7 @@
 import json
 
+import pytest
+import requests
 import responses
 from wizarr import WizarrClient
 
@@ -22,6 +24,9 @@ def test_create_invite_sends_server_ids_and_returns_code_and_url():
     assert out == {"code": "abc123", "url": f"{BASE}/j/abc123"}
     sent = json.loads(responses.calls[0].request.body)
     assert sent["server_ids"] == [1, 2, 3]
+    assert sent["expires_in_days"] == 7
+    assert sent["duration"] == "35"
+    assert sent["unlimited"] is False
 
 
 @responses.activate
@@ -68,6 +73,24 @@ def test_find_user_ids_by_invite_walks_used_by_returns_all():
     responses.get(f"{BASE}/api/invitations",
                   json={"invitations": [{"code": "abc123", "used_by": None}]})
     assert client().find_user_ids_by_invite("abc123") == []
+
+
+@responses.activate
+def test_find_user_ids_by_email_matches_case_insensitively_and_skips_null_emails():
+    # Stripe and Plex emails can differ in case; Wizarr records can lack one.
+    responses.get(f"{BASE}/api/users",
+                  json={"users": [
+                      {"id": 9, "username": "cj", "email": "A@X.com", "server": "Meleys"},
+                      {"id": 12, "username": "local", "email": None, "server": "Vhagar"},
+                  ]})
+    assert client().find_user_ids_by_email("a@x.com") == [9]
+
+
+@responses.activate
+def test_wizarr_http_errors_propagate():
+    responses.get(f"{BASE}/api/servers", json={"error": "boom"}, status=500)
+    with pytest.raises(requests.HTTPError):
+        client().list_server_ids()
 
 
 @responses.activate

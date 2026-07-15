@@ -12,3 +12,8 @@ test('renders one heading per support item', () => {
   expect(screen.getByRole('heading', { name: 'Storage & bandwidth' })).toBeInTheDocument()
   expect(screen.getByText('Disks and network capacity.')).toBeInTheDocument()
 })
+
+test('renders no items when the list is empty', () => {
+  render(<Support items={[]} />)
+  expect(screen.queryAllByRole('heading')).toHaveLength(0)
+})
