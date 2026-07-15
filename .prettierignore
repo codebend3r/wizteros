@@ -1,0 +1,14 @@
+# deps / build output / runtime state
+node_modules/
+web/dist/
+package-lock.json
+venv/
+stripe-bridge/data/
+**/.pytest_cache/
+wizarr-data/
+tautulli-config/
+
+# tool-managed
+.netlify/
+.superpowers/
+.claude/
