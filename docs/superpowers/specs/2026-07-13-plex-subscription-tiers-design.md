@@ -26,10 +26,10 @@ existing `stripe-bridge` FastAPI service connects the two.
 The two tiers live in **completely separate lanes**. This is the core
 simplification: free access requires zero code and zero Stripe configuration.
 
-| Tier | Who | Mechanism | Expiry |
-| ---- | --- | --------- | ------ |
-| **Free** (family/VIP) | Operator's choice | Operator generates a Wizarr invite **directly in Wizarr's admin UI**, duration = *unlimited*. Never touches Stripe or the bridge. | Never |
-| **Paid** ($8/mo) | Everyone else | Stripe Payment Link → webhook → `stripe-bridge` → Wizarr invite. | Auto-extended each billing cycle; disabled on cancel. |
+| Tier                  | Who               | Mechanism                                                                                                                         | Expiry                                                |
+| --------------------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| **Free** (family/VIP) | Operator's choice | Operator generates a Wizarr invite **directly in Wizarr's admin UI**, duration = _unlimited_. Never touches Stripe or the bridge. | Never                                                 |
+| **Paid** ($8/mo)      | Everyone else     | Stripe Payment Link → webhook → `stripe-bridge` → Wizarr invite.                                                                  | Auto-extended each billing cycle; disabled on cancel. |
 
 ## Paid pipeline
 
@@ -88,13 +88,13 @@ own expiry sweep will hard-remove stale users on its normal schedule.
 
 Replace fragile email-based lookup with a small persistent mapping. Email lookup
 breaks when a customer pays with one email and signs into Plex with another —
-and renewals now need a reliable lookup on *every* cycle, not just once.
+and renewals now need a reliable lookup on _every_ cycle, not just once.
 
 - Single SQLite table: `stripe_customer_id (PK) → wizarr_user_id`, plus `email`
   and `created_at` for debugging.
 - **Populated at invite time.** On `checkout.session.completed`, after creating
   the invite, record `stripe_customer_id → wizarr_user_id`. Note: the Wizarr
-  *user* does not exist until the invitee completes Plex signup, so store what is
+  _user_ does not exist until the invitee completes Plex signup, so store what is
   known (customer id + email + invite code) and resolve/backfill the
   `wizarr_user_id` on the first `invoice.paid`/lookup by matching the invite or
   email. Keep the email fallback as a secondary lookup path.

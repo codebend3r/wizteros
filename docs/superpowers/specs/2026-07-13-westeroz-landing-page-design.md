@@ -35,6 +35,7 @@ plan/spec docs under `docs/superpowers/`.
 ## Scope
 
 In scope:
+
 - A single-page static site built with Vite + React + TypeScript + SCSS modules.
 - One primary call-to-action linking to a configurable Stripe Payment Link.
 - Env-swappable configuration so test → live is a one-line change (no code edit).
@@ -42,6 +43,7 @@ In scope:
 - Component + config tests.
 
 Out of scope:
+
 - Backend hosting (NAS + Cloudflare Tunnel), Wizarr/Tautulli/bridge deployment.
 - Stripe product/Payment Link creation, webhook wiring.
 - Subscription tiers (single contribution only; the design leaves room to add
@@ -100,14 +102,15 @@ type SupportItem = {
 type SiteConfig = {
   brandName: string
   tagline: string
-  priceLabel: string            // operator-set, e.g. "$10 / month"
-  paymentLinkUrl: string        // Stripe Payment Link (test now, live later)
-  memberUrl: string | null      // Wizarr invite.<domain>; null hides the link
+  priceLabel: string // operator-set, e.g. "$10 / month"
+  paymentLinkUrl: string // Stripe Payment Link (test now, live later)
+  memberUrl: string | null // Wizarr invite.<domain>; null hides the link
   supportItems: ReadonlyArray<SupportItem>
 }
 ```
 
 Resolution rules:
+
 - `paymentLinkUrl` = `import.meta.env.VITE_PAYMENT_LINK_URL` when set, else the
   config default (the current test link).
 - `memberUrl` = `import.meta.env.VITE_MEMBER_URL` when set, else `null`. When
@@ -160,6 +163,7 @@ column on small screens, comfortable max-width container on large screens.
 ## Testing
 
 Vitest + React Testing Library:
+
 - The Contribute CTA renders and its `href` equals the resolved
   `paymentLinkUrl`.
 - `priceLabel` renders in the Hero.

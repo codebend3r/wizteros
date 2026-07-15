@@ -32,10 +32,12 @@
 ### Task 1: SQLite identity store (`store.py`)
 
 **Files:**
+
 - Create: `stripe-bridge/store.py`
 - Test: `stripe-bridge/tests/test_store.py`
 
 **Interfaces:**
+
 - Consumes: nothing.
 - Produces:
   - `init_db(path: str) -> None`
@@ -156,10 +158,12 @@ git commit -m "Add SQLite identity store for stripe-bridge
 ### Task 2: Wizarr API client (`wizarr.py`)
 
 **Files:**
+
 - Create: `stripe-bridge/wizarr.py`
 - Test: `stripe-bridge/tests/test_wizarr.py`
 
 **Interfaces:**
+
 - Consumes: nothing.
 - Produces a `WizarrClient` class:
   - `__init__(self, base_url: str, api_key: str, server_id: int)`
@@ -334,10 +338,12 @@ git commit -m "Add Wizarr API client with email + invite-code user resolution
 ### Task 3: Rewrite webhook app to use store + client, add renewal path
 
 **Files:**
+
 - Modify (full rewrite): `stripe-bridge/stripe_wizarr_bridge.py`
 - Test: `stripe-bridge/tests/test_bridge.py`
 
 **Interfaces:**
+
 - Consumes: `store` (Task 1), `WizarrClient` (Task 2).
 - Produces:
   - `resolve_user_id(client, store_path, customer_id, email) -> int | None` — cache → email → invite fallback, backfills cache on hit.
@@ -345,6 +351,7 @@ git commit -m "Add Wizarr API client with email + invite-code user resolution
   - `handle_event(event: dict) -> None` — pure routing over the parsed event, so tests bypass signature verification.
 
 **Behavior:**
+
 - `checkout.session.completed`: email from `customer_details.email`/`customer_email`; create invite; `store.upsert_pending(customer_id, email, code)`; email the invite link.
 - `invoice.paid`: if `billing_reason == "subscription_create"` → skip (first charge coincides with signup). Else resolve user and `extend_user(uid, int(ACCESS_DURATION))`.
 - `customer.subscription.deleted`: resolve user and `disable_user(uid)`.
@@ -607,6 +614,7 @@ git commit -m "Rewrite bridge: renewal extend, cancel=disable, durable identity 
 ### Task 4: Dev/runtime dependencies, Dockerfile, and env
 
 **Files:**
+
 - Create: `stripe-bridge/requirements.txt`, `stripe-bridge/requirements-dev.txt`, `stripe-bridge/pytest.ini`
 - Modify: `stripe-bridge/Dockerfile`
 - Modify: `.env.example`
@@ -664,10 +672,12 @@ MAP_DB_PATH=/data/bridge.db
 - [ ] **Step 5: Verify a clean dev install + full suite passes**
 
 Run:
+
 ```bash
 cd stripe-bridge && python -m venv .venv && . .venv/bin/activate \
   && pip install -q -r requirements-dev.txt && python -m pytest -v
 ```
+
 Expected: PASS (all tests). Then `deactivate`.
 
 - [ ] **Step 6: Commit**
@@ -689,6 +699,7 @@ git commit -m "Pin bridge deps, add pytest config, mount SQLite volume
 **Files:** none (verification task). Uses the operator's real second inbox `codebenderinc@gmail.com`.
 
 **Preconditions:**
+
 - Wizarr API key generated (Wizarr → Settings → API Keys).
 - A local `.env` created from `.env.example` with real values: `WIZARR_BASE_URL=http://192.168.50.141:5690`, the Wizarr API key, working SMTP creds (Gmail app password or Titan), Stripe **test** secret key. Leave `STRIPE_WEBHOOK_SECRET` blank for now.
 
@@ -699,15 +710,18 @@ cd stripe-bridge
 docker build -t stripe-bridge .
 docker run --rm -p 8000:8000 --env-file ../.env -v "$PWD/data:/data" stripe-bridge
 ```
+
 Expected: uvicorn logs `Application startup complete` on `:8000`.
 
 - [ ] **Step 2: Forward Stripe test events to the local bridge**
 
 In a second terminal:
+
 ```bash
 stripe listen --forward-to localhost:8000/stripe/webhook \
   --events checkout.session.completed,invoice.paid,customer.subscription.deleted
 ```
+
 Copy the `whsec_...` it prints, put it in `.env` as `STRIPE_WEBHOOK_SECRET`, and restart the `docker run` from Step 1 so the signature check passes.
 
 - [ ] **Step 3: Drive a real checkout with the test inbox**
@@ -723,9 +737,11 @@ Expected: the account appears under Wizarr → Users with an `expires` ~35 days 
 - [ ] **Step 5: Verify renewal extends access**
 
 Simulate a renewal charge:
+
 ```bash
 stripe trigger invoice.paid --add invoice:billing_reason=subscription_cycle
 ```
+
 (If the synthetic customer doesn't match, instead advance the test clock / create a renewal on the real subscription in the dashboard so `customer_email` is `codebenderinc@gmail.com`.)
 Expected: bridge logs `extended user <id> (+35 days)`; the user's `expires` in Wizarr moves ~35 days further out.
 

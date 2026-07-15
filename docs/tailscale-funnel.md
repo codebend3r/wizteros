@@ -42,9 +42,9 @@ domain we don't have.
 
 ## Phase 2 — Install Tailscale on Meleys
 
-1. DSM → *Package Center* → search **Tailscale** → Install. (If absent, download
+1. DSM → _Package Center_ → search **Tailscale** → Install. (If absent, download
    the `.spk` for your NAS CPU arch from <https://pkgs.tailscale.com/stable/#synology>
-   and use *Manual Install*.)
+   and use _Manual Install_.)
 2. Open the Tailscale package → **Log in** → authorize the node. Meleys gets a
    MagicDNS name like `meleys.<tailnet>.ts.net`.
 3. Confirm from SSH:

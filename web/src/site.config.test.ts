@@ -7,7 +7,9 @@ test('falls back to the default payment link and null member url with empty env'
 })
 
 test('uses the payment link from env when set', () => {
-  const config = resolveConfig({ env: { VITE_PAYMENT_LINK_URL: 'https://buy.stripe.com/live_abc' } })
+  const config = resolveConfig({
+    env: { VITE_PAYMENT_LINK_URL: 'https://buy.stripe.com/live_abc' },
+  })
   expect(config.paymentLinkUrl).toBe('https://buy.stripe.com/live_abc')
 })
 

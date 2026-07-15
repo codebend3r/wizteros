@@ -9,7 +9,7 @@ onto paid, time-boxed access** (and onboarding brand-new members).
 1. **Revocation/renewal touches only one server.** Wizarr stores one record per
    `(user, server)`. A single member email therefore resolves to N records (the
    test account `codebenderinc@gmail.com` has 5: ids 147/57/106/155/204, one per
-   server). The bridge resolves only the *first* id and disables/extends only
+   server). The bridge resolves only the _first_ id and disables/extends only
    that one, so a cancellation leaves the member with access to the other N-1
    servers.
 
@@ -46,11 +46,11 @@ expires exactly `ACCESS_DURATION` days after the last payment. If any webhook is
 missed, access self-expires within `ACCESS_DURATION` days — the service fails
 closed, with a bounded exposure window.
 
-| Stripe event | Bridge action (across **all** of the member's records) |
-|---|---|
-| `checkout.session.completed` | Create + email an invite (brand-new members redeem it for their initial expiry). Resolve existing records by email; if any exist (existing member), **set** each record's expiry to `now + ACCESS_DURATION` to time-box immediately. Store `customer_id → (email, invite_code)`. |
-| `invoice.paid` (skip first `subscription_create`) | Resolve all records; **set** each to `now + ACCESS_DURATION`. |
-| `customer.subscription.deleted` | Resolve all records; `disable` each. |
+| Stripe event                                      | Bridge action (across **all** of the member's records)                                                                                                                                                                                                                           |
+| ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `checkout.session.completed`                      | Create + email an invite (brand-new members redeem it for their initial expiry). Resolve existing records by email; if any exist (existing member), **set** each record's expiry to `now + ACCESS_DURATION` to time-box immediately. Store `customer_id → (email, invite_code)`. |
+| `invoice.paid` (skip first `subscription_create`) | Resolve all records; **set** each to `now + ACCESS_DURATION`.                                                                                                                                                                                                                    |
+| `customer.subscription.deleted`                   | Resolve all records; `disable` each.                                                                                                                                                                                                                                             |
 
 Set (not extend) is deliberate: expiry is deterministic (`update date + duration`),
 identical across all of a member's records, and the fail-safe window stays bounded
@@ -58,6 +58,7 @@ at `ACCESS_DURATION` rather than drifting forward with each renewal. Cancel disa
 immediately regardless of remaining expiry.
 
 **Locked decisions:**
+
 - Cancel **disables** records (reversible, matches existing endpoint); it does not
   delete them.
 - No separate checkout-time time-box for brand-new members: they have no records
@@ -67,6 +68,7 @@ immediately regardless of remaining expiry.
 ## Identity model — resolve to all records
 
 `wizarr.py`:
+
 - `find_user_ids_by_email(email) -> list[int]` — all records whose email matches
   (case-insensitive).
 - `find_user_ids_by_invite(code) -> list[int]` — resolve the Plex username via the
@@ -77,6 +79,7 @@ immediately regardless of remaining expiry.
   `now + ACCESS_DURATION` timestamp per event and applies it to every record.
 
 `stripe_wizarr_bridge.py`:
+
 - `resolve_user_ids(client, db, customer_id, email) -> list[int]` — try email, then
   the invite-code fallback (via the stored `invite_code`). Returns a list (possibly
   empty). Replaces the single-id `resolve_user_id`.

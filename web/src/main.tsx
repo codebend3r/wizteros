@@ -5,7 +5,7 @@ import './styles/globals.scss'
 
 const rootElement = document.getElementById('root')
 
-if (!!rootElement) {
+if (rootElement) {
   createRoot(rootElement).render(
     <StrictMode>
       <App />
