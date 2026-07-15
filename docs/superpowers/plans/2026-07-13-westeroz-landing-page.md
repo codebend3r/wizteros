@@ -24,6 +24,7 @@ Every task's requirements implicitly include these. Values are verbatim from the
 ### Task 1: Scaffold the `web/` project
 
 **Files:**
+
 - Create: `web/package.json`
 - Create: `web/vite.config.ts`
 - Create: `web/tsconfig.json`
@@ -37,6 +38,7 @@ Every task's requirements implicitly include these. Values are verbatim from the
 - Test: `web/src/App.test.tsx`
 
 **Interfaces:**
+
 - Consumes: nothing.
 - Produces: a runnable Vite app with a passing Vitest suite. `App` is a default-exported React component. `globals.scss` exposes CSS custom-property tokens (`--color-*`, `--space-*`, `--radius-*`, `--font-size-*`, `--max-width`) on `:root`.
 
@@ -189,7 +191,12 @@ body {
   margin: 0;
   background: var(--color-bg);
   color: var(--color-text);
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
   font-size: var(--font-size-md);
   line-height: 1.5;
 }
@@ -263,10 +270,12 @@ git commit -m "WZ: Scaffold Westeroz landing page (Vite + React + TS)"
 ### Task 2: Site config with env resolution
 
 **Files:**
+
 - Create: `web/src/site.config.ts`
 - Test: `web/src/site.config.test.ts`
 
 **Interfaces:**
+
 - Consumes: nothing.
 - Produces:
   - `type SupportItem = { title: string; detail: string }`
@@ -287,7 +296,9 @@ test('falls back to the default payment link and null member url with empty env'
 })
 
 test('uses the payment link from env when set', () => {
-  const config = resolveConfig({ env: { VITE_PAYMENT_LINK_URL: 'https://buy.stripe.com/live_abc' } })
+  const config = resolveConfig({
+    env: { VITE_PAYMENT_LINK_URL: 'https://buy.stripe.com/live_abc' },
+  })
   expect(config.paymentLinkUrl).toBe('https://buy.stripe.com/live_abc')
 })
 
@@ -331,8 +342,7 @@ type RawEnv = {
   VITE_MEMBER_URL?: string
 }
 
-export const DEFAULT_PAYMENT_LINK_URL =
-  'https://buy.stripe.com/test_bJe6oG2Yte2m7l1f721Nu00'
+export const DEFAULT_PAYMENT_LINK_URL = 'https://buy.stripe.com/test_bJe6oG2Yte2m7l1f721Nu00'
 
 const SUPPORT_ITEMS: ReadonlyArray<SupportItem> = [
   {
@@ -351,8 +361,7 @@ const SUPPORT_ITEMS: ReadonlyArray<SupportItem> = [
 
 export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
   brandName: 'Westeroz',
-  tagline:
-    'A community-run media server. Contribute to the cost of keeping it online.',
+  tagline: 'A community-run media server. Contribute to the cost of keeping it online.',
   priceLabel: '$X / month',
   paymentLinkUrl: env.VITE_PAYMENT_LINK_URL ?? DEFAULT_PAYMENT_LINK_URL,
   memberUrl: env.VITE_MEMBER_URL ?? null,
@@ -386,11 +395,13 @@ git commit -m "WZ: Add env-swappable site config for landing page"
 ### Task 3: Hero component
 
 **Files:**
+
 - Create: `web/src/components/Hero/Hero.tsx`
 - Create: `web/src/components/Hero/Hero.module.scss`
 - Test: `web/src/components/Hero/Hero.test.tsx`
 
 **Interfaces:**
+
 - Consumes: nothing from other tasks (takes plain props).
 - Produces: `Hero` (default export), props `type HeroProps = { brandName: string; tagline: string; priceLabel: string; paymentLinkUrl: string }`. Renders a "Contribute" link whose `href` is `paymentLinkUrl`.
 
@@ -504,11 +515,13 @@ git commit -m "WZ: Add Hero section with Contribute CTA"
 ### Task 4: Support component
 
 **Files:**
+
 - Create: `web/src/components/Support/Support.tsx`
 - Create: `web/src/components/Support/Support.module.scss`
 - Test: `web/src/components/Support/Support.test.tsx`
 
 **Interfaces:**
+
 - Consumes: `SupportItem` from `web/src/site.config.ts`.
 - Produces: `Support` (default export), props `type SupportProps = { items: ReadonlyArray<SupportItem> }`. Renders one `<article>` per item.
 
@@ -607,11 +620,13 @@ git commit -m "WZ: Add Support section describing contribution costs"
 ### Task 5: Footer component
 
 **Files:**
+
 - Create: `web/src/components/Footer/Footer.tsx`
 - Create: `web/src/components/Footer/Footer.module.scss`
 - Test: `web/src/components/Footer/Footer.test.tsx`
 
 **Interfaces:**
+
 - Consumes: nothing from other tasks.
 - Produces: `Footer` (default export), props `type FooterProps = { memberUrl: string | null }`. Renders the member link only when `memberUrl` is truthy; always renders the framing disclaimer.
 
@@ -713,11 +728,13 @@ git commit -m "WZ: Add Footer with conditional member link and framing disclaime
 ### Task 6: Compose the page in `App`
 
 **Files:**
+
 - Modify: `web/src/App.tsx`
 - Create: `web/src/App.module.scss`
 - Modify: `web/src/App.test.tsx`
 
 **Interfaces:**
+
 - Consumes: `siteConfig` from `web/src/site.config.ts`; `Hero`, `Support`, `Footer` components.
 - Produces: the fully composed single-page `App`.
 
@@ -819,11 +836,13 @@ git commit -m "WZ: Compose Westeroz landing page from Hero, Support, Footer"
 ### Task 7: Netlify deploy configuration + docs
 
 **Files:**
+
 - Create: `netlify.toml` (repo root)
 - Create: `web/.env.example`
 - Modify: `README.md`
 
 **Interfaces:**
+
 - Consumes: the built `web/dist/` output.
 - Produces: Netlify build config and operator documentation. No tests (config + docs only).
 
@@ -889,6 +908,7 @@ git commit -m "WZ: Add Netlify config and landing page docs"
 ## Notes for the operator (post-implementation)
 
 These are follow-ups, not implementation steps:
+
 1. Decide the monthly amount and set `priceLabel` in `web/src/site.config.ts`.
 2. Create the Netlify site, connect the repo, and set the subdomain to `westeroz.netlify.app`.
 3. When the live Stripe Payment Link exists, set `VITE_PAYMENT_LINK_URL` in the Netlify UI.

@@ -50,10 +50,10 @@ docker compose up -d --build
 
 Service URLs once it's up:
 
-| Service       | Default URL                   |
-| ------------- | ----------------------------- |
-| Wizarr        | `http://<host>:5690`          |
-| Tautulli      | `http://<host>:8181`          |
+| Service       | Default URL                         |
+| ------------- | ----------------------------------- |
+| Wizarr        | `http://<host>:5690`                |
+| Tautulli      | `http://<host>:8181`                |
 | stripe-bridge | `http://<host>:8000/stripe/webhook` |
 
 On first boot, open Wizarr in a browser to complete the setup wizard (Plex token, library selection, server name). Then generate an API key in Wizarr settings and drop it into `.env` as `WIZARR_API_KEY`.
@@ -62,19 +62,19 @@ On first boot, open Wizarr in a browser to complete the setup wizard (Plex token
 
 All bridge configuration lives in `.env` (see `.env.example` for the template):
 
-| Variable                | Purpose                                                        |
-| ----------------------- | -------------------------------------------------------------- |
-| `TZ`                    | Timezone for containers (e.g. `America/New_York`)              |
-| `STRIPE_API_KEY`        | Stripe secret key (`sk_live_...` or `sk_test_...`)             |
-| `STRIPE_WEBHOOK_SECRET` | Signing secret from the Stripe webhook endpoint (`whsec_...`)  |
-| `WIZARR_BASE_URL`       | Internal Wizarr URL (default `http://wizarr:5690`)             |
-| `WIZARR_API_KEY`        | API key generated in Wizarr settings                           |
-| `WIZARR_SERVER_ID`      | ID of the Plex server registered in Wizarr (usually `1`)       |
-| `INVITE_EXPIRES_DAYS`   | How long invite links remain valid before expiring             |
-| `ACCESS_DURATION`       | Days of Plex access granted per billing cycle                  |
-| `SMTP_HOST`/`PORT`/`USER`/`PASS` | Outbound mail server credentials                      |
-| `FROM_ADDR`             | "From" address on the invite email                             |
-| `PUBLIC_INVITE_BASE`    | Public URL where Wizarr is reachable (used in the invite link) |
+| Variable                         | Purpose                                                        |
+| -------------------------------- | -------------------------------------------------------------- |
+| `TZ`                             | Timezone for containers (e.g. `America/New_York`)              |
+| `STRIPE_API_KEY`                 | Stripe secret key (`sk_live_...` or `sk_test_...`)             |
+| `STRIPE_WEBHOOK_SECRET`          | Signing secret from the Stripe webhook endpoint (`whsec_...`)  |
+| `WIZARR_BASE_URL`                | Internal Wizarr URL (default `http://wizarr:5690`)             |
+| `WIZARR_API_KEY`                 | API key generated in Wizarr settings                           |
+| `WIZARR_SERVER_ID`               | ID of the Plex server registered in Wizarr (usually `1`)       |
+| `INVITE_EXPIRES_DAYS`            | How long invite links remain valid before expiring             |
+| `ACCESS_DURATION`                | Days of Plex access granted per billing cycle                  |
+| `SMTP_HOST`/`PORT`/`USER`/`PASS` | Outbound mail server credentials                               |
+| `FROM_ADDR`                      | "From" address on the invite email                             |
+| `PUBLIC_INVITE_BASE`             | Public URL where Wizarr is reachable (used in the invite link) |
 
 ## Stripe setup
 

@@ -17,8 +17,7 @@ type RawEnv = {
   VITE_MEMBER_URL?: string
 }
 
-export const DEFAULT_PAYMENT_LINK_URL =
-  'https://buy.stripe.com/test_28EaEW9nG7Zjb1Z6BE1VK00'
+export const DEFAULT_PAYMENT_LINK_URL = 'https://buy.stripe.com/test_28EaEW9nG7Zjb1Z6BE1VK00'
 
 const SUPPORT_ITEMS: ReadonlyArray<SupportItem> = [
   {
@@ -37,8 +36,7 @@ const SUPPORT_ITEMS: ReadonlyArray<SupportItem> = [
 
 export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
   brandName: 'Westeroz',
-  tagline:
-    'A community-run media server. Contribute to the cost of keeping it online.',
+  tagline: 'A community-run media server. Contribute to the cost of keeping it online.',
   priceLabel: '$8 / month',
   paymentLinkUrl: env.VITE_PAYMENT_LINK_URL ?? DEFAULT_PAYMENT_LINK_URL,
   memberUrl: env.VITE_MEMBER_URL ?? null,

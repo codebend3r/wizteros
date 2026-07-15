@@ -32,13 +32,13 @@ public ingress and Stripe cancellations stop reaching Wizarr. Note its LAN IP.
 
 ## Phase 1 — Prepare DSM (one-time)
 
-1. **Install Container Manager.** DSM → *Package Center* → search
+1. **Install Container Manager.** DSM → _Package Center_ → search
    **Container Manager** → Install. (On DSM 7.0/7.1 the package is called
    **Docker** — same engine.) This provides both `docker` and `docker compose`.
-2. **Enable SSH.** DSM → *Control Panel* → *Terminal & SNMP* → check
+2. **Enable SSH.** DSM → _Control Panel_ → _Terminal & SNMP_ → check
    **Enable SSH service**. Note the port (default `22`).
 3. **Create the `docker` shared folder.** Container Manager does not always
-   create one. DSM → *Control Panel* → *Shared Folder* → **Create** → name it
+   create one. DSM → _Control Panel_ → _Shared Folder_ → **Create** → name it
    `docker` on the Meleys volume (defaults are fine; give your admin user
    Read/Write). Full path becomes `/volume1/docker` (adjust `volume1` if your
    volume differs). You don't need to create the `wizteros` sub-folder by hand —

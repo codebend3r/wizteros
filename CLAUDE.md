@@ -48,6 +48,7 @@ The bridge is intentionally small. It does not persist its own state — it look
 ## What's done vs what's next
 
 Done:
+
 - Repo scaffolded, README + Dockerfile + compose + bridge committed
 - All 5 Plex servers added in Wizarr
 - DNS state on the domain verified clean (safe to migrate)
@@ -59,6 +60,7 @@ Done:
 - **End-to-end signup flow verified in Test mode (2026-07-14)**: real test checkout -> webhook -> invite email -> Wizarr join -> Plex OAuth, all passed
 
 Next (in order):
+
 1. (Optional) Verify the cancellation flow: cancel the test subscription in Stripe, confirm the bridge disables the Wizarr user
 2. Switch to live: create a live webhook endpoint (same URL/events), put live `sk_live_` key + live webhook secret in the NAS `.env`, point Netlify `VITE_PAYMENT_LINK_URL` at the live payment link, force-recreate the bridge
 3. Announce to a small trusted group
