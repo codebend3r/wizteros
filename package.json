@@ -5,6 +5,16 @@
   "description": "Dev/test tooling for the stripe-bridge paid-access stack",
   "type": "module",
   "scripts": {
+    "prepare": "husky",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "npm --prefix web run typecheck",
+    "setup:py": "python3 -m venv venv && venv/bin/pip install -r stripe-bridge/requirements-dev.txt",
+    "test:web": "npm --prefix web run test",
+    "test:bridge": "bash scripts/test-bridge.sh",
+    "verify": "run-s lint format:check typecheck test:web test:bridge",
     "bridge:build": "docker build -t stripe-bridge ./stripe-bridge",
     "bridge:up": "docker rm -f stripe-bridge-e2e >/dev/null 2>&1; docker run -d --name stripe-bridge-e2e -p 8000:8000 --env-file .env -v \"$PWD/stripe-bridge/data:/data\" stripe-bridge",
     "bridge:down": "docker rm -f stripe-bridge-e2e",
@@ -14,7 +24,23 @@
     "retest": "run-s bridge:build bridge:up test:e2e",
     "deploy:nas": "bash scripts/deploy-nas.sh"
   },
+  "lint-staged": {
+    "*.{js,mjs,cjs,ts,tsx}": [
+      "eslint --fix --no-warn-ignored",
+      "prettier --write"
+    ],
+    "*.{json,scss,css,md,yml,yaml,html}": "prettier --write"
+  },
   "devDependencies": {
-    "npm-run-all2": "^9.0.2"
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.7.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.7.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.8",
+    "npm-run-all2": "^9.0.2",
+    "prettier": "^3.9.5",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.64.0"
   }
 }
