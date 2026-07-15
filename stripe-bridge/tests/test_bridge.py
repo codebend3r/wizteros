@@ -18,6 +18,7 @@ os.environ.update({
 
 @pytest.fixture
 def bridge(tmp_path, monkeypatch):
+    """Fresh bridge module per test: temp SQLite db, mocked Wizarr client and email."""
     import importlib
     import stripe_wizarr_bridge as b
     importlib.reload(b)
@@ -296,6 +297,8 @@ def test_send_invite_email_sends_via_smtp_starttls(monkeypatch):
     sent = {}
 
     class FakeSMTP:
+        """Stands in for smtplib.SMTP; records each step of the conversation."""
+
         def __init__(self, host, port):
             sent["host"], sent["port"] = host, port
 

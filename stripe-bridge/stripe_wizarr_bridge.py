@@ -49,6 +49,7 @@ def resolve_server_ids() -> list:
 
 
 def send_invite_email(to_addr: str, invite_url: str) -> None:
+    """Compose the invite email and send it over SMTP with STARTTLS."""
     msg = EmailMessage()
     msg["Subject"] = "Your server access link"
     msg["From"] = FROM_ADDR
@@ -71,6 +72,7 @@ If you cancel your contribution, access will be removed at the end of the curren
 
 
 def customer_email(customer_id: str) -> str | None:
+    """Email on the Stripe customer record, or None if they have none on file."""
     # retrieve() returns a StripeObject (no dict .get); read the field directly.
     return getattr(stripe.Customer.retrieve(customer_id), "email", None)
 
@@ -95,6 +97,10 @@ def resolve_user_ids(client, store_path: str, customer_id: str, email: str | Non
 
 
 def handle_event(event: dict) -> None:
+    """Act on one Stripe event: checkout -> invite, renewal -> extend, cancel -> disable.
+
+    Duplicate deliveries (Stripe retries) are dropped via the processed_events table.
+    """
     event_id = event.get("id")
     if event_id and not store.mark_event_processed(MAP_DB_PATH, event_id):
         log.info("skipping already-processed event %s", event_id)
@@ -161,6 +167,7 @@ def handle_event(event: dict) -> None:
 @app.post("/stripe/webhook")
 @app.post("/webhook")
 async def stripe_webhook(request: Request, stripe_signature: str = Header(None)):
+    """Verify the Stripe signature, then hand the parsed event to handle_event."""
     payload = await request.body()
     try:
         stripe.Webhook.construct_event(payload, stripe_signature, STRIPE_WEBHOOK_SECRET)
