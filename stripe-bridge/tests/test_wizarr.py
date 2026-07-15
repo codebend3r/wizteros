@@ -9,6 +9,7 @@ BASE = "http://wizarr.test"
 
 
 def client():
+    """Fresh WizarrClient pointed at the fake base URL."""
     return WizarrClient(BASE, "key")
 
 

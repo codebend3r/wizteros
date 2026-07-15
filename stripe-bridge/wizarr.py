@@ -2,11 +2,15 @@ import requests
 
 
 class WizarrClient:
+    """Thin wrapper around the Wizarr REST API used by the bridge."""
+
     def __init__(self, base_url: str, api_key: str):
+        """Store the API location and key; rstrip avoids "//" when building URLs."""
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
 
     def _headers(self) -> dict:
+        """Auth and content-type headers every API call needs."""
         return {"X-API-Key": self.api_key, "Content-Type": "application/json"}
 
     def list_server_ids(self) -> list:
@@ -20,6 +24,7 @@ class WizarrClient:
         return [s["id"] for s in r.json().get("servers", []) if s.get("verified")]
 
     def create_invite(self, server_ids, expires_in_days: int, duration, unlimited: bool = False) -> dict:
+        """Create an invite for the given servers; return just its code and url."""
         r = requests.post(
             f"{self.base_url}/api/invitations",
             headers=self._headers(),
@@ -36,6 +41,7 @@ class WizarrClient:
         return {"code": inv["code"], "url": inv["url"]}
 
     def _users(self, params: dict) -> list:
+        """Query /api/users with the given filters and return the user list."""
         # /api/users is slow (Wizarr reconciles with each Plex server per call),
         # routinely ~15s, so allow generous headroom.
         r = requests.get(
@@ -83,6 +89,7 @@ class WizarrClient:
         r.raise_for_status()
 
     def disable_user(self, user_id: int) -> None:
+        """Disable (not delete) a user record so its access stops."""
         r = requests.post(
             f"{self.base_url}/api/users/{user_id}/disable",
             headers=self._headers(),

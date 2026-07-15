@@ -16,18 +16,21 @@ CREATE TABLE IF NOT EXISTS processed_events (
 
 
 def _conn(path: str) -> sqlite3.Connection:
+    """Open the SQLite file; the Row factory makes rows dict-like (row["email"])."""
     c = sqlite3.connect(path)
     c.row_factory = sqlite3.Row
     return c
 
 
 def init_db(path: str) -> None:
+    """Create both tables if they don't exist yet; safe to run on every startup."""
     with _conn(path) as c:
         c.execute(_SCHEMA)
         c.execute(_EVENTS_SCHEMA)
 
 
 def upsert_pending(path: str, stripe_customer_id: str, email: str, invite_code: str) -> None:
+    """Insert or update ("upsert") the customer -> email + invite code mapping."""
     with _conn(path) as c:
         c.execute(
             """
@@ -51,6 +54,7 @@ def mark_event_processed(path: str, event_id: str) -> bool:
 
 
 def get_mapping(path: str, stripe_customer_id: str) -> dict | None:
+    """Fetch a customer's mapping as a plain dict, or None if unknown."""
     with _conn(path) as c:
         row = c.execute(
             "SELECT stripe_customer_id, email, invite_code "
