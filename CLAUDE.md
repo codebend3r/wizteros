@@ -58,12 +58,14 @@ Done:
 - Tailscale Funnel live on Meleys: `/` -> Wizarr, `/stripe/webhook` -> bridge, verified publicly
 - Stripe webhook endpoint, `PUBLIC_INVITE_BASE`, Netlify `VITE_MEMBER_URL` + `VITE_PAYMENT_LINK_URL` all pointed at `https://meleys.tail5586d4.ts.net` / the Test-mode payment link
 - **End-to-end signup flow verified in Test mode (2026-07-14)**: real test checkout -> webhook -> invite email -> Wizarr join -> Plex OAuth, all passed
+- **Four subscription tiers live in Test mode, verified per tier E2E (2026-07-16)**: Bronze $8 / Silver $14 / Gold $20 / Kids $20 CAD, payment-link `metadata.tier` -> tier-scoped Wizarr invites (`library_ids` + `allow_downloads`); private `9X.` Caraxes libraries excluded fail-closed everywhere. Gold verified by a real member join across all 5 servers; Kids twice (2 servers, 3 libraries); Bronze/Silver via signed synthetic webhooks. Wizarr needs `GUNICORN_TIMEOUT=600` (multi-server joins exceed the 120s default when plex.tv is slow); the bridge Dockerfile copies modules explicitly — new .py files must be added to its `COPY` line.
 
 Next (in order):
 
 1. (Optional) Verify the cancellation flow: cancel the test subscription in Stripe, confirm the bridge disables the Wizarr user
-2. Switch to live: create a live webhook endpoint (same URL/events), put live `sk_live_` key + live webhook secret in the NAS `.env`, point Netlify `VITE_PAYMENT_LINK_URL` at the live payment link, force-recreate the bridge
-3. Announce to a small trusted group
+2. Decide on the legacy-share downgrade sweep (existing members who subscribe keep old out-of-tier Plex shares until expiry — see Max case, 2026-07-16) and tier-neutral wizard copy (default wizard says "all five servers", wrong for Kids/Bronze)
+3. Switch to live: create live products/payment links with the same `metadata.tier` tags, live webhook endpoint (same URL/events), live `sk_live_` key + webhook secret in the NAS `.env`, point the four Netlify `VITE_PAYMENT_LINK_*_URL` vars at the live links, force-recreate the bridge
+4. Announce to a small trusted group
 
 See `docs/nas-deployment.md` (NAS migration) and `docs/tailscale-funnel.md` (public ingress).
 
