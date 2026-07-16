@@ -1,5 +1,5 @@
-import type { SupportItem } from '../../site.config'
-import styles from './Support.module.scss'
+import type { SupportItem } from '@/site.config'
+import styles from '@/components/Support/Support.module.scss'
 
 type SupportProps = {
   items: ReadonlyArray<SupportItem>

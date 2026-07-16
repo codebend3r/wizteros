@@ -1,8 +1,8 @@
-import Hero from './components/Hero/Hero'
-import Support from './components/Support/Support'
-import Footer from './components/Footer/Footer'
-import { siteConfig } from './site.config'
-import styles from './App.module.scss'
+import Hero from '@/components/Hero/Hero'
+import Support from '@/components/Support/Support'
+import Footer from '@/components/Footer/Footer'
+import { siteConfig } from '@/site.config'
+import styles from '@/App.module.scss'
 
 const App = () => (
   <main className={styles.page}>

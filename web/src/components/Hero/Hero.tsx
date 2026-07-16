@@ -1,4 +1,4 @@
-import styles from './Hero.module.scss'
+import styles from '@/components/Hero/Hero.module.scss'
 
 type HeroProps = {
   brandName: string

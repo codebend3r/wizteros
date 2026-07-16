@@ -26,6 +26,22 @@ export default tseslint.config(
     languageOptions: { globals: globals.node },
   },
   {
+    files: ['web/src/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['./*', '../*'],
+              message: 'Use the @/ alias instead of relative imports.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['**/*.{ts,tsx}'],
     extends: tseslint.configs.recommended,
     languageOptions: { globals: { ...globals.browser, ...globals.vitest } },

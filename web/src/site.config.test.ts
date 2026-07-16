@@ -1,4 +1,4 @@
-import { resolveConfig, DEFAULT_PAYMENT_LINK_URL } from './site.config'
+import { resolveConfig, DEFAULT_PAYMENT_LINK_URL } from '@/site.config'
 
 test('falls back to the default payment link and null member url with empty env', () => {
   const config = resolveConfig({ env: {} })
