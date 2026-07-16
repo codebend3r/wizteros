@@ -12,6 +12,9 @@ services:
       - PGID=${PGID:-1000}
       - TZ=${TZ:-America/New_York}
       - DISABLE_BUILTIN_AUTH=false
+      # A join shares to all five Plex servers in one request; slow plex.tv
+      # calls blew the 120s default and got workers killed mid-share.
+      - GUNICORN_TIMEOUT=600
 
   tautulli:
     image: ghcr.io/tautulli/tautulli:latest
