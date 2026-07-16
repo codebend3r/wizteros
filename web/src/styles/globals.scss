@@ -21,6 +21,10 @@
   --radius-md: 12px;
   --radius-lg: 20px;
 
+  --font-display: 'Bricolage Grotesque Variable', system-ui, sans-serif;
+  --font-body: 'Instrument Sans Variable', system-ui, sans-serif;
+  --font-pixel: 'Silkscreen', monospace;
+
   --font-size-hero: clamp(2.5rem, 6vw, 4rem);
   --font-size-xl: 2.25rem;
   --font-size-lg: 1.25rem;
@@ -39,12 +43,7 @@ body {
   margin: 0;
   background: var(--color-bg);
   color: var(--color-text);
-  font-family:
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    Roboto,
-    sans-serif;
+  font-family: var(--font-body);
   font-size: var(--font-size-md);
   line-height: 1.5;
 }

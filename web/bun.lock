@@ -5,6 +5,9 @@
     "": {
       "name": "westeroz-web",
       "dependencies": {
+        "@fontsource-variable/bricolage-grotesque": "5.2.10",
+        "@fontsource-variable/instrument-sans": "5.2.8",
+        "@fontsource/silkscreen": "5.2.8",
         "react": "18.3.1",
         "react-dom": "18.3.1",
       },
@@ -123,6 +126,12 @@
     "@esbuild/win32-ia32": ["@esbuild/win32-ia32@0.21.5", "", { "os": "win32", "cpu": "ia32" }, "sha512-SWXFF1CL2RVNMaVs+BBClwtfZSvDgtL//G/smwAc5oVK/UPu2Gu9tIaRgFmYFFKrmg3SyAjSrElf0TiJ1v8fYA=="],
 
     "@esbuild/win32-x64": ["@esbuild/win32-x64@0.21.5", "", { "os": "win32", "cpu": "x64" }, "sha512-tQd/1efJuzPC6rCFwEvLtci/xNFcTZknmXs98FYDfGE4wP9ClFV98nyKrzJKVPMhdDnjzLhdUyMX4PsQAPjwIw=="],
+
+    "@fontsource-variable/bricolage-grotesque": ["@fontsource-variable/bricolage-grotesque@5.2.10", "", {}, "sha512-5EDsCqgGpKVcJWE4sg9ydli+t5WM97mISYw5lla/Ev4z71FwXh1oN0YUU8xjkRW9+wBCGD9R+ntAvI8G4bUFJg=="],
+
+    "@fontsource-variable/instrument-sans": ["@fontsource-variable/instrument-sans@5.2.8", "", {}, "sha512-mTCaukbdIjjoipj2E3Q5XoZM3ZxJWdzyHevf/LG/0PHlfF9Q85pxOM7B7A9MerFyxmRzz5kVlumgIvgDSG4CPg=="],
+
+    "@fontsource/silkscreen": ["@fontsource/silkscreen@5.2.8", "", {}, "sha512-PfVe2BRZdjY/UIEXsrpzCo/W8FIGo6jEEMHuQiKfma+E5LXb6WfFFBfCEsO89ZWOSwl2mLE1Yq0d8gagmcaBpQ=="],
 
     "@jridgewell/gen-mapping": ["@jridgewell/gen-mapping@0.3.13", "", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.0", "@jridgewell/trace-mapping": "^0.3.24" } }, "sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA=="],
 
