@@ -3,21 +3,29 @@ type SupportItem = {
   detail: string
 }
 
+type Tier = {
+  id: 'bronze' | 'silver' | 'gold' | 'kids'
+  name: string
+  priceLabel: string
+  features: ReadonlyArray<string>
+  paymentLinkUrl: string
+}
+
 type SiteConfig = {
   brandName: string
   tagline: string
-  priceLabel: string
-  paymentLinkUrl: string
   memberUrl: string | null
   supportItems: ReadonlyArray<SupportItem>
+  tiers: ReadonlyArray<Tier>
 }
 
 type RawEnv = {
-  VITE_PAYMENT_LINK_URL?: string
+  VITE_PAYMENT_LINK_BRONZE_URL?: string
+  VITE_PAYMENT_LINK_SILVER_URL?: string
+  VITE_PAYMENT_LINK_GOLD_URL?: string
+  VITE_PAYMENT_LINK_KIDS_URL?: string
   VITE_MEMBER_URL?: string
 }
-
-export const DEFAULT_PAYMENT_LINK_URL = 'https://buy.stripe.com/test_28EaEW9nG7Zjb1Z6BE1VK00'
 
 const SUPPORT_ITEMS: ReadonlyArray<SupportItem> = [
   {
@@ -37,17 +45,48 @@ const SUPPORT_ITEMS: ReadonlyArray<SupportItem> = [
 export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
   brandName: 'Westeroz',
   tagline: 'A community-run media server. Contribute to the cost of keeping it online.',
-  priceLabel: '$8 / month',
-  paymentLinkUrl: env.VITE_PAYMENT_LINK_URL ?? DEFAULT_PAYMENT_LINK_URL,
   memberUrl: env.VITE_MEMBER_URL ?? null,
   supportItems: SUPPORT_ITEMS,
+  tiers: [
+    {
+      id: 'bronze',
+      name: 'Bronze',
+      priceLabel: '$8 CAD / month',
+      features: ['Standard streaming quality', 'Watch on all your devices'],
+      paymentLinkUrl: env.VITE_PAYMENT_LINK_BRONZE_URL ?? '',
+    },
+    {
+      id: 'silver',
+      name: 'Silver',
+      priceLabel: '$14 CAD / month',
+      features: ['Everything in Bronze', '4K streaming support'],
+      paymentLinkUrl: env.VITE_PAYMENT_LINK_SILVER_URL ?? '',
+    },
+    {
+      id: 'gold',
+      name: 'Gold',
+      priceLabel: '$20 CAD / month',
+      features: ['Everything in Silver', 'Offline downloads'],
+      paymentLinkUrl: env.VITE_PAYMENT_LINK_GOLD_URL ?? '',
+    },
+    {
+      id: 'kids',
+      name: 'Kids',
+      priceLabel: '$20 CAD / month',
+      features: ['Family plan curated for kids', '4K streaming support', 'Offline downloads'],
+      paymentLinkUrl: env.VITE_PAYMENT_LINK_KIDS_URL ?? '',
+    },
+  ],
 })
 
 const env: RawEnv = {
-  VITE_PAYMENT_LINK_URL: import.meta.env.VITE_PAYMENT_LINK_URL,
+  VITE_PAYMENT_LINK_BRONZE_URL: import.meta.env.VITE_PAYMENT_LINK_BRONZE_URL,
+  VITE_PAYMENT_LINK_SILVER_URL: import.meta.env.VITE_PAYMENT_LINK_SILVER_URL,
+  VITE_PAYMENT_LINK_GOLD_URL: import.meta.env.VITE_PAYMENT_LINK_GOLD_URL,
+  VITE_PAYMENT_LINK_KIDS_URL: import.meta.env.VITE_PAYMENT_LINK_KIDS_URL,
   VITE_MEMBER_URL: import.meta.env.VITE_MEMBER_URL,
 }
 
 export const siteConfig = resolveConfig({ env })
 
-export type { SiteConfig, SupportItem }
+export type { SiteConfig, SupportItem, Tier }
