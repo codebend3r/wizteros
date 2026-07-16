@@ -14,20 +14,37 @@ def client():
 
 
 @responses.activate
-def test_create_invite_sends_server_ids_and_returns_code_and_url():
+def test_create_invite_scopes_libraries_and_downloads():
     responses.post(
         f"{BASE}/api/invitations",
         json={"invitation": {"id": 5, "code": "abc123",
                              "url": f"{BASE}/j/abc123"}},
         status=201,
     )
-    out = client().create_invite([1, 2, 3], expires_in_days=7, duration="35")
+    out = client().create_invite([1, 2], expires_in_days=7, duration="35",
+                                 library_ids=[17, 20], allow_downloads=True)
     assert out == {"code": "abc123", "url": f"{BASE}/j/abc123"}
     sent = json.loads(responses.calls[0].request.body)
-    assert sent["server_ids"] == [1, 2, 3]
+    assert sent["server_ids"] == [1, 2]
     assert sent["expires_in_days"] == 7
     assert sent["duration"] == "35"
     assert sent["unlimited"] is False
+    assert sent["library_ids"] == [17, 20]
+    assert sent["allow_downloads"] is True
+
+
+@responses.activate
+def test_create_invite_omits_library_ids_when_unscoped():
+    responses.post(
+        f"{BASE}/api/invitations",
+        json={"invitation": {"id": 6, "code": "def456",
+                             "url": f"{BASE}/j/def456"}},
+        status=201,
+    )
+    client().create_invite([1], expires_in_days=7, duration="35")
+    sent = json.loads(responses.calls[0].request.body)
+    assert "library_ids" not in sent
+    assert sent["allow_downloads"] is False
 
 
 @responses.activate
@@ -41,6 +58,22 @@ def test_list_server_ids_returns_only_verified():
         ]},
     )
     assert client().list_server_ids() == [1, 2]
+
+
+@responses.activate
+def test_list_libraries_returns_raw_library_dicts():
+    responses.get(
+        f"{BASE}/api/libraries",
+        json={"libraries": [
+            {"id": 17, "name": "01. TV Shows", "server_id": 1,
+             "server_name": "Vermithor", "enabled": True},
+            {"id": 37, "name": "99. Tutorials", "server_id": 4,
+             "server_name": "Caraxes", "enabled": True},
+        ]},
+    )
+    libs = client().list_libraries()
+    assert [lib["id"] for lib in libs] == [17, 37]
+    assert libs[0]["server_name"] == "Vermithor"
 
 
 @responses.activate

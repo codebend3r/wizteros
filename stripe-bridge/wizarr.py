@@ -23,17 +23,37 @@ class WizarrClient:
         r.raise_for_status()
         return [s["id"] for s in r.json().get("servers", []) if s.get("verified")]
 
-    def create_invite(self, server_ids, expires_in_days: int, duration, unlimited: bool = False) -> dict:
-        """Create an invite for the given servers; return just its code and url."""
+    def list_libraries(self) -> list:
+        """All libraries Wizarr knows (id, name, server_id, server_name, enabled)."""
+        r = requests.get(
+            f"{self.base_url}/api/libraries",
+            headers=self._headers(),
+            timeout=10,
+        )
+        r.raise_for_status()
+        return r.json().get("libraries", [])
+
+    def create_invite(self, server_ids, expires_in_days: int, duration,
+                      unlimited: bool = False, library_ids=None,
+                      allow_downloads: bool = False) -> dict:
+        """Create an invite for the given servers; return just its code and url.
+
+        library_ids=None leaves scoping to Wizarr's defaults; a list scopes the
+        invite to exactly those libraries.
+        """
+        payload = {
+            "server_ids": list(server_ids),
+            "expires_in_days": expires_in_days,
+            "duration": duration,
+            "unlimited": unlimited,
+            "allow_downloads": allow_downloads,
+        }
+        if library_ids is not None:
+            payload["library_ids"] = list(library_ids)
         r = requests.post(
             f"{self.base_url}/api/invitations",
             headers=self._headers(),
-            json={
-                "server_ids": list(server_ids),
-                "expires_in_days": expires_in_days,
-                "duration": duration,
-                "unlimited": unlimited,
-            },
+            json=payload,
             timeout=10,
         )
         r.raise_for_status()
