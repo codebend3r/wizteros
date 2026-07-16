@@ -36,7 +36,7 @@ npm run setup:py   # local venv for the bridge test suite
 npm run verify     # lint + format check + typecheck + web and bridge unit tests
 ```
 
-- Landing page dev server: `cd web && npm install && npm run dev`
+- Landing page dev server: `cd web && bun install && bun run dev`
 - Bridge unit tests: `npm run test:bridge` (or `npm run test:unit` to run them in docker)
 - End-to-end flow test against a running bridge: `npm run retest`
 - Deploy the stack to the NAS: `npm run deploy:nas`
