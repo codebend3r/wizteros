@@ -18,6 +18,7 @@ os.environ.update({
 FIXTURE_LIBRARIES = [
     {"id": 17, "name": "01. TV Shows", "server_id": 1, "server_name": "Vermithor", "enabled": True},
     {"id": 20, "name": "04. 4K Family Movies", "server_id": 1, "server_name": "Vermithor", "enabled": True},
+    {"id": 22, "name": "06. Kid Shows", "server_id": 1, "server_name": "Vermithor", "enabled": True},
     {"id": 24, "name": "02. Family Movies", "server_id": 2, "server_name": "Meleys", "enabled": True},
     {"id": 37, "name": "99. Tutorials", "server_id": 4, "server_name": "Caraxes", "enabled": True},
 ]
@@ -50,7 +51,7 @@ def test_checkout_brand_new_member_invites_for_its_tier(bridge):
                             "metadata": {"tier": "silver"}}},
     })
     bridge.client.create_invite.assert_called_once_with(
-        [1, 2], 7, "35", library_ids=[17, 20, 24], allow_downloads=False)
+        [1, 2], 7, "35", library_ids=[17, 20, 22, 24], allow_downloads=False)
     bridge.send_invite_email.assert_called_once_with("a@x.com", "http://inv.test/j/abc")
     # brand-new member has no records to time-box; invite redemption sets expiry
     bridge.client.set_expiry.assert_not_called()
@@ -294,9 +295,9 @@ def test_checkout_without_tier_metadata_defaults_to_bronze(bridge):
         "data": {"object": {"id": "cs_1", "customer": "cus_1",
                             "customer_details": {"email": "a@x.com"}}},
     })
-    # bronze: no 4K library, downloads off
+    # bronze: no 4K library, downloads off (kid shows is not 4K, so it's included)
     bridge.client.create_invite.assert_called_once_with(
-        [1, 2], 7, "35", library_ids=[17, 24], allow_downloads=False)
+        [1, 2], 7, "35", library_ids=[17, 22, 24], allow_downloads=False)
 
 
 def test_checkout_gold_enables_downloads(bridge):
@@ -311,7 +312,7 @@ def test_checkout_gold_enables_downloads(bridge):
                             "metadata": {"tier": "gold"}}},
     })
     bridge.client.create_invite.assert_called_once_with(
-        [1, 2], 7, "35", library_ids=[17, 20, 24], allow_downloads=True)
+        [1, 2], 7, "35", library_ids=[17, 20, 22, 24], allow_downloads=True)
 
 
 def test_checkout_kids_scopes_to_kid_libraries_only(bridge):
@@ -326,7 +327,46 @@ def test_checkout_kids_scopes_to_kid_libraries_only(bridge):
                             "metadata": {"tier": "kids"}}},
     })
     bridge.client.create_invite.assert_called_once_with(
-        [1, 2], 7, "35", library_ids=[20, 24], allow_downloads=True)
+        [1, 2], 7, "35", library_ids=[20, 22, 24], allow_downloads=True)
+
+
+def test_checkout_with_no_libraries_raises_so_stripe_retries(bridge):
+    # Wizarr returned no libraries at all -- resolving zero library_ids must
+    # not silently issue an invite to nothing; raise so the route 500s and
+    # Stripe retries the event later.
+    bridge.client.list_libraries.return_value = []
+    with pytest.raises(RuntimeError):
+        bridge.handle_event({
+            "type": "checkout.session.completed",
+            "id": "evt_no_libraries",
+            "data": {"object": {"id": "cs_1", "customer": "cus_1",
+                                "customer_details": {"email": "a@x.com"}}},
+        })
+    bridge.client.create_invite.assert_not_called()
+    bridge.send_invite_email.assert_not_called()
+
+
+def test_failed_event_is_not_marked_processed(bridge):
+    # A crash mid-handler (e.g. Wizarr resolves zero libraries) must not mark
+    # the event processed, so Stripe's retry of the same event id can still
+    # be handled instead of being dropped as a dupe.
+    event = {
+        "type": "checkout.session.completed",
+        "id": "evt_retry_me",
+        "data": {"object": {"id": "cs_1", "customer": "cus_1",
+                            "customer_details": {"email": "a@x.com"}}},
+    }
+    bridge.client.list_libraries.return_value = []
+    with pytest.raises(RuntimeError):
+        bridge.handle_event(event)
+    bridge.client.create_invite.assert_not_called()
+
+    # fix the mock and re-handle the SAME event id -- it must not be skipped
+    bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
+    bridge.client.create_invite.return_value = {"code": "abc", "url": "http://x/j/abc"}
+    bridge.client.find_user_ids_by_email.return_value = []
+    bridge.handle_event(event)
+    bridge.client.create_invite.assert_called_once()
 
 
 def test_send_invite_email_sends_via_smtp_starttls(monkeypatch):

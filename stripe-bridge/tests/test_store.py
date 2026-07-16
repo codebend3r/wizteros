@@ -29,3 +29,12 @@ def test_mark_event_processed_dedup(tmp_path):
 
     assert store.mark_event_processed(db, "evt_1") is True
     assert store.mark_event_processed(db, "evt_1") is False
+
+
+def test_is_event_processed(tmp_path):
+    db = str(tmp_path / "bridge.db")
+    store.init_db(db)
+
+    assert store.is_event_processed(db, "evt_1") is False
+    store.mark_event_processed(db, "evt_1")
+    assert store.is_event_processed(db, "evt_1") is True

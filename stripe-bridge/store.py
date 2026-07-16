@@ -43,6 +43,16 @@ def upsert_pending(path: str, stripe_customer_id: str, email: str, invite_code: 
         )
 
 
+def is_event_processed(path: str, event_id: str) -> bool:
+    """Read-only check for whether event_id has already been marked processed."""
+    with _conn(path) as c:
+        row = c.execute(
+            "SELECT 1 FROM processed_events WHERE event_id = ?",
+            (event_id,),
+        ).fetchone()
+    return row is not None
+
+
 def mark_event_processed(path: str, event_id: str) -> bool:
     """Record event_id. Return True if newly recorded, False if already seen."""
     with _conn(path) as c:
