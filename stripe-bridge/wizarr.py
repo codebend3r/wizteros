@@ -13,16 +13,6 @@ class WizarrClient:
         """Auth and content-type headers every API call needs."""
         return {"X-API-Key": self.api_key, "Content-Type": "application/json"}
 
-    def list_server_ids(self) -> list:
-        """Return the ids of all verified media servers."""
-        r = requests.get(
-            f"{self.base_url}/api/servers",
-            headers=self._headers(),
-            timeout=10,
-        )
-        r.raise_for_status()
-        return [s["id"] for s in r.json().get("servers", []) if s.get("verified")]
-
     def list_libraries(self) -> list:
         """All libraries Wizarr knows (id, name, server_id, server_name, enabled)."""
         r = requests.get(
