@@ -59,9 +59,10 @@ def test_checkout_brand_new_member_invites_for_its_tier(bridge):
     assert store.get_mapping(bridge.MAP_DB_PATH, "cus_1")["invite_code"] == "abc"
 
 
-def test_checkout_existing_member_time_boxes_all_records(bridge):
-    from datetime import datetime, timezone
-
+def test_checkout_existing_member_resets_all_records_for_rejoin(bridge):
+    # Wizarr can't scope an existing member's shares per server (disable
+    # severs the whole plex.tv friendship), so a subscribing member is fully
+    # reset; redeeming the emailed invite re-grants exactly the tier.
     bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
     bridge.client.create_invite.return_value = {"code": "abc", "url": "http://x/j/abc"}
     bridge.client.find_user_ids_by_email.return_value = [147, 57, 106, 155, 204]
@@ -72,12 +73,25 @@ def test_checkout_existing_member_time_boxes_all_records(bridge):
                             "customer_details": {"email": "a@x.com"},
                             "metadata": {"tier": "bronze"}}},
     })
-    # every server record is set to the same absolute expiry ~ now + 35 days
-    calls = bridge.client.set_expiry.call_args_list
-    assert sorted(c.args[0] for c in calls) == [57, 106, 147, 155, 204]
-    for c in calls:
-        days_out = (datetime.fromisoformat(c.args[1]) - datetime.now(timezone.utc)).days
-        assert 34 <= days_out <= 35
+    # every record is disabled (account-wide reset), none merely time-boxed
+    assert sorted(c.args[0] for c in bridge.client.disable_user.call_args_list) == [57, 106, 147, 155, 204]
+    bridge.client.set_expiry.assert_not_called()
+    # the invite email still goes out — it is the re-join path
+    bridge.send_invite_email.assert_called_once_with("a@x.com", "http://inv.test/j/abc")
+
+
+def test_checkout_brand_new_member_disables_nothing(bridge):
+    bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
+    bridge.client.create_invite.return_value = {"code": "abc", "url": "http://x/j/abc"}
+    bridge.client.find_user_ids_by_email.return_value = []
+    bridge.handle_event({
+        "type": "checkout.session.completed",
+        "id": "evt_checkout_fresh",
+        "data": {"object": {"id": "cs_1", "customer": "cus_1",
+                            "customer_details": {"email": "new@x.com"},
+                            "metadata": {"tier": "kids"}}},
+    })
+    bridge.client.disable_user.assert_not_called()
 
 
 def test_invoice_paid_first_charge_is_skipped(bridge):
