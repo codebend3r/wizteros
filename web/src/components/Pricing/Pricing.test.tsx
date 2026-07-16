@@ -6,23 +6,31 @@ const TIERS: ReadonlyArray<Tier> = [
   {
     id: 'bronze',
     name: 'Bronze',
-    priceLabel: '$8 CAD / month',
+    price: '$8',
+    cadence: 'CAD / month',
     features: ['Standard streaming quality'],
     paymentLinkUrl: 'https://buy.stripe.com/test_bronze',
   },
   {
     id: 'gold',
     name: 'Gold',
-    priceLabel: '$20 CAD / month',
+    price: '$20',
+    cadence: 'CAD / month',
     features: ['Offline downloads'],
     paymentLinkUrl: '',
   },
 ]
 
-test('renders a card per tier with price and features', () => {
+test('renders the section header', () => {
+  render(<Pricing tiers={TIERS} />)
+  expect(screen.getByRole('heading', { name: 'Choose your tier' })).toBeInTheDocument()
+})
+
+test('renders a card per tier with price, cadence, and features', () => {
   render(<Pricing tiers={TIERS} />)
   expect(screen.getByRole('heading', { name: 'Bronze' })).toBeInTheDocument()
-  expect(screen.getByText('$8 CAD / month')).toBeInTheDocument()
+  expect(screen.getByText('$8')).toBeInTheDocument()
+  expect(screen.getAllByText('CAD / month')).toHaveLength(2)
   expect(screen.getByText('Standard streaming quality')).toBeInTheDocument()
 })
 

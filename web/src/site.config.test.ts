@@ -1,14 +1,10 @@
 import { resolveConfig } from '@/site.config'
 
-test('defines the four tiers in order with CAD price labels', () => {
+test('defines the four tiers in order with CAD prices', () => {
   const config = resolveConfig({ env: {} })
   expect(config.tiers.map((tier) => tier.id)).toEqual(['bronze', 'silver', 'gold', 'kids'])
-  expect(config.tiers.map((tier) => tier.priceLabel)).toEqual([
-    '$8 CAD / month',
-    '$14 CAD / month',
-    '$20 CAD / month',
-    '$20 CAD / month',
-  ])
+  expect(config.tiers.map((tier) => tier.price)).toEqual(['$8', '$14', '$20', '$20'])
+  config.tiers.forEach((tier) => expect(tier.cadence).toBe('CAD / month'))
 })
 
 test('tier payment links fall back to empty strings with empty env', () => {
