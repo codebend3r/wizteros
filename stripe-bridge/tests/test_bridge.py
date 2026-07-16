@@ -9,11 +9,18 @@ import pytest
 os.environ.update({
     "STRIPE_API_KEY": "sk_test_x", "STRIPE_WEBHOOK_SECRET": "whsec_x",
     "WIZARR_BASE_URL": "http://wizarr.test", "WIZARR_API_KEY": "k",
-    "WIZARR_SERVER_IDS": "all", "INVITE_EXPIRES_DAYS": "7", "ACCESS_DURATION": "35",
+    "INVITE_EXPIRES_DAYS": "7", "ACCESS_DURATION": "35",
     "SMTP_HOST": "smtp.test", "SMTP_PORT": "587", "SMTP_USER": "u",
     "SMTP_PASS": "p", "FROM_ADDR": "server@test", "PUBLIC_INVITE_BASE": "http://inv.test",
     "MAP_DB_PATH": "/tmp/does-not-matter.db",
 })
+
+FIXTURE_LIBRARIES = [
+    {"id": 17, "name": "01. TV Shows", "server_id": 1, "server_name": "Vermithor", "enabled": True},
+    {"id": 20, "name": "04. 4K Family Movies", "server_id": 1, "server_name": "Vermithor", "enabled": True},
+    {"id": 24, "name": "02. Family Movies", "server_id": 2, "server_name": "Meleys", "enabled": True},
+    {"id": 37, "name": "99. Tutorials", "server_id": 4, "server_name": "Caraxes", "enabled": True},
+]
 
 
 @pytest.fixture
@@ -31,18 +38,19 @@ def bridge(tmp_path, monkeypatch):
     return b
 
 
-def test_checkout_brand_new_member_invites_without_time_boxing(bridge):
-    bridge.client.list_server_ids.return_value = [1, 2, 3, 4, 5]
+def test_checkout_brand_new_member_invites_for_its_tier(bridge):
+    bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
     bridge.client.create_invite.return_value = {"code": "abc", "url": "http://wizarr-lan:5690/j/abc"}
     bridge.client.find_user_ids_by_email.return_value = []  # no existing records yet
     bridge.handle_event({
         "type": "checkout.session.completed",
         "id": "evt_checkout_1",
         "data": {"object": {"id": "cs_1", "customer": "cus_1",
-                            "customer_details": {"email": "a@x.com"}}},
+                            "customer_details": {"email": "a@x.com"},
+                            "metadata": {"tier": "silver"}}},
     })
-    # "all" mode -> invite targets every verified server discovered from Wizarr
-    bridge.client.create_invite.assert_called_once_with([1, 2, 3, 4, 5], 7, "35")
+    bridge.client.create_invite.assert_called_once_with(
+        [1, 2], 7, "35", library_ids=[17, 20, 24], allow_downloads=False)
     bridge.send_invite_email.assert_called_once_with("a@x.com", "http://inv.test/j/abc")
     # brand-new member has no records to time-box; invite redemption sets expiry
     bridge.client.set_expiry.assert_not_called()
@@ -53,14 +61,15 @@ def test_checkout_brand_new_member_invites_without_time_boxing(bridge):
 def test_checkout_existing_member_time_boxes_all_records(bridge):
     from datetime import datetime, timezone
 
-    bridge.client.list_server_ids.return_value = [1, 2, 3, 4, 5]
+    bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
     bridge.client.create_invite.return_value = {"code": "abc", "url": "http://x/j/abc"}
     bridge.client.find_user_ids_by_email.return_value = [147, 57, 106, 155, 204]
     bridge.handle_event({
         "type": "checkout.session.completed",
         "id": "evt_checkout_existing",
         "data": {"object": {"id": "cs_1", "customer": "cus_1",
-                            "customer_details": {"email": "a@x.com"}}},
+                            "customer_details": {"email": "a@x.com"},
+                            "metadata": {"tier": "bronze"}}},
     })
     # every server record is set to the same absolute expiry ~ now + 35 days
     calls = bridge.client.set_expiry.call_args_list
@@ -134,7 +143,7 @@ def test_webhook_route_handles_stripe_object_event(bridge, monkeypatch):
 
     import stripe
 
-    bridge.client.list_server_ids.return_value = [1, 2, 3]
+    bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
     bridge.client.create_invite.return_value = {"code": "abc", "url": "http://x/j/abc"}
     payload = json.dumps({
         "id": "evt_route_1", "type": "checkout.session.completed",
@@ -172,12 +181,6 @@ def test_customer_email_reads_stripe_object(bridge, monkeypatch):
         lambda cid: stripe.Customer.construct_from({"id": cid}, "sk"),
     )
     assert bridge.customer_email("cus_1") is None
-
-
-def test_resolve_server_ids_explicit_list_overrides_discovery(bridge, monkeypatch):
-    monkeypatch.setattr(bridge, "WIZARR_SERVER_IDS", "1,3,5")
-    assert bridge.resolve_server_ids() == [1, 3, 5]
-    bridge.client.list_server_ids.assert_not_called()
 
 
 def test_resolve_falls_back_from_email_to_invite(bridge):
@@ -231,7 +234,7 @@ def test_checkout_without_email_creates_nothing(bridge):
 
 def test_checkout_falls_back_to_customer_email_field(bridge):
     # Some checkout sessions carry customer_email instead of customer_details.
-    bridge.client.list_server_ids.return_value = [1]
+    bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
     bridge.client.create_invite.return_value = {"code": "abc", "url": "http://x/j/abc"}
     bridge.client.find_user_ids_by_email.return_value = []
     bridge.handle_event({
@@ -281,12 +284,49 @@ def test_cancel_prefers_stored_email_over_stripe_lookup(bridge, monkeypatch):
     bridge.client.disable_user.assert_called_once_with(9)
 
 
-def test_resolve_server_ids_empty_env_discovers_from_wizarr(bridge, monkeypatch):
-    # Empty WIZARR_SERVER_IDS behaves like "all": discover at invite time.
-    monkeypatch.setattr(bridge, "WIZARR_SERVER_IDS", "")
-    bridge.client.list_server_ids.return_value = [1, 2]
-    assert bridge.resolve_server_ids() == [1, 2]
-    bridge.client.list_server_ids.assert_called_once_with()
+def test_checkout_without_tier_metadata_defaults_to_bronze(bridge):
+    bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
+    bridge.client.create_invite.return_value = {"code": "abc", "url": "http://x/j/abc"}
+    bridge.client.find_user_ids_by_email.return_value = []
+    bridge.handle_event({
+        "type": "checkout.session.completed",
+        "id": "evt_no_tier",
+        "data": {"object": {"id": "cs_1", "customer": "cus_1",
+                            "customer_details": {"email": "a@x.com"}}},
+    })
+    # bronze: no 4K library, downloads off
+    bridge.client.create_invite.assert_called_once_with(
+        [1, 2], 7, "35", library_ids=[17, 24], allow_downloads=False)
+
+
+def test_checkout_gold_enables_downloads(bridge):
+    bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
+    bridge.client.create_invite.return_value = {"code": "abc", "url": "http://x/j/abc"}
+    bridge.client.find_user_ids_by_email.return_value = []
+    bridge.handle_event({
+        "type": "checkout.session.completed",
+        "id": "evt_gold",
+        "data": {"object": {"id": "cs_1", "customer": "cus_1",
+                            "customer_details": {"email": "a@x.com"},
+                            "metadata": {"tier": "gold"}}},
+    })
+    bridge.client.create_invite.assert_called_once_with(
+        [1, 2], 7, "35", library_ids=[17, 20, 24], allow_downloads=True)
+
+
+def test_checkout_kids_scopes_to_kid_libraries_only(bridge):
+    bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
+    bridge.client.create_invite.return_value = {"code": "abc", "url": "http://x/j/abc"}
+    bridge.client.find_user_ids_by_email.return_value = []
+    bridge.handle_event({
+        "type": "checkout.session.completed",
+        "id": "evt_kids",
+        "data": {"object": {"id": "cs_1", "customer": "cus_1",
+                            "customer_details": {"email": "a@x.com"},
+                            "metadata": {"tier": "kids"}}},
+    })
+    bridge.client.create_invite.assert_called_once_with(
+        [1, 2], 7, "35", library_ids=[20, 24], allow_downloads=True)
 
 
 def test_send_invite_email_sends_via_smtp_starttls(monkeypatch):

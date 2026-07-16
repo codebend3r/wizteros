@@ -48,19 +48,6 @@ def test_create_invite_omits_library_ids_when_unscoped():
 
 
 @responses.activate
-def test_list_server_ids_returns_only_verified():
-    responses.get(
-        f"{BASE}/api/servers",
-        json={"servers": [
-            {"id": 1, "name": "Vermithor", "verified": True},
-            {"id": 2, "name": "Meleys", "verified": True},
-            {"id": 7, "name": "Unverified", "verified": False},
-        ]},
-    )
-    assert client().list_server_ids() == [1, 2]
-
-
-@responses.activate
 def test_list_libraries_returns_raw_library_dicts():
     responses.get(
         f"{BASE}/api/libraries",
@@ -122,9 +109,9 @@ def test_find_user_ids_by_email_matches_case_insensitively_and_skips_null_emails
 
 @responses.activate
 def test_wizarr_http_errors_propagate():
-    responses.get(f"{BASE}/api/servers", json={"error": "boom"}, status=500)
+    responses.get(f"{BASE}/api/libraries", json={"error": "boom"}, status=500)
     with pytest.raises(requests.HTTPError):
-        client().list_server_ids()
+        client().list_libraries()
 
 
 @responses.activate
