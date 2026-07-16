@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
-import App from './App'
-import { DEFAULT_PAYMENT_LINK_URL } from './site.config'
+import App from '@/App'
+import { DEFAULT_PAYMENT_LINK_URL } from '@/site.config'
 
 test('renders the brand heading', () => {
   render(<App />)

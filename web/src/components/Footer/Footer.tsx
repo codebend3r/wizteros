@@ -1,4 +1,4 @@
-import styles from './Footer.module.scss'
+import styles from '@/components/Footer/Footer.module.scss'
 
 const MEMBER_LINK_LABEL = 'Already contributing? Access your account →'
 const DISCLAIMER =
