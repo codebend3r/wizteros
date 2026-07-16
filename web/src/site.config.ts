@@ -6,7 +6,8 @@ type SupportItem = {
 type Tier = {
   id: 'bronze' | 'silver' | 'gold' | 'kids'
   name: string
-  priceLabel: string
+  price: string
+  cadence: string
   features: ReadonlyArray<string>
   paymentLinkUrl: string
 }
@@ -51,28 +52,32 @@ export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
     {
       id: 'bronze',
       name: 'Bronze',
-      priceLabel: '$8 CAD / month',
+      price: '$8',
+      cadence: 'CAD / month',
       features: ['Standard streaming quality', 'Watch on all your devices'],
       paymentLinkUrl: env.VITE_PAYMENT_LINK_BRONZE_URL ?? '',
     },
     {
       id: 'silver',
       name: 'Silver',
-      priceLabel: '$14 CAD / month',
+      price: '$14',
+      cadence: 'CAD / month',
       features: ['Everything in Bronze', '4K streaming support'],
       paymentLinkUrl: env.VITE_PAYMENT_LINK_SILVER_URL ?? '',
     },
     {
       id: 'gold',
       name: 'Gold',
-      priceLabel: '$20 CAD / month',
+      price: '$20',
+      cadence: 'CAD / month',
       features: ['Everything in Silver', 'Offline downloads'],
       paymentLinkUrl: env.VITE_PAYMENT_LINK_GOLD_URL ?? '',
     },
     {
       id: 'kids',
       name: 'Kids',
-      priceLabel: '$20 CAD / month',
+      price: '$20',
+      cadence: 'CAD / month',
       features: ['Family plan curated for kids', '4K streaming support', 'Offline downloads'],
       paymentLinkUrl: env.VITE_PAYMENT_LINK_KIDS_URL ?? '',
     },
