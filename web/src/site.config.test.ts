@@ -1,16 +1,37 @@
-import { resolveConfig, DEFAULT_PAYMENT_LINK_URL } from '@/site.config'
+import { resolveConfig } from '@/site.config'
 
-test('falls back to the default payment link and null member url with empty env', () => {
+test('defines the four tiers in order with CAD price labels', () => {
   const config = resolveConfig({ env: {} })
-  expect(config.paymentLinkUrl).toBe(DEFAULT_PAYMENT_LINK_URL)
-  expect(config.memberUrl).toBeNull()
+  expect(config.tiers.map((tier) => tier.id)).toEqual(['bronze', 'silver', 'gold', 'kids'])
+  expect(config.tiers.map((tier) => tier.priceLabel)).toEqual([
+    '$8 CAD / month',
+    '$14 CAD / month',
+    '$20 CAD / month',
+    '$20 CAD / month',
+  ])
 })
 
-test('uses the payment link from env when set', () => {
+test('tier payment links fall back to empty strings with empty env', () => {
+  const config = resolveConfig({ env: {} })
+  config.tiers.forEach((tier) => expect(tier.paymentLinkUrl).toBe(''))
+})
+
+test('maps each payment link env var to its tier', () => {
   const config = resolveConfig({
-    env: { VITE_PAYMENT_LINK_URL: 'https://buy.stripe.com/live_abc' },
+    env: {
+      VITE_PAYMENT_LINK_BRONZE_URL: 'https://buy.stripe.com/b',
+      VITE_PAYMENT_LINK_SILVER_URL: 'https://buy.stripe.com/s',
+      VITE_PAYMENT_LINK_GOLD_URL: 'https://buy.stripe.com/g',
+      VITE_PAYMENT_LINK_KIDS_URL: 'https://buy.stripe.com/k',
+    },
   })
-  expect(config.paymentLinkUrl).toBe('https://buy.stripe.com/live_abc')
+  const byId = Object.fromEntries(config.tiers.map((tier) => [tier.id, tier.paymentLinkUrl]))
+  expect(byId).toEqual({
+    bronze: 'https://buy.stripe.com/b',
+    silver: 'https://buy.stripe.com/s',
+    gold: 'https://buy.stripe.com/g',
+    kids: 'https://buy.stripe.com/k',
+  })
 })
 
 test('uses the member url from env when set', () => {
