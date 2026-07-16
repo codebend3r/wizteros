@@ -142,15 +142,16 @@ def _dispatch(etype: str, obj: dict) -> None:
         invite_url = f"{PUBLIC_INVITE_BASE}/j/{invite['code']}"
         send_invite_email(email, invite_url)
         log.info("sent invite to %s", email)
-        # Existing members are already shared, so invite redemption won't apply
-        # the duration — time-box every one of their server records now.
+        # Reset-and-rejoin: Wizarr can't scope an existing member's shares per
+        # server (disable severs the whole plex.tv friendship), so drop every
+        # existing record; redeeming the invite re-grants exactly the tier's
+        # access with the invite's duration.
         existing = resolve_user_ids(client, MAP_DB_PATH, customer_id, email)
-        expires = access_expiry_iso()
         for uid in existing:
-            client.set_expiry(uid, expires)
+            client.disable_user(uid)
         if existing:
-            log.info("time-boxed %d existing record(s) for %s (expires %s)",
-                     len(existing), email, expires)
+            log.info("reset %d existing record(s) for %s pending re-join",
+                     len(existing), email)
 
     elif etype == "invoice.paid":
         if obj.get("billing_reason") == "subscription_create":
