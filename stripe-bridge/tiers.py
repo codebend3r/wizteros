@@ -3,8 +3,8 @@ import re
 
 log = logging.getLogger("bridge")
 
-# Never-share rule: Caraxes libraries named "96. ..." through "99. ...".
-PRIVATE_SERVER_NAME = "Caraxes"
+# Never-share rule: any library named "90. ..." through "99. ...", on any
+# server. Name-only and deliberately server-agnostic (see _is_private).
 PRIVATE_NAME_RE = re.compile(r"^9\d\.")
 
 # Kids allowlist, matched on (server_name, library name).
@@ -23,8 +23,8 @@ TIER_DOWNLOADS = {
 
 
 def normalize_tier(raw) -> str:
-    """Map checkout metadata to a known tier; unknown or missing falls back to bronze."""
-    tier = (raw or "").strip().lower()
+    """Map checkout metadata to a known tier; unknown, missing, or non-string falls back to bronze."""
+    tier = raw.strip().lower() if isinstance(raw, str) else ""
     if tier not in TIER_DOWNLOADS:
         log.error("unknown tier %r on checkout session; defaulting to bronze", raw)
         return "bronze"
@@ -32,11 +32,13 @@ def normalize_tier(raw) -> str:
 
 
 def _is_private(library: dict) -> bool:
-    """Whether a library is in the never-share set (Caraxes 9X. names)."""
-    return (
-        library.get("server_name") == PRIVATE_SERVER_NAME
-        and bool(PRIVATE_NAME_RE.match(library.get("name") or ""))
-    )
+    """Whether a library is in the never-share set (9X. names).
+
+    Deliberately server-agnostic: the rule matches on name alone, never on
+    server_name, so it fails closed if Wizarr ever returns a null or
+    renamed server_name for a library that should stay private.
+    """
+    return bool(PRIVATE_NAME_RE.match(library.get("name") or ""))
 
 
 def _is_4k(library: dict) -> bool:

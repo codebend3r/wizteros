@@ -18,9 +18,10 @@ LIBRARIES = [
     {"id": 39, "name": "98. Documents", "server_id": 4, "server_name": "Caraxes", "enabled": True},
     {"id": 40, "name": "96. Assignments", "server_id": 4, "server_name": "Caraxes", "enabled": True},
     {"id": 50, "name": "07. Disabled Stuff", "server_id": 2, "server_name": "Meleys", "enabled": False},
+    {"id": 60, "name": "95. Private Stuff", "server_id": 1, "server_name": "Vermithor", "enabled": True},
 ]
 
-PRIVATE_IDS = {37, 38, 39, 40}
+PRIVATE_IDS = {37, 38, 39, 40, 60}
 FOUR_K_IDS = {20, 25, 28}
 
 
@@ -84,6 +85,14 @@ def test_caraxes_09_prefix_is_not_private():
     assert 36 in out["library_ids"]
 
 
+def test_private_rule_is_server_agnostic():
+    # "95. Private Stuff" lives on Vermithor, not Caraxes; the name-only rule
+    # must exclude it regardless, proving the guard doesn't key off server
+    # identity and so fails closed if server metadata drifts.
+    out = tiers.resolve_tier_access(tier="silver", libraries=LIBRARIES)
+    assert 60 not in out["library_ids"]
+
+
 def test_disabled_libraries_are_never_shared():
     for tier in ("bronze", "silver", "gold"):
         out = tiers.resolve_tier_access(tier=tier, libraries=LIBRARIES)
@@ -101,4 +110,5 @@ def test_normalize_tier_defaults_unknown_and_missing_to_bronze(caplog):
         assert tiers.normalize_tier("platinum") == "bronze"
         assert tiers.normalize_tier(None) == "bronze"
         assert tiers.normalize_tier("") == "bronze"
+        assert tiers.normalize_tier(123) == "bronze"
     assert "unknown tier" in caplog.text

@@ -95,10 +95,14 @@ def resolve_user_ids(client, store_path: str, customer_id: str, email: str | Non
 def handle_event(event: dict) -> None:
     """Act on one Stripe event: checkout -> invite, renewal -> extend, cancel -> disable.
 
-    Duplicate deliveries (Stripe retries) are dropped via the processed_events table.
+    Duplicate deliveries (Stripe retries) are dropped via the processed_events
+    table. The event is only marked processed after the type-specific handling
+    below completes without raising, so a crash mid-handler (e.g. Wizarr
+    unreachable, no libraries resolved) leaves the event unmarked and Stripe's
+    retry reprocesses it instead of the signup being silently lost.
     """
     event_id = event.get("id")
-    if event_id and not store.mark_event_processed(MAP_DB_PATH, event_id):
+    if event_id and store.is_event_processed(MAP_DB_PATH, event_id):
         log.info("skipping already-processed event %s", event_id)
         return
 
@@ -106,6 +110,14 @@ def handle_event(event: dict) -> None:
     obj = event["data"]["object"]
     log.info("stripe event: %s", etype)
 
+    _dispatch(etype, obj)
+
+    if event_id:
+        store.mark_event_processed(MAP_DB_PATH, event_id)
+
+
+def _dispatch(etype: str, obj: dict) -> None:
+    """Run the type-specific handling for one Stripe event's data object."""
     if etype == "checkout.session.completed":
         email = (obj.get("customer_details") or {}).get("email") or obj.get("customer_email")
         customer_id = obj.get("customer")
@@ -114,6 +126,10 @@ def handle_event(event: dict) -> None:
             return
         tier = tiers.normalize_tier((obj.get("metadata") or {}).get("tier"))
         access = tiers.resolve_tier_access(tier=tier, libraries=client.list_libraries())
+        if not access["library_ids"]:
+            log.error("no libraries resolved for %s tier checkout %s; aborting for retry",
+                      tier, obj.get("id"))
+            raise RuntimeError(f"no libraries resolved for tier {tier!r} on session {obj.get('id')!r}")
         invite = client.create_invite(
             access["server_ids"], INVITE_DAYS, ACCESS_DURATION,
             library_ids=access["library_ids"],
