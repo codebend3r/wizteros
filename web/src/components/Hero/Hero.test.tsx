@@ -4,15 +4,12 @@ import Hero from '@/components/Hero/Hero'
 const props = {
   brandName: 'Westeroz',
   tagline: 'A community-run media server.',
-  priceLabel: '$10 / month',
-  paymentLinkUrl: 'https://buy.stripe.com/test_abc',
 }
 
-test('renders the brand, price, and a Contribute link to the payment url', () => {
+test('renders the brand and tagline with a link to pricing', () => {
   render(<Hero {...props} />)
   expect(screen.getByRole('heading', { name: 'Westeroz' })).toBeInTheDocument()
   expect(screen.getByText('A community-run media server.')).toBeInTheDocument()
-  expect(screen.getByText('$10 / month')).toBeInTheDocument()
-  const cta = screen.getByRole('link', { name: 'Contribute' })
-  expect(cta).toHaveAttribute('href', 'https://buy.stripe.com/test_abc')
+  const cta = screen.getByRole('link', { name: 'Choose a plan' })
+  expect(cta).toHaveAttribute('href', '#pricing')
 })

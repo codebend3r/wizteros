@@ -1,18 +1,21 @@
 import { render, screen } from '@testing-library/react'
 import App from '@/App'
-import { DEFAULT_PAYMENT_LINK_URL } from '@/site.config'
 
 test('renders the brand heading', () => {
   render(<App />)
   expect(screen.getByRole('heading', { name: 'Westeroz' })).toBeInTheDocument()
 })
 
-test('Contribute CTA points at the resolved payment link', () => {
+test('hero CTA scrolls to the pricing section', () => {
   render(<App />)
-  expect(screen.getByRole('link', { name: 'Contribute' })).toHaveAttribute(
-    'href',
-    DEFAULT_PAYMENT_LINK_URL,
-  )
+  expect(screen.getByRole('link', { name: 'Choose a plan' })).toHaveAttribute('href', '#pricing')
+})
+
+test('renders the four tier cards', () => {
+  render(<App />)
+  ;['Bronze', 'Silver', 'Gold', 'Kids'].forEach((name) => {
+    expect(screen.getByRole('heading', { name })).toBeInTheDocument()
+  })
 })
 
 test('renders the three support items', () => {
