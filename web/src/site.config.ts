@@ -54,7 +54,11 @@ export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
       name: 'Bronze',
       price: '$8',
       cadence: 'CAD / month',
-      features: ['Standard streaming quality', 'Watch on all your devices'],
+      features: [
+        'Standard streaming quality',
+        'Watch on all your devices',
+        'Request any show or movie',
+      ],
       paymentLinkUrl: env.VITE_PAYMENT_LINK_BRONZE_URL ?? '',
     },
     {
@@ -78,7 +82,12 @@ export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
       name: 'Kids',
       price: '$20',
       cadence: 'CAD / month',
-      features: ['Family plan curated for kids', '4K streaming support', 'Offline downloads'],
+      features: [
+        'Family plan curated for kids',
+        '4K streaming support',
+        'Offline downloads',
+        'Request any kids show or movie',
+      ],
       paymentLinkUrl: env.VITE_PAYMENT_LINK_KIDS_URL ?? '',
     },
   ],
