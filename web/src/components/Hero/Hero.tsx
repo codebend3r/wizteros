@@ -1,3 +1,4 @@
+import HeroLogo from '@/components/Hero/HeroLogo'
 import styles from '@/components/Hero/Hero.module.scss'
 
 type HeroProps = {
@@ -7,6 +8,7 @@ type HeroProps = {
 
 const Hero = ({ brandName, tagline }: HeroProps) => (
   <section className={styles.hero}>
+    <HeroLogo />
     <h1 className={styles.brand}>{brandName}</h1>
     <p className={styles.tagline}>{tagline}</p>
     <a className={styles.cta} href="#pricing">
