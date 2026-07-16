@@ -9,6 +9,7 @@ import stripe
 from fastapi import FastAPI, Header, HTTPException, Request
 
 import store
+from email_template import render_invite_email
 from wizarr import WizarrClient
 
 STRIPE_API_KEY = os.environ["STRIPE_API_KEY"]
@@ -49,9 +50,9 @@ def resolve_server_ids() -> list:
 
 
 def send_invite_email(to_addr: str, invite_url: str) -> None:
-    """Compose the invite email and send it over SMTP with STARTTLS."""
+    """Compose the invite email (plain text + styled HTML) and send it over SMTP with STARTTLS."""
     msg = EmailMessage()
-    msg["Subject"] = "Your server access link"
+    msg["Subject"] = "Your Westeroz access link"
     msg["From"] = FROM_ADDR
     msg["To"] = to_addr
     msg.set_content(
@@ -64,6 +65,10 @@ so please complete signup soon.
 
 If you cancel your contribution, access will be removed at the end of the current cycle.
 """.strip()
+    )
+    msg.add_alternative(
+        render_invite_email(invite_url=invite_url, expires_days=INVITE_DAYS),
+        subtype="html",
     )
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as s:
         s.starttls()

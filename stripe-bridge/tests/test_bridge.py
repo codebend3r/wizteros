@@ -325,4 +325,12 @@ def test_send_invite_email_sends_via_smtp_starttls(monkeypatch):
     assert sent["login"] == ("u", "p")
     assert sent["msg"]["To"] == "to@x.com"
     assert sent["msg"]["From"] == "server@test"
-    assert "http://inv.test/j/abc" in sent["msg"].get_content()
+    assert sent["msg"]["Subject"] == "Your Westeroz access link"
+    # multipart/alternative: plain-text fallback plus the styled HTML part,
+    # both carrying the invite link.
+    assert sent["msg"].get_content_type() == "multipart/alternative"
+    plain = sent["msg"].get_body(preferencelist=("plain",)).get_content()
+    html = sent["msg"].get_body(preferencelist=("html",)).get_content()
+    assert "http://inv.test/j/abc" in plain
+    assert 'href="http://inv.test/j/abc"' in html
+    assert "Set up your account" in html
