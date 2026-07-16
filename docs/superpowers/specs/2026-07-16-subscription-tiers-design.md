@@ -19,7 +19,10 @@ under any tier, under any circumstance.
 | Gold   | $20            | All − private (4K included)                                                 | On        |
 | Kids   | $20            | Kid Shows (Vermithor), Family Movies (Meleys), 4K Family Movies (Vermithor) | On        |
 
-- "Private" = any Caraxes library whose name matches `^9\d\.` (currently 96. Assignments, 97. Home Videos, 98. Documents, 99. Tutorials).
+- "Private" = any library whose name matches `^9\d\.`, regardless of server
+  (currently 96. Assignments, 97. Home Videos, 98. Documents, 99. Tutorials on
+  Caraxes). The rule is deliberately server-agnostic so it fails closed if
+  Wizarr ever returns null or renamed server metadata (final-review hardening).
 - "4K" match is case-insensitive on the library name.
 - Library sets are computed live at invite time from `GET /api/libraries`
   (name rules, not stored IDs), so they survive Wizarr ID churn and
