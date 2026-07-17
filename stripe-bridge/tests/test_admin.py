@@ -113,7 +113,7 @@ def test_reset_expiry_404_when_no_records(admin_db):
     assert e.value.status_code == 404
 
 
-def test_reissue_invite_disables_then_creates_scoped_invite(admin_db):
+def test_reissue_invite_creates_then_disables_scoped_invite(admin_db):
     a, _ = admin_db
     a.client.list_libraries.return_value = FIXTURE_LIBRARIES
     a.client.find_user_ids_by_email.return_value = [9, 12]
@@ -124,6 +124,10 @@ def test_reissue_invite_disables_then_creates_scoped_invite(admin_db):
     # private 99. library excluded, non-4k allowed for silver -> ids 17 + 20
     a.client.create_invite.assert_called_once_with(
         [1], 7, "35", library_ids=[17, 20], allow_downloads=False)
+    # invite must be created BEFORE any disable, so a create failure can't lock
+    # the member out with no link to re-redeem
+    order = [c[0] for c in a.client.method_calls]
+    assert order.index("create_invite") < order.index("disable_user")
     assert out["disabled"] == 2
     assert out["code"] == "xyz"
     assert out["url"] == "http://inv.test/j/xyz"  # public URL, not the LAN one

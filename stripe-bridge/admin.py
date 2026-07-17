@@ -114,10 +114,10 @@ def reset_expiry(body: ResetExpiryBody) -> dict:
 
 @router.post("/admin/reissue-invite", dependencies=[Depends(require_admin)])
 def reissue_invite(body: ReissueInviteBody) -> dict:
-    """Disable a member's records, then issue a fresh tier-scoped invite link.
+    """Issue a fresh tier-scoped invite link, then disable the member's old records.
 
-    Wizarr can't re-scope a member in place, so we drop every existing record
-    and re-invite. Scope comes from tiers.resolve_tier_access (fail-closed on
+    Wizarr can't re-scope a member in place, so we re-invite and drop every
+    existing record. Scope comes from tiers.resolve_tier_access (fail-closed on
     9X. privates). Returns the public re-join URL.
     """
     if not PUBLIC_INVITE_BASE:
@@ -127,12 +127,15 @@ def reissue_invite(body: ReissueInviteBody) -> dict:
     if not access["library_ids"]:
         raise HTTPException(status_code=502, detail=f"no libraries resolved for tier {tier}")
     ids = client.find_user_ids_by_email(body.email)
-    for uid in ids:
-        client.disable_user(uid)
+    # Create the invite BEFORE disabling: disable_user is account-wide (it severs
+    # the plex.tv friendship on every server), so if create_invite raised after
+    # the disable loop the member would be locked out with no link to re-redeem.
     invite = client.create_invite(
         access["server_ids"], INVITE_DAYS, ACCESS_DURATION,
         library_ids=access["library_ids"], allow_downloads=access["allow_downloads"],
     )
+    for uid in ids:
+        client.disable_user(uid)
     return {
         "url": f"{PUBLIC_INVITE_BASE}/j/{invite['code']}",
         "code": invite["code"],
