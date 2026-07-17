@@ -70,22 +70,51 @@ def _dedupe_members(users: list, tier_map: dict) -> list[dict]:
     return members
 
 
+def _member_from_customer(email: str, tier: str | None) -> dict:
+    """A table row for a subscriber the bridge knows who hasn't joined Wizarr yet."""
+    resolved = tier or "unknown"
+    return {
+        "member": email.split("@")[0],
+        "email": email,
+        "tier": resolved,
+        "downloads": tiers.TIER_DOWNLOADS.get(resolved) if resolved != "unknown" else None,
+        "expires": None,
+        "servers": [],
+        "subscribed": False,
+    }
+
+
 @router.get("/admin/members", dependencies=[Depends(require_admin)])
 def list_members() -> list[dict]:
-    """One row per person across all servers, with tier + derived downloads."""
-    return _dedupe_members(client.list_users(), store.tiers_by_email(MAP_DB_PATH))
+    """Every member: Wizarr users AND Stripe subscribers who haven't joined yet.
+
+    Wizarr's user list only has people who redeemed an invite, so subscribers
+    still holding a pending invite are unioned in from the bridge's customer_map.
+    """
+    customers = store.all_customer_tiers(MAP_DB_PATH)
+    members = _dedupe_members(client.list_users(), customers)
+    joined = {m["email"].lower() for m in members if m["email"]}
+    pending = [
+        _member_from_customer(email, tier)
+        for email, tier in customers.items()
+        if email not in joined
+    ]
+    return sorted(members + pending, key=lambda m: m["member"].lower())
 
 
 @router.get("/admin/member", dependencies=[Depends(require_admin)])
 def get_member(email: str) -> dict:
-    """The single deduped member matching an email, or 404."""
+    """A member by email: a Wizarr user, or a Stripe subscriber not yet joined; else 404."""
+    customers = store.all_customer_tiers(MAP_DB_PATH)
     matches = _dedupe_members(
         [u for u in client.list_users() if (u.get("email") or "").lower() == email.lower()],
-        store.tiers_by_email(MAP_DB_PATH),
+        customers,
     )
-    if not matches:
-        raise HTTPException(status_code=404, detail="no member for that email")
-    return matches[0]
+    if matches:
+        return matches[0]
+    if email.lower() in customers:
+        return _member_from_customer(email, customers[email.lower()])
+    raise HTTPException(status_code=404, detail="no member for that email")
 
 
 class ResetExpiryBody(BaseModel):

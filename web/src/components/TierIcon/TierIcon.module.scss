@@ -1,0 +1,24 @@
+.icon {
+  display: inline-block;
+  width: 0.75em;
+  height: 0.75em;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 2px rgb(0 0 0 / 25%);
+  vertical-align: baseline;
+}
+
+.bronze {
+  background: var(--color-bronze);
+}
+
+.silver {
+  background: var(--color-silver);
+}
+
+.gold {
+  background: var(--color-gold);
+}
+
+.kids {
+  background: var(--color-kids);
+}

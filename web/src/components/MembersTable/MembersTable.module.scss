@@ -2,6 +2,21 @@
   display: grid;
   gap: var(--space-2);
   overflow-x: auto;
+
+  // macOS auto-hides overlay scrollbars, which made the overflowing Action
+  // column look deleted. Force a visible track so overflow is obvious.
+  &::-webkit-scrollbar {
+    height: 8px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: var(--radius-md);
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
 }
 
 .table {
@@ -22,15 +37,53 @@
     letter-spacing: 0.08em;
     text-transform: uppercase;
   }
+
+  // The Action column stays pinned on the right when the table overflows —
+  // the Invite button must never scroll out of view.
+  th:last-child,
+  td:last-child {
+    position: sticky;
+    right: 0;
+    background: var(--color-bg);
+    box-shadow: -12px 0 12px -12px rgb(0 0 0 / 45%);
+  }
 }
 
-.tier {
+.tierCell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   text-transform: capitalize;
+}
+
+.servers {
+  cursor: help;
+  text-decoration: underline dotted var(--color-muted);
+  text-underline-offset: 0.2em;
+}
+
+.emailLink {
+  color: var(--color-text);
+  text-decoration: underline;
+  text-decoration-color: var(--color-muted);
+  text-underline-offset: 0.2em;
+
+  &:hover {
+    color: var(--color-accent);
+    text-decoration-color: var(--color-accent);
+  }
 }
 
 .subscribed {
   color: var(--color-accent);
   font-weight: 600;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  white-space: nowrap;
 }
 
 .invite {
@@ -40,6 +93,57 @@
   background: transparent;
   color: var(--color-text);
   cursor: pointer;
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+}
+
+.menuWrap {
+  position: relative;
+  display: inline-block;
+}
+
+// Sticky Action cells each form a stacking context painted in DOM order,
+// so an open tier menu would render beneath the rows below it. Lift the
+// cell that owns the open menu above its siblings.
+.menuOpen {
+  z-index: 1;
+}
+
+.menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--space-1));
+  display: grid;
+  min-width: 10rem;
+  margin: 0;
+  padding: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  list-style: none;
+  z-index: 5;
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--color-bg);
+  }
 }
 
 .pager {

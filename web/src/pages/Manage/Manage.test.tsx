@@ -1,4 +1,7 @@
 import { render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
+import userEvent from '@testing-library/user-event'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import Manage from '@/pages/Manage/Manage'
 import { AdminAuthError, type Member } from '@/lib/adminApi'
@@ -16,9 +19,23 @@ const member: Member = {
 vi.mock('@/lib/adminApi', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/adminApi')>()),
   fetchMembers: vi.fn(),
+  reissueInvite: vi.fn(),
 }))
 
-const { fetchMembers } = await import('@/lib/adminApi')
+const { fetchMembers, reissueInvite } = await import('@/lib/adminApi')
+
+const renderManage = () => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <Manage />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+}
 
 beforeEach(() => {
   sessionStorage.setItem('westeroz-admin-password', 'secret')
@@ -31,13 +48,73 @@ afterEach(() => {
 
 test('loads and renders members after the gate', async () => {
   vi.mocked(fetchMembers).mockResolvedValue([member])
-  render(<Manage />)
+  renderManage()
   expect(await screen.findByText('cj')).toBeInTheDocument()
   expect(fetchMembers).toHaveBeenCalledWith({ password: 'secret' })
 })
 
+test('shows a preloader while members are loading', () => {
+  vi.mocked(fetchMembers).mockReturnValue(new Promise(() => {}))
+  renderManage()
+  expect(screen.getByRole('status')).toBeInTheDocument()
+})
+
 test('returns to the password gate on an auth error during load', async () => {
   vi.mocked(fetchMembers).mockRejectedValue(new AdminAuthError('nope'))
-  render(<Manage />)
+  renderManage()
   expect(await screen.findByLabelText('Password')).toBeInTheDocument()
+})
+
+test('filters members by email with the search input', async () => {
+  vi.mocked(fetchMembers).mockResolvedValue([
+    member,
+    { ...member, member: 'max', email: 'max@y.com' },
+  ])
+  renderManage()
+  expect(await screen.findByText('cj')).toBeInTheDocument()
+  await userEvent.type(screen.getByLabelText('Search by email'), 'max@')
+  expect(screen.queryByText('cj')).toBeNull()
+  expect(screen.getByText('max')).toBeInTheDocument()
+})
+
+test('inviting to a tier confirms via modal then updates the row optimistically', async () => {
+  vi.mocked(fetchMembers).mockResolvedValue([{ ...member, tier: 'unknown', downloads: null }])
+  vi.mocked(reissueInvite).mockResolvedValue({
+    url: 'https://x/j/abc',
+    code: 'abc',
+    tier: 'gold',
+    disabled: 1,
+  })
+  renderManage()
+
+  await userEvent.click(await screen.findByRole('button', { name: 'Invite' }))
+  await userEvent.click(screen.getByRole('menuitem', { name: /Gold Tier/ }))
+
+  const dialog = screen.getByRole('dialog', { name: 'Confirm invite' })
+  expect(dialog).toHaveTextContent('cj@x.com')
+  expect(dialog).toHaveTextContent('Gold')
+
+  await userEvent.click(screen.getByRole('button', { name: 'Send invite' }))
+
+  expect(reissueInvite).toHaveBeenCalledWith({
+    email: 'cj@x.com',
+    tier: 'gold',
+    password: 'secret',
+  })
+  expect(await screen.findByText('Subscribed Monthly')).toBeInTheDocument()
+  expect(screen.getByText('gold')).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'https://x/j/abc' })).toBeInTheDocument()
+  expect(screen.queryByRole('dialog')).toBeNull()
+})
+
+test('cancelling the confirm modal sends nothing', async () => {
+  vi.mocked(fetchMembers).mockResolvedValue([member])
+  renderManage()
+
+  await userEvent.click(await screen.findByRole('button', { name: 'Invite' }))
+  await userEvent.click(screen.getByRole('menuitem', { name: /Bronze Tier/ }))
+  await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+  expect(reissueInvite).not.toHaveBeenCalled()
+  expect(screen.queryByRole('dialog')).toBeNull()
 })
