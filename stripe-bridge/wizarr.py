@@ -92,8 +92,8 @@ class WizarrClient:
             return []
         return [u["id"] for u in self._users({"username": used_by})]
 
-    def set_expiry(self, user_id: int, expires_iso: str) -> None:
-        """Set a record's expiry to an absolute ISO datetime (not additive)."""
+    def set_expiry(self, user_id: int, expires_iso: str | None) -> None:
+        """Set a record's expiry to an absolute ISO datetime, or None to clear it."""
         r = requests.put(
             f"{self.base_url}/api/users/{user_id}/update-expiry",
             headers=self._headers(),

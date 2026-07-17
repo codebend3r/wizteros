@@ -1,6 +1,8 @@
 import os
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException
+from pydantic import BaseModel
 
 import store
 import tiers
@@ -10,6 +12,9 @@ ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 WIZARR_BASE_URL = os.environ.get("WIZARR_BASE_URL", "").rstrip("/")
 WIZARR_API_KEY = os.environ.get("WIZARR_API_KEY", "")
 MAP_DB_PATH = os.environ.get("MAP_DB_PATH", "/data/bridge.db")
+INVITE_DAYS = int(os.environ.get("INVITE_EXPIRES_DAYS", "7"))
+ACCESS_DURATION = os.environ.get("ACCESS_DURATION", "35")
+PUBLIC_INVITE_BASE = os.environ.get("PUBLIC_INVITE_BASE", "").rstrip("/")
 
 client = WizarrClient(WIZARR_BASE_URL, WIZARR_API_KEY)
 router = APIRouter()
@@ -81,3 +86,54 @@ def get_member(email: str) -> dict:
     if not matches:
         raise HTTPException(status_code=404, detail="no member for that email")
     return matches[0]
+
+
+class ResetExpiryBody(BaseModel):
+    email: str
+    days: int | None
+
+
+class ReissueInviteBody(BaseModel):
+    email: str
+    tier: str
+
+
+@router.post("/admin/reset-expiry", dependencies=[Depends(require_admin)])
+def reset_expiry(body: ResetExpiryBody) -> dict:
+    """Set (or clear, days=None) the expiry on every record for an email. In-place."""
+    ids = client.find_user_ids_by_email(body.email)
+    if not ids:
+        raise HTTPException(status_code=404, detail="no member for that email")
+    expires = None
+    if body.days is not None:
+        expires = (datetime.now(timezone.utc) + timedelta(days=body.days)).isoformat()
+    for uid in ids:
+        client.set_expiry(uid, expires)
+    return {"updated": len(ids), "expires": expires}
+
+
+@router.post("/admin/reissue-invite", dependencies=[Depends(require_admin)])
+def reissue_invite(body: ReissueInviteBody) -> dict:
+    """Disable a member's records, then issue a fresh tier-scoped invite link.
+
+    Wizarr can't re-scope a member in place, so we drop every existing record
+    and re-invite. Scope comes from tiers.resolve_tier_access (fail-closed on
+    9X. privates). Returns the public re-join URL.
+    """
+    tier = tiers.normalize_tier(body.tier)
+    access = tiers.resolve_tier_access(tier=tier, libraries=client.list_libraries())
+    if not access["library_ids"]:
+        raise HTTPException(status_code=502, detail=f"no libraries resolved for tier {tier}")
+    ids = client.find_user_ids_by_email(body.email)
+    for uid in ids:
+        client.disable_user(uid)
+    invite = client.create_invite(
+        access["server_ids"], INVITE_DAYS, ACCESS_DURATION,
+        library_ids=access["library_ids"], allow_downloads=access["allow_downloads"],
+    )
+    return {
+        "url": f"{PUBLIC_INVITE_BASE}/j/{invite['code']}",
+        "code": invite["code"],
+        "tier": tier,
+        "disabled": len(ids),
+    }

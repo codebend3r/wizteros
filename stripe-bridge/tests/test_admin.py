@@ -79,3 +79,52 @@ def test_get_member_found_and_missing(admin_db):
     with pytest.raises(HTTPException) as missing:
         a.get_member("ghost@x.com")
     assert missing.value.status_code == 404
+
+
+FIXTURE_LIBRARIES = [
+    {"id": 17, "name": "01. TV Shows", "server_id": 1, "server_name": "Vermithor", "enabled": True},
+    {"id": 20, "name": "04. 4K Family Movies", "server_id": 1, "server_name": "Vermithor", "enabled": True},
+    {"id": 37, "name": "99. Tutorials", "server_id": 4, "server_name": "Caraxes", "enabled": True},
+]
+
+
+def test_reset_expiry_sets_absolute_date_on_every_record(admin_db):
+    a, _ = admin_db
+    a.client.find_user_ids_by_email.return_value = [9, 12]
+    out = a.reset_expiry(a.ResetExpiryBody(email="a@x.com", days=15))
+    assert out["updated"] == 2
+    assert out["expires"] is not None
+    assert a.client.set_expiry.call_count == 2
+
+
+def test_reset_expiry_clears_with_null_days(admin_db):
+    a, _ = admin_db
+    a.client.find_user_ids_by_email.return_value = [9]
+    out = a.reset_expiry(a.ResetExpiryBody(email="a@x.com", days=None))
+    assert out == {"updated": 1, "expires": None}
+    a.client.set_expiry.assert_called_once_with(9, None)
+
+
+def test_reset_expiry_404_when_no_records(admin_db):
+    a, _ = admin_db
+    a.client.find_user_ids_by_email.return_value = []
+    with pytest.raises(HTTPException) as e:
+        a.reset_expiry(a.ResetExpiryBody(email="ghost@x.com", days=15))
+    assert e.value.status_code == 404
+
+
+def test_reissue_invite_disables_then_creates_scoped_invite(admin_db):
+    a, _ = admin_db
+    a.client.list_libraries.return_value = FIXTURE_LIBRARIES
+    a.client.find_user_ids_by_email.return_value = [9, 12]
+    a.client.create_invite.return_value = {"code": "xyz", "url": "http://wizarr-lan/j/xyz"}
+    out = a.reissue_invite(a.ReissueInviteBody(email="a@x.com", tier="silver"))
+
+    assert a.client.disable_user.call_count == 2  # both existing records dropped
+    # private 99. library excluded, non-4k allowed for silver -> ids 17 + 20
+    a.client.create_invite.assert_called_once_with(
+        [1], 7, "35", library_ids=[17, 20], allow_downloads=False)
+    assert out["disabled"] == 2
+    assert out["code"] == "xyz"
+    assert out["url"] == "http://inv.test/j/xyz"  # public URL, not the LAN one
+    assert out["tier"] == "silver"
