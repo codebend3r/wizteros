@@ -1,6 +1,6 @@
 {
   "name": "wizteros",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Dev/test tooling for the stripe-bridge paid-access stack",
   "type": "module",
