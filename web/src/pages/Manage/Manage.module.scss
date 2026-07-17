@@ -1,0 +1,29 @@
+.page {
+  display: grid;
+  gap: var(--space-3);
+  max-width: var(--max-width);
+  margin-inline: auto;
+  padding: var(--space-4) var(--space-3);
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+}
+
+.loading {
+  color: var(--color-muted);
+}
+
+.error {
+  color: var(--color-kids);
+}
+
+.invite {
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  word-break: break-all;
+}

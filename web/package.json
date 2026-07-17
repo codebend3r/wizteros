@@ -15,11 +15,13 @@
     "@fontsource-variable/instrument-sans": "5.2.8",
     "@fontsource/silkscreen": "5.2.8",
     "react": "18.3.1",
-    "react-dom": "18.3.1"
+    "react-dom": "18.3.1",
+    "react-router-dom": "7.18.1"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "6.9.1",
     "@testing-library/react": "16.3.2",
+    "@testing-library/user-event": "14.6.1",
     "@types/node": "26.1.1",
     "@types/react": "18.3.31",
     "@types/react-dom": "18.3.7",

@@ -7,7 +7,9 @@ from email.message import EmailMessage
 
 import stripe
 from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 
+import admin
 import store
 import tiers
 from email_template import render_invite_email
@@ -38,6 +40,21 @@ client = WizarrClient(WIZARR_BASE_URL, WIZARR_API_KEY)
 store.init_db(MAP_DB_PATH)
 
 app = FastAPI()
+
+ADMIN_ALLOWED_ORIGINS = [
+    o.strip() for o in os.environ.get("ADMIN_ALLOWED_ORIGINS", "").split(",") if o.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ADMIN_ALLOWED_ORIGINS,
+    allow_methods=["GET", "POST"],
+    allow_headers=["X-Admin-Password", "Content-Type"],
+)
+# Bare paths serve Funnel-proxied calls (the /stripe prefix is stripped by
+# Funnel); the /stripe-prefixed copy serves direct/local calls, mirroring the
+# dual /webhook + /stripe/webhook handlers below.
+app.include_router(admin.router)
+app.include_router(admin.router, prefix="/stripe")
 
 
 def send_invite_email(to_addr: str, invite_url: str) -> None:
@@ -138,7 +155,7 @@ def _dispatch(etype: str, obj: dict) -> None:
         log.info("created %s invite (%d libraries, servers %s)",
                  tier, len(access["library_ids"]), access["server_ids"])
         if customer_id:
-            store.upsert_pending(MAP_DB_PATH, customer_id, email, invite["code"])
+            store.upsert_pending(MAP_DB_PATH, customer_id, email, invite["code"], tier=tier)
         invite_url = f"{PUBLIC_INVITE_BASE}/j/{invite['code']}"
         send_invite_email(email, invite_url)
         log.info("sent invite to %s", email)

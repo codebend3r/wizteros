@@ -124,3 +124,13 @@ def test_set_expiry_and_disable_call_correct_paths():
     assert responses.calls[0].request.url == f"{BASE}/api/users/9/update-expiry"
     assert json.loads(responses.calls[0].request.body)["expires"] == "2026-08-17T00:00:00+00:00"
     assert responses.calls[1].request.url == f"{BASE}/api/users/9/disable"
+
+
+@responses.activate
+def test_list_users_returns_all_records():
+    responses.get(f"{BASE}/api/users", json={"users": [
+        {"id": 9, "username": "cj", "email": "a@x.com", "server": "Meleys", "expires": None},
+        {"id": 12, "username": "cj", "email": "a@x.com", "server": "Vhagar", "expires": None},
+    ]})
+    out = client().list_users()
+    assert [u["id"] for u in out] == [9, 12]
