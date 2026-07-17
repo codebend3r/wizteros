@@ -44,6 +44,14 @@ def test_require_admin_rejects_wrong_or_missing_password(admin_db):
     assert a.require_admin("secret") is None  # correct password passes
 
 
+def test_require_admin_fails_closed_when_password_unset(admin_db, monkeypatch):
+    a, _ = admin_db
+    monkeypatch.setattr(a, "ADMIN_PASSWORD", "")
+    with pytest.raises(HTTPException) as e:
+        a.require_admin("secret")  # even the "right" value is rejected when no password is configured
+    assert e.value.status_code == 401
+
+
 def test_list_members_dedupes_and_joins_tier(admin_db):
     a, dbp = admin_db
     store.upsert_pending(dbp, "cus_1", "a@x.com", "abc", tier="gold")
