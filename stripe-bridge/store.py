@@ -4,7 +4,8 @@ _SCHEMA = """
 CREATE TABLE IF NOT EXISTS customer_map (
     stripe_customer_id TEXT PRIMARY KEY,
     email              TEXT,
-    invite_code        TEXT
+    invite_code        TEXT,
+    tier               TEXT
 )
 """
 
@@ -22,24 +23,35 @@ def _conn(path: str) -> sqlite3.Connection:
     return c
 
 
+def _ensure_tier_column(c: sqlite3.Connection) -> None:
+    """Add customer_map.tier to a pre-tier prod DB; no-op once present."""
+    cols = [row["name"] for row in c.execute("PRAGMA table_info(customer_map)")]
+    if "tier" not in cols:
+        c.execute("ALTER TABLE customer_map ADD COLUMN tier TEXT")
+
+
 def init_db(path: str) -> None:
-    """Create both tables if they don't exist yet; safe to run on every startup."""
+    """Create both tables if missing and backfill the tier column; safe every startup."""
     with _conn(path) as c:
         c.execute(_SCHEMA)
         c.execute(_EVENTS_SCHEMA)
+        _ensure_tier_column(c)
 
 
-def upsert_pending(path: str, stripe_customer_id: str, email: str, invite_code: str) -> None:
-    """Insert or update ("upsert") the customer -> email + invite code mapping."""
+def upsert_pending(path: str, stripe_customer_id: str, email: str,
+                   invite_code: str, tier: str | None = None) -> None:
+    """Insert or update ("upsert") the customer -> email + invite code + tier mapping."""
     with _conn(path) as c:
         c.execute(
             """
-            INSERT INTO customer_map (stripe_customer_id, email, invite_code)
-            VALUES (?, ?, ?)
+            INSERT INTO customer_map (stripe_customer_id, email, invite_code, tier)
+            VALUES (?, ?, ?, ?)
             ON CONFLICT(stripe_customer_id)
-            DO UPDATE SET email = excluded.email, invite_code = excluded.invite_code
+            DO UPDATE SET email = excluded.email,
+                          invite_code = excluded.invite_code,
+                          tier = excluded.tier
             """,
-            (stripe_customer_id, email, invite_code),
+            (stripe_customer_id, email, invite_code, tier),
         )
 
 
@@ -72,3 +84,12 @@ def get_mapping(path: str, stripe_customer_id: str) -> dict | None:
             (stripe_customer_id,),
         ).fetchone()
     return dict(row) if row else None
+
+
+def tiers_by_email(path: str) -> dict[str, str]:
+    """Map lowercased email -> tier for every mapping that has a tier recorded."""
+    with _conn(path) as c:
+        rows = c.execute(
+            "SELECT email, tier FROM customer_map WHERE tier IS NOT NULL AND email IS NOT NULL"
+        ).fetchall()
+    return {row["email"].lower(): row["tier"] for row in rows}
