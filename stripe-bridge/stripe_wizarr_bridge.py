@@ -138,7 +138,7 @@ def _dispatch(etype: str, obj: dict) -> None:
         log.info("created %s invite (%d libraries, servers %s)",
                  tier, len(access["library_ids"]), access["server_ids"])
         if customer_id:
-            store.upsert_pending(MAP_DB_PATH, customer_id, email, invite["code"])
+            store.upsert_pending(MAP_DB_PATH, customer_id, email, invite["code"], tier=tier)
         invite_url = f"{PUBLIC_INVITE_BASE}/j/{invite['code']}"
         send_invite_email(email, invite_url)
         log.info("sent invite to %s", email)
