@@ -128,3 +128,14 @@ def test_reissue_invite_disables_then_creates_scoped_invite(admin_db):
     assert out["code"] == "xyz"
     assert out["url"] == "http://inv.test/j/xyz"  # public URL, not the LAN one
     assert out["tier"] == "silver"
+
+
+def test_reissue_invite_fails_closed_without_public_base(admin_db, monkeypatch):
+    a, _ = admin_db
+    a.client.list_libraries.return_value = FIXTURE_LIBRARIES
+    a.client.find_user_ids_by_email.return_value = [9]
+    monkeypatch.setattr(a, "PUBLIC_INVITE_BASE", "")
+    with pytest.raises(HTTPException) as e:
+        a.reissue_invite(a.ReissueInviteBody(email="a@x.com", tier="silver"))
+    assert e.value.status_code == 500
+    a.client.disable_user.assert_not_called()  # fails before any destructive action

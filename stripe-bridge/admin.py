@@ -120,6 +120,8 @@ def reissue_invite(body: ReissueInviteBody) -> dict:
     and re-invite. Scope comes from tiers.resolve_tier_access (fail-closed on
     9X. privates). Returns the public re-join URL.
     """
+    if not PUBLIC_INVITE_BASE:
+        raise HTTPException(status_code=500, detail="PUBLIC_INVITE_BASE not configured")
     tier = tiers.normalize_tier(body.tier)
     access = tiers.resolve_tier_access(tier=tier, libraries=client.list_libraries())
     if not access["library_ids"]:
