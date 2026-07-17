@@ -63,6 +63,10 @@ class WizarrClient:
         r.raise_for_status()
         return r.json().get("users", [])
 
+    def list_users(self) -> list:
+        """Every user record Wizarr knows (one per person per server)."""
+        return self._users({})
+
     def find_user_ids_by_email(self, email: str) -> list[int]:
         """All record ids for an email (one record per server)."""
         return [u["id"] for u in self._users({"email": email})
@@ -88,8 +92,8 @@ class WizarrClient:
             return []
         return [u["id"] for u in self._users({"username": used_by})]
 
-    def set_expiry(self, user_id: int, expires_iso: str) -> None:
-        """Set a record's expiry to an absolute ISO datetime (not additive)."""
+    def set_expiry(self, user_id: int, expires_iso: str | None) -> None:
+        """Set a record's expiry to an absolute ISO datetime, or None to clear it."""
         r = requests.put(
             f"{self.base_url}/api/users/{user_id}/update-expiry",
             headers=self._headers(),

@@ -233,7 +233,11 @@ def test_webhook_route_rejects_invalid_signature(bridge, monkeypatch):
 def test_webhook_served_on_both_funnel_paths(bridge):
     # Tailscale Funnel strips the /stripe prefix; direct/local calls don't.
     # Both paths must route to the same handler.
-    paths = {route.path for route in bridge.app.routes}
+    # (openapi()["paths"] is used instead of walking bridge.app.routes
+    # directly: with admin.router mounted via include_router, installed
+    # fastapi>=0.139 represents each included router as an opaque
+    # _IncludedRouter wrapper with no .path attribute until resolved.)
+    paths = set(bridge.app.openapi()["paths"])
     assert {"/stripe/webhook", "/webhook"} <= paths
 
 
@@ -381,6 +385,21 @@ def test_failed_event_is_not_marked_processed(bridge):
     bridge.client.find_user_ids_by_email.return_value = []
     bridge.handle_event(event)
     bridge.client.create_invite.assert_called_once()
+
+
+def test_checkout_records_tier_for_the_customer(bridge):
+    bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
+    bridge.client.create_invite.return_value = {"code": "abc", "url": "http://x/j/abc"}
+    bridge.client.find_user_ids_by_email.return_value = []
+    bridge.handle_event({
+        "type": "checkout.session.completed",
+        "id": "evt_tier_1",
+        "data": {"object": {"id": "cs_1", "customer": "cus_1",
+                            "customer_details": {"email": "a@x.com"},
+                            "metadata": {"tier": "gold"}}},
+    })
+    import store
+    assert store.tiers_by_email(bridge.MAP_DB_PATH) == {"a@x.com": "gold"}
 
 
 def test_send_invite_email_sends_via_smtp_starttls(monkeypatch):
