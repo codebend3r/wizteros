@@ -93,3 +93,17 @@ def tiers_by_email(path: str) -> dict[str, str]:
             "SELECT email, tier FROM customer_map WHERE tier IS NOT NULL AND email IS NOT NULL"
         ).fetchall()
     return {row["email"].lower(): row["tier"] for row in rows}
+
+
+def all_customer_tiers(path: str) -> dict[str, str | None]:
+    """Every customer's lowercased email -> tier (tier may be None).
+
+    Unlike tiers_by_email, this keeps rows with no tier yet, so the admin table
+    can list every subscriber the bridge knows about — including people who paid
+    but have not redeemed their Wizarr invite — not just those with Plex records.
+    """
+    with _conn(path) as c:
+        rows = c.execute(
+            "SELECT email, tier FROM customer_map WHERE email IS NOT NULL"
+        ).fetchall()
+    return {row["email"].lower(): row["tier"] for row in rows}

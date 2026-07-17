@@ -64,3 +64,12 @@ def test_init_db_adds_tier_column_to_legacy_table(tmp_path):
     store.init_db(db)  # must ALTER, not crash
     store.upsert_pending(db, "cus_1", "a@x.com", "abc", tier="silver")
     assert store.tiers_by_email(db) == {"a@x.com": "silver"}
+
+
+def test_all_customer_tiers_includes_untiered_rows(tmp_path):
+    db = str(tmp_path / "bridge.db")
+    store.init_db(db)
+    store.upsert_pending(db, "cus_1", "A@X.com", "abc", tier="gold")
+    store.upsert_pending(db, "cus_2", "b@x.com", "def")  # subscriber with no tier yet
+    # unlike tiers_by_email, the untiered row is kept (value None)
+    assert store.all_customer_tiers(db) == {"a@x.com": "gold", "b@x.com": None}

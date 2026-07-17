@@ -81,6 +81,31 @@ def test_get_member_found_and_missing(admin_db):
     assert missing.value.status_code == 404
 
 
+def test_list_members_includes_subscribers_not_yet_joined(admin_db):
+    a, dbp = admin_db
+    # a Stripe subscriber the bridge knows who never redeemed a Wizarr invite
+    store.upsert_pending(dbp, "cus_max", "max@x.com", "INV1", tier="kids")
+    by_email = {m["email"].lower(): m for m in a.list_members()}
+    assert "max@x.com" in by_email  # shown despite having no Wizarr record
+    mx = by_email["max@x.com"]
+    assert mx["tier"] == "kids"
+    assert mx["downloads"] is True    # derived from kids
+    assert mx["subscribed"] is False  # no expiry -> Invite button in the UI
+    assert mx["servers"] == []
+
+
+def test_get_member_falls_back_to_subscriber(admin_db):
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_max", "max@x.com", "INV1", tier="kids")
+    m = a.get_member("max@x.com")
+    assert m["email"].lower() == "max@x.com"
+    assert m["tier"] == "kids"
+    assert m["subscribed"] is False
+    with pytest.raises(HTTPException) as missing:
+        a.get_member("nobody@nowhere.com")  # in neither Wizarr nor customer_map
+    assert missing.value.status_code == 404
+
+
 FIXTURE_LIBRARIES = [
     {"id": 17, "name": "01. TV Shows", "server_id": 1, "server_name": "Vermithor", "enabled": True},
     {"id": 20, "name": "04. 4K Family Movies", "server_id": 1, "server_name": "Vermithor", "enabled": True},

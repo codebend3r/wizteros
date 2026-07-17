@@ -47,3 +47,23 @@ body {
   font-size: var(--font-size-md);
   line-height: 1.5;
 }
+
+// Drop user-agent margins so only intentional grid/flex gaps control spacing.
+h1,
+h2,
+h3,
+h4,
+p,
+ul {
+  margin: 0;
+}
+
+// Base anchor color: the browser-default blue is illegible on the navy
+// background. Component modules override this with their own classes.
+a {
+  color: var(--color-accent);
+
+  &:hover {
+    color: var(--color-gold);
+  }
+}
