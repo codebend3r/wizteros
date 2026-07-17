@@ -49,3 +49,44 @@ test('calls onInvite with the member when Invite is clicked', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Invite' }))
   expect(onInvite).toHaveBeenCalledWith(target)
 })
+
+test('shows Inviting… and disables the button for the in-flight row', () => {
+  const target = makeMember({ email: 'free@x.com', subscribed: false })
+  render(<MembersTable members={[target]} onInvite={vi.fn()} invitingEmail="free@x.com" />)
+  expect(screen.getByRole('button', { name: 'Inviting…' })).toBeDisabled()
+})
+
+test('renders downloads as ✓ / ✗ / — including the null case', () => {
+  const dated = { expires: '2026-09-01T00:00:00+00:00' } // non-null so the only — comes from downloads
+  render(
+    <MembersTable
+      members={[
+        makeMember({ email: 'y@x.com', downloads: true, ...dated }),
+        makeMember({ email: 'n@x.com', downloads: false, ...dated }),
+        makeMember({ email: 'u@x.com', downloads: null, ...dated }),
+      ]}
+      onInvite={vi.fn()}
+      invitingEmail={null}
+    />,
+  )
+  expect(screen.getByText('✓')).toBeInTheDocument()
+  expect(screen.getByText('✗')).toBeInTheDocument()
+  expect(screen.getByText('—')).toBeInTheDocument()
+})
+
+test('formats a real expiry date and shows — for null', () => {
+  render(
+    <MembersTable
+      members={[
+        makeMember({ email: 'd@x.com', downloads: true, expires: '2026-09-01T00:00:00+00:00' }),
+        makeMember({ email: 'z@x.com', downloads: true, expires: null }),
+      ]}
+      onInvite={vi.fn()}
+      invitingEmail={null}
+    />,
+  )
+  expect(
+    screen.getByText(new Date('2026-09-01T00:00:00+00:00').toLocaleDateString()),
+  ).toBeInTheDocument()
+  expect(screen.getByText('—')).toBeInTheDocument()
+})

@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import Manage from '@/pages/Manage/Manage'
-import type { Member } from '@/lib/adminApi'
+import { AdminAuthError, type Member } from '@/lib/adminApi'
 
 const member: Member = {
   member: 'cj',
@@ -34,4 +34,10 @@ test('loads and renders members after the gate', async () => {
   render(<Manage />)
   expect(await screen.findByText('cj')).toBeInTheDocument()
   expect(fetchMembers).toHaveBeenCalledWith({ password: 'secret' })
+})
+
+test('returns to the password gate on an auth error during load', async () => {
+  vi.mocked(fetchMembers).mockRejectedValue(new AdminAuthError('nope'))
+  render(<Manage />)
+  expect(await screen.findByLabelText('Password')).toBeInTheDocument()
 })

@@ -1,5 +1,11 @@
 import { afterEach, expect, test, vi } from 'vitest'
-import { AdminAuthError, fetchMember, fetchMembers, reissueInvite } from '@/lib/adminApi'
+import {
+  AdminAuthError,
+  fetchMember,
+  fetchMembers,
+  reissueInvite,
+  resetExpiry,
+} from '@/lib/adminApi'
 
 const member = {
   member: 'cj',
@@ -55,4 +61,29 @@ test('reissueInvite posts email + tier and returns the invite link', async () =>
   expect(result.url).toBe('http://inv/j/xyz')
   const [, init] = fetchMock.mock.calls[0]
   expect(JSON.parse(init.body)).toEqual({ email: 'a@x.com', tier: 'bronze' })
+})
+
+test('fetchMembers rejects a malformed member (missing fields)', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => [{ member: 'cj', email: 'a@x.com' }],
+    }),
+  )
+  await expect(fetchMembers({ password: 'secret' })).rejects.toThrow('Unexpected members response')
+})
+
+test('resetExpiry posts email + days and returns the parsed result', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: async () => ({ updated: 2, expires: null }),
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  const result = await resetExpiry({ email: 'a@x.com', days: null, password: 'secret' })
+  expect(result).toEqual({ updated: 2, expires: null })
+  const [, init] = fetchMock.mock.calls[0]
+  expect(JSON.parse(init.body)).toEqual({ email: 'a@x.com', days: null })
 })

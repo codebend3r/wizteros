@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import ResetUser from '@/pages/ResetUser/ResetUser'
-import type { Member } from '@/lib/adminApi'
+import { AdminAuthError, type Member } from '@/lib/adminApi'
 
 const member: Member = {
   member: 'cj',
@@ -70,4 +70,22 @@ test('applies a tier preset via reissue-invite', async () => {
     tier: 'silver',
     password: 'secret',
   })
+})
+
+test('shows a not-found message when the member does not exist', async () => {
+  vi.mocked(api.fetchMember).mockResolvedValue(null)
+  render(<ResetUser />)
+  await userEvent.type(screen.getByPlaceholderText('member@email.com'), 'ghost@x.com')
+  await userEvent.click(screen.getByRole('button', { name: 'Find' }))
+  expect(await screen.findByText('No member found for that email.')).toBeInTheDocument()
+})
+
+test('returns to the password gate when a tier reset hits an auth error', async () => {
+  vi.mocked(api.fetchMember).mockResolvedValue(member)
+  vi.mocked(api.reissueInvite).mockRejectedValue(new AdminAuthError('nope'))
+  render(<ResetUser />)
+  await userEvent.type(screen.getByPlaceholderText('member@email.com'), 'cj@x.com')
+  await userEvent.click(screen.getByRole('button', { name: 'Find' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'silver' }))
+  expect(await screen.findByLabelText('Password')).toBeInTheDocument()
 })
