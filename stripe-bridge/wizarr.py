@@ -63,6 +63,10 @@ class WizarrClient:
         r.raise_for_status()
         return r.json().get("users", [])
 
+    def list_users(self) -> list:
+        """Every user record Wizarr knows (one per person per server)."""
+        return self._users({})
+
     def find_user_ids_by_email(self, email: str) -> list[int]:
         """All record ids for an email (one record per server)."""
         return [u["id"] for u in self._users({"email": email})
