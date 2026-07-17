@@ -233,7 +233,11 @@ def test_webhook_route_rejects_invalid_signature(bridge, monkeypatch):
 def test_webhook_served_on_both_funnel_paths(bridge):
     # Tailscale Funnel strips the /stripe prefix; direct/local calls don't.
     # Both paths must route to the same handler.
-    paths = {route.path for route in bridge.app.routes}
+    # (openapi()["paths"] is used instead of walking bridge.app.routes
+    # directly: with admin.router mounted via include_router, installed
+    # fastapi>=0.139 represents each included router as an opaque
+    # _IncludedRouter wrapper with no .path attribute until resolved.)
+    paths = set(bridge.app.openapi()["paths"])
     assert {"/stripe/webhook", "/webhook"} <= paths
 
 

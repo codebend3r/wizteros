@@ -139,3 +139,22 @@ def test_reissue_invite_fails_closed_without_public_base(admin_db, monkeypatch):
         a.reissue_invite(a.ReissueInviteBody(email="a@x.com", tier="silver"))
     assert e.value.status_code == 500
     a.client.disable_user.assert_not_called()  # fails before any destructive action
+
+
+def test_bridge_app_mounts_admin_routes_bare_and_prefixed():
+    os.environ.update({
+        "STRIPE_API_KEY": "sk_test_x", "STRIPE_WEBHOOK_SECRET": "whsec_x",
+        "SMTP_HOST": "smtp.test", "SMTP_PORT": "587", "SMTP_USER": "u",
+        "SMTP_PASS": "p", "FROM_ADDR": "server@test",
+        "MAP_DB_PATH": "/tmp/mount-test.db",
+    })
+    import stripe_wizarr_bridge as b
+    importlib.reload(b)
+    # openapi()["paths"] rather than walking b.app.routes directly: installed
+    # fastapi>=0.139 represents each include_router()-mounted router as an
+    # opaque _IncludedRouter wrapper on app.routes with no .path attribute
+    # until resolved; openapi() is the stable, version-safe flattened view.
+    paths = set(b.app.openapi()["paths"])
+    assert "/admin/members" in paths
+    assert "/stripe/admin/members" in paths
+    assert "/admin/reissue-invite" in paths
