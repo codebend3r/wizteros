@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import ResetUser from '@/pages/ResetUser/ResetUser'
@@ -34,7 +35,11 @@ afterEach(() => {
 })
 
 test('disables Find until the input is a valid email', async () => {
-  render(<ResetUser />)
+  render(
+    <MemoryRouter>
+      <ResetUser />
+    </MemoryRouter>,
+  )
   const find = screen.getByRole('button', { name: 'Find' })
   expect(find).toBeDisabled()
   await userEvent.type(screen.getByPlaceholderText('member@email.com'), 'cj@x.com')
@@ -44,7 +49,11 @@ test('disables Find until the input is a valid email', async () => {
 test('looks up a member and applies an expiry preset', async () => {
   vi.mocked(api.fetchMember).mockResolvedValue(member)
   vi.mocked(api.resetExpiry).mockResolvedValue({ updated: 1, expires: null })
-  render(<ResetUser />)
+  render(
+    <MemoryRouter>
+      <ResetUser />
+    </MemoryRouter>,
+  )
 
   await userEvent.type(screen.getByPlaceholderText('member@email.com'), 'cj@x.com')
   await userEvent.click(screen.getByRole('button', { name: 'Find' }))
@@ -62,7 +71,11 @@ test('applies a tier preset via reissue-invite', async () => {
     disabled: 1,
     emailed: true,
   })
-  render(<ResetUser />)
+  render(
+    <MemoryRouter>
+      <ResetUser />
+    </MemoryRouter>,
+  )
 
   await userEvent.type(screen.getByPlaceholderText('member@email.com'), 'cj@x.com')
   await userEvent.click(screen.getByRole('button', { name: 'Find' }))
@@ -76,7 +89,11 @@ test('applies a tier preset via reissue-invite', async () => {
 
 test('shows a not-found message when the member does not exist', async () => {
   vi.mocked(api.fetchMember).mockResolvedValue(null)
-  render(<ResetUser />)
+  render(
+    <MemoryRouter>
+      <ResetUser />
+    </MemoryRouter>,
+  )
   await userEvent.type(screen.getByPlaceholderText('member@email.com'), 'ghost@x.com')
   await userEvent.click(screen.getByRole('button', { name: 'Find' }))
   expect(await screen.findByText('No member found for that email.')).toBeInTheDocument()
@@ -85,7 +102,11 @@ test('shows a not-found message when the member does not exist', async () => {
 test('returns to the password gate when a tier reset hits an auth error', async () => {
   vi.mocked(api.fetchMember).mockResolvedValue(member)
   vi.mocked(api.reissueInvite).mockRejectedValue(new AdminAuthError('nope'))
-  render(<ResetUser />)
+  render(
+    <MemoryRouter>
+      <ResetUser />
+    </MemoryRouter>,
+  )
   await userEvent.type(screen.getByPlaceholderText('member@email.com'), 'cj@x.com')
   await userEvent.click(screen.getByRole('button', { name: 'Find' }))
   await userEvent.click(await screen.findByRole('button', { name: 'silver' }))
