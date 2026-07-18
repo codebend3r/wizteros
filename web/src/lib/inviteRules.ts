@@ -6,7 +6,7 @@ export const TIER_LABELS: Record<PaidTier, string> = {
   bronze: 'Bronze',
   silver: 'Silver',
   gold: 'Gold',
-  kids: 'Kids',
+  kids: 'Youth',
 }
 
 // Mirrors the bridge's tiers.TIER_DOWNLOADS — downloads are a tier perk.

@@ -79,7 +79,7 @@ export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
     },
     {
       id: 'kids',
-      name: 'Kids',
+      name: 'Youth',
       price: '$20',
       cadence: 'CAD / month',
       features: [
