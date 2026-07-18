@@ -94,6 +94,22 @@ def test_upsert_pending_replaces_placeholder_on_real_checkout(tmp_path):
     assert store.all_customer_tiers(db) == {"a@x.com": "silver"}
 
 
+def test_set_tier_updates_existing_row_keeping_invite_code(tmp_path):
+    db = str(tmp_path / "bridge.db")
+    store.init_db(db)
+    store.upsert_pending(db, "cus_1", "A@X.com", "abc", tier="gold")
+    store.set_tier(db, "a@x.com", "bronze")
+    assert store.all_customer_tiers(db) == {"a@x.com": "bronze"}
+    assert store.get_mapping(db, "cus_1")["invite_code"] == "abc"  # untouched
+
+
+def test_set_tier_inserts_placeholder_for_unknown_email(tmp_path):
+    db = str(tmp_path / "bridge.db")
+    store.init_db(db)
+    store.set_tier(db, "New@X.com", "kids")
+    assert store.all_customer_tiers(db) == {"new@x.com": "kids"}
+
+
 def test_member_notes_roundtrip_lowercased_and_overwritten(tmp_path):
     db = str(tmp_path / "bridge.db")
     store.init_db(db)

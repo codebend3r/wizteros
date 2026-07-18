@@ -1,10 +1,10 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import User from '@/pages/User/User'
-import type { Member } from '@/lib/adminApi'
+import type { Member, ResetExpiryResult } from '@/lib/adminApi'
 
 const member: Member = {
   member: 'max',
@@ -27,10 +27,19 @@ vi.mock('@/lib/adminApi', async (importOriginal) => ({
   fetchMemberNotes: vi.fn(),
   saveMemberNotes: vi.fn(),
   reissueInvite: vi.fn(),
+  resetExpiry: vi.fn(),
+  resetTier: vi.fn(),
 }))
 
-const { fetchMember, fetchMemberEvents, fetchMemberNotes, saveMemberNotes, reissueInvite } =
-  await import('@/lib/adminApi')
+const {
+  fetchMember,
+  fetchMemberEvents,
+  fetchMemberNotes,
+  saveMemberNotes,
+  reissueInvite,
+  resetExpiry,
+  resetTier,
+} = await import('@/lib/adminApi')
 
 const renderUser = ({ email }: { email: string | null }) => {
   const queryClient = new QueryClient({
@@ -66,12 +75,12 @@ test('loads the member from the email query param and shows every detail', async
   expect(screen.getByText('max@y.com')).toBeInTheDocument()
   expect(screen.getByText('Subscribed Monthly')).toBeInTheDocument()
   expect(screen.getByText('🟢')).toBeInTheDocument()
-  expect(screen.getByText('Gold')).toBeInTheDocument()
-  // Status now carries the emoji, so the tier icon only appears on the Tier row.
-  expect(screen.getAllByRole('img', { name: 'gold tier' })).toHaveLength(1)
+  // 'Gold' appears on the Tier row and again on its hard-reset button.
+  expect(screen.getAllByText('Gold')).toHaveLength(2)
+  expect(screen.getAllByRole('img', { name: 'gold tier' })).toHaveLength(2)
   expect(screen.getByText('✅')).toBeInTheDocument()
   expect(
-    screen.getByText(new Date('2099-09-01T00:00:00+00:00').toLocaleDateString()),
+    screen.getByText(new Date('2099-09-01T00:00:00+00:00').toLocaleString()),
   ).toBeInTheDocument()
   expect(screen.getByText(/\(\d+ days left\)/)).toBeInTheDocument()
 })
@@ -136,6 +145,87 @@ test('offers a mailto send-email button for the member', async () => {
     'href',
     'mailto:max@y.com',
   )
+})
+
+test('hard resets the tier in place and reflects it in the details', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  vi.mocked(resetTier).mockResolvedValue({ email: 'max@y.com', tier: 'silver' })
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  // one silver icon before (its hard-reset button); details still show gold
+  expect(screen.getAllByRole('img', { name: 'silver tier' })).toHaveLength(1)
+  await user.click(screen.getByRole('button', { name: 'silver tier Silver' }))
+
+  expect(resetTier).toHaveBeenCalledWith({
+    email: 'max@y.com',
+    tier: 'silver',
+    password: 'secret',
+  })
+  // details tier flips to silver without any invite flow
+  await waitFor(() => expect(screen.getAllByRole('img', { name: 'silver tier' })).toHaveLength(2))
+  expect(reissueInvite).not.toHaveBeenCalled()
+})
+
+test('seeds the expiry picker with one minute after midnight', async () => {
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  renderUser({ email: 'max@y.com' })
+  await screen.findByRole('heading', { name: 'max' })
+  expect(screen.getByLabelText('New expiry date and time')).toHaveDisplayValue(/T00:01$/)
+})
+
+test('sets the expiry optimistically with a spinner while in flight', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  let settle: (value: ResetExpiryResult) => void = () => undefined
+  vi.mocked(resetExpiry).mockImplementation(
+    () =>
+      new Promise<ResetExpiryResult>((resolve) => {
+        settle = resolve
+      }),
+  )
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  const picked = '2099-12-25T00:01'
+  fireEvent.change(screen.getByLabelText('New expiry date and time'), {
+    target: { value: picked },
+  })
+  await user.click(screen.getByRole('button', { name: 'Set expiry' }))
+
+  const pickedIso = new Date(picked).toISOString()
+  expect(resetExpiry).toHaveBeenCalledWith({
+    email: 'max@y.com',
+    expiresAt: pickedIso,
+    password: 'secret',
+  })
+  // optimistic: the details row shows the new expiry before the bridge replies
+  expect(screen.getByText(new Date(pickedIso).toLocaleString())).toBeInTheDocument()
+  expect(screen.getByRole('status', { name: 'Updating expiry' })).toBeInTheDocument()
+
+  settle({ updated: 1, expires: pickedIso })
+  await waitFor(() =>
+    expect(screen.queryByRole('status', { name: 'Updating expiry' })).not.toBeInTheDocument(),
+  )
+  expect(screen.getByText(new Date(pickedIso).toLocaleString())).toBeInTheDocument()
+})
+
+test('rolls the expiry back when the bridge rejects it', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  vi.mocked(resetExpiry).mockRejectedValue(new Error('boom'))
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  const original = new Date(member.expires ?? '').toLocaleString()
+  fireEvent.change(screen.getByLabelText('New expiry date and time'), {
+    target: { value: '2099-12-25T00:01' },
+  })
+  await user.click(screen.getByRole('button', { name: 'Set expiry' }))
+
+  expect(await screen.findByText('Could not set expiry.')).toBeInTheDocument()
+  expect(screen.getByText(original)).toBeInTheDocument()
 })
 
 test('loads saved notes and saves an edited draft', async () => {

@@ -38,6 +38,11 @@ export type ResetExpiryResult = {
   expires: string | null
 }
 
+export type ResetTierResult = {
+  email: string
+  tier: string
+}
+
 export class AdminAuthError extends Error {}
 
 const ADMIN_API_BASE: string = import.meta.env.VITE_ADMIN_API_BASE ?? ''
@@ -105,6 +110,9 @@ const isResetExpiryResult = (value: unknown): value is ResetExpiryResult =>
   isRecord(value) &&
   typeof value.updated === 'number' &&
   (typeof value.expires === 'string' || value.expires === null)
+
+const isResetTierResult = (value: unknown): value is ResetTierResult =>
+  isRecord(value) && typeof value.email === 'string' && typeof value.tier === 'string'
 
 type RequestArgs = {
   path: string
@@ -230,21 +238,44 @@ export const saveMemberNotes = async ({
 
 export const resetExpiry = async ({
   email,
-  days,
+  days = null,
+  expiresAt = null,
   password,
 }: {
   email: string
-  days: number | null
+  days?: number | null
+  expiresAt?: string | null
   password: string
 }): Promise<ResetExpiryResult> => {
   const data = await requestJson({
     path: '/admin/reset-expiry',
     password,
     method: 'POST',
-    body: { email, days },
+    body: { email, days, expires_at: expiresAt },
   })
   if (!isResetExpiryResult(data)) {
     throw new Error('Unexpected reset-expiry response')
+  }
+  return data
+}
+
+export const resetTier = async ({
+  email,
+  tier,
+  password,
+}: {
+  email: string
+  tier: PaidTier
+  password: string
+}): Promise<ResetTierResult> => {
+  const data = await requestJson({
+    path: '/admin/reset-tier',
+    password,
+    method: 'POST',
+    body: { email, tier },
+  })
+  if (!isResetTierResult(data)) {
+    throw new Error('Unexpected reset-tier response')
   }
   return data
 }

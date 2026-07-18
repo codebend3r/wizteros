@@ -108,6 +108,26 @@ def upsert_pending_by_email(path: str, email: str, invite_code: str,
             )
 
 
+def set_tier(path: str, email: str, tier: str) -> None:
+    """Hard-set the recorded tier for an email, leaving its invite code alone.
+
+    Updates every row for the email (case-insensitive); inserts an admin-keyed
+    placeholder when the bridge has no row yet so the member shows up on
+    /admin/members with the forced tier.
+    """
+    with _conn(path) as c:
+        cur = c.execute(
+            "UPDATE customer_map SET tier = ? WHERE lower(email) = lower(?)",
+            (tier, email),
+        )
+        if cur.rowcount == 0:
+            c.execute(
+                "INSERT INTO customer_map (stripe_customer_id, email, invite_code, tier) "
+                "VALUES (?, ?, NULL, ?)",
+                (_ADMIN_KEY_PREFIX + email.lower(), email, tier),
+            )
+
+
 def is_event_processed(path: str, event_id: str) -> bool:
     """Read-only check for whether event_id has already been marked processed."""
     with _conn(path) as c:
