@@ -174,7 +174,7 @@ test.each([
   ['bronze', 'Bronze'],
   ['silver', 'Silver'],
   ['gold', 'Gold'],
-  ['kids', 'Kids'],
+  ['kids', 'Youth'],
 ] as const)('hard reset to %s confirms first, then calls the bridge', async (tier, label) => {
   const user = userEvent.setup()
   vi.mocked(fetchMember).mockResolvedValue(member)
@@ -196,7 +196,7 @@ test('cancelling the tier reset confirmation makes no change', async () => {
   renderUser({ email: 'max@y.com' })
 
   await screen.findByRole('heading', { name: 'max' })
-  await user.click(screen.getByRole('button', { name: 'kids tier Kids' }))
+  await user.click(screen.getByRole('button', { name: 'kids tier Youth' }))
   await user.click(screen.getByRole('button', { name: 'Cancel' }))
 
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()

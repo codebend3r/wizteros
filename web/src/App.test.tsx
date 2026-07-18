@@ -13,7 +13,7 @@ test('hero CTA scrolls to the pricing section', () => {
 
 test('renders the four tier cards', () => {
   render(<App />)
-  ;['Bronze', 'Silver', 'Gold', 'Kids'].forEach((name) => {
+  ;['Bronze', 'Silver', 'Gold', 'Youth'].forEach((name) => {
     expect(screen.getByRole('heading', { name })).toBeInTheDocument()
   })
 })

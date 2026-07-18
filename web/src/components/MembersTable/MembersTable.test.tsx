@@ -149,7 +149,7 @@ test('the tier menu lists all four paid tiers', async () => {
     ' Bronze Tier',
     ' Silver Tier',
     ' Gold Tier',
-    ' Kids Tier',
+    ' Youth Tier',
   ])
 })
 
