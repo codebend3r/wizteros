@@ -127,6 +127,12 @@ def get_member(email: str) -> dict:
     raise HTTPException(status_code=404, detail="no member for that email")
 
 
+@router.get("/admin/events", dependencies=[Depends(require_admin)])
+def get_events(email: str) -> list[dict]:
+    """The member's action history (invites, renewals, cancels), newest first."""
+    return store.events_for_email(MAP_DB_PATH, email)
+
+
 @router.get("/admin/notes", dependencies=[Depends(require_admin)])
 def get_notes(email: str) -> dict:
     """The admin's notes for an email; empty when none have been saved yet."""
@@ -166,6 +172,10 @@ def reset_expiry(body: ResetExpiryBody) -> dict:
         expires = (datetime.now(timezone.utc) + timedelta(days=body.days)).isoformat()
     for uid in ids:
         client.set_expiry(uid, expires)
+    store.record_event(
+        MAP_DB_PATH, body.email, "Expiry reset",
+        "cleared" if body.days is None else f"{body.days} days",
+    )
     return {"updated": len(ids), "expires": expires}
 
 
@@ -205,6 +215,10 @@ def reissue_invite(body: ReissueInviteBody) -> dict:
     except Exception:
         log.exception("invite email to %s failed", body.email)
         emailed = False
+    store.record_event(
+        MAP_DB_PATH, body.email, "Invite issued",
+        f"{tier} tier — " + ("link emailed" if emailed else "email failed, link sent manually"),
+    )
     return {
         "url": url,
         "code": invite["code"],

@@ -1,4 +1,8 @@
+import logging
 import sqlite3
+from datetime import datetime, timezone
+
+log = logging.getLogger("bridge.store")
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS customer_map (
@@ -19,6 +23,16 @@ _NOTES_SCHEMA = """
 CREATE TABLE IF NOT EXISTS member_notes (
     email TEXT PRIMARY KEY,
     notes TEXT NOT NULL DEFAULT ''
+)
+"""
+
+_EVENT_LOG_SCHEMA = """
+CREATE TABLE IF NOT EXISTS event_log (
+    id     INTEGER PRIMARY KEY AUTOINCREMENT,
+    at     TEXT NOT NULL,
+    email  TEXT NOT NULL,
+    action TEXT NOT NULL,
+    detail TEXT NOT NULL DEFAULT ''
 )
 """
 
@@ -43,6 +57,7 @@ def init_db(path: str) -> None:
         c.execute(_SCHEMA)
         c.execute(_EVENTS_SCHEMA)
         c.execute(_NOTES_SCHEMA)
+        c.execute(_EVENT_LOG_SCHEMA)
         _ensure_tier_column(c)
 
 
@@ -153,6 +168,33 @@ def set_member_notes(path: str, email: str, notes: str) -> None:
             """,
             (email.lower(), notes),
         )
+
+
+def record_event(path: str, email: str, action: str, detail: str = "") -> None:
+    """Append one action to a member's history (keyed lowercased email).
+
+    Never raises: the history is an audit trail, and a logging failure must
+    not break or retry the action it records (e.g. a Stripe webhook).
+    """
+    try:
+        with _conn(path) as c:
+            c.execute(
+                "INSERT INTO event_log (at, email, action, detail) VALUES (?, ?, ?, ?)",
+                (datetime.now(timezone.utc).isoformat(), email.lower(), action, detail),
+            )
+    except Exception:
+        log.exception("event log write failed for %s / %s", email, action)
+
+
+def events_for_email(path: str, email: str, limit: int = 100) -> list[dict]:
+    """A member's action history, newest first."""
+    with _conn(path) as c:
+        rows = c.execute(
+            "SELECT id, at, email, action, detail FROM event_log "
+            "WHERE email = ? ORDER BY id DESC LIMIT ?",
+            (email.lower(), limit),
+        ).fetchall()
+    return [dict(row) for row in rows]
 
 
 def all_customer_tiers(path: str) -> dict[str, str | None]:

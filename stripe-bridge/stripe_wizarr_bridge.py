@@ -125,6 +125,8 @@ def _dispatch(etype: str, obj: dict) -> None:
         invite_url = f"{PUBLIC_INVITE_BASE}/j/{invite['code']}"
         send_invite_email(email, invite_url)
         log.info("sent invite to %s", email)
+        store.record_event(MAP_DB_PATH, email, "Signed up",
+                           f"{tier} tier — invite emailed")
         # Reset-and-rejoin: Wizarr can't scope an existing member's shares per
         # server (disable severs the whole plex.tv friendship), so drop every
         # existing record; redeeming the invite re-grants exactly the tier's
@@ -148,6 +150,8 @@ def _dispatch(etype: str, obj: dict) -> None:
             client.set_expiry(uid, expires)
         if ids:
             log.info("renewed %d record(s) for %s (expires %s)", len(ids), email, expires)
+            store.record_event(MAP_DB_PATH, email, "Payment received",
+                               f"access extended to {expires[:10]}")
         else:
             log.warning("renewal: no wizarr user for %s / %s", customer_id, email)
 
@@ -162,6 +166,9 @@ def _dispatch(etype: str, obj: dict) -> None:
             log.info("disabled %d record(s) for %s", len(ids), email)
         else:
             log.info("cancel: no wizarr user for %s / %s", customer_id, email)
+        if email:
+            store.record_event(MAP_DB_PATH, email, "Canceled",
+                               f"subscription ended — {len(ids)} server record(s) disabled")
 
 
 # Public URL is /stripe/webhook. Tailscale Funnel mounts the bridge with
