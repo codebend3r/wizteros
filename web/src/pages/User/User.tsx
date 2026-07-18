@@ -75,6 +75,22 @@ const formatLibraryCount = (count: number): string =>
 const MemberDetails = ({ member, expiryUpdating }: { member: Member; expiryUpdating: boolean }) => {
   const status = deriveStatus({ member })
   const expiry = parseExpiry(member.expires)
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    if (!copied) {
+      return
+    }
+    const timer = setTimeout(() => setCopied(false), 2000)
+    return () => clearTimeout(timer)
+  }, [copied])
+
+  const copyEmail = () => {
+    navigator.clipboard
+      .writeText(member.email)
+      .then(() => setCopied(true))
+      .catch(() => undefined)
+  }
   const serverEntries = member.servers.map((server) => ({
     server,
     // ?. survives old-shape members restored from the persisted query cache
@@ -87,7 +103,12 @@ const MemberDetails = ({ member, expiryUpdating }: { member: Member; expiryUpdat
       <dt>Member</dt>
       <dd>{member.member}</dd>
       <dt>Email</dt>
-      <dd className={styles.email}>{member.email}</dd>
+      <dd className={styles.email}>
+        <span>{member.email}</span>
+        <button className={styles.copyEmail} type="button" onClick={copyEmail}>
+          {copied ? 'Copied ✓' : 'Copy'}
+        </button>
+      </dd>
       <dt>Status</dt>
       <dd className={styles.status}>
         <span aria-hidden="true">{STATUS_EMOJI[status]}</span>
@@ -416,9 +437,6 @@ const UserInner = () => {
                   </ul>
                 )}
               </div>
-              <a className={styles.sendEmail} href={`mailto:${member.email}`}>
-                Send email
-              </a>
             </div>
             <section className={styles.controlSection}>
               <h2 className={styles.sectionTitle}>Hard reset tier</h2>

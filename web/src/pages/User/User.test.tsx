@@ -138,13 +138,17 @@ test('re-invites through the tier menu and confirm modal', async () => {
   expect(screen.getByText(/Invite emailed/)).toBeInTheDocument()
 })
 
-test('offers a mailto send-email button for the member', async () => {
+test('copies the member email to the clipboard instead of a send-email link', async () => {
+  const user = userEvent.setup()
   vi.mocked(fetchMember).mockResolvedValue(member)
   renderUser({ email: 'max@y.com' })
-  expect(await screen.findByRole('link', { name: 'Send email' })).toHaveAttribute(
-    'href',
-    'mailto:max@y.com',
-  )
+
+  await screen.findByRole('heading', { name: 'max' })
+  expect(screen.queryByRole('link', { name: 'Send email' })).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Copy' }))
+
+  expect(await screen.findByRole('button', { name: 'Copied ✓' })).toBeInTheDocument()
+  expect(await navigator.clipboard.readText()).toBe('max@y.com')
 })
 
 test('hard resets the tier in place and reflects it in the details', async () => {
