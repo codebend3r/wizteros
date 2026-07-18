@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import User from '@/pages/User/User'
@@ -12,15 +13,23 @@ const member: Member = {
   downloads: true,
   expires: '2099-09-01T00:00:00+00:00',
   servers: ['Meleys', 'Vermithor'],
+  libraries: {
+    Meleys: ['01. Movies', '03. 4K TV Shows'],
+    Vermithor: ['01. TV Shows'],
+  },
   subscribed: true,
 }
 
 vi.mock('@/lib/adminApi', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/adminApi')>()),
   fetchMember: vi.fn(),
+  fetchMemberNotes: vi.fn(),
+  saveMemberNotes: vi.fn(),
+  reissueInvite: vi.fn(),
 }))
 
-const { fetchMember } = await import('@/lib/adminApi')
+const { fetchMember, fetchMemberNotes, saveMemberNotes, reissueInvite } =
+  await import('@/lib/adminApi')
 
 const renderUser = ({ email }: { email: string | null }) => {
   const queryClient = new QueryClient({
@@ -38,6 +47,7 @@ const renderUser = ({ email }: { email: string | null }) => {
 
 beforeEach(() => {
   sessionStorage.setItem('westeroz-admin-password', 'secret')
+  vi.mocked(fetchMemberNotes).mockResolvedValue({ email: 'max@y.com', notes: '' })
 })
 
 afterEach(() => {
@@ -53,13 +63,97 @@ test('loads the member from the email query param and shows every detail', async
   expect(fetchMember).toHaveBeenCalledWith({ email: 'max@y.com', password: 'secret' })
   expect(screen.getByText('max@y.com')).toBeInTheDocument()
   expect(screen.getByText('Subscribed Monthly')).toBeInTheDocument()
+  expect(screen.getByText('🟢')).toBeInTheDocument()
   expect(screen.getByText('Gold')).toBeInTheDocument()
-  expect(screen.getAllByRole('img', { name: 'gold tier' })).toHaveLength(2)
-  expect(screen.getByText('Included')).toBeInTheDocument()
+  // Status now carries the emoji, so the tier icon only appears on the Tier row.
+  expect(screen.getAllByRole('img', { name: 'gold tier' })).toHaveLength(1)
+  expect(screen.getByText('✅')).toBeInTheDocument()
   expect(
     screen.getByText(new Date('2099-09-01T00:00:00+00:00').toLocaleDateString()),
   ).toBeInTheDocument()
-  expect(screen.getByText('Meleys, Vermithor')).toBeInTheDocument()
+  expect(screen.getByText(/\(\d+ days left\)/)).toBeInTheDocument()
+})
+
+test('shows each server with the libraries its tier grants underneath', async () => {
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  renderUser({ email: 'max@y.com' })
+
+  expect(await screen.findByText('Meleys')).toBeInTheDocument()
+  expect(screen.getByText('01. Movies, 03. 4K TV Shows')).toBeInTheDocument()
+  expect(screen.getByText('Vermithor')).toBeInTheDocument()
+  expect(screen.getByText('01. TV Shows')).toBeInTheDocument()
+})
+
+test('shows ❌ downloads and no days-left bracket for a lapsed member', async () => {
+  vi.mocked(fetchMember).mockResolvedValue({
+    ...member,
+    downloads: false,
+    expires: null,
+    subscribed: false,
+  })
+  renderUser({ email: 'max@y.com' })
+
+  expect(await screen.findByText('❌')).toBeInTheDocument()
+  expect(screen.queryByText(/days left/)).not.toBeInTheDocument()
+})
+
+test('re-invites through the tier menu and confirm modal', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  vi.mocked(reissueInvite).mockResolvedValue({
+    url: 'http://inv/j/xyz',
+    code: 'xyz',
+    tier: 'gold',
+    disabled: 2,
+    emailed: true,
+  })
+  renderUser({ email: 'max@y.com' })
+
+  await user.click(await screen.findByRole('button', { name: 'Re-invite' }))
+  await user.click(screen.getByRole('menuitem', { name: /Gold Tier/ }))
+  expect(screen.getByRole('dialog', { name: 'Confirm invite' })).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Send invite' }))
+
+  expect(reissueInvite).toHaveBeenCalledWith({
+    email: 'max@y.com',
+    tier: 'gold',
+    password: 'secret',
+  })
+  expect(await screen.findByText('http://inv/j/xyz')).toBeInTheDocument()
+  expect(screen.getByText(/Invite emailed/)).toBeInTheDocument()
+})
+
+test('offers a mailto send-email button for the member', async () => {
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  renderUser({ email: 'max@y.com' })
+  expect(await screen.findByRole('link', { name: 'Send email' })).toHaveAttribute(
+    'href',
+    'mailto:max@y.com',
+  )
+})
+
+test('loads saved notes and saves an edited draft', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  vi.mocked(fetchMemberNotes).mockResolvedValue({ email: 'max@y.com', notes: 'met at work' })
+  vi.mocked(saveMemberNotes).mockResolvedValue({ email: 'max@y.com', notes: 'met at work, kind' })
+  renderUser({ email: 'max@y.com' })
+
+  const textarea = await screen.findByRole('textbox', { name: 'Member notes' })
+  expect(textarea).toHaveValue('met at work')
+  const save = screen.getByRole('button', { name: 'Save notes' })
+  expect(save).toBeDisabled()
+
+  await user.type(textarea, ', kind')
+  expect(save).toBeEnabled()
+  await user.click(save)
+
+  expect(saveMemberNotes).toHaveBeenCalledWith({
+    email: 'max@y.com',
+    notes: 'met at work, kind',
+    password: 'secret',
+  })
+  expect(await screen.findByText('Saved ✓')).toBeInTheDocument()
 })
 
 test('shows a not-found notice when no member matches the email', async () => {
