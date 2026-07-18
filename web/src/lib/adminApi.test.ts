@@ -104,5 +104,5 @@ test('resetExpiry posts email + days and returns the parsed result', async () =>
   const result = await resetExpiry({ email: 'a@x.com', days: null, password: 'secret' })
   expect(result).toEqual({ updated: 2, expires: null })
   const [, init] = fetchMock.mock.calls[0]
-  expect(JSON.parse(init.body)).toEqual({ email: 'a@x.com', days: null })
+  expect(JSON.parse(init.body)).toEqual({ email: 'a@x.com', days: null, expires_at: null })
 })

@@ -153,7 +153,13 @@ def save_notes(body: NotesBody) -> dict:
 
 class ResetExpiryBody(BaseModel):
     email: str
-    days: int | None
+    days: int | None = None
+    expires_at: str | None = None
+
+
+class ResetTierBody(BaseModel):
+    email: str
+    tier: str
 
 
 class ReissueInviteBody(BaseModel):
@@ -163,20 +169,46 @@ class ReissueInviteBody(BaseModel):
 
 @router.post("/admin/reset-expiry", dependencies=[Depends(require_admin)])
 def reset_expiry(body: ResetExpiryBody) -> dict:
-    """Set (or clear, days=None) the expiry on every record for an email. In-place."""
+    """Set (or clear) the expiry on every record for an email. In-place.
+
+    expires_at (an absolute ISO datetime) wins over days; with neither set the
+    expiry is cleared.
+    """
     ids = client.find_user_ids_by_email(body.email)
     if not ids:
         raise HTTPException(status_code=404, detail="no member for that email")
-    expires = None
-    if body.days is not None:
+    if body.expires_at is not None:
+        try:
+            parsed = datetime.fromisoformat(body.expires_at.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="expires_at is not an ISO datetime")
+        expires = parsed.isoformat()
+        detail = f"to {expires}"
+    elif body.days is not None:
         expires = (datetime.now(timezone.utc) + timedelta(days=body.days)).isoformat()
+        detail = f"{body.days} days"
+    else:
+        expires = None
+        detail = "cleared"
     for uid in ids:
         client.set_expiry(uid, expires)
-    store.record_event(
-        MAP_DB_PATH, body.email, "Expiry reset",
-        "cleared" if body.days is None else f"{body.days} days",
-    )
+    store.record_event(MAP_DB_PATH, body.email, "Expiry reset", detail)
     return {"updated": len(ids), "expires": expires}
+
+
+@router.post("/admin/reset-tier", dependencies=[Depends(require_admin)])
+def reset_tier(body: ResetTierBody) -> dict:
+    """Hard-set the member's recorded tier in place — no re-invite, no disable.
+
+    Only rewrites the bridge's record (which drives the displayed tier,
+    downloads, and library derivation); the member's actual Plex shares are
+    untouched. Use reissue-invite when access itself must change.
+    """
+    if body.tier not in tiers.TIER_DOWNLOADS:
+        raise HTTPException(status_code=400, detail=f"unknown tier {body.tier!r}")
+    store.set_tier(MAP_DB_PATH, body.email, body.tier)
+    store.record_event(MAP_DB_PATH, body.email, "Tier reset", f"hard reset to {body.tier}")
+    return {"email": body.email, "tier": body.tier}
 
 
 @router.post("/admin/reissue-invite", dependencies=[Depends(require_admin)])

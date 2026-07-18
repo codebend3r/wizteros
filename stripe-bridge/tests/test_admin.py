@@ -167,6 +167,47 @@ def test_reset_expiry_clears_with_null_days(admin_db):
     a.client.set_expiry.assert_called_once_with(9, None)
 
 
+def test_reset_expiry_accepts_absolute_datetime(admin_db):
+    a, _ = admin_db
+    a.client.find_user_ids_by_email.return_value = [9]
+    out = a.reset_expiry(a.ResetExpiryBody(email="a@x.com", expires_at="2026-08-01T00:01:00Z"))
+    assert out == {"updated": 1, "expires": "2026-08-01T00:01:00+00:00"}
+    a.client.set_expiry.assert_called_once_with(9, "2026-08-01T00:01:00+00:00")
+    events = a.get_events("a@x.com")
+    assert events[0]["detail"] == "to 2026-08-01T00:01:00+00:00"
+
+
+def test_reset_expiry_rejects_malformed_expires_at(admin_db):
+    a, _ = admin_db
+    a.client.find_user_ids_by_email.return_value = [9]
+    with pytest.raises(HTTPException) as e:
+        a.reset_expiry(a.ResetExpiryBody(email="a@x.com", expires_at="next tuesday"))
+    assert e.value.status_code == 400
+    a.client.set_expiry.assert_not_called()
+
+
+def test_reset_tier_hard_sets_record_and_logs(admin_db):
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_1", "a@x.com", "abc", tier="gold")
+    out = a.reset_tier(a.ResetTierBody(email="A@X.com", tier="bronze"))
+    assert out == {"email": "A@X.com", "tier": "bronze"}
+    assert store.all_customer_tiers(dbp) == {"a@x.com": "bronze"}
+    events = a.get_events("a@x.com")
+    assert events[0]["action"] == "Tier reset"
+    assert events[0]["detail"] == "hard reset to bronze"
+    # record-only: no invite, no disable, no Wizarr call at all
+    a.client.create_invite.assert_not_called()
+    a.client.disable_user.assert_not_called()
+
+
+def test_reset_tier_rejects_unknown_tier(admin_db):
+    a, dbp = admin_db
+    with pytest.raises(HTTPException) as e:
+        a.reset_tier(a.ResetTierBody(email="a@x.com", tier="platinum"))
+    assert e.value.status_code == 400
+    assert store.all_customer_tiers(dbp) == {}
+
+
 def test_reset_expiry_404_when_no_records(admin_db):
     a, _ = admin_db
     a.client.find_user_ids_by_email.return_value = []

@@ -12,6 +12,8 @@ import {
   fetchMemberEvents,
   fetchMemberNotes,
   reissueInvite,
+  resetExpiry,
+  resetTier,
   saveMemberNotes,
   type InviteResult,
   type Member,
@@ -41,6 +43,13 @@ const parseExpiry = (expires: string | null): Date | null => {
   return Number.isNaN(date.getTime()) ? null : date
 }
 
+// The picker's seed: the given date (current expiry, else tomorrow) at one
+// minute after midnight, in the local datetime-local format.
+const toExpiryDraft = (date: Date): string => {
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T00:01`
+}
+
 const formatDaysLeft = (expiry: Date): string => {
   const days = Math.ceil((expiry.getTime() - Date.now()) / DAY_MS)
   if (days < 0) {
@@ -62,7 +71,7 @@ const formatDownloads = (downloads: boolean | null): string => {
 const formatLibraryCount = (count: number): string =>
   `${count} ${count === 1 ? 'library' : 'libraries'}`
 
-const MemberDetails = ({ member }: { member: Member }) => {
+const MemberDetails = ({ member, expiryUpdating }: { member: Member; expiryUpdating: boolean }) => {
   const status = deriveStatus({ member })
   const expiry = parseExpiry(member.expires)
   const serverEntries = member.servers.map((server) => ({
@@ -91,14 +100,17 @@ const MemberDetails = ({ member }: { member: Member }) => {
       <dt>Downloads</dt>
       <dd>{formatDownloads(member.downloads)}</dd>
       <dt>Expiry</dt>
-      <dd>
+      <dd className={styles.expiryValue}>
         {expiry ? (
           <>
-            {expiry.toLocaleDateString()}{' '}
+            <span>{expiry.toLocaleString()}</span>
             <span className={styles.daysLeft}>({formatDaysLeft(expiry)})</span>
           </>
         ) : (
           '—'
+        )}
+        {expiryUpdating && (
+          <span className={styles.spinner} role="status" aria-label="Updating expiry" />
         )}
       </dd>
       <dt className={styles.serversLabel}>Servers</dt>
@@ -149,6 +161,7 @@ const UserInner = () => {
   const [inviteResult, setInviteResult] = useState<InviteResult | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [notesDraft, setNotesDraft] = useState<string | null>(null)
+  const [expiryDraft, setExpiryDraft] = useState<string | null>(null)
 
   const {
     data: member,
@@ -241,6 +254,60 @@ const UserInner = () => {
     },
   })
 
+  const applyToMemberCaches = (transform: (row: Member) => Member) => {
+    queryClient.setQueryData<Member | null>(['member', email], (old) =>
+      old ? transform(old) : old,
+    )
+    queryClient.setQueryData<Member[]>(MEMBERS_QUERY_KEY, (old) =>
+      old?.map((row) => (row.email.toLowerCase() === email.toLowerCase() ? transform(row) : row)),
+    )
+  }
+
+  const tierResetMutation = useMutation({
+    mutationFn: (tier: PaidTier) => resetTier({ email, tier, password }),
+    onSuccess: (_result, tier) => {
+      applyToMemberCaches((row) => ({ ...row, tier, downloads: TIER_DOWNLOADS[tier] }))
+      void queryClient.invalidateQueries({ queryKey: ['member-events', email] })
+    },
+    onError: (cause) => {
+      if (cause instanceof AdminAuthError) {
+        deauthenticate()
+        return
+      }
+      setActionError('Could not reset tier.')
+    },
+  })
+
+  const expiryMutation = useMutation({
+    mutationFn: (expiresAt: string) => resetExpiry({ email, expiresAt, password }),
+    onMutate: (expiresAt) => {
+      const previousMember = queryClient.getQueryData<Member | null>(['member', email])
+      const previousMembers = queryClient.getQueryData<Member[]>(MEMBERS_QUERY_KEY)
+      applyToMemberCaches((row) => ({ ...row, expires: expiresAt, subscribed: true }))
+      return { previousMember, previousMembers }
+    },
+    onSuccess: (result) => {
+      // Settle on the bridge's canonical value in case it normalized ours.
+      applyToMemberCaches((row) => ({ ...row, expires: result.expires }))
+      void queryClient.invalidateQueries({ queryKey: ['member-events', email] })
+      setExpiryDraft(null)
+    },
+    onError: (cause, _expiresAt, context) => {
+      queryClient.setQueryData(['member', email], context?.previousMember)
+      queryClient.setQueryData(MEMBERS_QUERY_KEY, context?.previousMembers)
+      if (cause instanceof AdminAuthError) {
+        deauthenticate()
+        return
+      }
+      setActionError('Could not set expiry.')
+    },
+  })
+
+  const expiryValue =
+    expiryDraft ??
+    toExpiryDraft(parseExpiry(member?.expires ?? null) ?? new Date(Date.now() + DAY_MS))
+  const expiryValid = !Number.isNaN(new Date(expiryValue).getTime())
+
   const savedNotes = memberNotes?.notes ?? ''
   const notes = notesDraft ?? savedNotes
   const notesDirty = notes !== savedNotes
@@ -304,7 +371,7 @@ const UserInner = () => {
         {member === null && <p className={styles.notice}>No member found for {email}.</p>}
         {!!member && (
           <>
-            <MemberDetails member={member} />
+            <MemberDetails member={member} expiryUpdating={expiryMutation.isPending} />
             <div className={styles.actions}>
               <div className={styles.menuWrap}>
                 <button
@@ -350,6 +417,54 @@ const UserInner = () => {
                 Send email
               </a>
             </div>
+            <section className={styles.controlSection}>
+              <h2 className={styles.sectionTitle}>Hard reset tier</h2>
+              <p className={styles.controlHint}>
+                Rewrites the recorded tier instantly — no new invite is sent.
+              </p>
+              <div className={styles.controlRow}>
+                {PAID_TIERS.map((tier) => (
+                  <button
+                    key={tier}
+                    className={styles.controlButton}
+                    type="button"
+                    onClick={() => {
+                      setActionError(null)
+                      tierResetMutation.mutate(tier)
+                    }}
+                    disabled={tierResetMutation.isPending}
+                  >
+                    <TierIcon tier={tier} /> {TIER_LABELS[tier]}
+                  </button>
+                ))}
+              </div>
+            </section>
+            <section className={styles.controlSection}>
+              <h2 className={styles.sectionTitle}>Set expiry</h2>
+              <form
+                className={styles.controlRow}
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  setActionError(null)
+                  expiryMutation.mutate(new Date(expiryValue).toISOString())
+                }}
+              >
+                <input
+                  className={styles.expiryInput}
+                  type="datetime-local"
+                  value={expiryValue}
+                  aria-label="New expiry date and time"
+                  onChange={(event) => setExpiryDraft(event.target.value)}
+                />
+                <button
+                  className={styles.controlButton}
+                  type="submit"
+                  disabled={!expiryValid || expiryMutation.isPending}
+                >
+                  Set expiry
+                </button>
+              </form>
+            </section>
             <section className={styles.notesSection}>
               <h2 className={styles.sectionTitle}>Notes</h2>
               <textarea

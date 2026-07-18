@@ -83,6 +83,35 @@
   color: var(--color-muted);
 }
 
+.expiryValue {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.spinner {
+  display: inline-block;
+  width: var(--font-size-xs);
+  height: var(--font-size-xs);
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2s;
+  }
+}
+
 .serversWrap {
   display: grid;
   gap: var(--space-2);
@@ -204,6 +233,59 @@
   &:hover {
     background: var(--color-bg);
   }
+}
+
+.controlSection {
+  display: grid;
+  gap: var(--space-1);
+  justify-items: start;
+}
+
+.controlHint {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+.controlRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.controlButton {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--color-surface);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+}
+
+.expiryInput {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
+  // The native picker glyphs render for a light page; invert them onto navy.
+  color-scheme: dark;
 }
 
 .inviteNotice {
