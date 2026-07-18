@@ -3,7 +3,7 @@ import { resolveConfig } from '@/site.config'
 test('defines the four tiers in order with CAD prices', () => {
   const config = resolveConfig({ env: {} })
   expect(config.tiers.map((tier) => tier.id)).toEqual(['bronze', 'silver', 'gold', 'kids'])
-  expect(config.tiers.map((tier) => tier.price)).toEqual(['$8', '$14', '$20', '$20'])
+  expect(config.tiers.map((tier) => tier.price)).toEqual(['$8', '$14', '$20', '$10'])
   config.tiers.forEach((tier) => expect(tier.cadence).toBe('CAD / month'))
 })
 
