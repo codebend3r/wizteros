@@ -18,8 +18,13 @@ export const TIER_DOWNLOADS: Record<PaidTier, boolean> = {
 }
 
 // Mirrors the bridge's INVITE_EXPIRES_DAYS / ACCESS_DURATION env config.
-export const INVITE_LINK_DAYS = 7
+export const INVITE_LINK_DAYS = 14
 export const ACCESS_DAYS = 35
+
+// How long an unredeemed invite reads as "Invited" before it ages into
+// "Declined Invite". Matches INVITE_LINK_DAYS so the status flips right as
+// the link itself stops working.
+export const INVITE_GRACE_DAYS = 14
 
 export const isPaidTier = (value: unknown): value is PaidTier =>
   typeof value === 'string' && PAID_TIERS.some((tier) => tier === value)

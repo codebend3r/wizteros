@@ -32,6 +32,7 @@ const STATUS_EMOJI: Record<MemberStatus, string> = {
   'Subscribed Monthly': '🟢',
   'Expired Member': '🔴',
   Invited: '🟡',
+  'Declined Invite': '🚫',
   Uninvited: '⚪',
   VIP: '💎',
 }
@@ -251,17 +252,14 @@ const UserInner = () => {
     mutationFn: (tier: PaidTier) => reissueInvite({ email, tier, password }),
     onSuccess: (result, tier) => {
       setInviteResult(result)
-      // Access only starts when the member redeems the link — the reissue
-      // drops their server records, so mirror the bridge's post-reissue
-      // truth (no expiry, no servers) and let the status derive to Invited.
+      // Existing access survives the invite window now, so keep expiry and
+      // servers as they are — only the tier, downloads, and the freshly
+      // restarted grace clock change until the member redeems.
       const apply = (row: Member): Member => ({
         ...row,
         tier,
         downloads: TIER_DOWNLOADS[tier],
-        expires: null,
-        subscribed: false,
-        servers: [],
-        libraries: {},
+        invited_at: new Date().toISOString(),
       })
       queryClient.setQueryData<Member | null>(['member', email], (old) => (old ? apply(old) : old))
       queryClient.setQueryData<Member[]>(MEMBERS_QUERY_KEY, (old) =>

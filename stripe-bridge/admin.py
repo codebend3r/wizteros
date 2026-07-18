@@ -16,7 +16,7 @@ ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 WIZARR_BASE_URL = os.environ.get("WIZARR_BASE_URL", "").rstrip("/")
 WIZARR_API_KEY = os.environ.get("WIZARR_API_KEY", "")
 MAP_DB_PATH = os.environ.get("MAP_DB_PATH", "/data/bridge.db")
-INVITE_DAYS = int(os.environ.get("INVITE_EXPIRES_DAYS", "7"))
+INVITE_DAYS = int(os.environ.get("INVITE_EXPIRES_DAYS", "14"))
 ACCESS_DURATION = os.environ.get("ACCESS_DURATION", "35")
 PUBLIC_INVITE_BASE = os.environ.get("PUBLIC_INVITE_BASE", "").rstrip("/")
 
@@ -33,13 +33,13 @@ def require_admin(x_admin_password: str = Header(default="")) -> None:
         raise HTTPException(status_code=401, detail="unauthorized")
 
 
-def _dedupe_members(users: list, tier_map: dict, libraries: list) -> list[dict]:
+def _dedupe_members(users: list, customers: dict, libraries: list) -> list[dict]:
     """Collapse per-server Wizarr records into one entry per person.
 
     Key is the lowercased email (falling back to username). Aggregates the
     servers a person appears on and keeps the latest expiry across records.
-    Tier is joined from the bridge's store; downloads and per-server library
-    access derive from tier.
+    Tier and invited_at are joined from the bridge's store; downloads and
+    per-server library access derive from tier.
     """
     people: dict[str, dict] = {}
     for u in users:
@@ -60,7 +60,8 @@ def _dedupe_members(users: list, tier_map: dict, libraries: list) -> list[dict]:
 
     members = []
     for person in people.values():
-        tier = (tier_map.get(person["email"].lower()) if person["email"] else None) or "unknown"
+        row = (customers.get(person["email"].lower()) if person["email"] else None) or {}
+        tier = row.get("tier") or "unknown"
         downloads = tiers.TIER_DOWNLOADS.get(tier) if tier != "unknown" else None
         servers = sorted(person["servers"])
         tier_libraries = tiers.tier_server_libraries(tier=tier, libraries=libraries)
@@ -73,14 +74,15 @@ def _dedupe_members(users: list, tier_map: dict, libraries: list) -> list[dict]:
             "servers": servers,
             "libraries": {server: tier_libraries.get(server, []) for server in servers},
             "subscribed": person["expires"] is not None,
+            "invited_at": row.get("invited_at"),
         })
     members.sort(key=lambda m: m["member"].lower())
     return members
 
 
-def _member_from_customer(email: str, tier: str | None) -> dict:
+def _member_from_customer(email: str, row: dict) -> dict:
     """A table row for a subscriber the bridge knows who hasn't joined Wizarr yet."""
-    resolved = tier or "unknown"
+    resolved = row.get("tier") or "unknown"
     return {
         "member": email.split("@")[0],
         "email": email,
@@ -90,6 +92,7 @@ def _member_from_customer(email: str, tier: str | None) -> dict:
         "servers": [],
         "libraries": {},
         "subscribed": False,
+        "invited_at": row.get("invited_at"),
     }
 
 
@@ -100,12 +103,12 @@ def list_members() -> list[dict]:
     Wizarr's user list only has people who redeemed an invite, so subscribers
     still holding a pending invite are unioned in from the bridge's customer_map.
     """
-    customers = store.all_customer_tiers(MAP_DB_PATH)
+    customers = store.all_customer_rows(MAP_DB_PATH)
     members = _dedupe_members(client.list_users(), customers, client.list_libraries())
     joined = {m["email"].lower() for m in members if m["email"]}
     pending = [
-        _member_from_customer(email, tier)
-        for email, tier in customers.items()
+        _member_from_customer(email, row)
+        for email, row in customers.items()
         if email not in joined
     ]
     return sorted(members + pending, key=lambda m: m["member"].lower())
@@ -114,7 +117,7 @@ def list_members() -> list[dict]:
 @router.get("/admin/member", dependencies=[Depends(require_admin)])
 def get_member(email: str) -> dict:
     """A member by email: a Wizarr user, or a Stripe subscriber not yet joined; else 404."""
-    customers = store.all_customer_tiers(MAP_DB_PATH)
+    customers = store.all_customer_rows(MAP_DB_PATH)
     matches = _dedupe_members(
         [u for u in client.list_users() if (u.get("email") or "").lower() == email.lower()],
         customers,
@@ -213,11 +216,16 @@ def reset_tier(body: ResetTierBody) -> dict:
 
 @router.post("/admin/reissue-invite", dependencies=[Depends(require_admin)])
 def reissue_invite(body: ReissueInviteBody) -> dict:
-    """Issue a fresh tier-scoped invite link, then disable the member's old records.
+    """Issue a fresh tier-scoped invite link; existing access survives the wait.
 
-    Wizarr can't re-scope a member in place, so we re-invite and drop every
-    existing record. Scope comes from tiers.resolve_tier_access (fail-closed on
-    9X. privates). Returns the public re-join URL.
+    Redeeming the invite re-scopes the member's share in place on every server
+    the invite covers (Wizarr updates the sections for an already-shared
+    account), so nothing is disabled up front and the member keeps their
+    current access until they join through the link. The one exception is a
+    tier that leaves a current server uncovered — Wizarr has no per-server
+    unshare, so that reissue falls back to disable-first (with the access gap).
+    Scope comes from tiers.resolve_tier_access (fail-closed on 9X. privates).
+    Returns the public re-join URL.
     """
     if not PUBLIC_INVITE_BASE:
         raise HTTPException(status_code=500, detail="PUBLIC_INVITE_BASE not configured")
@@ -225,18 +233,19 @@ def reissue_invite(body: ReissueInviteBody) -> dict:
     access = tiers.resolve_tier_access(tier=tier, libraries=client.list_libraries())
     if not access["library_ids"]:
         raise HTTPException(status_code=502, detail=f"no libraries resolved for tier {tier}")
-    ids = client.find_user_ids_by_email(body.email)
-    # Create the invite BEFORE disabling: disable_user is account-wide (it severs
-    # the plex.tv friendship on every server), so if create_invite raised after
-    # the disable loop the member would be locked out with no link to re-redeem.
+    records = client.find_users_by_email(body.email)
+    # Create the invite BEFORE any disable: disable_user is account-wide (it
+    # severs the plex.tv friendship on every server), so if create_invite raised
+    # after a disable loop the member would be locked out with no link to redeem.
     invite = client.create_invite(
         access["server_ids"], INVITE_DAYS, ACCESS_DURATION,
         library_ids=access["library_ids"], allow_downloads=access["allow_downloads"],
     )
-    # The disable below drops the member's Wizarr records, so without a store
-    # row they'd vanish from /admin/members until they redeem the new invite.
+    # The store row keeps the member on /admin/members while the invite is
+    # pending and stamps invited_at for the grace-period status.
     store.upsert_pending_by_email(MAP_DB_PATH, body.email, invite["code"], tier=tier)
-    for uid in ids:
+    stale = tiers.stale_record_ids(records=records, covered_servers=access["server_names"])
+    for uid in stale:
         client.disable_user(uid)
     url = f"{PUBLIC_INVITE_BASE}/j/{invite['code']}"
     # An SMTP failure must not fail the reissue (it already happened); report
@@ -255,6 +264,6 @@ def reissue_invite(body: ReissueInviteBody) -> dict:
         "url": url,
         "code": invite["code"],
         "tier": tier,
-        "disabled": len(ids),
+        "disabled": len(stale),
         "emailed": emailed,
     }
