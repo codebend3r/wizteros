@@ -14,6 +14,7 @@ const member = {
   downloads: true,
   expires: '2026-09-01T00:00:00+00:00',
   servers: ['Meleys'],
+  libraries: { Meleys: ['01. Movies'] },
   subscribed: true,
 }
 
@@ -67,6 +68,18 @@ test('reissueInvite posts email + tier and returns the invite link', async () =>
   expect(result.url).toBe('http://inv/j/xyz')
   const [, init] = fetchMock.mock.calls[0]
   expect(JSON.parse(init.body)).toEqual({ email: 'a@x.com', tier: 'bronze' })
+})
+
+test('fetchMembers defaults a missing libraries map (pre-deploy bridge)', async () => {
+  const legacyMember = Object.fromEntries(
+    Object.entries(member).filter(([key]) => key !== 'libraries'),
+  )
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [legacyMember] }),
+  )
+  const result = await fetchMembers({ password: 'secret' })
+  expect(result).toEqual([{ ...legacyMember, libraries: {} }])
 })
 
 test('fetchMembers rejects a malformed member (missing fields)', async () => {

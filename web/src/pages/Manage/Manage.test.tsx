@@ -13,6 +13,7 @@ const member: Member = {
   downloads: true,
   expires: null,
   servers: ['Meleys'],
+  libraries: {},
   subscribed: false,
 }
 

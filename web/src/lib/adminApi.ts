@@ -8,7 +8,13 @@ export type Member = {
   downloads: boolean | null
   expires: string | null
   servers: string[]
+  libraries: Record<string, string[]>
   subscribed: boolean
+}
+
+export type MemberNotes = {
+  email: string
+  notes: string
 }
 
 export type InviteResult = {
@@ -34,12 +40,19 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === 'string')
 
+const isLibrariesMap = (value: unknown): value is Record<string, string[]> =>
+  isRecord(value) && Object.values(value).every(isStringArray)
+
 const TIERS: ReadonlyArray<Tier> = ['bronze', 'silver', 'gold', 'kids', 'unknown']
 
 const isTier = (value: unknown): value is Tier =>
   typeof value === 'string' && TIERS.some((tier) => tier === value)
 
-const isMember = (value: unknown): value is Member =>
+// A bridge deployed before the libraries map may still omit it; tolerate
+// that and normalize with toMember so the page degrades to bare server names.
+type MemberPayload = Omit<Member, 'libraries'> & { libraries?: Record<string, string[]> }
+
+const isMemberPayload = (value: unknown): value is MemberPayload =>
   isRecord(value) &&
   typeof value.member === 'string' &&
   typeof value.email === 'string' &&
@@ -47,10 +60,19 @@ const isMember = (value: unknown): value is Member =>
   (typeof value.downloads === 'boolean' || value.downloads === null) &&
   (typeof value.expires === 'string' || value.expires === null) &&
   isStringArray(value.servers) &&
+  (value.libraries === undefined || isLibrariesMap(value.libraries)) &&
   typeof value.subscribed === 'boolean'
 
-const isMemberArray = (value: unknown): value is Member[] =>
-  Array.isArray(value) && value.every(isMember)
+const toMember = (payload: MemberPayload): Member => ({
+  ...payload,
+  libraries: payload.libraries ?? {},
+})
+
+const isMemberNotes = (value: unknown): value is MemberNotes =>
+  isRecord(value) && typeof value.email === 'string' && typeof value.notes === 'string'
+
+const isMemberPayloadArray = (value: unknown): value is MemberPayload[] =>
+  Array.isArray(value) && value.every(isMemberPayload)
 
 const isInviteResult = (value: unknown): value is InviteResult =>
   isRecord(value) &&
@@ -97,10 +119,10 @@ const requestJson = async ({
 
 export const fetchMembers = async ({ password }: { password: string }): Promise<Member[]> => {
   const data = await requestJson({ path: '/admin/members', password })
-  if (!isMemberArray(data)) {
+  if (!isMemberPayloadArray(data)) {
     throw new Error('Unexpected members response')
   }
-  return data
+  return data.map(toMember)
 }
 
 export const fetchMember = async ({
@@ -126,8 +148,46 @@ export const fetchMember = async ({
     throw new Error(`Request failed (${response.status})`)
   }
   const data: unknown = await response.json()
-  if (!isMember(data)) {
+  if (!isMemberPayload(data)) {
     throw new Error('Unexpected member response')
+  }
+  return toMember(data)
+}
+
+export const fetchMemberNotes = async ({
+  email,
+  password,
+}: {
+  email: string
+  password: string
+}): Promise<MemberNotes> => {
+  const data = await requestJson({
+    path: `/admin/notes?email=${encodeURIComponent(email)}`,
+    password,
+  })
+  if (!isMemberNotes(data)) {
+    throw new Error('Unexpected notes response')
+  }
+  return data
+}
+
+export const saveMemberNotes = async ({
+  email,
+  notes,
+  password,
+}: {
+  email: string
+  notes: string
+  password: string
+}): Promise<MemberNotes> => {
+  const data = await requestJson({
+    path: '/admin/notes',
+    password,
+    method: 'POST',
+    body: { email, notes },
+  })
+  if (!isMemberNotes(data)) {
+    throw new Error('Unexpected notes response')
   }
   return data
 }
