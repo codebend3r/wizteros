@@ -38,10 +38,19 @@ def init_db(path: str) -> None:
         _ensure_tier_column(c)
 
 
+_ADMIN_KEY_PREFIX = "admin:"
+
+
 def upsert_pending(path: str, stripe_customer_id: str, email: str,
                    invite_code: str, tier: str | None = None) -> None:
     """Insert or update ("upsert") the customer -> email + invite code + tier mapping."""
     with _conn(path) as c:
+        # One row per person: a real Stripe mapping supersedes any placeholder
+        # left by an admin-issued invite for the same email.
+        c.execute(
+            "DELETE FROM customer_map WHERE stripe_customer_id = ?",
+            (_ADMIN_KEY_PREFIX + email.lower(),),
+        )
         c.execute(
             """
             INSERT INTO customer_map (stripe_customer_id, email, invite_code, tier)
@@ -53,6 +62,27 @@ def upsert_pending(path: str, stripe_customer_id: str, email: str,
             """,
             (stripe_customer_id, email, invite_code, tier),
         )
+
+
+def upsert_pending_by_email(path: str, email: str, invite_code: str,
+                            tier: str | None = None) -> None:
+    """Record an admin-issued invite for an email with no known Stripe customer id.
+
+    Re-points every existing row for the email (case-insensitive) at the new
+    invite code + tier; otherwise inserts a placeholder keyed "admin:<email>"
+    so the member stays listed on /manage until they redeem.
+    """
+    with _conn(path) as c:
+        cur = c.execute(
+            "UPDATE customer_map SET invite_code = ?, tier = ? WHERE lower(email) = lower(?)",
+            (invite_code, tier, email),
+        )
+        if cur.rowcount == 0:
+            c.execute(
+                "INSERT INTO customer_map (stripe_customer_id, email, invite_code, tier) "
+                "VALUES (?, ?, ?, ?)",
+                (_ADMIN_KEY_PREFIX + email.lower(), email, invite_code, tier),
+            )
 
 
 def is_event_processed(path: str, event_id: str) -> bool:
