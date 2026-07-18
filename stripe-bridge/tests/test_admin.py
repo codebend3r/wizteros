@@ -200,6 +200,16 @@ def test_reset_tier_hard_sets_record_and_logs(admin_db):
     a.client.disable_user.assert_not_called()
 
 
+@pytest.mark.parametrize("tier", ["bronze", "silver", "gold", "kids"])
+def test_reset_tier_hard_sets_each_tier(admin_db, tier):
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_1", "a@x.com", "abc", tier="gold")
+    out = a.reset_tier(a.ResetTierBody(email="a@x.com", tier=tier))
+    assert out == {"email": "a@x.com", "tier": tier}
+    assert store.all_customer_tiers(dbp) == {"a@x.com": tier}
+    assert a.get_events("a@x.com")[0]["detail"] == f"hard reset to {tier}"
+
+
 def test_reset_tier_rejects_unknown_tier(admin_db):
     a, dbp = admin_db
     with pytest.raises(HTTPException) as e:
