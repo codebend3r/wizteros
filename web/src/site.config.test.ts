@@ -7,20 +7,31 @@ test('defines the four tiers in order with CAD prices', () => {
   config.tiers.forEach((tier) => expect(tier.cadence).toBe('CAD / month'))
 })
 
-test('every tier lists the same five features in order', () => {
+test('adult tiers list the same five features; youth swaps in kid-scoped library rows', () => {
   const config = resolveConfig({ env: {} })
-  config.tiers.forEach((tier) =>
-    expect(tier.features.map((feature) => feature.label)).toEqual([
-      'Access to all 1080p libraries',
-      'Access to all 4K libraries',
-      'Access to Lossless Music Library',
-      'Offline downloads for travel',
-      'Request any show or movie',
-    ]),
+  const labelsById = Object.fromEntries(
+    config.tiers.map((tier) => [tier.id, tier.features.map((feature) => feature.label)]),
   )
+  const adultLabels = [
+    'Access to all 1080p libraries',
+    'Access to all 4K libraries',
+    'Access to Lossless Music Library',
+    'Offline downloads for travel',
+    'Request any show or movie',
+  ]
+  expect(labelsById.bronze).toEqual(adultLabels)
+  expect(labelsById.silver).toEqual(adultLabels)
+  expect(labelsById.gold).toEqual(adultLabels)
+  expect(labelsById.kids).toEqual([
+    'Access to all kid 1080p tv shows and movies',
+    'Access to all 4K kid movies',
+    'Access to Lossless Music Library',
+    'Offline downloads for travel',
+    'Request any show or movie',
+  ])
 })
 
-test('only gold includes the lossless music library', () => {
+test('every tier except youth includes the lossless music library', () => {
   const config = resolveConfig({ env: {} })
   const byId = Object.fromEntries(
     config.tiers.map((tier) => [
@@ -30,7 +41,7 @@ test('only gold includes the lossless music library', () => {
       ),
     ]),
   )
-  expect(byId).toEqual({ bronze: false, silver: false, gold: true, kids: false })
+  expect(byId).toEqual({ bronze: true, silver: true, gold: true, kids: false })
 })
 
 test('tier payment links fall back to empty strings with empty env', () => {
