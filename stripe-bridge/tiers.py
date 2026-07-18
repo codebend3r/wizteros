@@ -55,8 +55,8 @@ def _tier_wants(tier: str, library: dict) -> bool:
     return True  # silver / gold: everything
 
 
-def resolve_tier_access(*, tier: str, libraries: list) -> dict:
-    """Compute an invite's scope for a tier from the live Wizarr library list.
+def _shareable_libraries(*, tier: str, libraries: list) -> list:
+    """Enabled libraries a tier's rules include.
 
     The private filter runs last, independent of the tier rules, so no rule
     change can ever share a private library.
@@ -65,7 +65,29 @@ def resolve_tier_access(*, tier: str, libraries: list) -> dict:
         lib for lib in libraries
         if lib.get("enabled") and _tier_wants(tier, lib)
     ]
-    shareable = [lib for lib in selected if not _is_private(lib)]
+    return [lib for lib in selected if not _is_private(lib)]
+
+
+def tier_server_libraries(*, tier: str, libraries: list) -> dict:
+    """Shareable library names a tier grants, grouped by server name.
+
+    Derived from the tier rules (what invites are scoped to), not read back
+    from Plex — Wizarr's users API doesn't expose per-user libraries. Unknown
+    tiers grant nothing.
+    """
+    if tier not in TIER_DOWNLOADS:
+        return {}
+    grouped: dict[str, list[str]] = {}
+    for lib in _shareable_libraries(tier=tier, libraries=libraries):
+        server = lib.get("server_name")
+        if server:
+            grouped.setdefault(server, []).append(lib.get("name") or "")
+    return {server: sorted(names) for server, names in grouped.items()}
+
+
+def resolve_tier_access(*, tier: str, libraries: list) -> dict:
+    """Compute an invite's scope for a tier from the live Wizarr library list."""
+    shareable = _shareable_libraries(tier=tier, libraries=libraries)
     if tier == "kids" and len(shareable) < len(KIDS_LIBRARIES):
         found = {(lib.get("server_name"), lib.get("name")) for lib in shareable}
         log.error("kids allowlist mismatch; missing %s", sorted(KIDS_LIBRARIES - found))

@@ -23,6 +23,13 @@ USERS = [
     {"id": 3, "username": "nora", "email": "nora@x.com", "server": "Syrax", "expires": None},
 ]
 
+LIBRARIES = [
+    {"id": 1, "name": "01. Movies", "server_id": 2, "server_name": "Meleys", "enabled": True},
+    {"id": 2, "name": "03. 4K Movies", "server_id": 3, "server_name": "Vhagar", "enabled": True},
+    {"id": 3, "name": "90. Private", "server_id": 2, "server_name": "Meleys", "enabled": True},
+    {"id": 4, "name": "02. Anime", "server_id": 5, "server_name": "Syrax", "enabled": False},
+]
+
 
 @pytest.fixture
 def admin_db(tmp_path, monkeypatch):
@@ -33,6 +40,7 @@ def admin_db(tmp_path, monkeypatch):
     monkeypatch.setattr(admin, "send_invite_email", MagicMock(), raising=False)
     admin.client = MagicMock()
     admin.client.list_users.return_value = USERS
+    admin.client.list_libraries.return_value = LIBRARIES
     return admin, dbp
 
 
@@ -67,17 +75,22 @@ def test_list_members_dedupes_and_joins_tier(admin_db):
     assert cj["subscribed"] is True
     assert cj["tier"] == "gold"
     assert cj["downloads"] is True                         # derived from tier
+    # per-server access derives from tier rules; 90. private never shown
+    assert cj["libraries"] == {"Meleys": ["01. Movies"], "Vhagar": ["03. 4K Movies"]}
 
     nora = by_email["nora@x.com"]
     assert nora["subscribed"] is False
     assert nora["tier"] == "unknown"
     assert nora["downloads"] is None
+    assert nora["libraries"] == {"Syrax": []}  # unknown tier grants nothing
 
 
 def test_get_member_found_and_missing(admin_db):
     a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_1", "a@x.com", "abc", tier="gold")
     found = a.get_member("a@x.com")
     assert found["member"] == "cj"
+    assert found["libraries"] == {"Meleys": ["01. Movies"], "Vhagar": ["03. 4K Movies"]}
     with pytest.raises(HTTPException) as missing:
         a.get_member("ghost@x.com")
     assert missing.value.status_code == 404
@@ -94,6 +107,7 @@ def test_list_members_includes_subscribers_not_yet_joined(admin_db):
     assert mx["downloads"] is True    # derived from kids
     assert mx["subscribed"] is False  # no expiry -> Invite button in the UI
     assert mx["servers"] == []
+    assert mx["libraries"] == {}      # not on any server yet
 
 
 def test_get_member_falls_back_to_subscriber(admin_db):
@@ -113,6 +127,14 @@ FIXTURE_LIBRARIES = [
     {"id": 20, "name": "04. 4K Family Movies", "server_id": 1, "server_name": "Vermithor", "enabled": True},
     {"id": 37, "name": "99. Tutorials", "server_id": 4, "server_name": "Caraxes", "enabled": True},
 ]
+
+
+def test_notes_roundtrip_and_case_insensitive_email(admin_db):
+    a, _ = admin_db
+    assert a.get_notes("a@x.com") == {"email": "a@x.com", "notes": ""}
+    out = a.save_notes(a.NotesBody(email="A@X.com", notes="prefers 4K remuxes"))
+    assert out == {"email": "A@X.com", "notes": "prefers 4K remuxes"}
+    assert a.get_notes("a@x.com")["notes"] == "prefers 4K remuxes"
 
 
 def test_reset_expiry_sets_absolute_date_on_every_record(admin_db):
@@ -227,3 +249,4 @@ def test_bridge_app_mounts_admin_routes_bare_and_prefixed():
     assert "/admin/members" in paths
     assert "/stripe/admin/members" in paths
     assert "/admin/reissue-invite" in paths
+    assert "/admin/notes" in paths

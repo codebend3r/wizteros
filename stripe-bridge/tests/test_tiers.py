@@ -99,6 +99,44 @@ def test_disabled_libraries_are_never_shared():
         assert 50 not in out["library_ids"], tier
 
 
+def test_tier_server_libraries_groups_gold_by_server():
+    out = tiers.tier_server_libraries(tier="gold", libraries=LIBRARIES)
+    assert out == {
+        "Syrax": ["01. Classic TV Shows"],
+        "Vermithor": ["01. TV Shows", "04. 4K Family Movies", "06. Kid Shows"],
+        "Meleys": ["01. Movies", "02. Family Movies", "03. 4K TV Shows"],
+        "Vhagar": ["01. 4K Movies"],
+        "Caraxes": ["01. UFC", "09. Basketball"],
+    }
+
+
+def test_tier_server_libraries_drops_servers_a_tier_gets_nothing_on():
+    # Vhagar only has a 4K library, so bronze has no Vhagar entry at all.
+    out = tiers.tier_server_libraries(tier="bronze", libraries=LIBRARIES)
+    assert "Vhagar" not in out
+    assert out["Meleys"] == ["01. Movies", "02. Family Movies"]
+
+
+def test_tier_server_libraries_kids_matches_allowlist():
+    out = tiers.tier_server_libraries(tier="kids", libraries=LIBRARIES)
+    assert out == {
+        "Vermithor": ["04. 4K Family Movies", "06. Kid Shows"],
+        "Meleys": ["02. Family Movies"],
+    }
+
+
+def test_tier_server_libraries_never_includes_private_or_disabled():
+    for tier in tiers.TIER_DOWNLOADS:
+        out = tiers.tier_server_libraries(tier=tier, libraries=LIBRARIES)
+        names = [name for grouped in out.values() for name in grouped]
+        assert "07. Disabled Stuff" not in names, tier
+        assert not any(name.startswith("9") for name in names), tier
+
+
+def test_tier_server_libraries_unknown_tier_grants_nothing():
+    assert tiers.tier_server_libraries(tier="unknown", libraries=LIBRARIES) == {}
+
+
 def test_normalize_tier_accepts_known_tiers_case_insensitively():
     assert tiers.normalize_tier("gold") == "gold"
     assert tiers.normalize_tier(" Silver ") == "silver"

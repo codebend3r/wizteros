@@ -94,6 +94,26 @@ def test_upsert_pending_replaces_placeholder_on_real_checkout(tmp_path):
     assert store.all_customer_tiers(db) == {"a@x.com": "silver"}
 
 
+def test_member_notes_roundtrip_lowercased_and_overwritten(tmp_path):
+    db = str(tmp_path / "bridge.db")
+    store.init_db(db)
+    assert store.get_member_notes(db, "a@x.com") == ""
+    store.set_member_notes(db, "A@X.com", "prefers 4K")
+    assert store.get_member_notes(db, "a@x.com") == "prefers 4K"  # keyed lowercased
+    store.set_member_notes(db, "a@x.com", "moved abroad")
+    assert store.get_member_notes(db, "A@X.com") == "moved abroad"
+
+
+def test_init_db_adds_notes_table_to_legacy_db(tmp_path):
+    import sqlite3
+    db = str(tmp_path / "legacy.db")
+    with sqlite3.connect(db) as c:
+        c.execute("CREATE TABLE customer_map (stripe_customer_id TEXT PRIMARY KEY, email TEXT, invite_code TEXT)")
+    store.init_db(db)  # must create member_notes on an existing DB
+    store.set_member_notes(db, "a@x.com", "legacy ok")
+    assert store.get_member_notes(db, "a@x.com") == "legacy ok"
+
+
 def test_all_customer_tiers_includes_untiered_rows(tmp_path):
     db = str(tmp_path / "bridge.db")
     store.init_db(db)

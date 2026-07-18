@@ -15,6 +15,13 @@ CREATE TABLE IF NOT EXISTS processed_events (
 )
 """
 
+_NOTES_SCHEMA = """
+CREATE TABLE IF NOT EXISTS member_notes (
+    email TEXT PRIMARY KEY,
+    notes TEXT NOT NULL DEFAULT ''
+)
+"""
+
 
 def _conn(path: str) -> sqlite3.Connection:
     """Open the SQLite file; the Row factory makes rows dict-like (row["email"])."""
@@ -31,10 +38,11 @@ def _ensure_tier_column(c: sqlite3.Connection) -> None:
 
 
 def init_db(path: str) -> None:
-    """Create both tables if missing and backfill the tier column; safe every startup."""
+    """Create the tables if missing and backfill the tier column; safe every startup."""
     with _conn(path) as c:
         c.execute(_SCHEMA)
         c.execute(_EVENTS_SCHEMA)
+        c.execute(_NOTES_SCHEMA)
         _ensure_tier_column(c)
 
 
@@ -123,6 +131,28 @@ def tiers_by_email(path: str) -> dict[str, str]:
             "SELECT email, tier FROM customer_map WHERE tier IS NOT NULL AND email IS NOT NULL"
         ).fetchall()
     return {row["email"].lower(): row["tier"] for row in rows}
+
+
+def get_member_notes(path: str, email: str) -> str:
+    """The admin's free-form notes for an email; empty string when none saved."""
+    with _conn(path) as c:
+        row = c.execute(
+            "SELECT notes FROM member_notes WHERE email = ?",
+            (email.lower(),),
+        ).fetchone()
+    return row["notes"] if row else ""
+
+
+def set_member_notes(path: str, email: str, notes: str) -> None:
+    """Save (overwrite) the admin's notes for an email; keyed lowercased."""
+    with _conn(path) as c:
+        c.execute(
+            """
+            INSERT INTO member_notes (email, notes) VALUES (?, ?)
+            ON CONFLICT(email) DO UPDATE SET notes = excluded.notes
+            """,
+            (email.lower(), notes),
+        )
 
 
 def all_customer_tiers(path: str) -> dict[str, str | None]:
