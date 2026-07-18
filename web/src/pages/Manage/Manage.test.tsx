@@ -103,7 +103,10 @@ test('inviting to a tier confirms via modal then updates the row optimistically'
     tier: 'gold',
     password: 'secret',
   })
-  expect(await screen.findByText('Subscribed Monthly')).toBeInTheDocument()
+  // Access only starts at redemption, so the row reads Invited, not
+  // Subscribed Monthly, until the member redeems the new link.
+  expect(await screen.findByText('Invited')).toBeInTheDocument()
+  expect(screen.queryByText('Subscribed Monthly')).not.toBeInTheDocument()
   expect(screen.getByText('gold')).toBeInTheDocument()
   expect(screen.getByText(/Invite emailed/)).toBeInTheDocument()
   expect(screen.getByRole('link', { name: 'https://x/j/abc' })).toBeInTheDocument()

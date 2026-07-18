@@ -21,7 +21,7 @@ import {
   type MemberEvent,
   type PaidTier,
 } from '@/lib/adminApi'
-import { ACCESS_DAYS, isPaidTier, PAID_TIERS, TIER_DOWNLOADS, TIER_LABELS } from '@/lib/inviteRules'
+import { isPaidTier, PAID_TIERS, TIER_DOWNLOADS, TIER_LABELS } from '@/lib/inviteRules'
 import { deriveStatus, type MemberStatus } from '@/lib/memberStatus'
 import { MEMBERS_QUERY_KEY } from '@/pages/Manage/Manage'
 import styles from '@/pages/User/User.module.scss'
@@ -251,15 +251,17 @@ const UserInner = () => {
     mutationFn: (tier: PaidTier) => reissueInvite({ email, tier, password }),
     onSuccess: (result, tier) => {
       setInviteResult(result)
-      // The bridge doesn't return the member's new expiry (it only exists
-      // once they redeem), so project the tier's access window optimistically.
-      const expires = new Date(Date.now() + ACCESS_DAYS * DAY_MS).toISOString()
+      // Access only starts when the member redeems the link — the reissue
+      // drops their server records, so mirror the bridge's post-reissue
+      // truth (no expiry, no servers) and let the status derive to Invited.
       const apply = (row: Member): Member => ({
         ...row,
         tier,
         downloads: TIER_DOWNLOADS[tier],
-        expires,
-        subscribed: true,
+        expires: null,
+        subscribed: false,
+        servers: [],
+        libraries: {},
       })
       queryClient.setQueryData<Member | null>(['member', email], (old) => (old ? apply(old) : old))
       queryClient.setQueryData<Member[]>(MEMBERS_QUERY_KEY, (old) =>
