@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import AdminGate, { useAdminAuth } from '@/components/AdminGate/AdminGate'
+import AdminLayout from '@/components/AdminLayout/AdminLayout'
 import {
   AdminAuthError,
   fetchMember,
@@ -103,64 +104,66 @@ const ResetUserInner = () => {
   }
 
   return (
-    <main className={styles.page}>
-      <h1 className={styles.title}>Reset a member</h1>
-      <form className={styles.lookup} onSubmit={lookup}>
-        <input
-          className={styles.input}
-          type="email"
-          placeholder="member@email.com"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-        />
-        <button className={styles.button} type="submit" disabled={!valid || busy}>
-          Find
-        </button>
-      </form>
-      {!!error && <p className={styles.error}>{error}</p>}
-      {!!status && <p className={styles.status}>{status}</p>}
-      {!!member && (
-        <section className={styles.member}>
-          <p className={styles.summary}>
-            {member.member} — {member.email} ({member.tier})
-          </p>
-          <div className={styles.group}>
-            <p className={styles.groupLabel}>
-              Set tier — disables + re-invites; member must re-open the link
+    <AdminLayout>
+      <main className={styles.page}>
+        <h1 className={styles.title}>Reset a member</h1>
+        <form className={styles.lookup} onSubmit={lookup}>
+          <input
+            className={styles.input}
+            type="email"
+            placeholder="member@email.com"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+          />
+          <button className={styles.button} type="submit" disabled={!valid || busy}>
+            Find
+          </button>
+        </form>
+        {!!error && <p className={styles.error}>{error}</p>}
+        {!!status && <p className={styles.status}>{status}</p>}
+        {!!member && (
+          <section className={styles.member}>
+            <p className={styles.summary}>
+              {member.member} — {member.email} ({member.tier})
             </p>
-            <div className={styles.buttons}>
-              {TIERS.map((tier) => (
-                <button
-                  key={tier}
-                  type="button"
-                  className={styles.preset}
-                  onClick={() => applyTier(tier)}
-                  disabled={busy}
-                >
-                  {tier}
-                </button>
-              ))}
+            <div className={styles.group}>
+              <p className={styles.groupLabel}>
+                Set tier — disables + re-invites; member must re-open the link
+              </p>
+              <div className={styles.buttons}>
+                {TIERS.map((tier) => (
+                  <button
+                    key={tier}
+                    type="button"
+                    className={styles.preset}
+                    onClick={() => applyTier(tier)}
+                    disabled={busy}
+                  >
+                    {tier}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-          <div className={styles.group}>
-            <p className={styles.groupLabel}>Set expiry — instant, in place</p>
-            <div className={styles.buttons}>
-              {EXPIRY_PRESETS.map((preset) => (
-                <button
-                  key={preset.label}
-                  type="button"
-                  className={styles.preset}
-                  onClick={() => applyExpiry(preset.days)}
-                  disabled={busy}
-                >
-                  {preset.label}
-                </button>
-              ))}
+            <div className={styles.group}>
+              <p className={styles.groupLabel}>Set expiry — instant, in place</p>
+              <div className={styles.buttons}>
+                {EXPIRY_PRESETS.map((preset) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    className={styles.preset}
+                    onClick={() => applyExpiry(preset.days)}
+                    disabled={busy}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        </section>
-      )}
-    </main>
+          </section>
+        )}
+      </main>
+    </AdminLayout>
   )
 }
 

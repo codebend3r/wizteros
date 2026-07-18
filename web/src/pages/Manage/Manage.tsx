@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import AdminGate, { useAdminAuth } from '@/components/AdminGate/AdminGate'
+import AdminLayout from '@/components/AdminLayout/AdminLayout'
 import ConfirmInviteModal from '@/components/ConfirmInviteModal/ConfirmInviteModal'
 import MembersTable from '@/components/MembersTable/MembersTable'
 import Preloader from '@/components/Preloader/Preloader'
@@ -97,50 +98,52 @@ const ManageInner = () => {
     loadError && !(loadError instanceof AdminAuthError) ? 'Could not load members.' : actionError
 
   return (
-    <main className={styles.page}>
-      <h1 className={styles.title}>Members</h1>
-      {!!error && <p className={styles.error}>{error}</p>}
-      {!!inviteResult && (
-        <p className={styles.invite}>
-          {inviteResult.emailed
-            ? 'Invite emailed. Link: '
-            : 'Email failed — send this link manually: '}
-          <a href={inviteResult.url}>{inviteResult.url}</a>
-        </p>
-      )}
-      {isPending && !error && <Preloader message="Loading members… (this can take ~15s)" />}
-      {!!members && (
-        <>
-          <label className={styles.searchLabel} htmlFor="member-search">
-            Search by email
-          </label>
-          <input
-            id="member-search"
-            className={styles.search}
-            type="search"
-            placeholder="name@example.com"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
+    <AdminLayout>
+      <main className={styles.page}>
+        <h1 className={styles.title}>Members</h1>
+        {!!error && <p className={styles.error}>{error}</p>}
+        {!!inviteResult && (
+          <p className={styles.invite}>
+            {inviteResult.emailed
+              ? 'Invite emailed. Link: '
+              : 'Email failed — send this link manually: '}
+            <a href={inviteResult.url}>{inviteResult.url}</a>
+          </p>
+        )}
+        {isPending && !error && <Preloader message="Loading members… (this can take ~15s)" />}
+        {!!members && (
+          <>
+            <label className={styles.searchLabel} htmlFor="member-search">
+              Search by email
+            </label>
+            <input
+              id="member-search"
+              className={styles.search}
+              type="search"
+              placeholder="name@example.com"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+            <MembersTable
+              members={filtered ?? []}
+              onSelectTier={selectTier}
+              invitingEmail={
+                inviteMutation.isPending ? (inviteMutation.variables?.member.email ?? null) : null
+              }
+            />
+          </>
+        )}
+        {!!pendingInvite && (
+          <ConfirmInviteModal
+            member={pendingInvite.member}
+            tier={pendingInvite.tier}
+            sending={inviteMutation.isPending}
+            onConfirm={() => inviteMutation.mutate(pendingInvite)}
+            onCancel={() => setPendingInvite(null)}
           />
-          <MembersTable
-            members={filtered ?? []}
-            onSelectTier={selectTier}
-            invitingEmail={
-              inviteMutation.isPending ? (inviteMutation.variables?.member.email ?? null) : null
-            }
-          />
-        </>
-      )}
-      {!!pendingInvite && (
-        <ConfirmInviteModal
-          member={pendingInvite.member}
-          tier={pendingInvite.tier}
-          sending={inviteMutation.isPending}
-          onConfirm={() => inviteMutation.mutate(pendingInvite)}
-          onCancel={() => setPendingInvite(null)}
-        />
-      )}
-    </main>
+        )}
+      </main>
+    </AdminLayout>
   )
 }
 

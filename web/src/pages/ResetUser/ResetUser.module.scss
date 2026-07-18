@@ -1,7 +1,9 @@
 .page {
   display: grid;
+  align-content: start;
   gap: var(--space-3);
   max-width: 40rem;
+  width: 100%;
   margin-inline: auto;
   padding: var(--space-4) var(--space-3);
 }

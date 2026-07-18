@@ -2,9 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import AdminGate, { useAdminAuth } from '@/components/AdminGate/AdminGate'
+import AdminLayout from '@/components/AdminLayout/AdminLayout'
 import ConfirmInviteModal from '@/components/ConfirmInviteModal/ConfirmInviteModal'
-import Footer from '@/components/Footer/Footer'
-import Header from '@/components/Header/Header'
 import Preloader from '@/components/Preloader/Preloader'
 import TierIcon from '@/components/TierIcon/TierIcon'
 import {
@@ -20,7 +19,6 @@ import {
 import { ACCESS_DAYS, isPaidTier, PAID_TIERS, TIER_DOWNLOADS, TIER_LABELS } from '@/lib/inviteRules'
 import { deriveStatus, type MemberStatus } from '@/lib/memberStatus'
 import { MEMBERS_QUERY_KEY } from '@/pages/Manage/Manage'
-import { siteConfig } from '@/site.config'
 import styles from '@/pages/User/User.module.scss'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -229,8 +227,7 @@ const UserInner = () => {
   const error = !!loadError && !(loadError instanceof AdminAuthError)
 
   return (
-    <div className={styles.layout}>
-      <Header brandName={siteConfig.brandName} />
+    <AdminLayout>
       <main className={styles.page}>
         <Link className={styles.back} to="/manage">
           ← All members
@@ -335,8 +332,7 @@ const UserInner = () => {
           />
         )}
       </main>
-      <Footer memberUrl={siteConfig.memberUrl} />
-    </div>
+    </AdminLayout>
   )
 }
 

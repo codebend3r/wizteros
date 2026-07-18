@@ -1,9 +1,11 @@
 .page {
   display: grid;
+  align-content: start;
   gap: var(--space-3);
   // Wider than the landing-page --max-width: the members table gained
   // Servers/Status columns and must fit without hidden horizontal scroll.
   max-width: 96rem;
+  width: 100%;
   margin-inline: auto;
   padding: var(--space-4) var(--space-3);
 }
