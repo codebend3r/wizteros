@@ -84,6 +84,7 @@ test('inviting to a tier confirms via modal then updates the row optimistically'
     code: 'abc',
     tier: 'gold',
     disabled: 1,
+    emailed: true,
   })
   renderManage()
 
@@ -103,8 +104,28 @@ test('inviting to a tier confirms via modal then updates the row optimistically'
   })
   expect(await screen.findByText('Subscribed Monthly')).toBeInTheDocument()
   expect(screen.getByText('gold')).toBeInTheDocument()
+  expect(screen.getByText(/Invite emailed/)).toBeInTheDocument()
   expect(screen.getByRole('link', { name: 'https://x/j/abc' })).toBeInTheDocument()
   expect(screen.queryByRole('dialog')).toBeNull()
+})
+
+test('a failed invite email shows the manual-send fallback', async () => {
+  vi.mocked(fetchMembers).mockResolvedValue([{ ...member, tier: 'unknown', downloads: null }])
+  vi.mocked(reissueInvite).mockResolvedValue({
+    url: 'https://x/j/abc',
+    code: 'abc',
+    tier: 'gold',
+    disabled: 1,
+    emailed: false,
+  })
+  renderManage()
+
+  await userEvent.click(await screen.findByRole('button', { name: 'Invite' }))
+  await userEvent.click(screen.getByRole('menuitem', { name: /Gold Tier/ }))
+  await userEvent.click(screen.getByRole('button', { name: 'Send invite' }))
+
+  expect(await screen.findByText(/send this link manually/)).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'https://x/j/abc' })).toBeInTheDocument()
 })
 
 test('cancelling the confirm modal sends nothing', async () => {

@@ -1,3 +1,4 @@
+import logging
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -6,7 +7,10 @@ from pydantic import BaseModel
 
 import store
 import tiers
+from mailer import send_invite_email
 from wizarr import WizarrClient
+
+log = logging.getLogger("bridge.admin")
 
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 WIZARR_BASE_URL = os.environ.get("WIZARR_BASE_URL", "").rstrip("/")
@@ -168,9 +172,19 @@ def reissue_invite(body: ReissueInviteBody) -> dict:
     store.upsert_pending_by_email(MAP_DB_PATH, body.email, invite["code"], tier=tier)
     for uid in ids:
         client.disable_user(uid)
+    url = f"{PUBLIC_INVITE_BASE}/j/{invite['code']}"
+    # An SMTP failure must not fail the reissue (it already happened); report
+    # it so the admin sends the link manually instead of re-inviting.
+    emailed = True
+    try:
+        send_invite_email(body.email, url)
+    except Exception:
+        log.exception("invite email to %s failed", body.email)
+        emailed = False
     return {
-        "url": f"{PUBLIC_INVITE_BASE}/j/{invite['code']}",
+        "url": url,
         "code": invite["code"],
         "tier": tier,
         "disabled": len(ids),
+        "emailed": emailed,
     }

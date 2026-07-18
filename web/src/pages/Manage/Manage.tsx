@@ -8,6 +8,7 @@ import {
   AdminAuthError,
   fetchMembers,
   reissueInvite,
+  type InviteResult,
   type Member,
   type PaidTier,
 } from '@/lib/adminApi'
@@ -27,7 +28,7 @@ const ManageInner = () => {
   const [search, setSearch] = useState('')
   const [pendingInvite, setPendingInvite] = useState<PendingInvite | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
-  const [inviteLink, setInviteLink] = useState<string | null>(null)
+  const [inviteResult, setInviteResult] = useState<InviteResult | null>(null)
 
   const {
     data: members,
@@ -57,7 +58,7 @@ const ManageInner = () => {
     mutationFn: ({ member, tier }: PendingInvite) =>
       reissueInvite({ email: member.email, tier, password }),
     onSuccess: (result, { member, tier }) => {
-      setInviteLink(result.url)
+      setInviteResult(result)
       // The bridge doesn't return the member's new expiry (it only exists
       // once they redeem), so project the tier's access window optimistically.
       const expires = new Date(Date.now() + ACCESS_DAYS * 24 * 60 * 60 * 1000).toISOString()
@@ -88,7 +89,7 @@ const ManageInner = () => {
 
   const selectTier = (selection: PendingInvite) => {
     setActionError(null)
-    setInviteLink(null)
+    setInviteResult(null)
     setPendingInvite(selection)
   }
 
@@ -99,9 +100,12 @@ const ManageInner = () => {
     <main className={styles.page}>
       <h1 className={styles.title}>Members</h1>
       {!!error && <p className={styles.error}>{error}</p>}
-      {!!inviteLink && (
+      {!!inviteResult && (
         <p className={styles.invite}>
-          Invite link: <a href={inviteLink}>{inviteLink}</a>
+          {inviteResult.emailed
+            ? 'Invite emailed. Link: '
+            : 'Email failed — send this link manually: '}
+          <a href={inviteResult.url}>{inviteResult.url}</a>
         </p>
       )}
       {isPending && !error && <Preloader message="Loading members… (this can take ~15s)" />}

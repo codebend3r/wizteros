@@ -70,7 +70,13 @@ const ResetUserInner = () => {
     setError(null)
     setStatus(null)
     reissueInvite({ email: member.email, tier, password })
-      .then((result) => setStatus(`Reset to ${tier}. Send this re-join link: ${result.url}`))
+      .then((result) =>
+        setStatus(
+          result.emailed
+            ? `Reset to ${tier}. Re-join link emailed: ${result.url}`
+            : `Reset to ${tier}. Email failed — send this re-join link manually: ${result.url}`,
+        ),
+      )
       .catch((cause) => {
         if (!onAuthError(cause)) {
           setError('Could not reset tier.')

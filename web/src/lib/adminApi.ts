@@ -16,6 +16,7 @@ export type InviteResult = {
   code: string
   tier: string
   disabled: number
+  emailed: boolean
 }
 
 export type ResetExpiryResult = {
@@ -56,7 +57,8 @@ const isInviteResult = (value: unknown): value is InviteResult =>
   typeof value.url === 'string' &&
   typeof value.code === 'string' &&
   typeof value.tier === 'string' &&
-  typeof value.disabled === 'number'
+  typeof value.disabled === 'number' &&
+  typeof value.emailed === 'boolean'
 
 const isResetExpiryResult = (value: unknown): value is ResetExpiryResult =>
   isRecord(value) &&

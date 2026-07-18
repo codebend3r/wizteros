@@ -1,9 +1,7 @@
 import json
 import logging
 import os
-import smtplib
 from datetime import datetime, timedelta, timezone
-from email.message import EmailMessage
 
 import stripe
 from fastapi import FastAPI, Header, HTTPException, Request
@@ -12,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import admin
 import store
 import tiers
-from email_template import render_invite_email
+from mailer import send_invite_email
 from wizarr import WizarrClient
 
 STRIPE_API_KEY = os.environ["STRIPE_API_KEY"]
@@ -23,11 +21,6 @@ WIZARR_API_KEY = os.environ["WIZARR_API_KEY"]
 INVITE_DAYS = int(os.environ.get("INVITE_EXPIRES_DAYS", "7"))
 ACCESS_DURATION = os.environ.get("ACCESS_DURATION", "35")
 
-SMTP_HOST = os.environ["SMTP_HOST"]
-SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
-SMTP_USER = os.environ["SMTP_USER"]
-SMTP_PASS = os.environ["SMTP_PASS"]
-FROM_ADDR = os.environ.get("FROM_ADDR", SMTP_USER)
 PUBLIC_INVITE_BASE = os.environ["PUBLIC_INVITE_BASE"].rstrip("/")
 
 MAP_DB_PATH = os.environ.get("MAP_DB_PATH", "/data/bridge.db")
@@ -55,33 +48,6 @@ app.add_middleware(
 # dual /webhook + /stripe/webhook handlers below.
 app.include_router(admin.router)
 app.include_router(admin.router, prefix="/stripe")
-
-
-def send_invite_email(to_addr: str, invite_url: str) -> None:
-    """Compose the invite email (plain text + styled HTML) and send it over SMTP with STARTTLS."""
-    msg = EmailMessage()
-    msg["Subject"] = "Your Westeroz access link"
-    msg["From"] = FROM_ADDR
-    msg["To"] = to_addr
-    msg.set_content(
-        f"""Thanks for contributing to server costs!
-
-Click the link below to set up your account. The invite expires in {INVITE_DAYS} days,
-so please complete signup soon.
-
-  {invite_url}
-
-If you cancel your contribution, access will be removed at the end of the current cycle.
-""".strip()
-    )
-    msg.add_alternative(
-        render_invite_email(invite_url=invite_url, expires_days=INVITE_DAYS),
-        subtype="html",
-    )
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as s:
-        s.starttls()
-        s.login(SMTP_USER, SMTP_PASS)
-        s.send_message(msg)
 
 
 def customer_email(customer_id: str) -> str | None:

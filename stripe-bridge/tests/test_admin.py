@@ -10,6 +10,7 @@ os.environ.update({
     "WIZARR_BASE_URL": "http://wizarr.test", "WIZARR_API_KEY": "k",
     "INVITE_EXPIRES_DAYS": "7", "ACCESS_DURATION": "35",
     "PUBLIC_INVITE_BASE": "http://inv.test",
+    "SMTP_HOST": "smtp.test", "SMTP_USER": "u", "SMTP_PASS": "p",
 })
 
 import admin  # noqa: E402
@@ -29,6 +30,7 @@ def admin_db(tmp_path, monkeypatch):
     dbp = str(tmp_path / "bridge.db")
     store.init_db(dbp)
     monkeypatch.setattr(admin, "MAP_DB_PATH", dbp)
+    monkeypatch.setattr(admin, "send_invite_email", MagicMock(), raising=False)
     admin.client = MagicMock()
     admin.client.list_users.return_value = USERS
     return admin, dbp
@@ -157,6 +159,29 @@ def test_reissue_invite_creates_then_disables_scoped_invite(admin_db):
     assert out["code"] == "xyz"
     assert out["url"] == "http://inv.test/j/xyz"  # public URL, not the LAN one
     assert out["tier"] == "silver"
+
+
+def test_reissue_invite_emails_the_link(admin_db):
+    a, _ = admin_db
+    a.client.list_libraries.return_value = FIXTURE_LIBRARIES
+    a.client.find_user_ids_by_email.return_value = [9]
+    a.client.create_invite.return_value = {"code": "xyz", "url": "http://wizarr-lan/j/xyz"}
+    out = a.reissue_invite(a.ReissueInviteBody(email="a@x.com", tier="silver"))
+    a.send_invite_email.assert_called_once_with("a@x.com", "http://inv.test/j/xyz")
+    assert out["emailed"] is True
+
+
+def test_reissue_invite_survives_email_failure(admin_db):
+    a, _ = admin_db
+    a.client.list_libraries.return_value = FIXTURE_LIBRARIES
+    a.client.find_user_ids_by_email.return_value = [9]
+    a.client.create_invite.return_value = {"code": "xyz", "url": "http://wizarr-lan/j/xyz"}
+    a.send_invite_email.side_effect = OSError("smtp down")
+    out = a.reissue_invite(a.ReissueInviteBody(email="a@x.com", tier="silver"))
+    # the reissue itself completed; the admin still gets the link to send manually
+    a.client.disable_user.assert_called_once()
+    assert out["emailed"] is False
+    assert out["url"] == "http://inv.test/j/xyz"
 
 
 def test_reissue_invite_keeps_member_visible_as_pending(admin_db):
