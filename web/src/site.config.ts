@@ -57,14 +57,24 @@ const FEATURE_LABELS = [
   'Request any show or movie',
 ] as const
 
-type FeatureLabel = (typeof FEATURE_LABELS)[number]
+// Youth swaps the two library rows for kid-scoped wording; the remaining
+// rows stay identical so the four cards keep their row-by-row alignment.
+const KIDS_FEATURE_LABELS = [
+  'Access to all kid 1080p tv shows and movies',
+  'Access to all 4K kid movies',
+  'Access to Lossless Music Library',
+  'Offline downloads for travel',
+  'Request any show or movie',
+] as const
 
 const toChecklist = ({
+  labels,
   included,
 }: {
-  included: ReadonlyArray<FeatureLabel>
+  labels: ReadonlyArray<string>
+  included: ReadonlyArray<string>
 }): ReadonlyArray<TierFeature> =>
-  FEATURE_LABELS.map((label) => ({ label, included: included.includes(label) }))
+  labels.map((label) => ({ label, included: included.includes(label) }))
 
 export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
   brandName: 'Westeroz',
@@ -79,7 +89,12 @@ export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
       cadence: 'CAD / month',
       summary: 'The essentials to get streaming.',
       features: toChecklist({
-        included: ['Access to all 1080p libraries', 'Request any show or movie'],
+        labels: FEATURE_LABELS,
+        included: [
+          'Access to all 1080p libraries',
+          'Access to Lossless Music Library',
+          'Request any show or movie',
+        ],
       }),
       paymentLinkUrl: env.VITE_PAYMENT_LINK_BRONZE_URL ?? '',
     },
@@ -90,9 +105,11 @@ export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
       cadence: 'CAD / month',
       summary: 'The full catalog in 4K.',
       features: toChecklist({
+        labels: FEATURE_LABELS,
         included: [
           'Access to all 1080p libraries',
           'Access to all 4K libraries',
+          'Access to Lossless Music Library',
           'Request any show or movie',
         ],
       }),
@@ -105,6 +122,7 @@ export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
       cadence: 'CAD / month',
       summary: 'Everything the server offers.',
       features: toChecklist({
+        labels: FEATURE_LABELS,
         included: [
           'Access to all 1080p libraries',
           'Access to all 4K libraries',
@@ -122,9 +140,10 @@ export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
       cadence: 'CAD / month',
       summary: 'A family plan curated for kids.',
       features: toChecklist({
+        labels: KIDS_FEATURE_LABELS,
         included: [
-          'Access to all 1080p libraries',
-          'Access to all 4K libraries',
+          'Access to all kid 1080p tv shows and movies',
+          'Access to all 4K kid movies',
           'Offline downloads for travel',
           'Request any show or movie',
         ],
