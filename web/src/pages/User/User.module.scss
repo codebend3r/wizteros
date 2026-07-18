@@ -1,6 +1,16 @@
+// Header and footer span the window; the 1fr middle row pins the footer to
+// the bottom even when the page content is short.
+.layout {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-height: 100vh;
+}
+
 .page {
   display: grid;
+  align-content: start;
   gap: var(--space-3);
+  width: 100%;
   max-width: var(--max-width);
   margin-inline: auto;
   padding: var(--space-4) var(--space-3);

@@ -168,6 +168,13 @@ test('asks for an email when the query param is missing', () => {
   expect(fetchMember).not.toHaveBeenCalled()
 })
 
+test('wraps the page in the full-width header and footer', async () => {
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  renderUser({ email: 'max@y.com' })
+  expect(await screen.findByRole('banner')).toBeInTheDocument()
+  expect(screen.getByRole('contentinfo')).toBeInTheDocument()
+})
+
 test('links back to the members table', async () => {
   vi.mocked(fetchMember).mockResolvedValue(member)
   renderUser({ email: 'max@y.com' })
