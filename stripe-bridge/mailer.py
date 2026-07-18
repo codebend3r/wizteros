@@ -15,7 +15,7 @@ SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
 SMTP_USER = os.environ["SMTP_USER"]
 SMTP_PASS = os.environ["SMTP_PASS"]
 FROM_ADDR = os.environ.get("FROM_ADDR", SMTP_USER)
-INVITE_DAYS = int(os.environ.get("INVITE_EXPIRES_DAYS", "7"))
+INVITE_DAYS = int(os.environ.get("INVITE_EXPIRES_DAYS", "14"))
 
 
 def send_invite_email(to_addr: str, invite_url: str) -> None:

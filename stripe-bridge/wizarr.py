@@ -67,10 +67,14 @@ class WizarrClient:
         """Every user record Wizarr knows (one per person per server)."""
         return self._users({})
 
+    def find_users_by_email(self, email: str) -> list[dict]:
+        """All user records for an email (one record per server)."""
+        return [u for u in self._users({"email": email})
+                if (u.get("email") or "").lower() == email.lower()]
+
     def find_user_ids_by_email(self, email: str) -> list[int]:
         """All record ids for an email (one record per server)."""
-        return [u["id"] for u in self._users({"email": email})
-                if (u.get("email") or "").lower() == email.lower()]
+        return [u["id"] for u in self.find_users_by_email(email)]
 
     def find_user_ids_by_invite(self, code: str) -> list[int]:
         """All record ids for the Plex account that redeemed the invite.

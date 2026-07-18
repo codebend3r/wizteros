@@ -24,6 +24,7 @@ const member: Member = {
   servers: ['Meleys'],
   libraries: {},
   subscribed: false,
+  invited_at: null,
 }
 
 vi.mock('@/lib/adminApi', async (importOriginal) => ({

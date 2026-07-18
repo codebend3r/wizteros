@@ -94,5 +94,24 @@ def resolve_tier_access(*, tier: str, libraries: list) -> dict:
     return {
         "library_ids": [lib["id"] for lib in shareable],
         "server_ids": sorted({lib["server_id"] for lib in shareable}),
+        "server_names": sorted({lib.get("server_name") for lib in shareable
+                                if lib.get("server_name")}),
         "allow_downloads": TIER_DOWNLOADS[tier],
     }
+
+
+def stale_record_ids(*, records: list, covered_servers) -> list:
+    """Record ids that must be disabled before an invite can safely re-scope.
+
+    Redeeming an invite updates the share in place on every server the invite
+    covers (Wizarr catches Plex's "already sharing" and rewrites the sections),
+    so records on covered servers need no disable and the member keeps access
+    through the invite window. But Wizarr has no per-server unshare — disable
+    severs the whole plex.tv friendship — so if any record sits on a server the
+    new scope does NOT cover (or has no server name), every record is returned
+    and the caller falls back to disable-first (fail closed on stale access).
+    """
+    covered = set(covered_servers)
+    if all(record.get("server") in covered for record in records):
+        return []
+    return [record["id"] for record in records]

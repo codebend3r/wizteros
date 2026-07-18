@@ -60,9 +60,9 @@ const ManageInner = () => {
       reissueInvite({ email: member.email, tier, password }),
     onSuccess: (result, { member, tier }) => {
       setInviteResult(result)
-      // Access only starts when the member redeems the link — the reissue
-      // drops their server records, so mirror the bridge's post-reissue
-      // truth (no expiry, no servers) and let the status derive to Invited.
+      // Existing access survives the invite window now, so keep expiry and
+      // servers as they are — only the tier, downloads, and the freshly
+      // restarted grace clock change until the member redeems.
       queryClient.setQueryData<Member[]>(MEMBERS_QUERY_KEY, (old) =>
         old?.map((row) =>
           row.email === member.email
@@ -70,10 +70,7 @@ const ManageInner = () => {
                 ...row,
                 tier,
                 downloads: TIER_DOWNLOADS[tier],
-                expires: null,
-                subscribed: false,
-                servers: [],
-                libraries: {},
+                invited_at: new Date().toISOString(),
               }
             : row,
         ),

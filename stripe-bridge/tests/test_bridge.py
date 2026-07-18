@@ -9,7 +9,7 @@ import pytest
 os.environ.update({
     "STRIPE_API_KEY": "sk_test_x", "STRIPE_WEBHOOK_SECRET": "whsec_x",
     "WIZARR_BASE_URL": "http://wizarr.test", "WIZARR_API_KEY": "k",
-    "INVITE_EXPIRES_DAYS": "7", "ACCESS_DURATION": "35",
+    "INVITE_EXPIRES_DAYS": "14", "ACCESS_DURATION": "35",
     "SMTP_HOST": "smtp.test", "SMTP_PORT": "587", "SMTP_USER": "u",
     "SMTP_PASS": "p", "FROM_ADDR": "server@test", "PUBLIC_INVITE_BASE": "http://inv.test",
     "MAP_DB_PATH": "/tmp/does-not-matter.db",
@@ -42,7 +42,8 @@ def bridge(tmp_path, monkeypatch):
 def test_checkout_brand_new_member_invites_for_its_tier(bridge):
     bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
     bridge.client.create_invite.return_value = {"code": "abc", "url": "http://wizarr-lan:5690/j/abc"}
-    bridge.client.find_user_ids_by_email.return_value = []  # no existing records yet
+    bridge.client.find_users_by_email.return_value = []  # no existing records yet
+    bridge.client.find_user_ids_by_email.return_value = []
     bridge.handle_event({
         "type": "checkout.session.completed",
         "id": "evt_checkout_1",
@@ -51,7 +52,7 @@ def test_checkout_brand_new_member_invites_for_its_tier(bridge):
                             "metadata": {"tier": "silver"}}},
     })
     bridge.client.create_invite.assert_called_once_with(
-        [1, 2], 7, "35", library_ids=[17, 20, 22, 24], allow_downloads=False)
+        [1, 2], 14, "35", library_ids=[17, 20, 22, 24], allow_downloads=False)
     bridge.send_invite_email.assert_called_once_with("a@x.com", "http://inv.test/j/abc")
     # brand-new member has no records to time-box; invite redemption sets expiry
     bridge.client.set_expiry.assert_not_called()
@@ -62,13 +63,39 @@ def test_checkout_brand_new_member_invites_for_its_tier(bridge):
     assert "silver" in events[0]["detail"]
 
 
-def test_checkout_existing_member_resets_all_records_for_rejoin(bridge):
-    # Wizarr can't scope an existing member's shares per server (disable
-    # severs the whole plex.tv friendship), so a subscribing member is fully
-    # reset; redeeming the emailed invite re-grants exactly the tier.
+def test_checkout_existing_member_keeps_access_when_servers_covered(bridge):
+    # Redeeming re-scopes the share in place on covered servers, so a member
+    # whose servers all stay in scope keeps access through the invite window.
     bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
     bridge.client.create_invite.return_value = {"code": "abc", "url": "http://x/j/abc"}
-    bridge.client.find_user_ids_by_email.return_value = [147, 57, 106, 155, 204]
+    bridge.client.find_users_by_email.return_value = [
+        {"id": 147, "server": "Vermithor"},
+        {"id": 57, "server": "Meleys"},
+    ]
+    bridge.handle_event({
+        "type": "checkout.session.completed",
+        "id": "evt_checkout_covered",
+        "data": {"object": {"id": "cs_1", "customer": "cus_1",
+                            "customer_details": {"email": "a@x.com"},
+                            "metadata": {"tier": "bronze"}}},
+    })
+    bridge.client.disable_user.assert_not_called()
+    bridge.send_invite_email.assert_called_once_with("a@x.com", "http://inv.test/j/abc")
+
+
+def test_checkout_existing_member_resets_all_records_when_a_server_drops(bridge):
+    # Wizarr has no per-server unshare (disable severs the whole plex.tv
+    # friendship), so when the new tier leaves a current server uncovered the
+    # member is fully reset; redeeming the emailed invite re-grants the tier.
+    bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
+    bridge.client.create_invite.return_value = {"code": "abc", "url": "http://x/j/abc"}
+    bridge.client.find_users_by_email.return_value = [
+        {"id": 147, "server": "Vermithor"},
+        {"id": 57, "server": "Meleys"},
+        {"id": 106, "server": "Vhagar"},   # not covered by bronze scope
+        {"id": 155, "server": "Syrax"},    # not covered by bronze scope
+        {"id": 204, "server": "Caraxes"},  # 99. private only -> not covered
+    ]
     bridge.handle_event({
         "type": "checkout.session.completed",
         "id": "evt_checkout_existing",
@@ -324,7 +351,7 @@ def test_checkout_without_tier_metadata_defaults_to_bronze(bridge):
     })
     # bronze: no 4K library, downloads off (kid shows is not 4K, so it's included)
     bridge.client.create_invite.assert_called_once_with(
-        [1, 2], 7, "35", library_ids=[17, 22, 24], allow_downloads=False)
+        [1, 2], 14, "35", library_ids=[17, 22, 24], allow_downloads=False)
 
 
 def test_checkout_gold_enables_downloads(bridge):
@@ -339,7 +366,7 @@ def test_checkout_gold_enables_downloads(bridge):
                             "metadata": {"tier": "gold"}}},
     })
     bridge.client.create_invite.assert_called_once_with(
-        [1, 2], 7, "35", library_ids=[17, 20, 22, 24], allow_downloads=True)
+        [1, 2], 14, "35", library_ids=[17, 20, 22, 24], allow_downloads=True)
 
 
 def test_checkout_kids_scopes_to_kid_libraries_only(bridge):
@@ -354,7 +381,7 @@ def test_checkout_kids_scopes_to_kid_libraries_only(bridge):
                             "metadata": {"tier": "kids"}}},
     })
     bridge.client.create_invite.assert_called_once_with(
-        [1, 2], 7, "35", library_ids=[20, 22, 24], allow_downloads=True)
+        [1, 2], 14, "35", library_ids=[20, 22, 24], allow_downloads=True)
 
 
 def test_checkout_with_no_libraries_raises_so_stripe_retries(bridge):

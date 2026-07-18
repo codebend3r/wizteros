@@ -18,6 +18,7 @@ const member: Member = {
     Vermithor: ['01. TV Shows'],
   },
   subscribed: true,
+  invited_at: null,
 }
 
 vi.mock('@/lib/adminApi', async (importOriginal) => ({
@@ -137,11 +138,10 @@ test('re-invites through the tier menu and confirm modal', async () => {
   expect(await screen.findByText('http://inv/j/xyz')).toBeInTheDocument()
   expect(screen.getByText(/Invite emailed/)).toBeInTheDocument()
 
-  // Access only starts at redemption: the reissue must not fabricate a
-  // subscription — the member reads Invited with no expiry or servers.
-  expect(screen.getByText('Invited')).toBeInTheDocument()
-  expect(screen.queryByText('Subscribed Monthly')).not.toBeInTheDocument()
-  expect(screen.queryByText(/days left/)).not.toBeInTheDocument()
+  // Existing access survives the invite window: the member stays
+  // Subscribed Monthly with their real expiry until they redeem.
+  expect(screen.getByText('Subscribed Monthly')).toBeInTheDocument()
+  expect(screen.getByText(/days left/)).toBeInTheDocument()
 })
 
 test('copies the member email to the clipboard instead of a send-email link', async () => {

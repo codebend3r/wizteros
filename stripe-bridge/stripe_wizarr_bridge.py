@@ -18,7 +18,7 @@ STRIPE_WEBHOOK_SECRET = os.environ["STRIPE_WEBHOOK_SECRET"]
 
 WIZARR_BASE_URL = os.environ["WIZARR_BASE_URL"].rstrip("/")
 WIZARR_API_KEY = os.environ["WIZARR_API_KEY"]
-INVITE_DAYS = int(os.environ.get("INVITE_EXPIRES_DAYS", "7"))
+INVITE_DAYS = int(os.environ.get("INVITE_EXPIRES_DAYS", "14"))
 ACCESS_DURATION = os.environ.get("ACCESS_DURATION", "35")
 
 PUBLIC_INVITE_BASE = os.environ["PUBLIC_INVITE_BASE"].rstrip("/")
@@ -127,11 +127,17 @@ def _dispatch(etype: str, obj: dict) -> None:
         log.info("sent invite to %s", email)
         store.record_event(MAP_DB_PATH, email, "Signed up",
                            f"{tier} tier — invite emailed")
-        # Reset-and-rejoin: Wizarr can't scope an existing member's shares per
-        # server (disable severs the whole plex.tv friendship), so drop every
-        # existing record; redeeming the invite re-grants exactly the tier's
-        # access with the invite's duration.
-        existing = resolve_user_ids(client, MAP_DB_PATH, customer_id, email)
+        # Existing access survives the invite window: redeeming re-scopes the
+        # share in place on every covered server. Disable-first only when the
+        # new tier leaves a current server uncovered (no per-server unshare),
+        # or when the member is only findable via the invite-code fallback
+        # (Plex email differs, so coverage can't be evaluated — fail closed).
+        records = client.find_users_by_email(email)
+        if records:
+            existing = tiers.stale_record_ids(
+                records=records, covered_servers=access["server_names"])
+        else:
+            existing = resolve_user_ids(client, MAP_DB_PATH, customer_id, email)
         for uid in existing:
             client.disable_user(uid)
         if existing:

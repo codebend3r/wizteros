@@ -10,6 +10,7 @@ export type Member = {
   servers: string[]
   libraries: Record<string, string[]>
   subscribed: boolean
+  invited_at: string | null
 }
 
 export type MemberNotes = {
@@ -61,9 +62,13 @@ const TIERS: ReadonlyArray<Tier> = ['bronze', 'silver', 'gold', 'kids', 'unknown
 const isTier = (value: unknown): value is Tier =>
   typeof value === 'string' && TIERS.some((tier) => tier === value)
 
-// A bridge deployed before the libraries map may still omit it; tolerate
-// that and normalize with toMember so the page degrades to bare server names.
-type MemberPayload = Omit<Member, 'libraries'> & { libraries?: Record<string, string[]> }
+// A bridge deployed before the libraries map or invited_at stamp may still
+// omit them; tolerate that and normalize with toMember so the page degrades
+// to bare server names and a grace clock that never expires.
+type MemberPayload = Omit<Member, 'libraries' | 'invited_at'> & {
+  libraries?: Record<string, string[]>
+  invited_at?: string | null
+}
 
 const isMemberPayload = (value: unknown): value is MemberPayload =>
   isRecord(value) &&
@@ -74,11 +79,15 @@ const isMemberPayload = (value: unknown): value is MemberPayload =>
   (typeof value.expires === 'string' || value.expires === null) &&
   isStringArray(value.servers) &&
   (value.libraries === undefined || isLibrariesMap(value.libraries)) &&
-  typeof value.subscribed === 'boolean'
+  typeof value.subscribed === 'boolean' &&
+  (value.invited_at === undefined ||
+    value.invited_at === null ||
+    typeof value.invited_at === 'string')
 
 const toMember = (payload: MemberPayload): Member => ({
   ...payload,
   libraries: payload.libraries ?? {},
+  invited_at: payload.invited_at ?? null,
 })
 
 const isMemberNotes = (value: unknown): value is MemberNotes =>

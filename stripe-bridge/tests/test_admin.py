@@ -8,7 +8,7 @@ import pytest
 os.environ.update({
     "ADMIN_PASSWORD": "secret",
     "WIZARR_BASE_URL": "http://wizarr.test", "WIZARR_API_KEY": "k",
-    "INVITE_EXPIRES_DAYS": "7", "ACCESS_DURATION": "35",
+    "INVITE_EXPIRES_DAYS": "14", "ACCESS_DURATION": "35",
     "PUBLIC_INVITE_BASE": "http://inv.test",
     "SMTP_HOST": "smtp.test", "SMTP_USER": "u", "SMTP_PASS": "p",
 })
@@ -108,6 +108,7 @@ def test_list_members_includes_subscribers_not_yet_joined(admin_db):
     assert mx["subscribed"] is False  # no expiry -> Invite button in the UI
     assert mx["servers"] == []
     assert mx["libraries"] == {}      # not on any server yet
+    assert mx["invited_at"] is not None  # upsert stamped the grace clock
 
 
 def test_get_member_falls_back_to_subscriber(admin_db):
@@ -131,6 +132,7 @@ FIXTURE_LIBRARIES = [
 
 def test_admin_actions_append_to_the_member_history(admin_db):
     a, _ = admin_db
+    a.client.find_users_by_email.return_value = []
     a.client.find_user_ids_by_email.return_value = [9]
     a.client.create_invite.return_value = {"code": "xyz", "url": "http://wizarr-lan/j/xyz"}
     a.reissue_invite(a.ReissueInviteBody(email="A@X.com", tier="gold"))
@@ -226,31 +228,48 @@ def test_reset_expiry_404_when_no_records(admin_db):
     assert e.value.status_code == 404
 
 
-def test_reissue_invite_creates_then_disables_scoped_invite(admin_db):
+def test_reissue_invite_keeps_covered_records_enabled(admin_db):
     a, _ = admin_db
     a.client.list_libraries.return_value = FIXTURE_LIBRARIES
-    a.client.find_user_ids_by_email.return_value = [9, 12]
+    # every record sits on a server the new scope covers -> access survives
+    a.client.find_users_by_email.return_value = [{"id": 9, "server": "Vermithor"}]
     a.client.create_invite.return_value = {"code": "xyz", "url": "http://wizarr-lan/j/xyz"}
     out = a.reissue_invite(a.ReissueInviteBody(email="a@x.com", tier="silver"))
 
-    assert a.client.disable_user.call_count == 2  # both existing records dropped
+    a.client.disable_user.assert_not_called()  # redeeming re-scopes in place
     # private 99. library excluded, non-4k allowed for silver -> ids 17 + 20
     a.client.create_invite.assert_called_once_with(
-        [1], 7, "35", library_ids=[17, 20], allow_downloads=False)
-    # invite must be created BEFORE any disable, so a create failure can't lock
-    # the member out with no link to re-redeem
-    order = [c[0] for c in a.client.method_calls]
-    assert order.index("create_invite") < order.index("disable_user")
-    assert out["disabled"] == 2
+        [1], 14, "35", library_ids=[17, 20], allow_downloads=False)
+    assert out["disabled"] == 0
     assert out["code"] == "xyz"
     assert out["url"] == "http://inv.test/j/xyz"  # public URL, not the LAN one
     assert out["tier"] == "silver"
 
 
+def test_reissue_invite_disables_all_records_when_a_server_is_uncovered(admin_db):
+    a, _ = admin_db
+    a.client.list_libraries.return_value = FIXTURE_LIBRARIES
+    # Caraxes isn't in silver's scope (99. private only) and there's no
+    # per-server unshare, so the reissue falls back to disable-first
+    a.client.find_users_by_email.return_value = [
+        {"id": 9, "server": "Vermithor"},
+        {"id": 12, "server": "Caraxes"},
+    ]
+    a.client.create_invite.return_value = {"code": "xyz", "url": "http://wizarr-lan/j/xyz"}
+    out = a.reissue_invite(a.ReissueInviteBody(email="a@x.com", tier="silver"))
+
+    assert a.client.disable_user.call_count == 2  # all records dropped, not just Caraxes
+    # invite must be created BEFORE any disable, so a create failure can't lock
+    # the member out with no link to re-redeem
+    order = [c[0] for c in a.client.method_calls]
+    assert order.index("create_invite") < order.index("disable_user")
+    assert out["disabled"] == 2
+
+
 def test_reissue_invite_emails_the_link(admin_db):
     a, _ = admin_db
     a.client.list_libraries.return_value = FIXTURE_LIBRARIES
-    a.client.find_user_ids_by_email.return_value = [9]
+    a.client.find_users_by_email.return_value = []
     a.client.create_invite.return_value = {"code": "xyz", "url": "http://wizarr-lan/j/xyz"}
     out = a.reissue_invite(a.ReissueInviteBody(email="a@x.com", tier="silver"))
     a.send_invite_email.assert_called_once_with("a@x.com", "http://inv.test/j/xyz")
@@ -260,12 +279,12 @@ def test_reissue_invite_emails_the_link(admin_db):
 def test_reissue_invite_survives_email_failure(admin_db):
     a, _ = admin_db
     a.client.list_libraries.return_value = FIXTURE_LIBRARIES
-    a.client.find_user_ids_by_email.return_value = [9]
+    a.client.find_users_by_email.return_value = [{"id": 9, "server": "Caraxes"}]
     a.client.create_invite.return_value = {"code": "xyz", "url": "http://wizarr-lan/j/xyz"}
     a.send_invite_email.side_effect = OSError("smtp down")
     out = a.reissue_invite(a.ReissueInviteBody(email="a@x.com", tier="silver"))
     # the reissue itself completed; the admin still gets the link to send manually
-    a.client.disable_user.assert_called_once()
+    a.client.disable_user.assert_called_once()  # Caraxes uncovered -> disable path
     assert out["emailed"] is False
     assert out["url"] == "http://inv.test/j/xyz"
 
@@ -273,22 +292,23 @@ def test_reissue_invite_survives_email_failure(admin_db):
 def test_reissue_invite_keeps_member_visible_as_pending(admin_db):
     a, dbp = admin_db
     a.client.list_libraries.return_value = FIXTURE_LIBRARIES
-    a.client.find_user_ids_by_email.return_value = [9]
+    a.client.find_users_by_email.return_value = [{"id": 9, "server": "Vermithor"}]
     a.client.create_invite.return_value = {"code": "NEW1", "url": "http://wizarr-lan/j/NEW1"}
     a.reissue_invite(a.ReissueInviteBody(email="Code@X.com", tier="gold"))
 
-    # disable severs the plex.tv friendship, so Wizarr drops the records
+    # even if Wizarr later drops the records, the store row keeps them listed
     a.client.list_users.return_value = []
     by_email = {m["email"].lower(): m for m in a.list_members()}
     assert "code@x.com" in by_email  # still listed while the invite is pending
     assert by_email["code@x.com"]["tier"] == "gold"
     assert by_email["code@x.com"]["subscribed"] is False
+    assert by_email["code@x.com"]["invited_at"] is not None  # grace clock started
 
 
 def test_reissue_invite_fails_closed_without_public_base(admin_db, monkeypatch):
     a, _ = admin_db
     a.client.list_libraries.return_value = FIXTURE_LIBRARIES
-    a.client.find_user_ids_by_email.return_value = [9]
+    a.client.find_users_by_email.return_value = [{"id": 9, "server": "Caraxes"}]
     monkeypatch.setattr(a, "PUBLIC_INVITE_BASE", "")
     with pytest.raises(HTTPException) as e:
         a.reissue_invite(a.ReissueInviteBody(email="a@x.com", tier="silver"))

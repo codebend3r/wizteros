@@ -51,6 +51,13 @@ def _ensure_tier_column(c: sqlite3.Connection) -> None:
         c.execute("ALTER TABLE customer_map ADD COLUMN tier TEXT")
 
 
+def _ensure_invited_at_column(c: sqlite3.Connection) -> None:
+    """Add customer_map.invited_at to a pre-grace-period prod DB; no-op once present."""
+    cols = [row["name"] for row in c.execute("PRAGMA table_info(customer_map)")]
+    if "invited_at" not in cols:
+        c.execute("ALTER TABLE customer_map ADD COLUMN invited_at TEXT")
+
+
 def init_db(path: str) -> None:
     """Create the tables if missing and backfill the tier column; safe every startup."""
     with _conn(path) as c:
@@ -59,6 +66,7 @@ def init_db(path: str) -> None:
         c.execute(_NOTES_SCHEMA)
         c.execute(_EVENT_LOG_SCHEMA)
         _ensure_tier_column(c)
+        _ensure_invited_at_column(c)
 
 
 _ADMIN_KEY_PREFIX = "admin:"
@@ -66,7 +74,12 @@ _ADMIN_KEY_PREFIX = "admin:"
 
 def upsert_pending(path: str, stripe_customer_id: str, email: str,
                    invite_code: str, tier: str | None = None) -> None:
-    """Insert or update ("upsert") the customer -> email + invite code + tier mapping."""
+    """Insert or update ("upsert") the customer -> email + invite code + tier mapping.
+
+    Stamps invited_at with the current UTC time — every upsert corresponds to
+    a freshly issued invite, and the stamp anchors the grace-period status.
+    """
+    invited_at = datetime.now(timezone.utc).isoformat()
     with _conn(path) as c:
         # One row per person: a real Stripe mapping supersedes any placeholder
         # left by an admin-issued invite for the same email.
@@ -76,14 +89,15 @@ def upsert_pending(path: str, stripe_customer_id: str, email: str,
         )
         c.execute(
             """
-            INSERT INTO customer_map (stripe_customer_id, email, invite_code, tier)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO customer_map (stripe_customer_id, email, invite_code, tier, invited_at)
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(stripe_customer_id)
             DO UPDATE SET email = excluded.email,
                           invite_code = excluded.invite_code,
-                          tier = excluded.tier
+                          tier = excluded.tier,
+                          invited_at = excluded.invited_at
             """,
-            (stripe_customer_id, email, invite_code, tier),
+            (stripe_customer_id, email, invite_code, tier, invited_at),
         )
 
 
@@ -92,19 +106,22 @@ def upsert_pending_by_email(path: str, email: str, invite_code: str,
     """Record an admin-issued invite for an email with no known Stripe customer id.
 
     Re-points every existing row for the email (case-insensitive) at the new
-    invite code + tier; otherwise inserts a placeholder keyed "admin:<email>"
-    so the member stays listed on /manage until they redeem.
+    invite code + tier and restarts the invited_at grace clock; otherwise
+    inserts a placeholder keyed "admin:<email>" so the member stays listed on
+    /manage until they redeem.
     """
+    invited_at = datetime.now(timezone.utc).isoformat()
     with _conn(path) as c:
         cur = c.execute(
-            "UPDATE customer_map SET invite_code = ?, tier = ? WHERE lower(email) = lower(?)",
-            (invite_code, tier, email),
+            "UPDATE customer_map SET invite_code = ?, tier = ?, invited_at = ? "
+            "WHERE lower(email) = lower(?)",
+            (invite_code, tier, invited_at, email),
         )
         if cur.rowcount == 0:
             c.execute(
-                "INSERT INTO customer_map (stripe_customer_id, email, invite_code, tier) "
-                "VALUES (?, ?, ?, ?)",
-                (_ADMIN_KEY_PREFIX + email.lower(), email, invite_code, tier),
+                "INSERT INTO customer_map (stripe_customer_id, email, invite_code, tier, invited_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (_ADMIN_KEY_PREFIX + email.lower(), email, invite_code, tier, invited_at),
             )
 
 
@@ -229,3 +246,19 @@ def all_customer_tiers(path: str) -> dict[str, str | None]:
             "SELECT email, tier FROM customer_map WHERE email IS NOT NULL"
         ).fetchall()
     return {row["email"].lower(): row["tier"] for row in rows}
+
+
+def all_customer_rows(path: str) -> dict[str, dict]:
+    """Every customer's lowercased email -> {"tier", "invited_at"} (values may be None).
+
+    The invited_at stamp lets the admin UI age a pending invite into the
+    "Declined Invite" status once the grace period lapses.
+    """
+    with _conn(path) as c:
+        rows = c.execute(
+            "SELECT email, tier, invited_at FROM customer_map WHERE email IS NOT NULL"
+        ).fetchall()
+    return {
+        row["email"].lower(): {"tier": row["tier"], "invited_at": row["invited_at"]}
+        for row in rows
+    }
