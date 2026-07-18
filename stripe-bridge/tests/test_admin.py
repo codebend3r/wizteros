@@ -159,6 +159,21 @@ def test_reissue_invite_creates_then_disables_scoped_invite(admin_db):
     assert out["tier"] == "silver"
 
 
+def test_reissue_invite_keeps_member_visible_as_pending(admin_db):
+    a, dbp = admin_db
+    a.client.list_libraries.return_value = FIXTURE_LIBRARIES
+    a.client.find_user_ids_by_email.return_value = [9]
+    a.client.create_invite.return_value = {"code": "NEW1", "url": "http://wizarr-lan/j/NEW1"}
+    a.reissue_invite(a.ReissueInviteBody(email="Code@X.com", tier="gold"))
+
+    # disable severs the plex.tv friendship, so Wizarr drops the records
+    a.client.list_users.return_value = []
+    by_email = {m["email"].lower(): m for m in a.list_members()}
+    assert "code@x.com" in by_email  # still listed while the invite is pending
+    assert by_email["code@x.com"]["tier"] == "gold"
+    assert by_email["code@x.com"]["subscribed"] is False
+
+
 def test_reissue_invite_fails_closed_without_public_base(admin_db, monkeypatch):
     a, _ = admin_db
     a.client.list_libraries.return_value = FIXTURE_LIBRARIES

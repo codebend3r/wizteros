@@ -163,6 +163,9 @@ def reissue_invite(body: ReissueInviteBody) -> dict:
         access["server_ids"], INVITE_DAYS, ACCESS_DURATION,
         library_ids=access["library_ids"], allow_downloads=access["allow_downloads"],
     )
+    # The disable below drops the member's Wizarr records, so without a store
+    # row they'd vanish from /admin/members until they redeem the new invite.
+    store.upsert_pending_by_email(MAP_DB_PATH, body.email, invite["code"], tier=tier)
     for uid in ids:
         client.disable_user(uid)
     return {
