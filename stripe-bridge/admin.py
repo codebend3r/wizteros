@@ -33,12 +33,13 @@ def require_admin(x_admin_password: str = Header(default="")) -> None:
         raise HTTPException(status_code=401, detail="unauthorized")
 
 
-def _dedupe_members(users: list, tier_map: dict) -> list[dict]:
+def _dedupe_members(users: list, tier_map: dict, libraries: list) -> list[dict]:
     """Collapse per-server Wizarr records into one entry per person.
 
     Key is the lowercased email (falling back to username). Aggregates the
     servers a person appears on and keeps the latest expiry across records.
-    Tier is joined from the bridge's store; downloads derive from tier.
+    Tier is joined from the bridge's store; downloads and per-server library
+    access derive from tier.
     """
     people: dict[str, dict] = {}
     for u in users:
@@ -61,13 +62,16 @@ def _dedupe_members(users: list, tier_map: dict) -> list[dict]:
     for person in people.values():
         tier = (tier_map.get(person["email"].lower()) if person["email"] else None) or "unknown"
         downloads = tiers.TIER_DOWNLOADS.get(tier) if tier != "unknown" else None
+        servers = sorted(person["servers"])
+        tier_libraries = tiers.tier_server_libraries(tier=tier, libraries=libraries)
         members.append({
             "member": person["member"],
             "email": person["email"],
             "tier": tier,
             "downloads": downloads,
             "expires": person["expires"],
-            "servers": sorted(person["servers"]),
+            "servers": servers,
+            "libraries": {server: tier_libraries.get(server, []) for server in servers},
             "subscribed": person["expires"] is not None,
         })
     members.sort(key=lambda m: m["member"].lower())
@@ -84,6 +88,7 @@ def _member_from_customer(email: str, tier: str | None) -> dict:
         "downloads": tiers.TIER_DOWNLOADS.get(resolved) if resolved != "unknown" else None,
         "expires": None,
         "servers": [],
+        "libraries": {},
         "subscribed": False,
     }
 
@@ -96,7 +101,7 @@ def list_members() -> list[dict]:
     still holding a pending invite are unioned in from the bridge's customer_map.
     """
     customers = store.all_customer_tiers(MAP_DB_PATH)
-    members = _dedupe_members(client.list_users(), customers)
+    members = _dedupe_members(client.list_users(), customers, client.list_libraries())
     joined = {m["email"].lower() for m in members if m["email"]}
     pending = [
         _member_from_customer(email, tier)
@@ -113,12 +118,31 @@ def get_member(email: str) -> dict:
     matches = _dedupe_members(
         [u for u in client.list_users() if (u.get("email") or "").lower() == email.lower()],
         customers,
+        client.list_libraries(),
     )
     if matches:
         return matches[0]
     if email.lower() in customers:
         return _member_from_customer(email, customers[email.lower()])
     raise HTTPException(status_code=404, detail="no member for that email")
+
+
+@router.get("/admin/notes", dependencies=[Depends(require_admin)])
+def get_notes(email: str) -> dict:
+    """The admin's notes for an email; empty when none have been saved yet."""
+    return {"email": email, "notes": store.get_member_notes(MAP_DB_PATH, email)}
+
+
+class NotesBody(BaseModel):
+    email: str
+    notes: str
+
+
+@router.post("/admin/notes", dependencies=[Depends(require_admin)])
+def save_notes(body: NotesBody) -> dict:
+    """Save (overwrite) the admin's notes for an email."""
+    store.set_member_notes(MAP_DB_PATH, body.email, body.notes)
+    return {"email": body.email, "notes": body.notes}
 
 
 class ResetExpiryBody(BaseModel):
