@@ -83,24 +83,59 @@
   color: var(--color-muted);
 }
 
+.serversWrap {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.serversSummary {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
 .serverList {
   display: grid;
-  gap: var(--space-1);
+  gap: var(--space-2);
   padding: 0;
   list-style: none;
 }
 
 .server {
   display: grid;
+  gap: var(--space-1);
+}
+
+.serverHeading {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
 }
 
 .serverName {
   font-weight: 600;
 }
 
-.libraries {
+.serverCount {
   color: var(--color-muted);
   font-size: var(--font-size-sm);
+}
+
+.pillList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pill {
+  padding: calc(var(--space-1) / 2) var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
 }
 
 .actions {

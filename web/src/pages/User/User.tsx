@@ -59,9 +59,19 @@ const formatDownloads = (downloads: boolean | null): string => {
   return downloads ? '✅' : '❌'
 }
 
+const formatLibraryCount = (count: number): string =>
+  `${count} ${count === 1 ? 'library' : 'libraries'}`
+
 const MemberDetails = ({ member }: { member: Member }) => {
   const status = deriveStatus({ member })
   const expiry = parseExpiry(member.expires)
+  const serverEntries = member.servers.map((server) => ({
+    server,
+    // ?. survives old-shape members restored from the persisted query cache
+    // (written before the bridge sent libraries).
+    libraries: member.libraries?.[server] ?? [],
+  }))
+  const totalLibraries = serverEntries.reduce((sum, entry) => sum + entry.libraries.length, 0)
   return (
     <dl className={styles.details}>
       <dt>Member</dt>
@@ -93,22 +103,34 @@ const MemberDetails = ({ member }: { member: Member }) => {
       </dd>
       <dt className={styles.serversLabel}>Servers</dt>
       <dd>
-        {member.servers.length ? (
-          <ul className={styles.serverList}>
-            {member.servers.map((server) => {
-              // ?. survives old-shape members restored from the persisted
-              // query cache (written before the bridge sent libraries).
-              const libraries = member.libraries?.[server] ?? []
-              return (
+        {serverEntries.length ? (
+          <div className={styles.serversWrap}>
+            <p className={styles.serversSummary}>
+              {serverEntries.length} {serverEntries.length === 1 ? 'server' : 'servers'} ·{' '}
+              {formatLibraryCount(totalLibraries)}
+            </p>
+            <ul className={styles.serverList}>
+              {serverEntries.map(({ server, libraries }) => (
                 <li key={server} className={styles.server}>
-                  <span className={styles.serverName}>{server}</span>
+                  <span className={styles.serverHeading}>
+                    <span className={styles.serverName}>{server}</span>
+                    <span className={styles.serverCount}>
+                      {formatLibraryCount(libraries.length)}
+                    </span>
+                  </span>
                   {!!libraries.length && (
-                    <span className={styles.libraries}>{libraries.join(', ')}</span>
+                    <ul className={styles.pillList}>
+                      {libraries.map((library) => (
+                        <li key={library} className={styles.pill}>
+                          {library}
+                        </li>
+                      ))}
+                    </ul>
                   )}
                 </li>
-              )
-            })}
-          </ul>
+              ))}
+            </ul>
+          </div>
         ) : (
           '—'
         )}

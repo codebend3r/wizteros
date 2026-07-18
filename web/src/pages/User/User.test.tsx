@@ -76,14 +76,18 @@ test('loads the member from the email query param and shows every detail', async
   expect(screen.getByText(/\(\d+ days left\)/)).toBeInTheDocument()
 })
 
-test('shows each server with the libraries its tier grants underneath', async () => {
+test('shows each server with its libraries as pills, with counts', async () => {
   vi.mocked(fetchMember).mockResolvedValue(member)
   renderUser({ email: 'max@y.com' })
 
   expect(await screen.findByText('Meleys')).toBeInTheDocument()
-  expect(screen.getByText('01. Movies, 03. 4K TV Shows')).toBeInTheDocument()
+  expect(screen.getByText('01. Movies')).toBeInTheDocument()
+  expect(screen.getByText('03. 4K TV Shows')).toBeInTheDocument()
   expect(screen.getByText('Vermithor')).toBeInTheDocument()
   expect(screen.getByText('01. TV Shows')).toBeInTheDocument()
+  expect(screen.getByText('2 servers · 3 libraries')).toBeInTheDocument()
+  expect(screen.getByText('2 libraries')).toBeInTheDocument()
+  expect(screen.getByText('1 library')).toBeInTheDocument()
 })
 
 test('shows ❌ downloads and no days-left bracket for a lapsed member', async () => {
