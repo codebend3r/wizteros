@@ -7,6 +7,32 @@ test('defines the four tiers in order with CAD prices', () => {
   config.tiers.forEach((tier) => expect(tier.cadence).toBe('CAD / month'))
 })
 
+test('every tier lists the same five features in order', () => {
+  const config = resolveConfig({ env: {} })
+  config.tiers.forEach((tier) =>
+    expect(tier.features.map((feature) => feature.label)).toEqual([
+      'Access to all 1080p libraries',
+      'Access to all 4K libraries',
+      'Access to Lossless Music Library',
+      'Offline downloads for travel',
+      'Request any show or movie',
+    ]),
+  )
+})
+
+test('only gold includes the lossless music library', () => {
+  const config = resolveConfig({ env: {} })
+  const byId = Object.fromEntries(
+    config.tiers.map((tier) => [
+      tier.id,
+      tier.features.some(
+        ({ label, included }) => label === 'Access to Lossless Music Library' && included,
+      ),
+    ]),
+  )
+  expect(byId).toEqual({ bronze: false, silver: false, gold: true, kids: false })
+})
+
 test('tier payment links fall back to empty strings with empty env', () => {
   const config = resolveConfig({ env: {} })
   config.tiers.forEach((tier) => expect(tier.paymentLinkUrl).toBe(''))

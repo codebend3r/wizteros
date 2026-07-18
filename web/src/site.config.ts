@@ -3,12 +3,18 @@ type SupportItem = {
   detail: string
 }
 
+type TierFeature = {
+  label: string
+  included: boolean
+}
+
 type Tier = {
   id: 'bronze' | 'silver' | 'gold' | 'kids'
   name: string
   price: string
   cadence: string
-  features: ReadonlyArray<string>
+  summary: string
+  features: ReadonlyArray<TierFeature>
   paymentLinkUrl: string
 }
 
@@ -43,6 +49,23 @@ const SUPPORT_ITEMS: ReadonlyArray<SupportItem> = [
   },
 ]
 
+const FEATURE_LABELS = [
+  'Access to all 1080p libraries',
+  'Access to all 4K libraries',
+  'Access to Lossless Music Library',
+  'Offline downloads for travel',
+  'Request any show or movie',
+] as const
+
+type FeatureLabel = (typeof FEATURE_LABELS)[number]
+
+const toChecklist = ({
+  included,
+}: {
+  included: ReadonlyArray<FeatureLabel>
+}): ReadonlyArray<TierFeature> =>
+  FEATURE_LABELS.map((label) => ({ label, included: included.includes(label) }))
+
 export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
   brandName: 'Westeroz',
   tagline: 'A community-run media server. Contribute to the cost of keeping it online.',
@@ -54,11 +77,10 @@ export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
       name: 'Bronze',
       price: '$8',
       cadence: 'CAD / month',
-      features: [
-        'Standard streaming quality',
-        'Watch on all your devices',
-        'Request any show or movie',
-      ],
+      summary: 'The essentials to get streaming.',
+      features: toChecklist({
+        included: ['Access to all 1080p libraries', 'Request any show or movie'],
+      }),
       paymentLinkUrl: env.VITE_PAYMENT_LINK_BRONZE_URL ?? '',
     },
     {
@@ -66,7 +88,14 @@ export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
       name: 'Silver',
       price: '$14',
       cadence: 'CAD / month',
-      features: ['4K Ultra HD streaming', 'Watch on all your devices', 'Request any show or movie'],
+      summary: 'The full catalog in 4K.',
+      features: toChecklist({
+        included: [
+          'Access to all 1080p libraries',
+          'Access to all 4K libraries',
+          'Request any show or movie',
+        ],
+      }),
       paymentLinkUrl: env.VITE_PAYMENT_LINK_SILVER_URL ?? '',
     },
     {
@@ -74,12 +103,16 @@ export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
       name: 'Gold',
       price: '$20',
       cadence: 'CAD / month',
-      features: [
-        '4K Ultra HD streaming',
-        'Watch on all your devices',
-        'Offline downloads for travel',
-        'Request any show or movie',
-      ],
+      summary: 'Everything the server offers.',
+      features: toChecklist({
+        included: [
+          'Access to all 1080p libraries',
+          'Access to all 4K libraries',
+          'Access to Lossless Music Library',
+          'Offline downloads for travel',
+          'Request any show or movie',
+        ],
+      }),
       paymentLinkUrl: env.VITE_PAYMENT_LINK_GOLD_URL ?? '',
     },
     {
@@ -87,13 +120,15 @@ export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
       name: 'Youth',
       price: '$10',
       cadence: 'CAD / month',
-      features: [
-        'Family plan curated for kids',
-        '4K Ultra HD streaming',
-        'Watch on all your devices',
-        'Offline downloads for travel',
-        'Request any kids show or movie',
-      ],
+      summary: 'A family plan curated for kids.',
+      features: toChecklist({
+        included: [
+          'Access to all 1080p libraries',
+          'Access to all 4K libraries',
+          'Offline downloads for travel',
+          'Request any show or movie',
+        ],
+      }),
       paymentLinkUrl: env.VITE_PAYMENT_LINK_KIDS_URL ?? '',
     },
   ],
