@@ -69,8 +69,28 @@
 }
 
 .email {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
+}
+
+.copyEmail {
+  padding: calc(var(--space-1) / 2) var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-muted);
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--color-text);
+    background: var(--color-surface);
+  }
 }
 
 .status {
@@ -178,8 +198,7 @@
   display: inline-block;
 }
 
-.invite,
-.sendEmail {
+.invite {
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -187,7 +206,6 @@
   color: var(--color-text);
   font-family: var(--font-body);
   font-size: var(--font-size-md);
-  text-decoration: none;
   cursor: pointer;
 
   &:hover {
