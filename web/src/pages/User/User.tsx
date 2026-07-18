@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import AdminGate, { useAdminAuth } from '@/components/AdminGate/AdminGate'
 import AdminLayout from '@/components/AdminLayout/AdminLayout'
+import ConfirmActionModal from '@/components/ConfirmActionModal/ConfirmActionModal'
 import ConfirmInviteModal from '@/components/ConfirmInviteModal/ConfirmInviteModal'
 import Preloader from '@/components/Preloader/Preloader'
 import TierIcon from '@/components/TierIcon/TierIcon'
@@ -162,6 +163,8 @@ const UserInner = () => {
   const [actionError, setActionError] = useState<string | null>(null)
   const [notesDraft, setNotesDraft] = useState<string | null>(null)
   const [expiryDraft, setExpiryDraft] = useState<string | null>(null)
+  const [pendingHardReset, setPendingHardReset] = useState<PaidTier | null>(null)
+  const [pendingExpiry, setPendingExpiry] = useState<string | null>(null)
 
   const {
     data: member,
@@ -430,7 +433,7 @@ const UserInner = () => {
                     type="button"
                     onClick={() => {
                       setActionError(null)
-                      tierResetMutation.mutate(tier)
+                      setPendingHardReset(tier)
                     }}
                     disabled={tierResetMutation.isPending}
                   >
@@ -446,7 +449,7 @@ const UserInner = () => {
                 onSubmit={(event) => {
                   event.preventDefault()
                   setActionError(null)
-                  expiryMutation.mutate(new Date(expiryValue).toISOString())
+                  setPendingExpiry(new Date(expiryValue).toISOString())
                 }}
               >
                 <input
@@ -510,6 +513,43 @@ const UserInner = () => {
               )}
             </section>
           </>
+        )}
+        {!!member && !!pendingHardReset && (
+          <ConfirmActionModal
+            title="Confirm tier reset"
+            confirmLabel="Hard reset"
+            onConfirm={() => {
+              tierResetMutation.mutate(pendingHardReset)
+              setPendingHardReset(null)
+            }}
+            onCancel={() => setPendingHardReset(null)}
+          >
+            <p>
+              Hard reset {member.member} ({member.email}) to <TierIcon tier={pendingHardReset} />{' '}
+              {TIER_LABELS[pendingHardReset]}.
+            </p>
+            <p className={styles.controlHint}>
+              Rewrites the recorded tier instantly — no new invite is sent and Plex access is
+              unchanged.
+            </p>
+          </ConfirmActionModal>
+        )}
+        {!!member && !!pendingExpiry && (
+          <ConfirmActionModal
+            title="Confirm expiry change"
+            confirmLabel="Set expiry"
+            onConfirm={() => {
+              expiryMutation.mutate(pendingExpiry)
+              setPendingExpiry(null)
+            }}
+            onCancel={() => setPendingExpiry(null)}
+          >
+            <p>
+              Set the expiry for {member.member} ({member.email}) to{' '}
+              {new Date(pendingExpiry).toLocaleString()}.
+            </p>
+            <p className={styles.controlHint}>Applies to every server record for this email.</p>
+          </ConfirmActionModal>
         )}
         {!!member && !!pendingTier && (
           <ConfirmInviteModal

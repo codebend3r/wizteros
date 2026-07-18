@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -157,6 +157,8 @@ test('hard resets the tier in place and reflects it in the details', async () =>
   // one silver icon before (its hard-reset button); details still show gold
   expect(screen.getAllByRole('img', { name: 'silver tier' })).toHaveLength(1)
   await user.click(screen.getByRole('button', { name: 'silver tier Silver' }))
+  const dialog = screen.getByRole('dialog', { name: 'Confirm tier reset' })
+  await user.click(within(dialog).getByRole('button', { name: 'Hard reset' }))
 
   expect(resetTier).toHaveBeenCalledWith({
     email: 'max@y.com',
@@ -166,6 +168,39 @@ test('hard resets the tier in place and reflects it in the details', async () =>
   // details tier flips to silver without any invite flow
   await waitFor(() => expect(screen.getAllByRole('img', { name: 'silver tier' })).toHaveLength(2))
   expect(reissueInvite).not.toHaveBeenCalled()
+})
+
+test.each([
+  ['bronze', 'Bronze'],
+  ['silver', 'Silver'],
+  ['gold', 'Gold'],
+  ['kids', 'Kids'],
+] as const)('hard reset to %s confirms first, then calls the bridge', async (tier, label) => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  vi.mocked(resetTier).mockResolvedValue({ email: 'max@y.com', tier })
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  await user.click(screen.getByRole('button', { name: `${tier} tier ${label}` }))
+  const dialog = screen.getByRole('dialog', { name: 'Confirm tier reset' })
+  expect(resetTier).not.toHaveBeenCalled()
+  await user.click(within(dialog).getByRole('button', { name: 'Hard reset' }))
+
+  expect(resetTier).toHaveBeenCalledWith({ email: 'max@y.com', tier, password: 'secret' })
+})
+
+test('cancelling the tier reset confirmation makes no change', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  await user.click(screen.getByRole('button', { name: 'kids tier Kids' }))
+  await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(resetTier).not.toHaveBeenCalled()
 })
 
 test('seeds the expiry picker with one minute after midnight', async () => {
@@ -193,6 +228,9 @@ test('sets the expiry optimistically with a spinner while in flight', async () =
     target: { value: picked },
   })
   await user.click(screen.getByRole('button', { name: 'Set expiry' }))
+  const dialog = screen.getByRole('dialog', { name: 'Confirm expiry change' })
+  expect(resetExpiry).not.toHaveBeenCalled()
+  await user.click(within(dialog).getByRole('button', { name: 'Set expiry' }))
 
   const pickedIso = new Date(picked).toISOString()
   expect(resetExpiry).toHaveBeenCalledWith({
@@ -223,9 +261,27 @@ test('rolls the expiry back when the bridge rejects it', async () => {
     target: { value: '2099-12-25T00:01' },
   })
   await user.click(screen.getByRole('button', { name: 'Set expiry' }))
+  const dialog = screen.getByRole('dialog', { name: 'Confirm expiry change' })
+  await user.click(within(dialog).getByRole('button', { name: 'Set expiry' }))
 
   expect(await screen.findByText('Could not set expiry.')).toBeInTheDocument()
   expect(screen.getByText(original)).toBeInTheDocument()
+})
+
+test('cancelling the expiry confirmation leaves the expiry untouched', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  fireEvent.change(screen.getByLabelText('New expiry date and time'), {
+    target: { value: '2099-12-25T00:01' },
+  })
+  await user.click(screen.getByRole('button', { name: 'Set expiry' }))
+  await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(resetExpiry).not.toHaveBeenCalled()
 })
 
 test('loads saved notes and saves an edited draft', async () => {
