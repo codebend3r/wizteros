@@ -7,6 +7,7 @@ import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persist
 import '@fontsource-variable/bricolage-grotesque'
 import '@fontsource-variable/instrument-sans'
 import '@fontsource-variable/jetbrains-mono'
+import '@fontsource/pirata-one'
 import '@fontsource/silkscreen'
 import AppRoutes from '@/AppRoutes'
 import '@/styles/globals.scss'

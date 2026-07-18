@@ -12,3 +12,13 @@ test('links the brand home and Members to /manage', () => {
   expect(screen.getByRole('link', { name: 'Westeroz' })).toHaveAttribute('href', '/')
   expect(screen.getByRole('link', { name: 'Members' })).toHaveAttribute('href', '/manage')
 })
+
+test('shows the mascot logo inside the brand link', () => {
+  render(
+    <MemoryRouter>
+      <Header brandName="Westeroz" />
+    </MemoryRouter>,
+  )
+  const brand = screen.getByRole('link', { name: 'Westeroz' })
+  expect(brand.querySelector('img')).toBeInTheDocument()
+})
