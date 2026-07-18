@@ -59,6 +59,7 @@ test('applies a tier preset via reissue-invite', async () => {
     code: 'x',
     tier: 'silver',
     disabled: 1,
+    emailed: true,
   })
   render(<ResetUser />)
 

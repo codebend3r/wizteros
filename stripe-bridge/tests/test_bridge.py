@@ -404,7 +404,7 @@ def test_checkout_records_tier_for_the_customer(bridge):
 
 def test_send_invite_email_sends_via_smtp_starttls(monkeypatch):
     import importlib
-    import stripe_wizarr_bridge as b
+    import mailer as b
     importlib.reload(b)
 
     sent = {}

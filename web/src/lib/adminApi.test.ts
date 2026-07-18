@@ -52,7 +52,13 @@ test('reissueInvite posts email + tier and returns the invite link', async () =>
   const fetchMock = vi.fn().mockResolvedValue({
     ok: true,
     status: 200,
-    json: async () => ({ url: 'http://inv/j/xyz', code: 'xyz', tier: 'bronze', disabled: 1 }),
+    json: async () => ({
+      url: 'http://inv/j/xyz',
+      code: 'xyz',
+      tier: 'bronze',
+      disabled: 1,
+      emailed: true,
+    }),
   })
   vi.stubGlobal('fetch', fetchMock)
 
