@@ -8,7 +8,7 @@
         "@fontsource-variable/bricolage-grotesque": "5.2.10",
         "@fontsource-variable/instrument-sans": "5.2.8",
         "@fontsource-variable/jetbrains-mono": "5.2.8",
-        "@fontsource/pirata-one": "5.2.8",
+        "@fontsource/lily-script-one": "5.2.8",
         "@fontsource/silkscreen": "5.2.8",
         "@tanstack/query-sync-storage-persister": "5.101.2",
         "@tanstack/react-query": "5.101.2",
@@ -140,7 +140,7 @@
 
     "@fontsource-variable/jetbrains-mono": ["@fontsource-variable/jetbrains-mono@5.2.8", "", {}, "sha512-WBA9elru6Jdp5df2mES55wuOO0WIrn3kpXnI4+W2ek5u3ZgLS9XS4gmIlcQhiZOWEKl95meYdvK7xI+ETLCq/Q=="],
 
-    "@fontsource/pirata-one": ["@fontsource/pirata-one@5.2.8", "", {}, "sha512-hl3Zqt6mgP+jstHnv2qYc2xQdYM1DSYrpSU9bpS1fYExoGFgJJNbXTPBQ9XivNk9RCKkibhou3iqoOZQOXM48w=="],
+    "@fontsource/lily-script-one": ["@fontsource/lily-script-one@5.2.8", "", {}, "sha512-vGUM0yD1JsrwH8JsR4iQ5ckjsui28GGHJFo5FXkFl1kS1JqKzvKM65F7rm5Ia5ibQa4IGofCgtZWyUkpEhNCQA=="],
 
     "@fontsource/silkscreen": ["@fontsource/silkscreen@5.2.8", "", {}, "sha512-PfVe2BRZdjY/UIEXsrpzCo/W8FIGo6jEEMHuQiKfma+E5LXb6WfFFBfCEsO89ZWOSwl2mLE1Yq0d8gagmcaBpQ=="],
 
