@@ -3,6 +3,8 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import AdminGate, { useAdminAuth } from '@/components/AdminGate/AdminGate'
 import ConfirmInviteModal from '@/components/ConfirmInviteModal/ConfirmInviteModal'
+import Footer from '@/components/Footer/Footer'
+import Header from '@/components/Header/Header'
 import Preloader from '@/components/Preloader/Preloader'
 import TierIcon from '@/components/TierIcon/TierIcon'
 import {
@@ -18,6 +20,7 @@ import {
 import { ACCESS_DAYS, isPaidTier, PAID_TIERS, TIER_DOWNLOADS, TIER_LABELS } from '@/lib/inviteRules'
 import { deriveStatus, type MemberStatus } from '@/lib/memberStatus'
 import { MEMBERS_QUERY_KEY } from '@/pages/Manage/Manage'
+import { siteConfig } from '@/site.config'
 import styles from '@/pages/User/User.module.scss'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -226,110 +229,114 @@ const UserInner = () => {
   const error = !!loadError && !(loadError instanceof AdminAuthError)
 
   return (
-    <main className={styles.page}>
-      <Link className={styles.back} to="/manage">
-        ← All members
-      </Link>
-      <h1 className={styles.title}>{member?.member ?? (email !== '' ? email : 'Member')}</h1>
-      {!email && <p className={styles.notice}>No email provided.</p>}
-      {error && <p className={styles.error}>Could not load member.</p>}
-      {!!actionError && <p className={styles.error}>{actionError}</p>}
-      {!!inviteResult && (
-        <p className={styles.inviteNotice}>
-          {inviteResult.emailed
-            ? 'Invite emailed. Link: '
-            : 'Email failed — send this link manually: '}
-          <a href={inviteResult.url}>{inviteResult.url}</a>
-        </p>
-      )}
-      {!!email && isPending && !error && (
-        <Preloader message="Loading member… (this can take ~15s)" />
-      )}
-      {member === null && <p className={styles.notice}>No member found for {email}.</p>}
-      {!!member && (
-        <>
-          <MemberDetails member={member} />
-          <div className={styles.actions}>
-            <div className={styles.menuWrap}>
-              <button
-                className={styles.invite}
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  setMenuOpen(!menuOpen)
-                }}
-                disabled={inviteMutation.isPending}
-                aria-haspopup="menu"
-                aria-expanded={menuOpen}
-              >
-                {inviteMutation.isPending
-                  ? 'Inviting…'
-                  : deriveStatus({ member }) === 'Subscribed Monthly'
-                    ? 'Re-invite'
-                    : 'Invite'}
-              </button>
-              {menuOpen && (
-                <ul className={styles.menu} role="menu">
-                  {PAID_TIERS.map((tier) => (
-                    <li key={tier} role="none">
-                      <button
-                        className={styles.menuItem}
-                        type="button"
-                        role="menuitem"
-                        onClick={() => {
-                          setMenuOpen(false)
-                          setActionError(null)
-                          setInviteResult(null)
-                          setPendingTier(tier)
-                        }}
-                      >
-                        <TierIcon tier={tier} /> {TIER_LABELS[tier]} Tier
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
+    <div className={styles.layout}>
+      <Header brandName={siteConfig.brandName} />
+      <main className={styles.page}>
+        <Link className={styles.back} to="/manage">
+          ← All members
+        </Link>
+        <h1 className={styles.title}>{member?.member ?? (email !== '' ? email : 'Member')}</h1>
+        {!email && <p className={styles.notice}>No email provided.</p>}
+        {error && <p className={styles.error}>Could not load member.</p>}
+        {!!actionError && <p className={styles.error}>{actionError}</p>}
+        {!!inviteResult && (
+          <p className={styles.inviteNotice}>
+            {inviteResult.emailed
+              ? 'Invite emailed. Link: '
+              : 'Email failed — send this link manually: '}
+            <a href={inviteResult.url}>{inviteResult.url}</a>
+          </p>
+        )}
+        {!!email && isPending && !error && (
+          <Preloader message="Loading member… (this can take ~15s)" />
+        )}
+        {member === null && <p className={styles.notice}>No member found for {email}.</p>}
+        {!!member && (
+          <>
+            <MemberDetails member={member} />
+            <div className={styles.actions}>
+              <div className={styles.menuWrap}>
+                <button
+                  className={styles.invite}
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    setMenuOpen(!menuOpen)
+                  }}
+                  disabled={inviteMutation.isPending}
+                  aria-haspopup="menu"
+                  aria-expanded={menuOpen}
+                >
+                  {inviteMutation.isPending
+                    ? 'Inviting…'
+                    : deriveStatus({ member }) === 'Subscribed Monthly'
+                      ? 'Re-invite'
+                      : 'Invite'}
+                </button>
+                {menuOpen && (
+                  <ul className={styles.menu} role="menu">
+                    {PAID_TIERS.map((tier) => (
+                      <li key={tier} role="none">
+                        <button
+                          className={styles.menuItem}
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            setMenuOpen(false)
+                            setActionError(null)
+                            setInviteResult(null)
+                            setPendingTier(tier)
+                          }}
+                        >
+                          <TierIcon tier={tier} /> {TIER_LABELS[tier]} Tier
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <a className={styles.sendEmail} href={`mailto:${member.email}`}>
+                Send email
+              </a>
             </div>
-            <a className={styles.sendEmail} href={`mailto:${member.email}`}>
-              Send email
-            </a>
-          </div>
-          <section className={styles.notesSection}>
-            <h2 className={styles.notesTitle}>Notes</h2>
-            <textarea
-              className={styles.notes}
-              value={notes}
-              placeholder="Notes about this member…"
-              aria-label="Member notes"
-              rows={6}
-              onChange={(event) => setNotesDraft(event.target.value)}
-            />
-            <div className={styles.notesActions}>
-              <button
-                className={styles.notesSave}
-                type="button"
-                onClick={() => notesMutation.mutate(notes)}
-                disabled={!notesDirty || notesMutation.isPending}
-              >
-                {notesMutation.isPending ? 'Saving…' : 'Save notes'}
-              </button>
-              {notesMutation.isSuccess && !notesDirty && (
-                <span className={styles.notesSaved}>Saved ✓</span>
-              )}
-            </div>
-          </section>
-        </>
-      )}
-      {!!member && !!pendingTier && (
-        <ConfirmInviteModal
-          member={member}
-          tier={pendingTier}
-          sending={inviteMutation.isPending}
-          onConfirm={() => inviteMutation.mutate(pendingTier)}
-          onCancel={() => setPendingTier(null)}
-        />
-      )}
-    </main>
+            <section className={styles.notesSection}>
+              <h2 className={styles.notesTitle}>Notes</h2>
+              <textarea
+                className={styles.notes}
+                value={notes}
+                placeholder="Notes about this member…"
+                aria-label="Member notes"
+                rows={6}
+                onChange={(event) => setNotesDraft(event.target.value)}
+              />
+              <div className={styles.notesActions}>
+                <button
+                  className={styles.notesSave}
+                  type="button"
+                  onClick={() => notesMutation.mutate(notes)}
+                  disabled={!notesDirty || notesMutation.isPending}
+                >
+                  {notesMutation.isPending ? 'Saving…' : 'Save notes'}
+                </button>
+                {notesMutation.isSuccess && !notesDirty && (
+                  <span className={styles.notesSaved}>Saved ✓</span>
+                )}
+              </div>
+            </section>
+          </>
+        )}
+        {!!member && !!pendingTier && (
+          <ConfirmInviteModal
+            member={member}
+            tier={pendingTier}
+            sending={inviteMutation.isPending}
+            onConfirm={() => inviteMutation.mutate(pendingTier)}
+            onCancel={() => setPendingTier(null)}
+          />
+        )}
+      </main>
+      <Footer memberUrl={siteConfig.memberUrl} />
+    </div>
   )
 }
 
