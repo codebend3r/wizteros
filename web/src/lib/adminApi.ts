@@ -17,6 +17,14 @@ export type MemberNotes = {
   notes: string
 }
 
+export type MemberEvent = {
+  id: number
+  at: string
+  email: string
+  action: string
+  detail: string
+}
+
 export type InviteResult = {
   url: string
   code: string
@@ -70,6 +78,17 @@ const toMember = (payload: MemberPayload): Member => ({
 
 const isMemberNotes = (value: unknown): value is MemberNotes =>
   isRecord(value) && typeof value.email === 'string' && typeof value.notes === 'string'
+
+const isMemberEvent = (value: unknown): value is MemberEvent =>
+  isRecord(value) &&
+  typeof value.id === 'number' &&
+  typeof value.at === 'string' &&
+  typeof value.email === 'string' &&
+  typeof value.action === 'string' &&
+  typeof value.detail === 'string'
+
+const isMemberEventArray = (value: unknown): value is MemberEvent[] =>
+  Array.isArray(value) && value.every(isMemberEvent)
 
 const isMemberPayloadArray = (value: unknown): value is MemberPayload[] =>
   Array.isArray(value) && value.every(isMemberPayload)
@@ -152,6 +171,23 @@ export const fetchMember = async ({
     throw new Error('Unexpected member response')
   }
   return toMember(data)
+}
+
+export const fetchMemberEvents = async ({
+  email,
+  password,
+}: {
+  email: string
+  password: string
+}): Promise<MemberEvent[]> => {
+  const data = await requestJson({
+    path: `/admin/events?email=${encodeURIComponent(email)}`,
+    password,
+  })
+  if (!isMemberEventArray(data)) {
+    throw new Error('Unexpected events response')
+  }
+  return data
 }
 
 export const fetchMemberNotes = async ({

@@ -114,6 +114,24 @@ def test_init_db_adds_notes_table_to_legacy_db(tmp_path):
     assert store.get_member_notes(db, "a@x.com") == "legacy ok"
 
 
+def test_event_history_roundtrip_newest_first_lowercased(tmp_path):
+    db = str(tmp_path / "bridge.db")
+    store.init_db(db)
+    assert store.events_for_email(db, "a@x.com") == []
+    store.record_event(db, "A@X.com", "Signed up", "gold tier — invite emailed")
+    store.record_event(db, "a@x.com", "Canceled")
+    events = store.events_for_email(db, "A@X.com")
+    assert [e["action"] for e in events] == ["Canceled", "Signed up"]
+    assert events[1]["detail"] == "gold tier — invite emailed"
+    assert events[0]["email"] == "a@x.com"
+    assert all(e["at"] for e in events)
+
+
+def test_record_event_never_raises(tmp_path):
+    # A history write failure must not break the action it records.
+    store.record_event(str(tmp_path / "missing" / "no.db"), "a@x.com", "Signed up")
+
+
 def test_all_customer_tiers_includes_untiered_rows(tmp_path):
     db = str(tmp_path / "bridge.db")
     store.init_db(db)

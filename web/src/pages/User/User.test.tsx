@@ -23,12 +23,13 @@ const member: Member = {
 vi.mock('@/lib/adminApi', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/adminApi')>()),
   fetchMember: vi.fn(),
+  fetchMemberEvents: vi.fn(),
   fetchMemberNotes: vi.fn(),
   saveMemberNotes: vi.fn(),
   reissueInvite: vi.fn(),
 }))
 
-const { fetchMember, fetchMemberNotes, saveMemberNotes, reissueInvite } =
+const { fetchMember, fetchMemberEvents, fetchMemberNotes, saveMemberNotes, reissueInvite } =
   await import('@/lib/adminApi')
 
 const renderUser = ({ email }: { email: string | null }) => {
@@ -48,6 +49,7 @@ const renderUser = ({ email }: { email: string | null }) => {
 beforeEach(() => {
   sessionStorage.setItem('westeroz-admin-password', 'secret')
   vi.mocked(fetchMemberNotes).mockResolvedValue({ email: 'max@y.com', notes: '' })
+  vi.mocked(fetchMemberEvents).mockResolvedValue([])
 })
 
 afterEach(() => {
@@ -154,6 +156,38 @@ test('loads saved notes and saves an edited draft', async () => {
     password: 'secret',
   })
   expect(await screen.findByText('Saved ✓')).toBeInTheDocument()
+})
+
+test('shows the member action history newest first', async () => {
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  vi.mocked(fetchMemberEvents).mockResolvedValue([
+    {
+      id: 2,
+      at: '2026-07-01T10:00:00+00:00',
+      email: 'max@y.com',
+      action: 'Invite issued',
+      detail: 'gold tier — link emailed',
+    },
+    {
+      id: 1,
+      at: '2026-06-01T09:00:00+00:00',
+      email: 'max@y.com',
+      action: 'Signed up',
+      detail: 'silver tier — invite emailed',
+    },
+  ])
+  renderUser({ email: 'max@y.com' })
+
+  expect(await screen.findByText('Invite issued')).toBeInTheDocument()
+  expect(screen.getByText('gold tier — link emailed')).toBeInTheDocument()
+  expect(screen.getByText('Signed up')).toBeInTheDocument()
+  expect(screen.getByText('silver tier — invite emailed')).toBeInTheDocument()
+})
+
+test('derives a Membership expired row when the expiry has passed', async () => {
+  vi.mocked(fetchMember).mockResolvedValue({ ...member, expires: '2020-01-01T00:00:00+00:00' })
+  renderUser({ email: 'max@y.com' })
+  expect(await screen.findByText('Membership expired')).toBeInTheDocument()
 })
 
 test('shows a not-found notice when no member matches the email', async () => {

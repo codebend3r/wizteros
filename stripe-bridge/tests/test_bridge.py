@@ -57,6 +57,9 @@ def test_checkout_brand_new_member_invites_for_its_tier(bridge):
     bridge.client.set_expiry.assert_not_called()
     import store
     assert store.get_mapping(bridge.MAP_DB_PATH, "cus_1")["invite_code"] == "abc"
+    events = store.events_for_email(bridge.MAP_DB_PATH, "a@x.com")
+    assert events[0]["action"] == "Signed up"
+    assert "silver" in events[0]["detail"]
 
 
 def test_checkout_existing_member_resets_all_records_for_rejoin(bridge):
@@ -118,6 +121,9 @@ def test_invoice_paid_renewal_extends(bridge):
     calls = bridge.client.set_expiry.call_args_list
     assert sorted(c.args[0] for c in calls) == [9, 10]
     assert len({c.args[1] for c in calls}) == 1  # one expiry applied uniformly
+    events = store.events_for_email(bridge.MAP_DB_PATH, "a@x.com")
+    assert events[0]["action"] == "Payment received"
+    assert "access extended to" in events[0]["detail"]
 
 
 def test_duplicate_event_is_ignored(bridge):
@@ -147,6 +153,9 @@ def test_subscription_deleted_disables_all_records(bridge):
     })
     # cancel must disable every server record, not just the first
     assert sorted(c.args[0] for c in bridge.client.disable_user.call_args_list) == [57, 106, 147, 155, 204]
+    events = store.events_for_email(bridge.MAP_DB_PATH, "a@x.com")
+    assert events[0]["action"] == "Canceled"
+    assert "5 server record(s)" in events[0]["detail"]
 
 
 def test_webhook_route_handles_stripe_object_event(bridge, monkeypatch):

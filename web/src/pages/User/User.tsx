@@ -9,11 +9,13 @@ import TierIcon from '@/components/TierIcon/TierIcon'
 import {
   AdminAuthError,
   fetchMember,
+  fetchMemberEvents,
   fetchMemberNotes,
   reissueInvite,
   saveMemberNotes,
   type InviteResult,
   type Member,
+  type MemberEvent,
   type PaidTier,
 } from '@/lib/adminApi'
 import { ACCESS_DAYS, isPaidTier, PAID_TIERS, TIER_DOWNLOADS, TIER_LABELS } from '@/lib/inviteRules'
@@ -151,11 +153,22 @@ const UserInner = () => {
     staleTime: 5 * 60 * 1000,
   })
 
+  const { data: memberEvents, error: eventsError } = useQuery({
+    queryKey: ['member-events', email],
+    queryFn: () => fetchMemberEvents({ email, password }),
+    enabled: !!email,
+    staleTime: 5 * 60 * 1000,
+  })
+
   useEffect(() => {
-    if (loadError instanceof AdminAuthError || notesError instanceof AdminAuthError) {
+    if (
+      loadError instanceof AdminAuthError ||
+      notesError instanceof AdminAuthError ||
+      eventsError instanceof AdminAuthError
+    ) {
       deauthenticate()
     }
-  }, [loadError, notesError, deauthenticate])
+  }, [loadError, notesError, eventsError, deauthenticate])
 
   useEffect(() => {
     if (!menuOpen) {
@@ -193,6 +206,7 @@ const UserInner = () => {
       queryClient.setQueryData<Member[]>(MEMBERS_QUERY_KEY, (old) =>
         old?.map((row) => (row.email.toLowerCase() === email.toLowerCase() ? apply(row) : row)),
       )
+      void queryClient.invalidateQueries({ queryKey: ['member-events', email] })
       setPendingTier(null)
     },
     onError: (cause) => {
@@ -225,6 +239,24 @@ const UserInner = () => {
   })
 
   const error = !!loadError && !(loadError instanceof AdminAuthError)
+
+  // The bridge can't observe an expiry date passing, so surface it as a
+  // derived row on top of the recorded history.
+  const expiredAt = member && deriveStatus({ member }) === 'Expired Member' ? member.expires : null
+  const historyRows: MemberEvent[] = [
+    ...(expiredAt
+      ? [
+          {
+            id: -1,
+            at: expiredAt,
+            email: member?.email ?? '',
+            action: 'Membership expired',
+            detail: '',
+          },
+        ]
+      : []),
+    ...(memberEvents ?? []),
+  ]
 
   return (
     <AdminLayout>
@@ -297,7 +329,7 @@ const UserInner = () => {
               </a>
             </div>
             <section className={styles.notesSection}>
-              <h2 className={styles.notesTitle}>Notes</h2>
+              <h2 className={styles.sectionTitle}>Notes</h2>
               <textarea
                 className={styles.notes}
                 value={notes}
@@ -319,6 +351,26 @@ const UserInner = () => {
                   <span className={styles.notesSaved}>Saved ✓</span>
                 )}
               </div>
+            </section>
+            <section className={styles.historySection}>
+              <h2 className={styles.sectionTitle}>History</h2>
+              {historyRows.length ? (
+                <ul className={styles.history}>
+                  {historyRows.map((event) => (
+                    <li key={event.id} className={styles.historyRow}>
+                      <span className={styles.historyAt}>
+                        {new Date(event.at).toLocaleString()}
+                      </span>
+                      <span className={styles.historyAction}>{event.action}</span>
+                      {!!event.detail && (
+                        <span className={styles.historyDetail}>{event.detail}</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className={styles.notice}>No history yet.</p>
+              )}
             </section>
           </>
         )}

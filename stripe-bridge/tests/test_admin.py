@@ -129,6 +129,19 @@ FIXTURE_LIBRARIES = [
 ]
 
 
+def test_admin_actions_append_to_the_member_history(admin_db):
+    a, _ = admin_db
+    a.client.find_user_ids_by_email.return_value = [9]
+    a.client.create_invite.return_value = {"code": "xyz", "url": "http://wizarr-lan/j/xyz"}
+    a.reissue_invite(a.ReissueInviteBody(email="A@X.com", tier="gold"))
+    a.reset_expiry(a.ResetExpiryBody(email="a@x.com", days=35))
+
+    events = a.get_events("a@x.com")
+    assert [e["action"] for e in events] == ["Expiry reset", "Invite issued"]  # newest first
+    assert "gold tier" in events[1]["detail"]
+    assert events[0]["detail"] == "35 days"
+
+
 def test_notes_roundtrip_and_case_insensitive_email(admin_db):
     a, _ = admin_db
     assert a.get_notes("a@x.com") == {"email": "a@x.com", "notes": ""}
@@ -250,3 +263,4 @@ def test_bridge_app_mounts_admin_routes_bare_and_prefixed():
     assert "/stripe/admin/members" in paths
     assert "/admin/reissue-invite" in paths
     assert "/admin/notes" in paths
+    assert "/admin/events" in paths
