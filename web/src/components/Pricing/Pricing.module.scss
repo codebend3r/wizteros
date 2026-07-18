@@ -81,6 +81,50 @@
   border-color: color-mix(in srgb, var(--metal) 45%, var(--color-border));
 }
 
+// Animated multi-color ring, masked so only a 2px band inside the card edge
+// paints. Sits on ::after (::before is the resting top strip) and fades in on
+// hover, where the registered --border-angle lets the conic gradient rotate.
+@property --border-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 2px;
+  background: conic-gradient(
+    from var(--border-angle),
+    var(--color-bronze),
+    var(--color-gold),
+    var(--color-kids),
+    var(--color-silver),
+    var(--color-accent),
+    var(--color-bronze)
+  );
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+.card:hover::after {
+  opacity: 1;
+  animation: border-spin 2.5s linear infinite;
+}
+
+@keyframes border-spin {
+  to {
+    --border-angle: 360deg;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .card {
     transition: none;
@@ -88,6 +132,11 @@
 
   .card:hover {
     transform: none;
+  }
+
+  // The ring still appears, it just holds still.
+  .card:hover::after {
+    animation: none;
   }
 }
 
