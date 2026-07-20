@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import Invite from '@/pages/Invite/Invite'
-import { AdminAuthError, type InviteResult } from '@/lib/adminApi'
+import { AdminAuthError, type InviteResult, type Member } from '@/lib/adminApi'
 
 vi.mock('@/lib/adminApi', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/adminApi')>()),
@@ -118,4 +118,38 @@ test('an auth error during send returns to the password gate', async () => {
     within(screen.getByRole('dialog')).getByRole('button', { name: 'Send invite' }),
   )
   expect(await screen.findByLabelText('Password')).toBeInTheDocument()
+})
+
+const existing: Member = {
+  member: 'cody',
+  email: 'new@x.com',
+  tier: 'gold',
+  downloads: true,
+  expires: null,
+  servers: ['Vermithor'],
+  libraries: {},
+  subscribed: false,
+  invited_at: null,
+}
+
+test('blocks an email that already belongs to a member', async () => {
+  vi.mocked(fetchMembers).mockResolvedValue([existing])
+  renderInvite()
+  await userEvent.type(screen.getByLabelText('Email address'), 'new@x.com')
+  await userEvent.click(screen.getByRole('button', { name: /Gold/ }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Send invite' }))
+
+  expect(reissueInvite).not.toHaveBeenCalled()
+  expect(screen.getByText(/already a member/)).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'Go to member' })).toHaveAttribute(
+    'href',
+    '/user?email=new%40x.com',
+  )
+  expect(screen.queryByRole('dialog')).toBeNull()
+})
+
+test('send waits while the members list is still loading', () => {
+  vi.mocked(fetchMembers).mockReturnValue(new Promise(() => {}))
+  renderInvite()
+  expect(screen.getByRole('button', { name: 'Checking members…' })).toBeDisabled()
 })

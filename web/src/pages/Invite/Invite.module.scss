@@ -145,3 +145,10 @@
   color: var(--color-muted);
   font-size: var(--font-size-sm);
 }
+
+.blockedNotice {
+  padding: var(--space-2);
+  border: 1px solid var(--color-kids);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}

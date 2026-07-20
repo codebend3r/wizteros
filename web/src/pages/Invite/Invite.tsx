@@ -1,12 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import AdminGate, { useAdminAuth } from '@/components/AdminGate/AdminGate'
 import AdminLayout from '@/components/AdminLayout/AdminLayout'
 import ConfirmActionModal from '@/components/ConfirmActionModal/ConfirmActionModal'
 import TierIcon from '@/components/TierIcon/TierIcon'
 import {
   AdminAuthError,
+  fetchMembers,
   reissueInvite,
   type InviteResult,
   type Member,
@@ -15,6 +16,7 @@ import {
 import {
   ACCESS_DAYS,
   INVITE_LINK_DAYS,
+  isPaidTier,
   PAID_TIERS,
   TIER_DOWNLOADS,
   TIER_LABELS,
@@ -45,9 +47,26 @@ const InviteInner = () => {
   const [inviteResult, setInviteResult] = useState<InviteResult | null>(null)
   const [sentEmail, setSentEmail] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [blockedMember, setBlockedMember] = useState<Member | null>(null)
 
   const trimmedEmail = email.trim()
   const emailValid = EMAIL_RE.test(trimmedEmail)
+
+  const {
+    data: members,
+    error: loadError,
+    isPending: membersPending,
+  } = useQuery({
+    queryKey: MEMBERS_QUERY_KEY,
+    queryFn: () => fetchMembers({ password }),
+    staleTime: 5 * 60 * 1000,
+  })
+
+  useEffect(() => {
+    if (loadError instanceof AdminAuthError) {
+      deauthenticate()
+    }
+  }, [loadError, deauthenticate])
 
   const inviteMutation = useMutation({
     mutationFn: ({ email: to, tier: paid }: PendingSend) =>
@@ -95,6 +114,14 @@ const InviteInner = () => {
     if (!tier || !emailValid) {
       return
     }
+    const match = (members ?? []).find(
+      (row) => row.email.toLowerCase() === trimmedEmail.toLowerCase(),
+    )
+    if (match) {
+      setBlockedMember(match)
+      return
+    }
+    setBlockedMember(null)
     setConfirming(true)
   }
 
@@ -117,6 +144,19 @@ const InviteInner = () => {
             </Link>
           </p>
         )}
+        {!!blockedMember && (
+          <p className={styles.blockedNotice}>
+            {blockedMember.email} is already a member
+            {isPaidTier(blockedMember.tier) && ` (${TIER_LABELS[blockedMember.tier]})`}. Use
+            Re-invite instead.{' '}
+            <Link
+              className={styles.viewMember}
+              to={`/user?email=${encodeURIComponent(blockedMember.email)}`}
+            >
+              Go to member
+            </Link>
+          </p>
+        )}
         <div className={styles.form}>
           <div className={styles.field}>
             <label className={styles.label} htmlFor="invite-email">
@@ -131,6 +171,7 @@ const InviteInner = () => {
               onChange={(event) => {
                 setEmail(event.target.value)
                 setActionError(null)
+                setBlockedMember(null)
               }}
             />
           </div>
@@ -157,9 +198,13 @@ const InviteInner = () => {
             className={styles.send}
             type="button"
             onClick={handleSend}
-            disabled={!emailValid || !tier || inviteMutation.isPending}
+            disabled={!emailValid || !tier || membersPending || inviteMutation.isPending}
           >
-            {inviteMutation.isPending ? 'Sending…' : 'Send invite'}
+            {membersPending
+              ? 'Checking members…'
+              : inviteMutation.isPending
+                ? 'Sending…'
+                : 'Send invite'}
           </button>
         </div>
         {confirming && !!tier && (
