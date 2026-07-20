@@ -172,28 +172,35 @@ const InviteInner = () => {
                 setEmail(event.target.value)
                 setActionError(null)
                 setBlockedMember(null)
+                setInviteResult(null)
+                setSentEmail(null)
               }}
             />
           </div>
-          <div className={styles.field}>
-            <span className={styles.label}>Tier</span>
-            <div className={styles.tierGrid} role="group" aria-label="Tier">
+          <fieldset className={styles.tierFieldset}>
+            <legend className={styles.label}>Tier</legend>
+            <div className={styles.tierGrid}>
               {PAID_TIERS.map((paid) => (
-                <button
+                <label
                   key={paid}
-                  type="button"
                   className={`${styles.tierCard} ${tier === paid ? styles.tierCardSelected : ''}`}
-                  aria-pressed={tier === paid}
-                  onClick={() => setTier(paid)}
                 >
+                  <input
+                    className={styles.tierCardInput}
+                    type="radio"
+                    name="tier"
+                    value={paid}
+                    checked={tier === paid}
+                    onChange={() => setTier(paid)}
+                  />
                   <span className={styles.tierCardLabel}>
                     <TierIcon tier={paid} /> {TIER_LABELS[paid]}
                   </span>
                   <span className={styles.tierCardSummary}>{TIER_SUMMARY[paid]}</span>
-                </button>
+                </label>
               ))}
             </div>
-          </div>
+          </fieldset>
           <button
             className={styles.send}
             type="button"

@@ -14,16 +14,18 @@ vi.mock('@/lib/adminApi', async (importOriginal) => ({
 
 const { fetchMembers, reissueInvite } = await import('@/lib/adminApi')
 
-const renderInvite = () => {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
+const renderInvite = (
+  queryClient: QueryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+) => ({
+  queryClient,
+  ...render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
         <Invite />
       </MemoryRouter>
     </QueryClientProvider>,
-  )
-}
+  ),
+})
 
 beforeEach(() => {
   sessionStorage.setItem('westeroz-admin-password', 'secret')
@@ -60,7 +62,7 @@ test('send stays disabled until a valid email and a tier are chosen', async () =
   const send = await screen.findByRole('button', { name: 'Send invite' })
   expect(send).toBeDisabled()
   await userEvent.type(screen.getByLabelText('Email address'), 'not-an-email')
-  await userEvent.click(screen.getByRole('button', { name: /Gold/ }))
+  await userEvent.click(screen.getByRole('radio', { name: /Gold/ }))
   expect(send).toBeDisabled()
   await userEvent.clear(screen.getByLabelText('Email address'))
   await userEvent.type(screen.getByLabelText('Email address'), 'new@x.com')
@@ -71,7 +73,7 @@ test('sends an invite for the typed email and selected tier, then clears the for
   vi.mocked(reissueInvite).mockResolvedValue(gold)
   renderInvite()
   await userEvent.type(screen.getByLabelText('Email address'), 'new@x.com')
-  await userEvent.click(screen.getByRole('button', { name: /Gold/ }))
+  await userEvent.click(screen.getByRole('radio', { name: /Gold/ }))
   await userEvent.click(await screen.findByRole('button', { name: 'Send invite' }))
 
   const dialog = screen.getByRole('dialog', { name: 'Confirm invite' })
@@ -91,15 +93,54 @@ test('sends an invite for the typed email and selected tier, then clears the for
     '/user?email=new%40x.com',
   )
   expect(screen.getByLabelText('Email address')).toHaveValue('')
-  expect(screen.getByRole('button', { name: /Gold/ })).toHaveAttribute('aria-pressed', 'false')
+  expect(screen.getByRole('radio', { name: /Gold/ })).not.toBeChecked()
   expect(screen.queryByRole('dialog')).toBeNull()
+})
+
+test('clears the previous result notice when the email changes', async () => {
+  vi.mocked(reissueInvite).mockResolvedValue(gold)
+  renderInvite()
+  await userEvent.type(screen.getByLabelText('Email address'), 'new@x.com')
+  await userEvent.click(screen.getByRole('radio', { name: /Gold/ }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Send invite' }))
+  await userEvent.click(
+    within(screen.getByRole('dialog')).getByRole('button', { name: 'Send invite' }),
+  )
+  expect(await screen.findByText(/Invite emailed/)).toBeInTheDocument()
+
+  await userEvent.type(screen.getByLabelText('Email address'), 'n')
+  expect(screen.queryByText(/Invite emailed/)).toBeNull()
+})
+
+test('primes the members cache with a pending row after a successful send', async () => {
+  vi.mocked(reissueInvite).mockResolvedValue(gold)
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  queryClient.setQueryData(['members'], [])
+  renderInvite(queryClient)
+  await userEvent.type(screen.getByLabelText('Email address'), 'new@x.com')
+  await userEvent.click(screen.getByRole('radio', { name: /Gold/ }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Send invite' }))
+  await userEvent.click(
+    within(screen.getByRole('dialog')).getByRole('button', { name: 'Send invite' }),
+  )
+  expect(await screen.findByText(/Invite emailed/)).toBeInTheDocument()
+
+  expect(queryClient.getQueryData<Member[]>(['members'])).toContainEqual(
+    expect.objectContaining({
+      email: 'new@x.com',
+      tier: 'gold',
+      subscribed: false,
+      invited_at: expect.any(String),
+      expires: null,
+    }),
+  )
 })
 
 test('a failed invite email shows the manual-send link', async () => {
   vi.mocked(reissueInvite).mockResolvedValue({ ...gold, emailed: false })
   renderInvite()
   await userEvent.type(screen.getByLabelText('Email address'), 'new@x.com')
-  await userEvent.click(screen.getByRole('button', { name: /Silver/ }))
+  await userEvent.click(screen.getByRole('radio', { name: /Silver/ }))
   await userEvent.click(await screen.findByRole('button', { name: 'Send invite' }))
   await userEvent.click(
     within(screen.getByRole('dialog')).getByRole('button', { name: 'Send invite' }),
@@ -112,7 +153,7 @@ test('an auth error during send returns to the password gate', async () => {
   vi.mocked(reissueInvite).mockRejectedValue(new AdminAuthError('nope'))
   renderInvite()
   await userEvent.type(screen.getByLabelText('Email address'), 'new@x.com')
-  await userEvent.click(screen.getByRole('button', { name: /Bronze/ }))
+  await userEvent.click(screen.getByRole('radio', { name: /Bronze/ }))
   await userEvent.click(await screen.findByRole('button', { name: 'Send invite' }))
   await userEvent.click(
     within(screen.getByRole('dialog')).getByRole('button', { name: 'Send invite' }),
@@ -136,7 +177,7 @@ test('blocks an email that already belongs to a member', async () => {
   vi.mocked(fetchMembers).mockResolvedValue([existing])
   renderInvite()
   await userEvent.type(screen.getByLabelText('Email address'), 'new@x.com')
-  await userEvent.click(screen.getByRole('button', { name: /Gold/ }))
+  await userEvent.click(screen.getByRole('radio', { name: /Gold/ }))
   await userEvent.click(await screen.findByRole('button', { name: 'Send invite' }))
 
   expect(reissueInvite).not.toHaveBeenCalled()
