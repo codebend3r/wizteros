@@ -25,7 +25,6 @@ const renderInvite = () => {
 
 beforeEach(() => {
   sessionStorage.setItem('westeroz-admin-password', 'secret')
-  // The members query arrives in a later task; default it so cross-task runs stay quiet.
   vi.mocked(fetchMembers).mockResolvedValue([])
 })
 
