@@ -144,3 +144,10 @@ test('cancelling the confirm modal sends nothing', async () => {
   expect(reissueInvite).not.toHaveBeenCalled()
   expect(screen.queryByRole('dialog')).toBeNull()
 })
+
+test('links to the invite page', async () => {
+  vi.mocked(fetchMembers).mockResolvedValue([member])
+  renderManage()
+  const link = await screen.findByRole('link', { name: '+ Invite someone' })
+  expect(link).toHaveAttribute('href', '/invite')
+})
