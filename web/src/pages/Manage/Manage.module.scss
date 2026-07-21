@@ -10,10 +10,23 @@
   padding: var(--space-4) var(--space-3);
 }
 
+.header {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .title {
   font-family: var(--font-display);
   font-size: var(--font-size-xl);
   font-weight: 700;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }
 
 .loading {
@@ -52,4 +65,20 @@
   border-radius: var(--radius-md);
   background: var(--color-surface);
   word-break: break-all;
+}
+
+.inviteLink {
+  justify-self: start;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
+  text-decoration: none;
+
+  &:hover {
+    border-color: var(--color-accent);
+  }
 }

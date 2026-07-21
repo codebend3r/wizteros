@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import AdminGate, { useAdminAuth } from '@/components/AdminGate/AdminGate'
 import AdminLayout from '@/components/AdminLayout/AdminLayout'
 import ConfirmInviteModal from '@/components/ConfirmInviteModal/ConfirmInviteModal'
+import CopyEmailsButton from '@/components/CopyEmailsButton/CopyEmailsButton'
 import MembersTable from '@/components/MembersTable/MembersTable'
 import Preloader from '@/components/Preloader/Preloader'
 import {
@@ -99,7 +101,18 @@ const ManageInner = () => {
   return (
     <AdminLayout>
       <main className={styles.page}>
-        <h1 className={styles.title}>Members</h1>
+        <div className={styles.header}>
+          <h1 className={styles.title}>Members</h1>
+          <CopyEmailsButton emails={(members ?? []).map((member) => member.email)} />
+        </div>
+        <div className={styles.actions}>
+          <Link className={styles.inviteLink} to="/invite">
+            + Invite someone
+          </Link>
+          <Link className={styles.inviteLink} to="/email">
+            Email all members
+          </Link>
+        </div>
         {!!error && <p className={styles.error}>{error}</p>}
         {!!inviteResult && (
           <p className={styles.invite}>
