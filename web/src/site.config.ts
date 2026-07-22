@@ -9,7 +9,7 @@ type TierFeature = {
 }
 
 type Tier = {
-  id: 'bronze' | 'silver' | 'gold' | 'kids'
+  id: 'bronze' | 'silver' | 'gold' | 'youth'
   name: string
   price: string
   cadence: string
@@ -30,7 +30,7 @@ type RawEnv = {
   VITE_PAYMENT_LINK_BRONZE_URL?: string
   VITE_PAYMENT_LINK_SILVER_URL?: string
   VITE_PAYMENT_LINK_GOLD_URL?: string
-  VITE_PAYMENT_LINK_KIDS_URL?: string
+  VITE_PAYMENT_LINK_YOUTH_URL?: string
   VITE_MEMBER_URL?: string
 }
 
@@ -57,11 +57,11 @@ const FEATURE_LABELS = [
   'Request any show or movie',
 ] as const
 
-// Youth swaps the two library rows for kid-scoped wording; the remaining
+// Youth swaps the two library rows for youth-scoped wording; the remaining
 // rows stay identical so the four cards keep their row-by-row alignment.
-const KIDS_FEATURE_LABELS = [
-  'Access to all kid 1080p tv shows and movies',
-  'Access to all 4K kid movies',
+const YOUTH_FEATURE_LABELS = [
+  'Access to all youth 1080p tv shows and movies',
+  'Access to all 4K youth movies',
   'Access to Lossless Music Library',
   'Offline downloads for travel',
   'Request any show or movie',
@@ -134,21 +134,21 @@ export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
       paymentLinkUrl: env.VITE_PAYMENT_LINK_GOLD_URL ?? '',
     },
     {
-      id: 'kids',
+      id: 'youth',
       name: 'Youth',
       price: '$10',
       cadence: 'CAD / month',
-      summary: 'A family plan curated for kids.',
+      summary: 'A family plan curated for youth.',
       features: toChecklist({
-        labels: KIDS_FEATURE_LABELS,
+        labels: YOUTH_FEATURE_LABELS,
         included: [
-          'Access to all kid 1080p tv shows and movies',
-          'Access to all 4K kid movies',
+          'Access to all youth 1080p tv shows and movies',
+          'Access to all 4K youth movies',
           'Offline downloads for travel',
           'Request any show or movie',
         ],
       }),
-      paymentLinkUrl: env.VITE_PAYMENT_LINK_KIDS_URL ?? '',
+      paymentLinkUrl: env.VITE_PAYMENT_LINK_YOUTH_URL ?? '',
     },
   ],
 })
@@ -157,7 +157,7 @@ const env: RawEnv = {
   VITE_PAYMENT_LINK_BRONZE_URL: import.meta.env.VITE_PAYMENT_LINK_BRONZE_URL,
   VITE_PAYMENT_LINK_SILVER_URL: import.meta.env.VITE_PAYMENT_LINK_SILVER_URL,
   VITE_PAYMENT_LINK_GOLD_URL: import.meta.env.VITE_PAYMENT_LINK_GOLD_URL,
-  VITE_PAYMENT_LINK_KIDS_URL: import.meta.env.VITE_PAYMENT_LINK_KIDS_URL,
+  VITE_PAYMENT_LINK_YOUTH_URL: import.meta.env.VITE_PAYMENT_LINK_YOUTH_URL,
   VITE_MEMBER_URL: import.meta.env.VITE_MEMBER_URL,
 }
 

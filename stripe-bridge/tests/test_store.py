@@ -106,8 +106,8 @@ def test_set_tier_updates_existing_row_keeping_invite_code(tmp_path):
 def test_set_tier_inserts_placeholder_for_unknown_email(tmp_path):
     db = str(tmp_path / "bridge.db")
     store.init_db(db)
-    store.set_tier(db, "New@X.com", "kids")
-    assert store.all_customer_tiers(db) == {"new@x.com": "kids"}
+    store.set_tier(db, "New@X.com", "youth")
+    assert store.all_customer_tiers(db) == {"new@x.com": "youth"}
 
 
 def test_member_notes_roundtrip_lowercased_and_overwritten(tmp_path):

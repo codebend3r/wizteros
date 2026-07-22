@@ -4,14 +4,18 @@ A self-hosted stack that gates access to a private Plex setup behind a recurring
 
 - **[Wizarr](https://github.com/wizarrrr/wizarr)** — invite-based user onboarding
 - **[Tautulli](https://github.com/Tautulli/Tautulli)** — usage monitoring and analytics
-- **stripe-bridge** (`stripe-bridge/`) — a small FastAPI service that turns Stripe webhooks into Wizarr API calls
-- **web** (`web/`) — a Vite + React landing page that funnels visitors to the Stripe Payment Link
+- **stripe-bridge** (`stripe-bridge/`) — a small FastAPI service that turns Stripe webhooks into Wizarr API calls, and serves the admin API
+- **web** (`web/`) — a Vite + React site: a public landing page with the four pricing tiers, plus password-gated admin pages (`/manage`, `/invite`, `/reset-user`) backed by the bridge
 
 ```
 Stripe checkout → webhook → stripe-bridge → Wizarr → Plex
 ```
 
 On `checkout.session.completed` the bridge creates a Wizarr invite and emails it to the customer. On `invoice.paid` (renewals) it extends the member's access for another cycle. On `customer.subscription.deleted` it disables the member's records.
+
+### Tiers
+
+Each Stripe Payment Link carries a `tier` metadata key that scopes the invite: **Bronze** ($8, everything except 4K), **Silver** ($14, everything, no downloads), **Gold** ($20, everything + downloads), **Youth** ($10, a curated family allowlist + downloads) — all CAD/month. Libraries named `9X. …` are never shared, on any tier.
 
 ## Getting started
 
@@ -41,6 +45,6 @@ npm run verify     # lint + format check + typecheck + web and bridge unit tests
 - End-to-end flow test against a running bridge: `npm run retest`
 - Deploy the stack to the NAS: `npm run deploy:nas`
 
-Hooks run automatically: pre-commit lints and formats staged files, pre-push runs `npm run verify`.
+Hooks run automatically: pre-commit lints and formats staged files; pre-push runs `npm run verify` and then syncs the code to the NAS (`npm run deploy:nas`). CI runs the same lint, web, and bridge checks on every push.
 
-Deployment details live in `docs/nas-deployment.md` and `docs/tailscale-funnel.md`; working conventions in `CLAUDE.md`.
+Deployment details live in `docs/nas-deployment.md` and `docs/tailscale-funnel.md`; the invite/renewal/cancel flow in `docs/invite-flow.md`; working conventions in `CLAUDE.md`.

@@ -12,7 +12,7 @@ import {
 import styles from '@/pages/ResetUser/ResetUser.module.scss'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-const TIERS: ReadonlyArray<PaidTier> = ['bronze', 'silver', 'gold', 'kids']
+const TIERS: ReadonlyArray<PaidTier> = ['bronze', 'silver', 'gold', 'youth']
 const EXPIRY_PRESETS: ReadonlyArray<{ label: string; days: number | null }> = [
   { label: 'No expiry', days: null },
   { label: '15 days', days: 15 },

@@ -61,7 +61,7 @@ def _dedupe_members(users: list, customers: dict, libraries: list) -> list[dict]
     members = []
     for person in people.values():
         row = (customers.get(person["email"].lower()) if person["email"] else None) or {}
-        tier = row.get("tier") or "unknown"
+        tier = tiers.canonical_tier(row.get("tier")) or "unknown"
         downloads = tiers.TIER_DOWNLOADS.get(tier) if tier != "unknown" else None
         servers = sorted(person["servers"])
         tier_libraries = tiers.tier_server_libraries(tier=tier, libraries=libraries)
@@ -82,7 +82,7 @@ def _dedupe_members(users: list, customers: dict, libraries: list) -> list[dict]
 
 def _member_from_customer(email: str, row: dict) -> dict:
     """A table row for a subscriber the bridge knows who hasn't joined Wizarr yet."""
-    resolved = row.get("tier") or "unknown"
+    resolved = tiers.canonical_tier(row.get("tier")) or "unknown"
     return {
         "member": email.split("@")[0],
         "email": email,

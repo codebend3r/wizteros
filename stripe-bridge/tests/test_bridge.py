@@ -119,7 +119,7 @@ def test_checkout_brand_new_member_disables_nothing(bridge):
         "id": "evt_checkout_fresh",
         "data": {"object": {"id": "cs_1", "customer": "cus_1",
                             "customer_details": {"email": "new@x.com"},
-                            "metadata": {"tier": "kids"}}},
+                            "metadata": {"tier": "youth"}}},
     })
     bridge.client.disable_user.assert_not_called()
 
@@ -369,16 +369,16 @@ def test_checkout_gold_enables_downloads(bridge):
         [1, 2], 14, "35", library_ids=[17, 20, 22, 24], allow_downloads=True)
 
 
-def test_checkout_kids_scopes_to_kid_libraries_only(bridge):
+def test_checkout_youth_scopes_to_youth_libraries_only(bridge):
     bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
     bridge.client.create_invite.return_value = {"code": "abc", "url": "http://x/j/abc"}
     bridge.client.find_user_ids_by_email.return_value = []
     bridge.handle_event({
         "type": "checkout.session.completed",
-        "id": "evt_kids",
+        "id": "evt_youth",
         "data": {"object": {"id": "cs_1", "customer": "cus_1",
                             "customer_details": {"email": "a@x.com"},
-                            "metadata": {"tier": "kids"}}},
+                            "metadata": {"tier": "youth"}}},
     })
     bridge.client.create_invite.assert_called_once_with(
         [1, 2], 14, "35", library_ids=[20, 22, 24], allow_downloads=True)
