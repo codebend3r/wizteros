@@ -19,6 +19,7 @@ const member: Member = {
   },
   subscribed: true,
   invited_at: null,
+  tag: null,
 }
 
 vi.mock('@/lib/adminApi', async (importOriginal) => ({
@@ -31,6 +32,7 @@ vi.mock('@/lib/adminApi', async (importOriginal) => ({
   resetExpiry: vi.fn(),
   resetTier: vi.fn(),
   cancelSubscription: vi.fn(),
+  setMemberTag: vi.fn(),
 }))
 
 const {
@@ -42,6 +44,7 @@ const {
   resetExpiry,
   resetTier,
   cancelSubscription,
+  setMemberTag,
 } = await import('@/lib/adminApi')
 
 const renderUser = ({ email }: { email: string | null }) => {
@@ -358,6 +361,50 @@ test('shows an error when the subscription cancellation fails', async () => {
   await user.click(within(dialog).getByRole('button', { name: 'Cancel subscription' }))
 
   expect(await screen.findByText('Could not cancel the subscription.')).toBeInTheDocument()
+})
+
+test('tags the member VIP and reflects it in the status and tag rows', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  vi.mocked(setMemberTag).mockResolvedValue({ email: 'max@y.com', tag: 'vip' })
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  expect(screen.getByText('Subscribed Monthly')).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: '💎 VIP' }))
+
+  expect(setMemberTag).toHaveBeenCalledWith({ email: 'max@y.com', tag: 'vip', password: 'secret' })
+  // the tag row joins the (now disabled) tag button in showing 💎 VIP
+  expect(await screen.findAllByText('💎 VIP')).toHaveLength(2)
+  expect(screen.getByText('VIP')).toBeInTheDocument()
+  expect(screen.queryByText('Subscribed Monthly')).not.toBeInTheDocument()
+})
+
+test('clears a tag and returns to the derived status', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue({ ...member, tag: 'hvu' })
+  vi.mocked(setMemberTag).mockResolvedValue({ email: 'max@y.com', tag: null })
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  expect(screen.getByText('HVU')).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Clear tag' }))
+
+  expect(setMemberTag).toHaveBeenCalledWith({ email: 'max@y.com', tag: null, password: 'secret' })
+  expect(await screen.findByText('Subscribed Monthly')).toBeInTheDocument()
+  // only the tag row clears to the em dash; the ⭐ HVU button remains
+  expect(screen.getByText('—')).toBeInTheDocument()
+  expect(screen.getAllByText('⭐ HVU')).toHaveLength(1)
+})
+
+test('disables the active tag button and Clear when untagged', async () => {
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  expect(screen.getByRole('button', { name: '💎 VIP' })).toBeEnabled()
+  expect(screen.getByRole('button', { name: '⭐ HVU' })).toBeEnabled()
+  expect(screen.getByRole('button', { name: 'Clear tag' })).toBeDisabled()
 })
 
 test('loads saved notes and saves an edited draft', async () => {

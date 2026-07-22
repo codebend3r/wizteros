@@ -1,5 +1,6 @@
 export type PaidTier = 'bronze' | 'silver' | 'gold' | 'youth'
 export type Tier = PaidTier | 'unknown'
+export type MemberTag = 'vip' | 'hvu'
 
 export type Member = {
   member: string
@@ -11,6 +12,7 @@ export type Member = {
   libraries: Record<string, string[]>
   subscribed: boolean
   invited_at: string | null
+  tag: MemberTag | null
 }
 
 export type MemberNotes = {
@@ -50,6 +52,11 @@ export type CancelSubscriptionResult = {
   cancel_at: string | null
 }
 
+export type SetTagResult = {
+  email: string
+  tag: MemberTag | null
+}
+
 export class AdminAuthError extends Error {}
 
 const ADMIN_API_BASE: string = import.meta.env.VITE_ADMIN_API_BASE ?? ''
@@ -68,12 +75,16 @@ const TIERS: ReadonlyArray<Tier> = ['bronze', 'silver', 'gold', 'youth', 'unknow
 const isTier = (value: unknown): value is Tier =>
   typeof value === 'string' && TIERS.some((tier) => tier === value)
 
-// A bridge deployed before the libraries map or invited_at stamp may still
-// omit them; tolerate that and normalize with toMember so the page degrades
-// to bare server names and a grace clock that never expires.
-type MemberPayload = Omit<Member, 'libraries' | 'invited_at'> & {
+const isMemberTag = (value: unknown): value is MemberTag => value === 'vip' || value === 'hvu'
+
+// A bridge deployed before the libraries map, invited_at stamp, or tag may
+// still omit them; tolerate that and normalize with toMember so the page
+// degrades to bare server names, a grace clock that never expires, and an
+// untagged member.
+type MemberPayload = Omit<Member, 'libraries' | 'invited_at' | 'tag'> & {
   libraries?: Record<string, string[]>
   invited_at?: string | null
+  tag?: MemberTag | null
 }
 
 const isMemberPayload = (value: unknown): value is MemberPayload =>
@@ -88,12 +99,14 @@ const isMemberPayload = (value: unknown): value is MemberPayload =>
   typeof value.subscribed === 'boolean' &&
   (value.invited_at === undefined ||
     value.invited_at === null ||
-    typeof value.invited_at === 'string')
+    typeof value.invited_at === 'string') &&
+  (value.tag === undefined || value.tag === null || isMemberTag(value.tag))
 
 const toMember = (payload: MemberPayload): Member => ({
   ...payload,
   libraries: payload.libraries ?? {},
   invited_at: payload.invited_at ?? null,
+  tag: payload.tag ?? null,
 })
 
 const isMemberNotes = (value: unknown): value is MemberNotes =>
@@ -134,6 +147,11 @@ const isCancelSubscriptionResult = (value: unknown): value is CancelSubscription
   typeof value.email === 'string' &&
   typeof value.canceled === 'number' &&
   (typeof value.cancel_at === 'string' || value.cancel_at === null)
+
+const isSetTagResult = (value: unknown): value is SetTagResult =>
+  isRecord(value) &&
+  typeof value.email === 'string' &&
+  (value.tag === null || isMemberTag(value.tag))
 
 type RequestArgs = {
   path: string
@@ -316,6 +334,27 @@ export const cancelSubscription = async ({
   })
   if (!isCancelSubscriptionResult(data)) {
     throw new Error('Unexpected cancel-subscription response')
+  }
+  return data
+}
+
+export const setMemberTag = async ({
+  email,
+  tag,
+  password,
+}: {
+  email: string
+  tag: MemberTag | null
+  password: string
+}): Promise<SetTagResult> => {
+  const data = await requestJson({
+    path: '/admin/set-tag',
+    password,
+    method: 'POST',
+    body: { email, tag },
+  })
+  if (!isSetTagResult(data)) {
+    throw new Error('Unexpected set-tag response')
   }
   return data
 }

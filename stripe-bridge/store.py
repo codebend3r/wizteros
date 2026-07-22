@@ -26,6 +26,13 @@ CREATE TABLE IF NOT EXISTS member_notes (
 )
 """
 
+_TAGS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS member_tags (
+    email TEXT PRIMARY KEY,
+    tag   TEXT NOT NULL
+)
+"""
+
 _EVENT_LOG_SCHEMA = """
 CREATE TABLE IF NOT EXISTS event_log (
     id     INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -64,6 +71,7 @@ def init_db(path: str) -> None:
         c.execute(_SCHEMA)
         c.execute(_EVENTS_SCHEMA)
         c.execute(_NOTES_SCHEMA)
+        c.execute(_TAGS_SCHEMA)
         c.execute(_EVENT_LOG_SCHEMA)
         _ensure_tier_column(c)
         _ensure_invited_at_column(c)
@@ -222,6 +230,28 @@ def set_member_notes(path: str, email: str, notes: str) -> None:
             """,
             (email.lower(), notes),
         )
+
+
+def set_member_tag(path: str, email: str, tag: str | None) -> None:
+    """Save the manual designation for an email (keyed lowercased); None clears it."""
+    with _conn(path) as c:
+        if tag is None:
+            c.execute("DELETE FROM member_tags WHERE email = ?", (email.lower(),))
+        else:
+            c.execute(
+                """
+                INSERT INTO member_tags (email, tag) VALUES (?, ?)
+                ON CONFLICT(email) DO UPDATE SET tag = excluded.tag
+                """,
+                (email.lower(), tag),
+            )
+
+
+def all_member_tags(path: str) -> dict[str, str]:
+    """Map lowercased email -> manual tag for every tagged member."""
+    with _conn(path) as c:
+        rows = c.execute("SELECT email, tag FROM member_tags").fetchall()
+    return {row["email"]: row["tag"] for row in rows}
 
 
 def record_event(path: str, email: str, action: str, detail: str = "") -> None:

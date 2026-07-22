@@ -17,9 +17,11 @@ import {
   resetExpiry,
   resetTier,
   saveMemberNotes,
+  setMemberTag,
   type InviteResult,
   type Member,
   type MemberEvent,
+  type MemberTag,
   type PaidTier,
 } from '@/lib/adminApi'
 import { isPaidTier, PAID_TIERS, TIER_DOWNLOADS, TIER_LABELS } from '@/lib/inviteRules'
@@ -36,6 +38,12 @@ const STATUS_EMOJI: Record<MemberStatus, string> = {
   'Declined Invite': '🚫',
   Uninvited: '⚪',
   VIP: '💎',
+  HVU: '⭐',
+}
+
+const TAG_LABELS: Record<MemberTag, string> = {
+  vip: '💎 VIP',
+  hvu: '⭐ HVU',
 }
 
 const parseExpiry = (expires: string | null): Date | null => {
@@ -121,6 +129,8 @@ const MemberDetails = ({ member, expiryUpdating }: { member: Member; expiryUpdat
         {isPaidTier(member.tier) && <TierIcon tier={member.tier} />}{' '}
         {isPaidTier(member.tier) ? TIER_LABELS[member.tier] : member.tier}
       </dd>
+      <dt>Tag</dt>
+      <dd>{member.tag ? TAG_LABELS[member.tag] : '—'}</dd>
       <dt>Downloads</dt>
       <dd>{formatDownloads(member.downloads)}</dd>
       <dt>Expiry</dt>
@@ -356,6 +366,21 @@ const UserInner = () => {
     },
   })
 
+  const tagMutation = useMutation({
+    mutationFn: (tag: MemberTag | null) => setMemberTag({ email, tag, password }),
+    onSuccess: (result) => {
+      applyToMemberCaches((row) => ({ ...row, tag: result.tag }))
+      void queryClient.invalidateQueries({ queryKey: ['member-events', email] })
+    },
+    onError: (cause) => {
+      if (cause instanceof AdminAuthError) {
+        deauthenticate()
+        return
+      }
+      setActionError('Could not change the tag.')
+    },
+  })
+
   const cancelSubMutation = useMutation({
     mutationFn: () => cancelSubscription({ email, password }),
     onSuccess: (result) => {
@@ -509,6 +534,48 @@ const UserInner = () => {
                     <TierIcon tier={tier} /> {TIER_LABELS[tier]}
                   </button>
                 ))}
+              </div>
+            </section>
+            <section className={styles.controlSection}>
+              <h2 className={styles.sectionTitle}>Tag</h2>
+              <p className={styles.controlHint}>
+                A manual designation shown as the member's status — it overrides the derived status
+                until cleared.
+              </p>
+              <div className={styles.controlRow}>
+                <button
+                  className={styles.controlButton}
+                  type="button"
+                  onClick={() => {
+                    setActionError(null)
+                    tagMutation.mutate('vip')
+                  }}
+                  disabled={tagMutation.isPending || member.tag === 'vip'}
+                >
+                  💎 VIP
+                </button>
+                <button
+                  className={styles.controlButton}
+                  type="button"
+                  onClick={() => {
+                    setActionError(null)
+                    tagMutation.mutate('hvu')
+                  }}
+                  disabled={tagMutation.isPending || member.tag === 'hvu'}
+                >
+                  ⭐ HVU
+                </button>
+                <button
+                  className={styles.controlButton}
+                  type="button"
+                  onClick={() => {
+                    setActionError(null)
+                    tagMutation.mutate(null)
+                  }}
+                  disabled={tagMutation.isPending || !member.tag}
+                >
+                  Clear tag
+                </button>
               </div>
             </section>
             <section className={styles.controlSection}>

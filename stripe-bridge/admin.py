@@ -97,6 +97,12 @@ def _member_from_customer(email: str, row: dict) -> dict:
     }
 
 
+def _with_tags(members: list[dict]) -> list[dict]:
+    """Stamp each member dict with its manual tag ("vip"/"hvu"), None untagged."""
+    tags = store.all_member_tags(MAP_DB_PATH)
+    return [{**m, "tag": tags.get(m["email"].lower())} for m in members]
+
+
 @router.get("/admin/members", dependencies=[Depends(require_admin)])
 def list_members() -> list[dict]:
     """Every member: Wizarr users AND Stripe subscribers who haven't joined yet.
@@ -112,7 +118,8 @@ def list_members() -> list[dict]:
         for email, row in customers.items()
         if email not in joined
     ]
-    return sorted(members + pending, key=lambda m: m["member"].lower())
+    return sorted(
+        _with_tags(members + pending), key=lambda m: m["member"].lower())
 
 
 @router.get("/admin/member", dependencies=[Depends(require_admin)])
@@ -125,9 +132,9 @@ def get_member(email: str) -> dict:
         client.list_libraries(),
     )
     if matches:
-        return matches[0]
+        return _with_tags(matches)[0]
     if email.lower() in customers:
-        return _member_from_customer(email, customers[email.lower()])
+        return _with_tags([_member_from_customer(email, customers[email.lower()])])[0]
     raise HTTPException(status_code=404, detail="no member for that email")
 
 
@@ -173,6 +180,30 @@ class ReissueInviteBody(BaseModel):
 
 class CancelSubscriptionBody(BaseModel):
     email: str
+
+
+MEMBER_TAGS = ("vip", "hvu")
+
+
+class SetTagBody(BaseModel):
+    email: str
+    tag: str | None = None
+
+
+@router.post("/admin/set-tag", dependencies=[Depends(require_admin)])
+def set_tag(body: SetTagBody) -> dict:
+    """Set (or clear, with tag null) the member's manual designation.
+
+    Purely a bridge-side label — Plex access, tier, and expiry are untouched.
+    """
+    if body.tag is not None and body.tag not in MEMBER_TAGS:
+        raise HTTPException(status_code=400, detail=f"unknown tag {body.tag!r}")
+    store.set_member_tag(MAP_DB_PATH, body.email, body.tag)
+    store.record_event(
+        MAP_DB_PATH, body.email, "Tag changed",
+        f"tagged {body.tag.upper()}" if body.tag else "tag cleared",
+    )
+    return {"email": body.email, "tag": body.tag}
 
 
 @router.post("/admin/cancel-subscription", dependencies=[Depends(require_admin)])

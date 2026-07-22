@@ -16,6 +16,7 @@ const member: Member = {
   libraries: {},
   subscribed: false,
   invited_at: null,
+  tag: null,
 }
 
 vi.mock('@/lib/adminApi', async (importOriginal) => ({

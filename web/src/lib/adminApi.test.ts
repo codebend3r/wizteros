@@ -5,6 +5,7 @@ import {
   fetchMembers,
   reissueInvite,
   resetExpiry,
+  setMemberTag,
 } from '@/lib/adminApi'
 
 const member = {
@@ -17,6 +18,7 @@ const member = {
   libraries: { Meleys: ['01. Movies'] },
   subscribed: true,
   invited_at: '2026-07-01T00:00:00+00:00',
+  tag: null,
 }
 
 afterEach(() => {
@@ -106,4 +108,38 @@ test('resetExpiry posts email + days and returns the parsed result', async () =>
   expect(result).toEqual({ updated: 2, expires: null })
   const [, init] = fetchMock.mock.calls[0]
   expect(JSON.parse(init.body)).toEqual({ email: 'a@x.com', days: null, expires_at: null })
+})
+
+test('fetchMembers defaults a missing tag (pre-tag bridge) and rejects unknown tags', async () => {
+  const untagged = Object.fromEntries(Object.entries(member).filter(([key]) => key !== 'tag'))
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [untagged] }),
+  )
+  await expect(fetchMembers({ password: 'secret' })).resolves.toEqual([{ ...member, tag: null }])
+
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn()
+      .mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => [{ ...member, tag: 'whale' }],
+      }),
+  )
+  await expect(fetchMembers({ password: 'secret' })).rejects.toThrow('Unexpected members response')
+})
+
+test('setMemberTag posts email + tag and returns the parsed result', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: async () => ({ email: 'a@x.com', tag: 'vip' }),
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  const result = await setMemberTag({ email: 'a@x.com', tag: 'vip', password: 'secret' })
+  expect(result).toEqual({ email: 'a@x.com', tag: 'vip' })
+  const [, init] = fetchMock.mock.calls[0]
+  expect(JSON.parse(init.body)).toEqual({ email: 'a@x.com', tag: 'vip' })
 })

@@ -420,3 +420,26 @@ def test_cancel_subscription_is_idempotent_for_already_flagged_subs(admin_db, mo
     assert result["canceled"] == 0
     assert result["cancel_at"].startswith("2026-")
     assert store.events_for_email(dbp, "a@x.com") == []  # no duplicate history row
+
+
+def test_set_tag_roundtrips_through_member_payloads(admin_db):
+    a, dbp = admin_db
+    a.set_tag(a.SetTagBody(email="A@X.com", tag="vip"))
+
+    assert a.get_member("a@x.com")["tag"] == "vip"
+    by_email = {m["email"].lower(): m for m in a.list_members()}
+    assert by_email["a@x.com"]["tag"] == "vip"
+    assert by_email["nora@x.com"]["tag"] is None
+
+    a.set_tag(a.SetTagBody(email="a@x.com", tag=None))
+    assert a.get_member("a@x.com")["tag"] is None
+
+    events = store.events_for_email(dbp, "a@x.com")
+    assert [e["detail"] for e in events] == ["tag cleared", "tagged VIP"]
+
+
+def test_set_tag_rejects_unknown_tags(admin_db):
+    a, _ = admin_db
+    with pytest.raises(HTTPException) as e:
+        a.set_tag(a.SetTagBody(email="a@x.com", tag="whale"))
+    assert e.value.status_code == 400
