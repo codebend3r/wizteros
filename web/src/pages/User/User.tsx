@@ -539,8 +539,8 @@ const UserInner = () => {
             <section className={styles.controlSection}>
               <h2 className={styles.sectionTitle}>Tag</h2>
               <p className={styles.controlHint}>
-                A manual designation shown as the member's status — it overrides the derived status
-                until cleared.
+                A manual designation shown as the member's status — VIP or High-Volume User (HVU) —
+                it overrides the derived status until cleared.
               </p>
               <div className={styles.controlRow}>
                 <button

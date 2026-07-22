@@ -15,7 +15,8 @@ const GRACE_MS = INVITE_GRACE_DAYS * 24 * 60 * 60 * 1000
 /**
  * Derive a member's lifecycle status from the bridge's member record.
  *
- * - VIP / HVU: the admin's manual tag — overrides every derived status
+ * - VIP / HVU (High-Volume User): the admin's manual tag — overrides every
+ *   derived status
  * - Expired Member: their access expiry is in the past
  * - Subscribed Monthly: active access with an expiry (paying member)
  * - Invited: unredeemed invite still inside the grace period — whether the
