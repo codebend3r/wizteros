@@ -9,6 +9,7 @@ import Preloader from '@/components/Preloader/Preloader'
 import TierIcon from '@/components/TierIcon/TierIcon'
 import {
   AdminAuthError,
+  cancelSubscription,
   fetchMember,
   fetchMemberEvents,
   fetchMemberNotes,
@@ -187,6 +188,9 @@ const UserInner = () => {
   const [expiryDraft, setExpiryDraft] = useState<string | null>(null)
   const [pendingHardReset, setPendingHardReset] = useState<PaidTier | null>(null)
   const [pendingExpiry, setPendingExpiry] = useState<string | null>(null)
+  const [pendingNeverExpire, setPendingNeverExpire] = useState(false)
+  const [pendingCancelSub, setPendingCancelSub] = useState(false)
+  const [cancelNotice, setCancelNotice] = useState<string | null>(null)
 
   const {
     data: member,
@@ -327,6 +331,50 @@ const UserInner = () => {
     },
   })
 
+  const neverExpireMutation = useMutation({
+    mutationFn: () => resetExpiry({ email, password }),
+    onMutate: () => {
+      const previousMember = queryClient.getQueryData<Member | null>(['member', email])
+      const previousMembers = queryClient.getQueryData<Member[]>(MEMBERS_QUERY_KEY)
+      // A cleared expiry reads back as "—": the bridge derives subscribed
+      // from the expiry, so both flip together.
+      applyToMemberCaches((row) => ({ ...row, expires: null, subscribed: false }))
+      return { previousMember, previousMembers }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['member-events', email] })
+      setExpiryDraft(null)
+    },
+    onError: (cause, _variables, context) => {
+      queryClient.setQueryData(['member', email], context?.previousMember)
+      queryClient.setQueryData(MEMBERS_QUERY_KEY, context?.previousMembers)
+      if (cause instanceof AdminAuthError) {
+        deauthenticate()
+        return
+      }
+      setActionError('Could not clear expiry.')
+    },
+  })
+
+  const cancelSubMutation = useMutation({
+    mutationFn: () => cancelSubscription({ email, password }),
+    onSuccess: (result) => {
+      setCancelNotice(
+        result.cancel_at
+          ? `Cancellation scheduled — access ends ${new Date(result.cancel_at).toLocaleString()}.`
+          : 'Cancellation scheduled.',
+      )
+      void queryClient.invalidateQueries({ queryKey: ['member-events', email] })
+    },
+    onError: (cause) => {
+      if (cause instanceof AdminAuthError) {
+        deauthenticate()
+        return
+      }
+      setActionError('Could not cancel the subscription.')
+    },
+  })
+
   const expiryValue =
     expiryDraft ??
     toExpiryDraft(parseExpiry(member?.expires ?? null) ?? new Date(Date.now() + DAY_MS))
@@ -395,7 +443,10 @@ const UserInner = () => {
         {member === null && <p className={styles.notice}>No member found for {email}.</p>}
         {!!member && (
           <>
-            <MemberDetails member={member} expiryUpdating={expiryMutation.isPending} />
+            <MemberDetails
+              member={member}
+              expiryUpdating={expiryMutation.isPending || neverExpireMutation.isPending}
+            />
             <div className={styles.actions}>
               <div className={styles.menuWrap}>
                 <button
@@ -484,7 +535,39 @@ const UserInner = () => {
                 >
                   Set expiry
                 </button>
+                <button
+                  className={styles.dangerButton}
+                  type="button"
+                  onClick={() => {
+                    setActionError(null)
+                    setPendingNeverExpire(true)
+                  }}
+                  disabled={expiryMutation.isPending || neverExpireMutation.isPending}
+                >
+                  Never expire
+                </button>
               </form>
+            </section>
+            <section className={styles.controlSection}>
+              <h2 className={styles.sectionTitle}>Subscription</h2>
+              <p className={styles.controlHint}>
+                Flags the member's Stripe subscription to cancel at the end of the billing period —
+                access shuts off automatically when it lapses.
+              </p>
+              {!!cancelNotice && <p className={styles.cancelNotice}>{cancelNotice}</p>}
+              <div className={styles.controlRow}>
+                <button
+                  className={styles.dangerButton}
+                  type="button"
+                  onClick={() => {
+                    setActionError(null)
+                    setPendingCancelSub(true)
+                  }}
+                  disabled={cancelSubMutation.isPending}
+                >
+                  {cancelSubMutation.isPending ? 'Cancelling…' : 'Cancel subscription'}
+                </button>
+              </div>
             </section>
             <section className={styles.notesSection}>
               <h2 className={styles.sectionTitle}>Notes</h2>
@@ -567,6 +650,44 @@ const UserInner = () => {
               {new Date(pendingExpiry).toLocaleString()}.
             </p>
             <p className={styles.controlHint}>Applies to every server record for this email.</p>
+          </ConfirmActionModal>
+        )}
+        {!!member && pendingNeverExpire && (
+          <ConfirmActionModal
+            title="Confirm never expire"
+            confirmLabel="Never expire"
+            onConfirm={() => {
+              neverExpireMutation.mutate()
+              setPendingNeverExpire(false)
+            }}
+            onCancel={() => setPendingNeverExpire(false)}
+          >
+            <p>
+              Set {member.member} ({member.email}) to never expire.
+            </p>
+            <p className={styles.controlHint}>
+              Clears the expiry on every server record for this email — access stays on until you
+              change it again.
+            </p>
+          </ConfirmActionModal>
+        )}
+        {!!member && pendingCancelSub && (
+          <ConfirmActionModal
+            title="Confirm subscription cancellation"
+            confirmLabel="Cancel subscription"
+            onConfirm={() => {
+              cancelSubMutation.mutate()
+              setPendingCancelSub(false)
+            }}
+            onCancel={() => setPendingCancelSub(false)}
+          >
+            <p>
+              Cancel the Stripe subscription for {member.member} ({member.email}).
+            </p>
+            <p className={styles.controlHint}>
+              They keep access until the end of the period they already contributed for; the bridge
+              shuts them off automatically when it ends.
+            </p>
           </ConfirmActionModal>
         )}
         {!!member && !!pendingTier && (

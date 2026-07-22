@@ -30,6 +30,7 @@ vi.mock('@/lib/adminApi', async (importOriginal) => ({
   reissueInvite: vi.fn(),
   resetExpiry: vi.fn(),
   resetTier: vi.fn(),
+  cancelSubscription: vi.fn(),
 }))
 
 const {
@@ -40,6 +41,7 @@ const {
   reissueInvite,
   resetExpiry,
   resetTier,
+  cancelSubscription,
 } = await import('@/lib/adminApi')
 
 const renderUser = ({ email }: { email: string | null }) => {
@@ -292,6 +294,70 @@ test('cancelling the expiry confirmation leaves the expiry untouched', async () 
 
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   expect(resetExpiry).not.toHaveBeenCalled()
+})
+
+test('sets never expire through the confirm modal and clears the expiry row', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  vi.mocked(resetExpiry).mockResolvedValue({ updated: 2, expires: null })
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  await user.click(screen.getByRole('button', { name: 'Never expire' }))
+  const dialog = screen.getByRole('dialog', { name: 'Confirm never expire' })
+  expect(resetExpiry).not.toHaveBeenCalled()
+  await user.click(within(dialog).getByRole('button', { name: 'Never expire' }))
+
+  expect(resetExpiry).toHaveBeenCalledWith({ email: 'max@y.com', password: 'secret' })
+  // the expiry row optimistically clears to the em dash
+  await waitFor(() => expect(screen.queryByText(/days left/)).not.toBeInTheDocument())
+})
+
+test('cancelling the never-expire confirmation makes no change', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  await user.click(screen.getByRole('button', { name: 'Never expire' }))
+  await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(resetExpiry).not.toHaveBeenCalled()
+})
+
+test('cancels the Stripe subscription through the confirm modal', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  vi.mocked(cancelSubscription).mockResolvedValue({
+    email: 'max@y.com',
+    canceled: 1,
+    cancel_at: '2026-08-22T00:00:00+00:00',
+  })
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  await user.click(screen.getByRole('button', { name: 'Cancel subscription' }))
+  const dialog = screen.getByRole('dialog', { name: 'Confirm subscription cancellation' })
+  expect(cancelSubscription).not.toHaveBeenCalled()
+  await user.click(within(dialog).getByRole('button', { name: 'Cancel subscription' }))
+
+  expect(cancelSubscription).toHaveBeenCalledWith({ email: 'max@y.com', password: 'secret' })
+  expect(await screen.findByText(/Cancellation scheduled — access ends/)).toBeInTheDocument()
+})
+
+test('shows an error when the subscription cancellation fails', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  vi.mocked(cancelSubscription).mockRejectedValue(new Error('boom'))
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  await user.click(screen.getByRole('button', { name: 'Cancel subscription' }))
+  const dialog = screen.getByRole('dialog', { name: 'Confirm subscription cancellation' })
+  await user.click(within(dialog).getByRole('button', { name: 'Cancel subscription' }))
+
+  expect(await screen.findByText('Could not cancel the subscription.')).toBeInTheDocument()
 })
 
 test('loads saved notes and saves an edited draft', async () => {

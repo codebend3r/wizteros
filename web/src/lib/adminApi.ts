@@ -44,6 +44,12 @@ export type ResetTierResult = {
   tier: string
 }
 
+export type CancelSubscriptionResult = {
+  email: string
+  canceled: number
+  cancel_at: string | null
+}
+
 export class AdminAuthError extends Error {}
 
 const ADMIN_API_BASE: string = import.meta.env.VITE_ADMIN_API_BASE ?? ''
@@ -122,6 +128,12 @@ const isResetExpiryResult = (value: unknown): value is ResetExpiryResult =>
 
 const isResetTierResult = (value: unknown): value is ResetTierResult =>
   isRecord(value) && typeof value.email === 'string' && typeof value.tier === 'string'
+
+const isCancelSubscriptionResult = (value: unknown): value is CancelSubscriptionResult =>
+  isRecord(value) &&
+  typeof value.email === 'string' &&
+  typeof value.canceled === 'number' &&
+  (typeof value.cancel_at === 'string' || value.cancel_at === null)
 
 type RequestArgs = {
   path: string
@@ -285,6 +297,25 @@ export const resetTier = async ({
   })
   if (!isResetTierResult(data)) {
     throw new Error('Unexpected reset-tier response')
+  }
+  return data
+}
+
+export const cancelSubscription = async ({
+  email,
+  password,
+}: {
+  email: string
+  password: string
+}): Promise<CancelSubscriptionResult> => {
+  const data = await requestJson({
+    path: '/admin/cancel-subscription',
+    password,
+    method: 'POST',
+    body: { email },
+  })
+  if (!isCancelSubscriptionResult(data)) {
+    throw new Error('Unexpected cancel-subscription response')
   }
   return data
 }
