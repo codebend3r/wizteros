@@ -63,20 +63,20 @@ def test_gold_matches_silver_libraries_with_downloads_on():
     assert gold["allow_downloads"] is True
 
 
-def test_kids_gets_exactly_the_allowlist():
-    out = tiers.resolve_tier_access(tier="kids", libraries=LIBRARIES)
+def test_youth_gets_exactly_the_allowlist():
+    out = tiers.resolve_tier_access(tier="youth", libraries=LIBRARIES)
     assert out["library_ids"] == [20, 22, 24]
     assert out["server_ids"] == [1, 2]
     assert out["allow_downloads"] is True
 
 
-def test_kids_allowlist_miss_logs_and_proceeds(caplog):
+def test_youth_allowlist_miss_logs_and_proceeds(caplog):
     # "06. Kid Shows" renamed on the server -> log loudly, share what matched.
     renamed = [lib for lib in LIBRARIES if lib["id"] != 22]
     with caplog.at_level(logging.ERROR):
-        out = tiers.resolve_tier_access(tier="kids", libraries=renamed)
+        out = tiers.resolve_tier_access(tier="youth", libraries=renamed)
     assert out["library_ids"] == [20, 24]
-    assert "kids allowlist" in caplog.text
+    assert "youth allowlist" in caplog.text
 
 
 def test_caraxes_09_prefix_is_not_private():
@@ -117,8 +117,8 @@ def test_tier_server_libraries_drops_servers_a_tier_gets_nothing_on():
     assert out["Meleys"] == ["01. Movies", "02. Family Movies"]
 
 
-def test_tier_server_libraries_kids_matches_allowlist():
-    out = tiers.tier_server_libraries(tier="kids", libraries=LIBRARIES)
+def test_tier_server_libraries_youth_matches_allowlist():
+    out = tiers.tier_server_libraries(tier="youth", libraries=LIBRARIES)
     assert out == {
         "Vermithor": ["04. 4K Family Movies", "06. Kid Shows"],
         "Meleys": ["02. Family Movies"],
@@ -140,7 +140,15 @@ def test_tier_server_libraries_unknown_tier_grants_nothing():
 def test_normalize_tier_accepts_known_tiers_case_insensitively():
     assert tiers.normalize_tier("gold") == "gold"
     assert tiers.normalize_tier(" Silver ") == "silver"
-    assert tiers.normalize_tier("KIDS") == "kids"
+    assert tiers.normalize_tier("YOUTH") == "youth"
+
+
+def test_normalize_tier_maps_legacy_kids_to_youth():
+    # Pre-rebrand Stripe metadata and stored rows still say "kids".
+    assert tiers.normalize_tier("kids") == "youth"
+    assert tiers.normalize_tier("KIDS") == "youth"
+    assert tiers.canonical_tier("kids") == "youth"
+    assert tiers.canonical_tier(None) is None
 
 
 def test_normalize_tier_defaults_unknown_and_missing_to_bronze(caplog):

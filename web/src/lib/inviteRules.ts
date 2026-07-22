@@ -1,12 +1,12 @@
 import type { PaidTier } from '@/lib/adminApi'
 
-export const PAID_TIERS: ReadonlyArray<PaidTier> = ['bronze', 'silver', 'gold', 'kids']
+export const PAID_TIERS: ReadonlyArray<PaidTier> = ['bronze', 'silver', 'gold', 'youth']
 
 export const TIER_LABELS: Record<PaidTier, string> = {
   bronze: 'Bronze',
   silver: 'Silver',
   gold: 'Gold',
-  kids: 'Youth',
+  youth: 'Youth',
 }
 
 // Mirrors the bridge's tiers.TIER_DOWNLOADS — downloads are a tier perk.
@@ -14,7 +14,7 @@ export const TIER_DOWNLOADS: Record<PaidTier, boolean> = {
   bronze: false,
   silver: false,
   gold: true,
-  kids: true,
+  youth: true,
 }
 
 // Mirrors the bridge's INVITE_EXPIRES_DAYS / ACCESS_DURATION env config.

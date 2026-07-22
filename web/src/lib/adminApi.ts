@@ -1,4 +1,4 @@
-export type PaidTier = 'bronze' | 'silver' | 'gold' | 'kids'
+export type PaidTier = 'bronze' | 'silver' | 'gold' | 'youth'
 export type Tier = PaidTier | 'unknown'
 
 export type Member = {
@@ -57,7 +57,7 @@ const isStringArray = (value: unknown): value is string[] =>
 const isLibrariesMap = (value: unknown): value is Record<string, string[]> =>
   isRecord(value) && Object.values(value).every(isStringArray)
 
-const TIERS: ReadonlyArray<Tier> = ['bronze', 'silver', 'gold', 'kids', 'unknown']
+const TIERS: ReadonlyArray<Tier> = ['bronze', 'silver', 'gold', 'youth', 'unknown']
 
 const isTier = (value: unknown): value is Tier =>
   typeof value === 'string' && TIERS.some((tier) => tier === value)

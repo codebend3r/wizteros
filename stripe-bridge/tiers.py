@@ -7,8 +7,9 @@ log = logging.getLogger("bridge")
 # server. Name-only and deliberately server-agnostic (see _is_private).
 PRIVATE_NAME_RE = re.compile(r"^9\d\.")
 
-# Kids allowlist, matched on (server_name, library name).
-KIDS_LIBRARIES = frozenset({
+# Youth allowlist, matched on (server_name, library name). The names are the
+# actual Plex library names — they do not follow the tier's branding.
+YOUTH_LIBRARIES = frozenset({
     ("Vermithor", "06. Kid Shows"),
     ("Meleys", "02. Family Movies"),
     ("Vermithor", "04. 4K Family Movies"),
@@ -18,13 +19,22 @@ TIER_DOWNLOADS = {
     "bronze": False,
     "silver": False,
     "gold": True,
-    "kids": True,
+    "youth": True,
 }
+
+# Pre-rebrand tier names still live in old Stripe metadata and stored DB rows.
+LEGACY_TIER_ALIASES = {"kids": "youth"}
+
+
+def canonical_tier(raw):
+    """A stored tier string mapped through the legacy aliases; no bronze fallback."""
+    return LEGACY_TIER_ALIASES.get(raw, raw) if isinstance(raw, str) else raw
 
 
 def normalize_tier(raw) -> str:
     """Map checkout metadata to a known tier; unknown, missing, or non-string falls back to bronze."""
     tier = raw.strip().lower() if isinstance(raw, str) else ""
+    tier = LEGACY_TIER_ALIASES.get(tier, tier)
     if tier not in TIER_DOWNLOADS:
         log.error("unknown tier %r on checkout session; defaulting to bronze", raw)
         return "bronze"
@@ -48,8 +58,8 @@ def _is_4k(library: dict) -> bool:
 
 def _tier_wants(tier: str, library: dict) -> bool:
     """Whether a tier's rules include a library (before the private filter)."""
-    if tier == "kids":
-        return (library.get("server_name"), library.get("name")) in KIDS_LIBRARIES
+    if tier == "youth":
+        return (library.get("server_name"), library.get("name")) in YOUTH_LIBRARIES
     if tier == "bronze":
         return not _is_4k(library)
     return True  # silver / gold: everything
@@ -88,9 +98,9 @@ def tier_server_libraries(*, tier: str, libraries: list) -> dict:
 def resolve_tier_access(*, tier: str, libraries: list) -> dict:
     """Compute an invite's scope for a tier from the live Wizarr library list."""
     shareable = _shareable_libraries(tier=tier, libraries=libraries)
-    if tier == "kids" and len(shareable) < len(KIDS_LIBRARIES):
+    if tier == "youth" and len(shareable) < len(YOUTH_LIBRARIES):
         found = {(lib.get("server_name"), lib.get("name")) for lib in shareable}
-        log.error("kids allowlist mismatch; missing %s", sorted(KIDS_LIBRARIES - found))
+        log.error("youth allowlist mismatch; missing %s", sorted(YOUTH_LIBRARIES - found))
     return {
         "library_ids": [lib["id"] for lib in shareable],
         "server_ids": sorted({lib["server_id"] for lib in shareable}),
