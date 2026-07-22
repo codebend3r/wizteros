@@ -1,8 +1,10 @@
 import importlib
+import json
 import os
 from unittest.mock import MagicMock
 
 import pytest
+import responses
 
 # Env required before importing the module (mirrors test_bridge).
 os.environ.update({
@@ -16,6 +18,7 @@ os.environ.update({
 import admin  # noqa: E402
 import store  # noqa: E402
 from fastapi import HTTPException  # noqa: E402
+from wizarr import WizarrClient  # noqa: E402
 
 USERS = [
     {"id": 1, "username": "cj", "email": "A@X.com", "server": "Meleys", "expires": "2026-09-01T00:00:00+00:00"},
@@ -167,6 +170,26 @@ def test_reset_expiry_clears_with_null_days(admin_db):
     out = a.reset_expiry(a.ResetExpiryBody(email="a@x.com", days=None))
     assert out == {"updated": 1, "expires": None}
     a.client.set_expiry.assert_called_once_with(9, None)
+
+
+@responses.activate
+def test_reset_expiry_never_expire_reaches_wizarr_as_an_empty_body(admin_db):
+    """Route through the REAL WizarrClient down to the wire.
+
+    The unit tests above mock the client, which is exactly how a
+    serialization bug (a literal null Wizarr 400s) once slipped through —
+    this pins the actual HTTP body a never-expire produces.
+    """
+    a, _ = admin_db
+    a.client = WizarrClient("http://wizarr.test", "k")
+    responses.get("http://wizarr.test/api/users", json={"users": [
+        {"id": 9, "username": "cj", "email": "a@x.com", "server": "Meleys"},
+    ]})
+    responses.put("http://wizarr.test/api/users/9/update-expiry",
+                  json={"message": "ok", "new_expiry": None})
+    out = a.reset_expiry(a.ResetExpiryBody(email="a@x.com"))
+    assert out == {"updated": 1, "expires": None}
+    assert json.loads(responses.calls[1].request.body) == {}
 
 
 def test_reset_expiry_accepts_absolute_datetime(admin_db):
