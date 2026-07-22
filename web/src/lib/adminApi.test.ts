@@ -120,13 +120,11 @@ test('fetchMembers defaults a missing tag (pre-tag bridge) and rejects unknown t
 
   vi.stubGlobal(
     'fetch',
-    vi
-      .fn()
-      .mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => [{ ...member, tag: 'whale' }],
-      }),
+    vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => [{ ...member, tag: 'whale' }],
+    }),
   )
   await expect(fetchMembers({ password: 'secret' })).rejects.toThrow('Unexpected members response')
 })
