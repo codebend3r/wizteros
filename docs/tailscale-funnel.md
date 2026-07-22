@@ -96,6 +96,10 @@ tailscale funnel --set-path=/stripe off` (and `/`).
 
 ## Phase 5 — Test end-to-end (Stripe test mode)
 
+> Production has been on live keys since 2026-07-22. This phase is still the
+> right rehearsal for config changes: switch the bridge to the TEST block in
+> `.env` first, then trigger the events below with the Stripe CLI.
+
 ```sh
 curl -I https://meleys.<tailnet>.ts.net/        # Wizarr loads publicly (200)
 stripe trigger checkout.session.completed
