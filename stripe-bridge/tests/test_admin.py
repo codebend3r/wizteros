@@ -443,3 +443,34 @@ def test_set_tag_rejects_unknown_tags(admin_db):
     with pytest.raises(HTTPException) as e:
         a.set_tag(a.SetTagBody(email="a@x.com", tag="whale"))
     assert e.value.status_code == 400
+
+
+def test_set_downloads_overrides_tier_default_in_member_payloads(admin_db):
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_1", "a@x.com", "abc", tier="gold")  # gold -> downloads True
+
+    a.set_downloads(a.SetDownloadsBody(email="A@X.com", allow=False))
+
+    assert a.get_member("a@x.com")["downloads"] is False  # override beats gold's True
+    by_email = {m["email"].lower(): m for m in a.list_members()}
+    assert by_email["a@x.com"]["downloads"] is False
+    events = store.events_for_email(dbp, "a@x.com")
+    assert events[0]["action"] == "Downloads toggled"
+    assert events[0]["detail"] == "turned off by admin"
+
+    a.set_downloads(a.SetDownloadsBody(email="a@x.com", allow=True))
+    assert a.get_member("a@x.com")["downloads"] is True
+
+
+def test_reissue_invite_applies_downloads_override(admin_db):
+    a, dbp = admin_db
+    a.client.list_libraries.return_value = FIXTURE_LIBRARIES
+    a.client.find_users_by_email.return_value = [{"id": 9, "server": "Vermithor"}]
+    a.client.create_invite.return_value = {"code": "xyz", "url": "http://wizarr-lan/j/xyz"}
+    store.set_member_downloads(dbp, "a@x.com", True)
+
+    a.reissue_invite(a.ReissueInviteBody(email="a@x.com", tier="silver"))
+
+    # silver's tier default is allow_downloads=False; the override wins
+    kwargs = a.client.create_invite.call_args.kwargs
+    assert kwargs["allow_downloads"] is True

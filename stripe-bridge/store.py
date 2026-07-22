@@ -33,6 +33,13 @@ CREATE TABLE IF NOT EXISTS member_tags (
 )
 """
 
+_DOWNLOADS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS member_downloads (
+    email TEXT PRIMARY KEY,
+    allow INTEGER NOT NULL
+)
+"""
+
 _EVENT_LOG_SCHEMA = """
 CREATE TABLE IF NOT EXISTS event_log (
     id     INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -72,6 +79,7 @@ def init_db(path: str) -> None:
         c.execute(_EVENTS_SCHEMA)
         c.execute(_NOTES_SCHEMA)
         c.execute(_TAGS_SCHEMA)
+        c.execute(_DOWNLOADS_SCHEMA)
         c.execute(_EVENT_LOG_SCHEMA)
         _ensure_tier_column(c)
         _ensure_invited_at_column(c)
@@ -252,6 +260,35 @@ def all_member_tags(path: str) -> dict[str, str]:
     with _conn(path) as c:
         rows = c.execute("SELECT email, tag FROM member_tags").fetchall()
     return {row["email"]: row["tag"] for row in rows}
+
+
+def set_member_downloads(path: str, email: str, allow: bool) -> None:
+    """Save the admin's downloads override for an email (keyed lowercased)."""
+    with _conn(path) as c:
+        c.execute(
+            """
+            INSERT INTO member_downloads (email, allow) VALUES (?, ?)
+            ON CONFLICT(email) DO UPDATE SET allow = excluded.allow
+            """,
+            (email.lower(), int(allow)),
+        )
+
+
+def get_member_downloads(path: str, email: str) -> bool | None:
+    """The downloads override for an email; None when the tier default applies."""
+    with _conn(path) as c:
+        row = c.execute(
+            "SELECT allow FROM member_downloads WHERE email = ?",
+            (email.lower(),),
+        ).fetchone()
+    return bool(row["allow"]) if row else None
+
+
+def all_member_downloads(path: str) -> dict[str, bool]:
+    """Map lowercased email -> downloads override for every overridden member."""
+    with _conn(path) as c:
+        rows = c.execute("SELECT email, allow FROM member_downloads").fetchall()
+    return {row["email"]: bool(row["allow"]) for row in rows}
 
 
 def record_event(path: str, email: str, action: str, detail: str = "") -> None:

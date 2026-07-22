@@ -183,3 +183,18 @@ def test_member_tags_roundtrip_lowercased_and_cleared(tmp_path):
 
     store.set_member_tag(db, "A@example.com", None)  # clear
     assert store.all_member_tags(db) == {"b@example.com": "hvu"}
+
+
+def test_member_downloads_roundtrip_lowercased_and_overwritten(tmp_path):
+    db = str(tmp_path / "bridge.db")
+    store.init_db(db)
+
+    assert store.get_member_downloads(db, "a@example.com") is None
+    assert store.all_member_downloads(db) == {}
+
+    store.set_member_downloads(db, "A@Example.com", False)
+    assert store.get_member_downloads(db, "a@example.com") is False
+
+    store.set_member_downloads(db, "a@example.com", True)
+    assert store.get_member_downloads(db, "A@example.com") is True
+    assert store.all_member_downloads(db) == {"a@example.com": True}

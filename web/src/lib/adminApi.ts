@@ -57,6 +57,11 @@ export type SetTagResult = {
   tag: MemberTag | null
 }
 
+export type SetDownloadsResult = {
+  email: string
+  downloads: boolean
+}
+
 export class AdminAuthError extends Error {}
 
 const ADMIN_API_BASE: string = import.meta.env.VITE_ADMIN_API_BASE ?? ''
@@ -152,6 +157,9 @@ const isSetTagResult = (value: unknown): value is SetTagResult =>
   isRecord(value) &&
   typeof value.email === 'string' &&
   (value.tag === null || isMemberTag(value.tag))
+
+const isSetDownloadsResult = (value: unknown): value is SetDownloadsResult =>
+  isRecord(value) && typeof value.email === 'string' && typeof value.downloads === 'boolean'
 
 type RequestArgs = {
   path: string
@@ -355,6 +363,27 @@ export const setMemberTag = async ({
   })
   if (!isSetTagResult(data)) {
     throw new Error('Unexpected set-tag response')
+  }
+  return data
+}
+
+export const setMemberDownloads = async ({
+  email,
+  allow,
+  password,
+}: {
+  email: string
+  allow: boolean
+  password: string
+}): Promise<SetDownloadsResult> => {
+  const data = await requestJson({
+    path: '/admin/set-downloads',
+    password,
+    method: 'POST',
+    body: { email, allow },
+  })
+  if (!isSetDownloadsResult(data)) {
+    throw new Error('Unexpected set-downloads response')
   }
   return data
 }

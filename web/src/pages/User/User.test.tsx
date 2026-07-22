@@ -33,6 +33,7 @@ vi.mock('@/lib/adminApi', async (importOriginal) => ({
   resetTier: vi.fn(),
   cancelSubscription: vi.fn(),
   setMemberTag: vi.fn(),
+  setMemberDownloads: vi.fn(),
 }))
 
 const {
@@ -45,6 +46,7 @@ const {
   resetTier,
   cancelSubscription,
   setMemberTag,
+  setMemberDownloads,
 } = await import('@/lib/adminApi')
 
 const renderUser = ({ email }: { email: string | null }) => {
@@ -405,6 +407,70 @@ test('disables the active tag button and Clear when untagged', async () => {
   expect(screen.getByRole('button', { name: '💎 VIP' })).toBeEnabled()
   expect(screen.getByRole('button', { name: '⭐ HVU' })).toBeEnabled()
   expect(screen.getByRole('button', { name: 'Clear tag' })).toBeDisabled()
+})
+
+test('toggles downloads off through the confirm modal, optimistically', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  let settle: (value: { email: string; downloads: boolean }) => void = () => undefined
+  vi.mocked(setMemberDownloads).mockImplementation(
+    () =>
+      new Promise<{ email: string; downloads: boolean }>((resolve) => {
+        settle = resolve
+      }),
+  )
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  expect(screen.getByText('✅')).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Toggle allow downloads' }))
+  const dialog = screen.getByRole('dialog', { name: 'Confirm downloads change' })
+  expect(setMemberDownloads).not.toHaveBeenCalled()
+  await user.click(within(dialog).getByRole('button', { name: 'Turn off downloads' }))
+
+  expect(setMemberDownloads).toHaveBeenCalledWith({
+    email: 'max@y.com',
+    allow: false,
+    password: 'secret',
+  })
+  // optimistic: the row flips before the bridge replies
+  expect(screen.getByText('❌')).toBeInTheDocument()
+
+  settle({ email: 'max@y.com', downloads: false })
+  await waitFor(() => expect(screen.getByText('❌')).toBeInTheDocument())
+  expect(screen.queryByText('✅')).not.toBeInTheDocument()
+})
+
+test('reverts the downloads toggle and shows an error when the bridge rejects it', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  vi.mocked(setMemberDownloads).mockRejectedValue(new Error('boom'))
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  await user.click(screen.getByRole('button', { name: 'Toggle allow downloads' }))
+  const dialog = screen.getByRole('dialog', { name: 'Confirm downloads change' })
+  await user.click(within(dialog).getByRole('button', { name: 'Turn off downloads' }))
+
+  expect(
+    await screen.findByText('Could not toggle allow downloads for this user.'),
+  ).toBeInTheDocument()
+  expect(screen.getByText('✅')).toBeInTheDocument()
+  expect(screen.queryByText('❌')).not.toBeInTheDocument()
+})
+
+test('cancelling the downloads confirmation makes no change', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  await user.click(screen.getByRole('button', { name: 'Toggle allow downloads' }))
+  await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(setMemberDownloads).not.toHaveBeenCalled()
+  expect(screen.getByText('✅')).toBeInTheDocument()
 })
 
 test('loads saved notes and saves an edited draft', async () => {

@@ -97,10 +97,22 @@ def _member_from_customer(email: str, row: dict) -> dict:
     }
 
 
-def _with_tags(members: list[dict]) -> list[dict]:
-    """Stamp each member dict with its manual tag ("vip"/"hvu"), None untagged."""
+def _with_overrides(members: list[dict]) -> list[dict]:
+    """Stamp each member dict with its admin overrides.
+
+    tag: the manual designation ("vip"/"hvu"), None untagged. downloads: the
+    admin's toggle wins over the tier-derived value when set.
+    """
     tags = store.all_member_tags(MAP_DB_PATH)
-    return [{**m, "tag": tags.get(m["email"].lower())} for m in members]
+    downloads = store.all_member_downloads(MAP_DB_PATH)
+    return [
+        {
+            **m,
+            "tag": tags.get(m["email"].lower()),
+            "downloads": downloads.get(m["email"].lower(), m["downloads"]),
+        }
+        for m in members
+    ]
 
 
 @router.get("/admin/members", dependencies=[Depends(require_admin)])
@@ -119,7 +131,7 @@ def list_members() -> list[dict]:
         if email not in joined
     ]
     return sorted(
-        _with_tags(members + pending), key=lambda m: m["member"].lower())
+        _with_overrides(members + pending), key=lambda m: m["member"].lower())
 
 
 @router.get("/admin/member", dependencies=[Depends(require_admin)])
@@ -132,9 +144,9 @@ def get_member(email: str) -> dict:
         client.list_libraries(),
     )
     if matches:
-        return _with_tags(matches)[0]
+        return _with_overrides(matches)[0]
     if email.lower() in customers:
-        return _with_tags([_member_from_customer(email, customers[email.lower()])])[0]
+        return _with_overrides([_member_from_customer(email, customers[email.lower()])])[0]
     raise HTTPException(status_code=404, detail="no member for that email")
 
 
@@ -204,6 +216,28 @@ def set_tag(body: SetTagBody) -> dict:
         f"tagged {body.tag.upper()}" if body.tag else "tag cleared",
     )
     return {"email": body.email, "tag": body.tag}
+
+
+class SetDownloadsBody(BaseModel):
+    email: str
+    allow: bool
+
+
+@router.post("/admin/set-downloads", dependencies=[Depends(require_admin)])
+def set_downloads(body: SetDownloadsBody) -> dict:
+    """Toggle the member's allow-downloads override.
+
+    Wizarr has no per-user downloads endpoint, so this can't touch the
+    member's current Plex share. The override wins over the tier default on
+    every member payload and applies for real on the member's next reissued
+    invite.
+    """
+    store.set_member_downloads(MAP_DB_PATH, body.email, body.allow)
+    store.record_event(
+        MAP_DB_PATH, body.email, "Downloads toggled",
+        f"turned {'on' if body.allow else 'off'} by admin",
+    )
+    return {"email": body.email, "downloads": body.allow}
 
 
 @router.post("/admin/cancel-subscription", dependencies=[Depends(require_admin)])
@@ -310,12 +344,15 @@ def reissue_invite(body: ReissueInviteBody) -> dict:
     if not access["library_ids"]:
         raise HTTPException(status_code=502, detail=f"no libraries resolved for tier {tier}")
     records = client.find_users_by_email(body.email)
+    # The admin's downloads toggle wins over the tier default when set.
+    override = store.get_member_downloads(MAP_DB_PATH, body.email)
+    allow_downloads = access["allow_downloads"] if override is None else override
     # Create the invite BEFORE any disable: disable_user is account-wide (it
     # severs the plex.tv friendship on every server), so if create_invite raised
     # after a disable loop the member would be locked out with no link to redeem.
     invite = client.create_invite(
         access["server_ids"], INVITE_DAYS, ACCESS_DURATION,
-        library_ids=access["library_ids"], allow_downloads=access["allow_downloads"],
+        library_ids=access["library_ids"], allow_downloads=allow_downloads,
     )
     # The store row keeps the member on /admin/members while the invite is
     # pending and stamps invited_at for the grace-period status.

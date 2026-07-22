@@ -17,6 +17,7 @@ import {
   resetExpiry,
   resetTier,
   saveMemberNotes,
+  setMemberDownloads,
   setMemberTag,
   type InviteResult,
   type Member,
@@ -82,7 +83,15 @@ const formatDownloads = (downloads: boolean | null): string => {
 const formatLibraryCount = (count: number): string =>
   `${count} ${count === 1 ? 'library' : 'libraries'}`
 
-const MemberDetails = ({ member, expiryUpdating }: { member: Member; expiryUpdating: boolean }) => {
+const MemberDetails = ({
+  member,
+  expiryUpdating,
+  onToggleDownloads,
+}: {
+  member: Member
+  expiryUpdating: boolean
+  onToggleDownloads: () => void
+}) => {
   const status = deriveStatus({ member })
   const expiry = parseExpiry(member.expires)
   const [copied, setCopied] = useState(false)
@@ -132,7 +141,16 @@ const MemberDetails = ({ member, expiryUpdating }: { member: Member; expiryUpdat
       <dt>Tag</dt>
       <dd>{member.tag ? TAG_LABELS[member.tag] : '—'}</dd>
       <dt>Downloads</dt>
-      <dd>{formatDownloads(member.downloads)}</dd>
+      <dd>
+        <button
+          className={styles.downloadsToggle}
+          type="button"
+          onClick={onToggleDownloads}
+          aria-label="Toggle allow downloads"
+        >
+          {formatDownloads(member.downloads)}
+        </button>
+      </dd>
       <dt>Expiry</dt>
       <dd className={styles.expiryValue}>
         {expiry ? (
@@ -201,6 +219,7 @@ const UserInner = () => {
   const [pendingNeverExpire, setPendingNeverExpire] = useState(false)
   const [pendingCancelSub, setPendingCancelSub] = useState(false)
   const [cancelNotice, setCancelNotice] = useState<string | null>(null)
+  const [pendingDownloads, setPendingDownloads] = useState<boolean | null>(null)
 
   const {
     data: member,
@@ -366,6 +385,30 @@ const UserInner = () => {
     },
   })
 
+  const downloadsMutation = useMutation({
+    mutationFn: (allow: boolean) => setMemberDownloads({ email, allow, password }),
+    onMutate: (allow) => {
+      const previousMember = queryClient.getQueryData<Member | null>(['member', email])
+      const previousMembers = queryClient.getQueryData<Member[]>(MEMBERS_QUERY_KEY)
+      applyToMemberCaches((row) => ({ ...row, downloads: allow }))
+      return { previousMember, previousMembers }
+    },
+    onSuccess: (result) => {
+      // Settle on the bridge's canonical value.
+      applyToMemberCaches((row) => ({ ...row, downloads: result.downloads }))
+      void queryClient.invalidateQueries({ queryKey: ['member-events', email] })
+    },
+    onError: (cause, _allow, context) => {
+      queryClient.setQueryData(['member', email], context?.previousMember)
+      queryClient.setQueryData(MEMBERS_QUERY_KEY, context?.previousMembers)
+      if (cause instanceof AdminAuthError) {
+        deauthenticate()
+        return
+      }
+      setActionError('Could not toggle allow downloads for this user.')
+    },
+  })
+
   const tagMutation = useMutation({
     mutationFn: (tag: MemberTag | null) => setMemberTag({ email, tag, password }),
     onSuccess: (result) => {
@@ -471,6 +514,10 @@ const UserInner = () => {
             <MemberDetails
               member={member}
               expiryUpdating={expiryMutation.isPending || neverExpireMutation.isPending}
+              onToggleDownloads={() => {
+                setActionError(null)
+                setPendingDownloads(!(member.downloads ?? false))
+              }}
             />
             <div className={styles.actions}>
               <div className={styles.menuWrap}>
@@ -717,6 +764,26 @@ const UserInner = () => {
               {new Date(pendingExpiry).toLocaleString()}.
             </p>
             <p className={styles.controlHint}>Applies to every server record for this email.</p>
+          </ConfirmActionModal>
+        )}
+        {!!member && pendingDownloads !== null && (
+          <ConfirmActionModal
+            title="Confirm downloads change"
+            confirmLabel={pendingDownloads ? 'Turn on downloads' : 'Turn off downloads'}
+            onConfirm={() => {
+              downloadsMutation.mutate(pendingDownloads)
+              setPendingDownloads(null)
+            }}
+            onCancel={() => setPendingDownloads(null)}
+          >
+            <p>
+              Turn downloads {pendingDownloads ? 'on' : 'off'} for {member.member} ({member.email}
+              ).
+            </p>
+            <p className={styles.controlHint}>
+              The record updates immediately; the Plex-side permission applies with the member's
+              next reissued invite.
+            </p>
           </ConfirmActionModal>
         )}
         {!!member && pendingNeverExpire && (

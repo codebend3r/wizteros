@@ -294,6 +294,19 @@
   }
 }
 
+.downloadsToggle {
+  padding: calc(var(--space-1) / 2) var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  font-size: var(--font-size-md);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--color-surface);
+  }
+}
+
 .dangerButton {
   display: flex;
   align-items: center;
