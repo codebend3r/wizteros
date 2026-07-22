@@ -86,10 +86,12 @@ const formatLibraryCount = (count: number): string =>
 const MemberDetails = ({
   member,
   expiryUpdating,
+  downloadsUpdating,
   onToggleDownloads,
 }: {
   member: Member
   expiryUpdating: boolean
+  downloadsUpdating: boolean
   onToggleDownloads: () => void
 }) => {
   const status = deriveStatus({ member })
@@ -141,7 +143,7 @@ const MemberDetails = ({
       <dt>Tag</dt>
       <dd>{member.tag ? TAG_LABELS[member.tag] : '—'}</dd>
       <dt>Downloads</dt>
-      <dd>
+      <dd className={styles.downloadsValue}>
         <button
           className={styles.downloadsToggle}
           type="button"
@@ -150,6 +152,9 @@ const MemberDetails = ({
         >
           {formatDownloads(member.downloads)}
         </button>
+        {downloadsUpdating && (
+          <span className={styles.spinner} role="status" aria-label="Updating downloads" />
+        )}
       </dd>
       <dt>Expiry</dt>
       <dd className={styles.expiryValue}>
@@ -514,6 +519,7 @@ const UserInner = () => {
             <MemberDetails
               member={member}
               expiryUpdating={expiryMutation.isPending || neverExpireMutation.isPending}
+              downloadsUpdating={downloadsMutation.isPending}
               onToggleDownloads={() => {
                 setActionError(null)
                 setPendingDownloads(!(member.downloads ?? false))
@@ -601,6 +607,9 @@ const UserInner = () => {
                 >
                   💎 VIP
                 </button>
+                {tagMutation.isPending && tagMutation.variables === 'vip' && (
+                  <span className={styles.spinner} role="status" aria-label="Updating tag" />
+                )}
                 <button
                   className={styles.controlButton}
                   type="button"
@@ -612,6 +621,9 @@ const UserInner = () => {
                 >
                   ⭐ HVU
                 </button>
+                {tagMutation.isPending && tagMutation.variables === 'hvu' && (
+                  <span className={styles.spinner} role="status" aria-label="Updating tag" />
+                )}
                 <button
                   className={styles.controlButton}
                   type="button"
@@ -623,6 +635,9 @@ const UserInner = () => {
                 >
                   Clear tag
                 </button>
+                {tagMutation.isPending && tagMutation.variables === null && (
+                  <span className={styles.spinner} role="status" aria-label="Updating tag" />
+                )}
               </div>
             </section>
             <section className={styles.controlSection}>
@@ -660,6 +675,9 @@ const UserInner = () => {
                 >
                   Never expire
                 </button>
+                {neverExpireMutation.isPending && (
+                  <span className={styles.spinner} role="status" aria-label="Clearing expiry" />
+                )}
               </form>
             </section>
             <section className={styles.controlSection}>

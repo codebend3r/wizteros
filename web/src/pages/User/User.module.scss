@@ -110,6 +110,12 @@
   gap: var(--space-1);
 }
 
+.downloadsValue {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
 .spinner {
   display: inline-block;
   width: var(--font-size-xs);

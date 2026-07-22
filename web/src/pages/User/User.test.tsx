@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import User from '@/pages/User/User'
-import type { Member, ResetExpiryResult } from '@/lib/adminApi'
+import type { Member, ResetExpiryResult, SetDownloadsResult, SetTagResult } from '@/lib/adminApi'
 
 const member: Member = {
   member: 'max',
@@ -397,6 +397,76 @@ test('clears a tag and returns to the derived status', async () => {
   // only the tag row clears to the em dash; the ⭐ HVU button remains
   expect(screen.getByText('—')).toBeInTheDocument()
   expect(screen.getAllByText('⭐ HVU')).toHaveLength(1)
+})
+
+test('shows a loader next to the clicked tag button while the tag saves', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  let settle: (value: SetTagResult) => void = () => undefined
+  vi.mocked(setMemberTag).mockImplementation(
+    () =>
+      new Promise<SetTagResult>((resolve) => {
+        settle = resolve
+      }),
+  )
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  await user.click(screen.getByRole('button', { name: '💎 VIP' }))
+
+  expect(screen.getByRole('status', { name: 'Updating tag' })).toBeInTheDocument()
+  settle({ email: 'max@y.com', tag: 'vip' })
+  await waitFor(() =>
+    expect(screen.queryByRole('status', { name: 'Updating tag' })).not.toBeInTheDocument(),
+  )
+})
+
+test('shows a loader next to the downloads toggle while it saves', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  let settle: (value: SetDownloadsResult) => void = () => undefined
+  vi.mocked(setMemberDownloads).mockImplementation(
+    () =>
+      new Promise<SetDownloadsResult>((resolve) => {
+        settle = resolve
+      }),
+  )
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  await user.click(screen.getByRole('button', { name: 'Toggle allow downloads' }))
+  const dialog = screen.getByRole('dialog', { name: 'Confirm downloads change' })
+  await user.click(within(dialog).getByRole('button', { name: 'Turn off downloads' }))
+
+  expect(screen.getByRole('status', { name: 'Updating downloads' })).toBeInTheDocument()
+  settle({ email: 'max@y.com', downloads: false })
+  await waitFor(() =>
+    expect(screen.queryByRole('status', { name: 'Updating downloads' })).not.toBeInTheDocument(),
+  )
+})
+
+test('shows a loader next to the Never expire button while the expiry clears', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  let settle: (value: ResetExpiryResult) => void = () => undefined
+  vi.mocked(resetExpiry).mockImplementation(
+    () =>
+      new Promise<ResetExpiryResult>((resolve) => {
+        settle = resolve
+      }),
+  )
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  await user.click(screen.getByRole('button', { name: 'Never expire' }))
+  const dialog = screen.getByRole('dialog', { name: 'Confirm never expire' })
+  await user.click(within(dialog).getByRole('button', { name: 'Never expire' }))
+
+  expect(screen.getByRole('status', { name: 'Clearing expiry' })).toBeInTheDocument()
+  settle({ updated: 2, expires: null })
+  await waitFor(() =>
+    expect(screen.queryByRole('status', { name: 'Clearing expiry' })).not.toBeInTheDocument(),
+  )
 })
 
 test('disables the active tag button and Clear when untagged', async () => {
