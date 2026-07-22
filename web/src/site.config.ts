@@ -22,6 +22,7 @@ type SiteConfig = {
   brandName: string
   tagline: string
   memberUrl: string | null
+  billingPortalUrl: string | null
   supportItems: ReadonlyArray<SupportItem>
   tiers: ReadonlyArray<Tier>
 }
@@ -32,6 +33,7 @@ type RawEnv = {
   VITE_PAYMENT_LINK_GOLD_URL?: string
   VITE_PAYMENT_LINK_YOUTH_URL?: string
   VITE_MEMBER_URL?: string
+  VITE_BILLING_PORTAL_URL?: string
 }
 
 const SUPPORT_ITEMS: ReadonlyArray<SupportItem> = [
@@ -80,6 +82,7 @@ export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
   brandName: 'Westeroz',
   tagline: 'A community-run media server. Contribute to the cost of keeping it online.',
   memberUrl: env.VITE_MEMBER_URL ?? null,
+  billingPortalUrl: env.VITE_BILLING_PORTAL_URL ?? null,
   supportItems: SUPPORT_ITEMS,
   tiers: [
     {
@@ -159,6 +162,7 @@ const env: RawEnv = {
   VITE_PAYMENT_LINK_GOLD_URL: import.meta.env.VITE_PAYMENT_LINK_GOLD_URL,
   VITE_PAYMENT_LINK_YOUTH_URL: import.meta.env.VITE_PAYMENT_LINK_YOUTH_URL,
   VITE_MEMBER_URL: import.meta.env.VITE_MEMBER_URL,
+  VITE_BILLING_PORTAL_URL: import.meta.env.VITE_BILLING_PORTAL_URL,
 }
 
 export const siteConfig = resolveConfig({ env })

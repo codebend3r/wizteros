@@ -72,6 +72,14 @@ test('uses the member url from env when set', () => {
   expect(config.memberUrl).toBe('https://invite.example.com')
 })
 
+test('uses the billing portal url from env when set, null otherwise', () => {
+  const config = resolveConfig({
+    env: { VITE_BILLING_PORTAL_URL: 'https://billing.stripe.com/p/login/x' },
+  })
+  expect(config.billingPortalUrl).toBe('https://billing.stripe.com/p/login/x')
+  expect(resolveConfig({ env: {} }).billingPortalUrl).toBeNull()
+})
+
 test('provides three support items', () => {
   const config = resolveConfig({ env: {} })
   expect(config.supportItems).toHaveLength(3)
