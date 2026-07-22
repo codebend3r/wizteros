@@ -9,7 +9,7 @@ Click **Invite / Re-invite**, pick a tier from the menu, and confirm in the moda
 ## Phase 2 — Inside the bridge (`reissue_invite` in `admin.py`), one synchronous request
 
 1. **Normalize the tier.** Unknown/malformed tier strings fall back to bronze (`tiers.normalize_tier`).
-2. **Resolve what the tier may see.** The bridge pulls the live library list from Wizarr and applies the tier rules: kids = a three-library allowlist, bronze = everything that isn't 4K, silver/gold = everything. A private filter runs _last_ and independently — any library named `9X. …` is stripped no matter what the tier rules said. Zero resolved libraries aborts with a 502 before anyone is touched.
+2. **Resolve what the tier may see.** The bridge pulls the live library list from Wizarr and applies the tier rules: youth = a three-library allowlist, bronze = everything that isn't 4K, silver/gold = everything. A private filter runs _last_ and independently — any library named `9X. …` is stripped no matter what the tier rules said. Zero resolved libraries aborts with a 502 before anyone is touched.
 3. **Look up the member's existing Wizarr records** by email — one record per server. Still nothing has changed.
 4. **Create the new invite.** `POST /api/invitations` to Wizarr with the resolved server ids, the scoped library ids, `allow_downloads` from the tier, a 14-day link expiry (`INVITE_EXPIRES_DAYS`), and a 35-day access duration (`ACCESS_DURATION`).
 5. **Write the pending row** to the bridge's SQLite: email → new invite code + tier + `invited_at` (the grace-period clock). This keeps the member on `/admin/members` and drives the Invited / Declined Invite status.

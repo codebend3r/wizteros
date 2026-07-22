@@ -30,7 +30,7 @@ const TIER_SUMMARY: Record<PaidTier, string> = {
   bronze: 'Everything except 4K · no downloads',
   silver: 'Everything · no downloads',
   gold: 'Everything · downloads included',
-  kids: 'Kid-safe libraries only · downloads included',
+  youth: 'Youth-safe libraries only · downloads included',
 }
 
 type PendingSend = {

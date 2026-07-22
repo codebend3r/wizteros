@@ -9,7 +9,7 @@ const TIER_CLASS: Record<PaidTier, string> = {
   bronze: styles.bronze,
   silver: styles.silver,
   gold: styles.gold,
-  kids: styles.kids,
+  youth: styles.youth,
 }
 
 const TierIcon = ({ tier }: TierIconProps) => (

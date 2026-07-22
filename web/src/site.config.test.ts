@@ -2,12 +2,12 @@ import { resolveConfig } from '@/site.config'
 
 test('defines the four tiers in order with CAD prices', () => {
   const config = resolveConfig({ env: {} })
-  expect(config.tiers.map((tier) => tier.id)).toEqual(['bronze', 'silver', 'gold', 'kids'])
+  expect(config.tiers.map((tier) => tier.id)).toEqual(['bronze', 'silver', 'gold', 'youth'])
   expect(config.tiers.map((tier) => tier.price)).toEqual(['$8', '$14', '$20', '$10'])
   config.tiers.forEach((tier) => expect(tier.cadence).toBe('CAD / month'))
 })
 
-test('adult tiers list the same five features; youth swaps in kid-scoped library rows', () => {
+test('adult tiers list the same five features; youth swaps in youth-scoped library rows', () => {
   const config = resolveConfig({ env: {} })
   const labelsById = Object.fromEntries(
     config.tiers.map((tier) => [tier.id, tier.features.map((feature) => feature.label)]),
@@ -22,9 +22,9 @@ test('adult tiers list the same five features; youth swaps in kid-scoped library
   expect(labelsById.bronze).toEqual(adultLabels)
   expect(labelsById.silver).toEqual(adultLabels)
   expect(labelsById.gold).toEqual(adultLabels)
-  expect(labelsById.kids).toEqual([
-    'Access to all kid 1080p tv shows and movies',
-    'Access to all 4K kid movies',
+  expect(labelsById.youth).toEqual([
+    'Access to all youth 1080p tv shows and movies',
+    'Access to all 4K youth movies',
     'Access to Lossless Music Library',
     'Offline downloads for travel',
     'Request any show or movie',
@@ -41,7 +41,7 @@ test('every tier except youth includes the lossless music library', () => {
       ),
     ]),
   )
-  expect(byId).toEqual({ bronze: true, silver: true, gold: true, kids: false })
+  expect(byId).toEqual({ bronze: true, silver: true, gold: true, youth: false })
 })
 
 test('tier payment links fall back to empty strings with empty env', () => {
@@ -55,7 +55,7 @@ test('maps each payment link env var to its tier', () => {
       VITE_PAYMENT_LINK_BRONZE_URL: 'https://buy.stripe.com/b',
       VITE_PAYMENT_LINK_SILVER_URL: 'https://buy.stripe.com/s',
       VITE_PAYMENT_LINK_GOLD_URL: 'https://buy.stripe.com/g',
-      VITE_PAYMENT_LINK_KIDS_URL: 'https://buy.stripe.com/k',
+      VITE_PAYMENT_LINK_YOUTH_URL: 'https://buy.stripe.com/k',
     },
   })
   const byId = Object.fromEntries(config.tiers.map((tier) => [tier.id, tier.paymentLinkUrl]))
@@ -63,7 +63,7 @@ test('maps each payment link env var to its tier', () => {
     bronze: 'https://buy.stripe.com/b',
     silver: 'https://buy.stripe.com/s',
     gold: 'https://buy.stripe.com/g',
-    kids: 'https://buy.stripe.com/k',
+    youth: 'https://buy.stripe.com/k',
   })
 })
 

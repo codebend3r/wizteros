@@ -99,12 +99,12 @@ def test_get_member_found_and_missing(admin_db):
 def test_list_members_includes_subscribers_not_yet_joined(admin_db):
     a, dbp = admin_db
     # a Stripe subscriber the bridge knows who never redeemed a Wizarr invite
-    store.upsert_pending(dbp, "cus_max", "max@x.com", "INV1", tier="kids")
+    store.upsert_pending(dbp, "cus_max", "max@x.com", "INV1", tier="youth")
     by_email = {m["email"].lower(): m for m in a.list_members()}
     assert "max@x.com" in by_email  # shown despite having no Wizarr record
     mx = by_email["max@x.com"]
-    assert mx["tier"] == "kids"
-    assert mx["downloads"] is True    # derived from kids
+    assert mx["tier"] == "youth"
+    assert mx["downloads"] is True    # derived from youth
     assert mx["subscribed"] is False  # no expiry -> Invite button in the UI
     assert mx["servers"] == []
     assert mx["libraries"] == {}      # not on any server yet
@@ -113,10 +113,10 @@ def test_list_members_includes_subscribers_not_yet_joined(admin_db):
 
 def test_get_member_falls_back_to_subscriber(admin_db):
     a, dbp = admin_db
-    store.upsert_pending(dbp, "cus_max", "max@x.com", "INV1", tier="kids")
+    store.upsert_pending(dbp, "cus_max", "max@x.com", "INV1", tier="youth")
     m = a.get_member("max@x.com")
     assert m["email"].lower() == "max@x.com"
-    assert m["tier"] == "kids"
+    assert m["tier"] == "youth"
     assert m["subscribed"] is False
     with pytest.raises(HTTPException) as missing:
         a.get_member("nobody@nowhere.com")  # in neither Wizarr nor customer_map
@@ -202,7 +202,7 @@ def test_reset_tier_hard_sets_record_and_logs(admin_db):
     a.client.disable_user.assert_not_called()
 
 
-@pytest.mark.parametrize("tier", ["bronze", "silver", "gold", "kids"])
+@pytest.mark.parametrize("tier", ["bronze", "silver", "gold", "youth"])
 def test_reset_tier_hard_sets_each_tier(admin_db, tier):
     a, dbp = admin_db
     store.upsert_pending(dbp, "cus_1", "a@x.com", "abc", tier="gold")

@@ -100,7 +100,7 @@
     from var(--border-angle),
     var(--color-bronze),
     var(--color-gold),
-    var(--color-kids),
+    var(--color-youth),
     var(--color-silver),
     var(--color-accent),
     var(--color-bronze)
@@ -152,8 +152,8 @@
   --metal: var(--color-gold);
 }
 
-.kids {
-  --metal: var(--color-kids);
+.youth {
+  --metal: var(--color-youth);
 }
 
 .name {
