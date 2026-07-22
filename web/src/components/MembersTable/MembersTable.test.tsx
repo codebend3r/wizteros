@@ -89,6 +89,25 @@ test('shows a tier icon next to Subscribed Monthly for paid tiers', () => {
   expect(screen.getAllByRole('img', { name: 'gold tier' })).toHaveLength(2)
 })
 
+test('shows the tag emoji next to VIP and HVU statuses', () => {
+  render(
+    <MemoryRouter>
+      <MembersTable
+        members={[
+          makeMember({ email: 'vip@x.com', tag: 'vip' }),
+          makeMember({ email: 'hvu@x.com', tag: 'hvu' }),
+        ]}
+        onSelectTier={vi.fn()}
+        invitingEmail={null}
+      />
+    </MemoryRouter>,
+  )
+  expect(screen.getByText('💎')).toBeInTheDocument()
+  expect(screen.getByText('VIP')).toBeInTheDocument()
+  expect(screen.getByText('⭐')).toBeInTheDocument()
+  expect(screen.getByText('HVU')).toBeInTheDocument()
+})
+
 test('emails link to the /user detail route', () => {
   render(
     <MemoryRouter>
