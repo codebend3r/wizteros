@@ -120,6 +120,28 @@ test('shows ❌ downloads and no days-left bracket for a lapsed member', async (
   expect(screen.queryByText(/days left/)).not.toBeInTheDocument()
 })
 
+test('shows Never expires on the expiry row when a joined member has no expiry', async () => {
+  vi.mocked(fetchMember).mockResolvedValue({ ...member, expires: null, subscribed: false })
+  renderUser({ email: 'max@y.com' })
+
+  expect(await screen.findByText('♾️ Never expires')).toBeInTheDocument()
+  expect(screen.queryByText(/days left/)).not.toBeInTheDocument()
+})
+
+test('keeps the em dash on the expiry row for a member with no server records', async () => {
+  vi.mocked(fetchMember).mockResolvedValue({
+    ...member,
+    expires: null,
+    subscribed: false,
+    servers: [],
+    libraries: {},
+  })
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  expect(screen.queryByText('♾️ Never expires')).not.toBeInTheDocument()
+})
+
 test('re-invites through the tier menu and confirm modal', async () => {
   const user = userEvent.setup()
   vi.mocked(fetchMember).mockResolvedValue(member)
@@ -314,8 +336,9 @@ test('sets never expire through the confirm modal and clears the expiry row', as
   await user.click(within(dialog).getByRole('button', { name: 'Never expire' }))
 
   expect(resetExpiry).toHaveBeenCalledWith({ email: 'max@y.com', password: 'secret' })
-  // the expiry row optimistically clears to the em dash
+  // the expiry row optimistically flips to the explicit never-expires state
   await waitFor(() => expect(screen.queryByText(/days left/)).not.toBeInTheDocument())
+  expect(screen.getByText('♾️ Never expires')).toBeInTheDocument()
 })
 
 test('cancelling the never-expire confirmation makes no change', async () => {

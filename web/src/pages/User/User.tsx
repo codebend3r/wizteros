@@ -163,6 +163,10 @@ const MemberDetails = ({
             <span>{expiry.toLocaleString()}</span>
             <span className={styles.daysLeft}>({formatDaysLeft(expiry)})</span>
           </>
+        ) : member.servers.length ? (
+          // A joined member with no expiry has unlimited access — say so
+          // instead of the pending-member em dash.
+          <span>♾️ Never expires</span>
         ) : (
           '—'
         )}
