@@ -95,8 +95,11 @@ WIZARR_BASE_URL=http://wizarr:5690      # bridge reaches Wizarr by service name 
 # PUBLIC_INVITE_BASE stays on the LAN until Tailscale Funnel is up (tailscale-funnel.md)
 ```
 
-> Leave `STRIPE_API_KEY` on the **test** key for now. Going live is a separate,
-> later step (see `CLAUDE.md` → "What's next", steps 5–6).
+> The stack runs on **live** Stripe keys since 2026-07-22. Use the live
+> `STRIPE_API_KEY` and the signing secret of the live webhook endpoint
+> (`https://<node>.<tailnet>.ts.net/stripe/webhook`). For a test-mode rehearsal
+> instead, swap in the test key and a `stripe listen` secret — but never mix
+> environments: key, webhook secret, and payment links must match.
 
 ---
 
@@ -140,8 +143,10 @@ the end-to-end test.
 
 ---
 
-## Later (not part of this migration)
+## Going live (completed 2026-07-22)
 
-Going live is deliberately deferred — see `CLAUDE.md` → "What's next":
-end-to-end test in Stripe **test** mode, then swap to **live** keys + a live
-Payment Link + a live webhook endpoint, then announce.
+The live switch is done: four live tier Payment Links (bronze/silver/gold/youth,
+each with `tier` metadata) are set in Netlify's `VITE_PAYMENT_LINK_*` vars, and
+the bridge runs with the live API key and the live webhook endpoint's signing
+secret. The old test-mode setup remains available for rehearsals — swap the
+commented TEST block in `.env` back in and use test payment links together.
