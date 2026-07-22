@@ -335,3 +335,88 @@ def test_bridge_app_mounts_admin_routes_bare_and_prefixed():
     assert "/admin/reissue-invite" in paths
     assert "/admin/notes" in paths
     assert "/admin/events" in paths
+
+
+def _stripe_sub(sub_id: str, cancel_at: int | None = None, flagged: bool = False) -> MagicMock:
+    """A minimal Stripe subscription double with explicit (non-Mock) flags."""
+    sub = MagicMock()
+    sub.id = sub_id
+    sub.cancel_at_period_end = flagged
+    sub.cancel_at = cancel_at
+    return sub
+
+
+def _stripe_mock_with_subs(subs: list) -> MagicMock:
+    s = MagicMock()
+    s.Subscription.list.return_value.auto_paging_iter.return_value = subs
+    return s
+
+
+def test_cancel_subscription_flags_subs_for_stored_customer(admin_db, monkeypatch):
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_9", "a@x.com", "abc", tier="gold")
+    live = _stripe_sub("sub_1")
+    stripe_mock = _stripe_mock_with_subs([live])
+    stripe_mock.Subscription.modify.return_value = _stripe_sub(
+        "sub_1", cancel_at=1790000000, flagged=True)
+    monkeypatch.setattr(a, "stripe", stripe_mock)
+
+    result = a.cancel_subscription(a.CancelSubscriptionBody(email="A@X.com"))
+
+    stripe_mock.Subscription.list.assert_called_once_with(customer="cus_9")
+    stripe_mock.Subscription.modify.assert_called_once_with(
+        "sub_1", cancel_at_period_end=True)
+    stripe_mock.Customer.list.assert_not_called()  # mapping wins over email lookup
+    assert result["canceled"] == 1
+    assert result["cancel_at"].startswith("2026-")
+    events = store.events_for_email(dbp, "a@x.com")
+    assert events[0]["action"] == "Cancellation scheduled"
+    assert "by admin" in events[0]["detail"]
+
+
+def test_cancel_subscription_falls_back_to_stripe_email_lookup(admin_db, monkeypatch):
+    a, _ = admin_db
+    stripe_mock = _stripe_mock_with_subs([_stripe_sub("sub_2")])
+    customer = MagicMock()
+    customer.id = "cus_via_email"
+    stripe_mock.Customer.list.return_value.data = [customer]
+    stripe_mock.Subscription.modify.return_value = _stripe_sub(
+        "sub_2", cancel_at=1790000000, flagged=True)
+    monkeypatch.setattr(a, "stripe", stripe_mock)
+
+    result = a.cancel_subscription(a.CancelSubscriptionBody(email="nomap@x.com"))
+
+    stripe_mock.Customer.list.assert_called_once_with(email="nomap@x.com", limit=100)
+    stripe_mock.Subscription.list.assert_called_once_with(customer="cus_via_email")
+    assert result["canceled"] == 1
+
+
+def test_cancel_subscription_404s_without_customer_or_subscription(admin_db, monkeypatch):
+    a, dbp = admin_db
+    stripe_mock = _stripe_mock_with_subs([])
+    stripe_mock.Customer.list.return_value.data = []
+    monkeypatch.setattr(a, "stripe", stripe_mock)
+
+    with pytest.raises(HTTPException) as no_customer:
+        a.cancel_subscription(a.CancelSubscriptionBody(email="ghost@x.com"))
+    assert no_customer.value.status_code == 404
+
+    store.upsert_pending(dbp, "cus_idle", "idle@x.com", "abc", tier="gold")
+    with pytest.raises(HTTPException) as no_sub:
+        a.cancel_subscription(a.CancelSubscriptionBody(email="idle@x.com"))
+    assert no_sub.value.status_code == 404
+
+
+def test_cancel_subscription_is_idempotent_for_already_flagged_subs(admin_db, monkeypatch):
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_9", "a@x.com", "abc", tier="gold")
+    stripe_mock = _stripe_mock_with_subs(
+        [_stripe_sub("sub_1", cancel_at=1790000000, flagged=True)])
+    monkeypatch.setattr(a, "stripe", stripe_mock)
+
+    result = a.cancel_subscription(a.CancelSubscriptionBody(email="a@x.com"))
+
+    stripe_mock.Subscription.modify.assert_not_called()
+    assert result["canceled"] == 0
+    assert result["cancel_at"].startswith("2026-")
+    assert store.events_for_email(dbp, "a@x.com") == []  # no duplicate history row

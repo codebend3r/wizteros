@@ -165,6 +165,23 @@ def mark_event_processed(path: str, event_id: str) -> bool:
         return cur.rowcount > 0
 
 
+def customer_ids_for_email(path: str, email: str) -> list[str]:
+    """Real Stripe customer ids recorded for an email, case-insensitive.
+
+    Admin-issued placeholder rows (keyed "admin:<email>") are excluded — they
+    have no Stripe side to act on.
+    """
+    with _conn(path) as c:
+        rows = c.execute(
+            "SELECT stripe_customer_id FROM customer_map WHERE lower(email) = lower(?)",
+            (email,),
+        ).fetchall()
+    return [
+        row["stripe_customer_id"] for row in rows
+        if not row["stripe_customer_id"].startswith(_ADMIN_KEY_PREFIX)
+    ]
+
+
 def get_mapping(path: str, stripe_customer_id: str) -> dict | None:
     """Fetch a customer's mapping as a plain dict, or None if unknown."""
     with _conn(path) as c:

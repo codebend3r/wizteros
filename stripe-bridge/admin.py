@@ -2,6 +2,7 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 
+import stripe
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
@@ -168,6 +169,50 @@ class ResetTierBody(BaseModel):
 class ReissueInviteBody(BaseModel):
     email: str
     tier: str
+
+
+class CancelSubscriptionBody(BaseModel):
+    email: str
+
+
+@router.post("/admin/cancel-subscription", dependencies=[Depends(require_admin)])
+def cancel_subscription(body: CancelSubscriptionBody) -> dict:
+    """Flag every live Stripe subscription for an email to cancel at period end.
+
+    Mirrors a portal self-cancel: the member keeps access through the period
+    they already contributed for, then Stripe fires
+    customer.subscription.deleted and the webhook disables their records —
+    nothing is revoked here directly. Customer ids come from the bridge's own
+    mapping first, falling back to a live Stripe email lookup for members who
+    predate the mapping. Idempotent: subscriptions already flagged are left
+    alone and still count as scheduled.
+    """
+    customer_ids = store.customer_ids_for_email(MAP_DB_PATH, body.email)
+    if not customer_ids:
+        customer_ids = [c.id for c in stripe.Customer.list(email=body.email, limit=100).data]
+    if not customer_ids:
+        raise HTTPException(status_code=404, detail="no stripe customer for that email")
+    flagged = []
+    already = []
+    for customer_id in customer_ids:
+        for sub in stripe.Subscription.list(customer=customer_id).auto_paging_iter():
+            if getattr(sub, "cancel_at_period_end", False):
+                already.append(sub)
+            else:
+                flagged.append(stripe.Subscription.modify(sub.id, cancel_at_period_end=True))
+    if not flagged and not already:
+        raise HTTPException(status_code=404, detail="no active subscription for that email")
+    cancel_ts = max(
+        (getattr(sub, "cancel_at", None) or 0 for sub in flagged + already), default=0)
+    cancel_at = (
+        datetime.fromtimestamp(cancel_ts, timezone.utc).isoformat() if cancel_ts else None
+    )
+    if flagged:
+        store.record_event(
+            MAP_DB_PATH, body.email, "Cancellation scheduled",
+            f"by admin — access ends {cancel_at[:10]}" if cancel_at else "by admin",
+        )
+    return {"email": body.email, "canceled": len(flagged), "cancel_at": cancel_at}
 
 
 @router.post("/admin/reset-expiry", dependencies=[Depends(require_admin)])

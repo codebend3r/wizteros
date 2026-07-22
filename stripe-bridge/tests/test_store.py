@@ -155,3 +155,15 @@ def test_all_customer_tiers_includes_untiered_rows(tmp_path):
     store.upsert_pending(db, "cus_2", "b@x.com", "def")  # subscriber with no tier yet
     # unlike tiers_by_email, the untiered row is kept (value None)
     assert store.all_customer_tiers(db) == {"a@x.com": "gold", "b@x.com": None}
+
+
+def test_customer_ids_for_email_excludes_admin_placeholders(tmp_path):
+    db = str(tmp_path / "bridge.db")
+    store.init_db(db)
+
+    assert store.customer_ids_for_email(db, "a@example.com") == []
+
+    store.upsert_pending(db, "cus_1", "A@Example.com", "abc")
+    store.upsert_pending_by_email(db, "b@example.com", "xyz")
+    assert store.customer_ids_for_email(db, "a@example.com") == ["cus_1"]
+    assert store.customer_ids_for_email(db, "b@example.com") == []
