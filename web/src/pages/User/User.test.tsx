@@ -27,6 +27,7 @@ vi.mock('@/lib/adminApi', async (importOriginal) => ({
   fetchMember: vi.fn(),
   fetchMemberEvents: vi.fn(),
   fetchMemberNotes: vi.fn(),
+  fetchPlexAccess: vi.fn(),
   saveMemberNotes: vi.fn(),
   reissueInvite: vi.fn(),
   resetExpiry: vi.fn(),
@@ -40,6 +41,7 @@ const {
   fetchMember,
   fetchMemberEvents,
   fetchMemberNotes,
+  fetchPlexAccess,
   saveMemberNotes,
   reissueInvite,
   resetExpiry,
@@ -67,6 +69,7 @@ beforeEach(() => {
   sessionStorage.setItem('westeroz-admin-password', 'secret')
   vi.mocked(fetchMemberNotes).mockResolvedValue({ email: 'max@y.com', notes: '' })
   vi.mocked(fetchMemberEvents).mockResolvedValue([])
+  vi.mocked(fetchPlexAccess).mockResolvedValue({ email: 'max@y.com', servers: {} })
 })
 
 afterEach(() => {
@@ -648,4 +651,83 @@ test('links back to the members table', async () => {
     'href',
     '/manage',
   )
+})
+
+test('merges the live plex.tv share into the servers row', async () => {
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  vi.mocked(fetchPlexAccess).mockResolvedValue({
+    email: 'max@y.com',
+    servers: {
+      Meleys: { all_libraries: true, allow_sync: true, libraries: ['01. Movies', '90. Private'] },
+    },
+  })
+  renderUser({ email: 'max@y.com' })
+
+  // Meleys shows the real share, not the tier-derived list.
+  expect(await screen.findByText('90. Private')).toBeInTheDocument()
+  expect(fetchPlexAccess).toHaveBeenCalledWith({ email: 'max@y.com', password: 'secret' })
+  expect(screen.getByText('all libraries (2)')).toBeInTheDocument()
+  expect(screen.queryByText('03. 4K TV Shows')).not.toBeInTheDocument()
+  // Vermithor has no plex.tv data and falls back to the tier-derived list.
+  expect(screen.getByText('01. TV Shows')).toBeInTheDocument()
+  expect(screen.getByText('2 servers · 3 libraries')).toBeInTheDocument()
+  // No separate section.
+  expect(screen.queryByRole('heading', { name: 'Plex access' })).not.toBeInTheDocument()
+})
+
+test('lists a plex.tv-shared server even when the member record lacks it', async () => {
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  vi.mocked(fetchPlexAccess).mockResolvedValue({
+    email: 'max@y.com',
+    servers: {
+      Syrax: { all_libraries: false, allow_sync: false, libraries: ['07. Podcasts'] },
+    },
+  })
+  renderUser({ email: 'max@y.com' })
+
+  expect(await screen.findByText('07. Podcasts')).toBeInTheDocument()
+  expect(screen.getByText('Syrax')).toBeInTheDocument()
+  expect(screen.getByText('3 servers · 4 libraries')).toBeInTheDocument()
+})
+
+test('shows in-flight indicators for plex, notes, and history lookups', async () => {
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  // Never-resolving promises keep every lookup in flight.
+  vi.mocked(fetchPlexAccess).mockReturnValue(new Promise(() => {}))
+  vi.mocked(fetchMemberNotes).mockReturnValue(new Promise(() => {}))
+  vi.mocked(fetchMemberEvents).mockReturnValue(new Promise(() => {}))
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  expect(screen.getByRole('status', { name: 'Checking plex.tv' })).toBeInTheDocument()
+  expect(screen.getByRole('status', { name: 'Loading notes' })).toBeInTheDocument()
+  expect(screen.getByRole('status', { name: 'Loading history' })).toBeInTheDocument()
+  expect(screen.getByRole('textbox', { name: 'Member notes' })).toBeDisabled()
+  expect(screen.queryByText('No history yet.')).not.toBeInTheDocument()
+})
+
+test('drops the in-flight indicators once the lookups resolve', async () => {
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  expect(await screen.findByText('No history yet.')).toBeInTheDocument()
+  expect(screen.queryByRole('status', { name: 'Checking plex.tv' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('status', { name: 'Loading notes' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('status', { name: 'Loading history' })).not.toBeInTheDocument()
+  expect(screen.getByRole('textbox', { name: 'Member notes' })).toBeEnabled()
+})
+
+test('shows a spinner while a hard tier reset is in flight', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  vi.mocked(resetTier).mockReturnValue(new Promise(() => {}))
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  await user.click(screen.getByRole('button', { name: 'silver tier Silver' }))
+  const dialog = screen.getByRole('dialog', { name: 'Confirm tier reset' })
+  await user.click(within(dialog).getByRole('button', { name: 'Hard reset' }))
+
+  expect(await screen.findByRole('status', { name: 'Resetting tier' })).toBeInTheDocument()
 })

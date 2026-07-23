@@ -15,6 +15,17 @@ export type Member = {
   tag: MemberTag | null
 }
 
+export type PlexServerAccess = {
+  all_libraries: boolean
+  allow_sync: boolean
+  libraries: string[]
+}
+
+export type PlexAccess = {
+  email: string
+  servers: Record<string, PlexServerAccess>
+}
+
 export type MemberNotes = {
   email: string
   notes: string
@@ -113,6 +124,18 @@ const toMember = (payload: MemberPayload): Member => ({
   invited_at: payload.invited_at ?? null,
   tag: payload.tag ?? null,
 })
+
+const isPlexServerAccess = (value: unknown): value is PlexServerAccess =>
+  isRecord(value) &&
+  typeof value.all_libraries === 'boolean' &&
+  typeof value.allow_sync === 'boolean' &&
+  isStringArray(value.libraries)
+
+const isPlexAccess = (value: unknown): value is PlexAccess =>
+  isRecord(value) &&
+  typeof value.email === 'string' &&
+  isRecord(value.servers) &&
+  Object.values(value.servers).every(isPlexServerAccess)
 
 const isMemberNotes = (value: unknown): value is MemberNotes =>
   isRecord(value) && typeof value.email === 'string' && typeof value.notes === 'string'
@@ -226,6 +249,23 @@ export const fetchMember = async ({
     throw new Error('Unexpected member response')
   }
   return toMember(data)
+}
+
+export const fetchPlexAccess = async ({
+  email,
+  password,
+}: {
+  email: string
+  password: string
+}): Promise<PlexAccess> => {
+  const data = await requestJson({
+    path: `/admin/plex-access?email=${encodeURIComponent(email)}`,
+    password,
+  })
+  if (!isPlexAccess(data)) {
+    throw new Error('Unexpected plex-access response')
+  }
+  return data
 }
 
 export const fetchMemberEvents = async ({

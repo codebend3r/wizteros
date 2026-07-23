@@ -3,6 +3,7 @@ import {
   AdminAuthError,
   fetchMember,
   fetchMembers,
+  fetchPlexAccess,
   reissueInvite,
   resetExpiry,
   setMemberTag,
@@ -140,4 +141,34 @@ test('setMemberTag posts email + tag and returns the parsed result', async () =>
   expect(result).toEqual({ email: 'a@x.com', tag: 'vip' })
   const [, init] = fetchMock.mock.calls[0]
   expect(JSON.parse(init.body)).toEqual({ email: 'a@x.com', tag: 'vip' })
+})
+
+test('fetchPlexAccess returns validated per-server shares', async () => {
+  const access = {
+    email: 'a@x.com',
+    servers: {
+      Meleys: { all_libraries: true, allow_sync: true, libraries: ['01. Movies'] },
+    },
+  }
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => access })
+  vi.stubGlobal('fetch', fetchMock)
+
+  await expect(fetchPlexAccess({ email: 'a@x.com', password: 'secret' })).resolves.toEqual(access)
+  const [url, init] = fetchMock.mock.calls[0]
+  expect(url).toContain('/admin/plex-access?email=a%40x.com')
+  expect(init.headers['X-Admin-Password']).toBe('secret')
+})
+
+test('fetchPlexAccess rejects an unexpected shape', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ email: 'a@x.com', servers: { Meleys: { libraries: 'nope' } } }),
+    }),
+  )
+  await expect(fetchPlexAccess({ email: 'a@x.com', password: 'secret' })).rejects.toThrow(
+    'Unexpected plex-access response',
+  )
 })

@@ -2,10 +2,12 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 
+import requests
 import stripe
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
+import plex
 import store
 import tiers
 from mailer import send_invite_email
@@ -148,6 +150,18 @@ def get_member(email: str) -> dict:
     if email.lower() in customers:
         return _with_overrides([_member_from_customer(email, customers[email.lower()])])[0]
     raise HTTPException(status_code=404, detail="no member for that email")
+
+
+@router.get("/admin/plex-access", dependencies=[Depends(require_admin)])
+def get_plex_access(email: str) -> dict:
+    """The email's actual plex.tv share per server — covers uninvited legacy shares too."""
+    if not plex.PLEX_TOKEN:
+        raise HTTPException(status_code=503, detail="PLEX_TOKEN not configured")
+    try:
+        return {"email": email, "servers": plex.shared_access_for_email(email)}
+    except requests.RequestException as exc:
+        log.error("plex.tv lookup failed for %s: %s", email, exc)
+        raise HTTPException(status_code=502, detail="plex.tv lookup failed")
 
 
 @router.get("/admin/events", dependencies=[Depends(require_admin)])

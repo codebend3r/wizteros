@@ -4,6 +4,7 @@ import os
 from unittest.mock import MagicMock
 
 import pytest
+import requests
 import responses
 
 # Env required before importing the module (mirrors test_bridge).
@@ -497,3 +498,35 @@ def test_reissue_invite_applies_downloads_override(admin_db):
     # silver's tier default is allow_downloads=False; the override wins
     kwargs = a.client.create_invite.call_args.kwargs
     assert kwargs["allow_downloads"] is True
+
+
+def test_plex_access_requires_token(admin_db, monkeypatch):
+    a, _ = admin_db
+    monkeypatch.setattr(a.plex, "PLEX_TOKEN", "")
+    with pytest.raises(HTTPException) as no_token:
+        a.get_plex_access("a@x.com")
+    assert no_token.value.status_code == 503
+
+
+def test_plex_access_returns_per_server_shares(admin_db, monkeypatch):
+    a, _ = admin_db
+    monkeypatch.setattr(a.plex, "PLEX_TOKEN", "tok")
+    monkeypatch.setattr(a.plex, "shared_access_for_email", lambda email: {
+        "Meleys": {"all_libraries": True, "allow_sync": True, "libraries": ["01. Movies"]},
+    })
+    out = a.get_plex_access("a@x.com")
+    assert out["email"] == "a@x.com"
+    assert out["servers"]["Meleys"]["all_libraries"] is True
+
+
+def test_plex_access_maps_plex_tv_failure_to_502(admin_db, monkeypatch):
+    a, _ = admin_db
+    monkeypatch.setattr(a.plex, "PLEX_TOKEN", "tok")
+
+    def boom(email):
+        raise requests.ConnectionError("plex.tv down")
+
+    monkeypatch.setattr(a.plex, "shared_access_for_email", boom)
+    with pytest.raises(HTTPException) as failed:
+        a.get_plex_access("a@x.com")
+    assert failed.value.status_code == 502
