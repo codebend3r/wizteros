@@ -1,3 +1,4 @@
+import { AdminLoginButton } from '@/components/AdminLoginButton/AdminLoginButton'
 import Hero from '@/components/Hero/Hero'
 import Pricing from '@/components/Pricing/Pricing'
 import Support from '@/components/Support/Support'
@@ -7,6 +8,7 @@ import styles from '@/App.module.scss'
 
 const App = () => (
   <main className={styles.page}>
+    <AdminLoginButton />
     <Hero brandName={siteConfig.brandName} tagline={siteConfig.tagline} />
     <Pricing tiers={siteConfig.tiers} />
     <Support items={siteConfig.supportItems} />

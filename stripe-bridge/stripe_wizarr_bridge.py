@@ -41,7 +41,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=ADMIN_ALLOWED_ORIGINS,
     allow_methods=["GET", "POST"],
-    allow_headers=["X-Admin-Password", "Content-Type"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 # Bare paths serve Funnel-proxied calls (the /stripe prefix is stripped by
 # Funnel); the /stripe-prefixed copy serves direct/local calls, mirroring the

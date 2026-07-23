@@ -1,3 +1,5 @@
+import { supabase } from '@/lib/supabaseClient'
+
 export type PaidTier = 'bronze' | 'silver' | 'gold' | 'youth'
 export type Tier = PaidTier | 'unknown'
 export type MemberTag = 'vip' | 'hvu'
@@ -76,6 +78,17 @@ export type SetDownloadsResult = {
 export class AdminAuthError extends Error {}
 
 const ADMIN_API_BASE: string = import.meta.env.VITE_ADMIN_API_BASE ?? ''
+
+// The bridge authorizes admin calls off the Supabase session: send the
+// user's access token as a bearer, refreshed from the client each request.
+const authHeader = async (): Promise<Record<string, string>> => {
+  if (!supabase) {
+    return {}
+  }
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null
@@ -186,27 +199,21 @@ const isSetDownloadsResult = (value: unknown): value is SetDownloadsResult =>
 
 type RequestArgs = {
   path: string
-  password: string
   method?: 'GET' | 'POST'
   body?: unknown
 }
 
-const requestJson = async ({
-  path,
-  password,
-  method = 'GET',
-  body,
-}: RequestArgs): Promise<unknown> => {
+const requestJson = async ({ path, method = 'GET', body }: RequestArgs): Promise<unknown> => {
   const response = await fetch(`${ADMIN_API_BASE}${path}`, {
     method,
     headers: {
-      'X-Admin-Password': password,
+      ...(await authHeader()),
       ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
   if (response.status === 401) {
-    throw new AdminAuthError('Wrong password')
+    throw new AdminAuthError('Not signed in')
   }
   if (!response.ok) {
     throw new Error(`Request failed (${response.status})`)
@@ -214,29 +221,23 @@ const requestJson = async ({
   return response.json()
 }
 
-export const fetchMembers = async ({ password }: { password: string }): Promise<Member[]> => {
-  const data = await requestJson({ path: '/admin/members', password })
+export const fetchMembers = async (): Promise<Member[]> => {
+  const data = await requestJson({ path: '/admin/members' })
   if (!isMemberPayloadArray(data)) {
     throw new Error('Unexpected members response')
   }
   return data.map(toMember)
 }
 
-export const fetchMember = async ({
-  email,
-  password,
-}: {
-  email: string
-  password: string
-}): Promise<Member | null> => {
+export const fetchMember = async ({ email }: { email: string }): Promise<Member | null> => {
   const response = await fetch(
     `${ADMIN_API_BASE}/admin/member?email=${encodeURIComponent(email)}`,
     {
-      headers: { 'X-Admin-Password': password },
+      headers: await authHeader(),
     },
   )
   if (response.status === 401) {
-    throw new AdminAuthError('Wrong password')
+    throw new AdminAuthError('Not signed in')
   }
   if (response.status === 404) {
     return null
@@ -251,16 +252,9 @@ export const fetchMember = async ({
   return toMember(data)
 }
 
-export const fetchPlexAccess = async ({
-  email,
-  password,
-}: {
-  email: string
-  password: string
-}): Promise<PlexAccess> => {
+export const fetchPlexAccess = async ({ email }: { email: string }): Promise<PlexAccess> => {
   const data = await requestJson({
     path: `/admin/plex-access?email=${encodeURIComponent(email)}`,
-    password,
   })
   if (!isPlexAccess(data)) {
     throw new Error('Unexpected plex-access response')
@@ -268,16 +262,9 @@ export const fetchPlexAccess = async ({
   return data
 }
 
-export const fetchMemberEvents = async ({
-  email,
-  password,
-}: {
-  email: string
-  password: string
-}): Promise<MemberEvent[]> => {
+export const fetchMemberEvents = async ({ email }: { email: string }): Promise<MemberEvent[]> => {
   const data = await requestJson({
     path: `/admin/events?email=${encodeURIComponent(email)}`,
-    password,
   })
   if (!isMemberEventArray(data)) {
     throw new Error('Unexpected events response')
@@ -285,16 +272,9 @@ export const fetchMemberEvents = async ({
   return data
 }
 
-export const fetchMemberNotes = async ({
-  email,
-  password,
-}: {
-  email: string
-  password: string
-}): Promise<MemberNotes> => {
+export const fetchMemberNotes = async ({ email }: { email: string }): Promise<MemberNotes> => {
   const data = await requestJson({
     path: `/admin/notes?email=${encodeURIComponent(email)}`,
-    password,
   })
   if (!isMemberNotes(data)) {
     throw new Error('Unexpected notes response')
@@ -305,15 +285,12 @@ export const fetchMemberNotes = async ({
 export const saveMemberNotes = async ({
   email,
   notes,
-  password,
 }: {
   email: string
   notes: string
-  password: string
 }): Promise<MemberNotes> => {
   const data = await requestJson({
     path: '/admin/notes',
-    password,
     method: 'POST',
     body: { email, notes },
   })
@@ -327,16 +304,13 @@ export const resetExpiry = async ({
   email,
   days = null,
   expiresAt = null,
-  password,
 }: {
   email: string
   days?: number | null
   expiresAt?: string | null
-  password: string
 }): Promise<ResetExpiryResult> => {
   const data = await requestJson({
     path: '/admin/reset-expiry',
-    password,
     method: 'POST',
     body: { email, days, expires_at: expiresAt },
   })
@@ -349,15 +323,12 @@ export const resetExpiry = async ({
 export const resetTier = async ({
   email,
   tier,
-  password,
 }: {
   email: string
   tier: PaidTier
-  password: string
 }): Promise<ResetTierResult> => {
   const data = await requestJson({
     path: '/admin/reset-tier',
-    password,
     method: 'POST',
     body: { email, tier },
   })
@@ -369,14 +340,11 @@ export const resetTier = async ({
 
 export const cancelSubscription = async ({
   email,
-  password,
 }: {
   email: string
-  password: string
 }): Promise<CancelSubscriptionResult> => {
   const data = await requestJson({
     path: '/admin/cancel-subscription',
-    password,
     method: 'POST',
     body: { email },
   })
@@ -389,15 +357,12 @@ export const cancelSubscription = async ({
 export const setMemberTag = async ({
   email,
   tag,
-  password,
 }: {
   email: string
   tag: MemberTag | null
-  password: string
 }): Promise<SetTagResult> => {
   const data = await requestJson({
     path: '/admin/set-tag',
-    password,
     method: 'POST',
     body: { email, tag },
   })
@@ -410,15 +375,12 @@ export const setMemberTag = async ({
 export const setMemberDownloads = async ({
   email,
   allow,
-  password,
 }: {
   email: string
   allow: boolean
-  password: string
 }): Promise<SetDownloadsResult> => {
   const data = await requestJson({
     path: '/admin/set-downloads',
-    password,
     method: 'POST',
     body: { email, allow },
   })
@@ -431,15 +393,12 @@ export const setMemberDownloads = async ({
 export const reissueInvite = async ({
   email,
   tier,
-  password,
 }: {
   email: string
   tier: PaidTier
-  password: string
 }): Promise<InviteResult> => {
   const data = await requestJson({
     path: '/admin/reissue-invite',
-    password,
     method: 'POST',
     body: { email, tier },
   })

@@ -233,7 +233,7 @@ const MemberDetails = ({
 }
 
 const UserInner = () => {
-  const { password, deauthenticate } = useAdminAuth()
+  const { deauthenticate } = useAdminAuth()
   const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
   const email = searchParams.get('email') ?? ''
@@ -256,7 +256,7 @@ const UserInner = () => {
     isPending,
   } = useQuery({
     queryKey: ['member', email],
-    queryFn: () => fetchMember({ email, password }),
+    queryFn: () => fetchMember({ email }),
     enabled: !!email,
     staleTime: 5 * 60 * 1000,
     // Seed from the /manage table so the detail page is instant when the
@@ -272,7 +272,7 @@ const UserInner = () => {
   // the tier-derived fallback in place.
   const { data: plexAccess, isPending: plexChecking } = useQuery({
     queryKey: ['plex-access', email],
-    queryFn: () => fetchPlexAccess({ email, password }),
+    queryFn: () => fetchPlexAccess({ email }),
     enabled: !!email,
     staleTime: 5 * 60 * 1000,
   })
@@ -283,7 +283,7 @@ const UserInner = () => {
     isPending: notesPending,
   } = useQuery({
     queryKey: ['member-notes', email],
-    queryFn: () => fetchMemberNotes({ email, password }),
+    queryFn: () => fetchMemberNotes({ email }),
     enabled: !!email,
     staleTime: 5 * 60 * 1000,
   })
@@ -294,7 +294,7 @@ const UserInner = () => {
     isPending: eventsPending,
   } = useQuery({
     queryKey: ['member-events', email],
-    queryFn: () => fetchMemberEvents({ email, password }),
+    queryFn: () => fetchMemberEvents({ email }),
     enabled: !!email,
     staleTime: 5 * 60 * 1000,
   })
@@ -328,7 +328,7 @@ const UserInner = () => {
   }, [menuOpen])
 
   const inviteMutation = useMutation({
-    mutationFn: (tier: PaidTier) => reissueInvite({ email, tier, password }),
+    mutationFn: (tier: PaidTier) => reissueInvite({ email, tier }),
     onSuccess: (result, tier) => {
       setInviteResult(result)
       // Existing access survives the invite window now, so keep expiry and
@@ -367,7 +367,7 @@ const UserInner = () => {
   }
 
   const tierResetMutation = useMutation({
-    mutationFn: (tier: PaidTier) => resetTier({ email, tier, password }),
+    mutationFn: (tier: PaidTier) => resetTier({ email, tier }),
     onSuccess: (_result, tier) => {
       applyToMemberCaches((row) => ({ ...row, tier, downloads: TIER_DOWNLOADS[tier] }))
       void queryClient.invalidateQueries({ queryKey: ['member-events', email] })
@@ -382,7 +382,7 @@ const UserInner = () => {
   })
 
   const expiryMutation = useMutation({
-    mutationFn: (expiresAt: string) => resetExpiry({ email, expiresAt, password }),
+    mutationFn: (expiresAt: string) => resetExpiry({ email, expiresAt }),
     onMutate: (expiresAt) => {
       const previousMember = queryClient.getQueryData<Member | null>(['member', email])
       const previousMembers = queryClient.getQueryData<Member[]>(MEMBERS_QUERY_KEY)
@@ -407,7 +407,7 @@ const UserInner = () => {
   })
 
   const neverExpireMutation = useMutation({
-    mutationFn: () => resetExpiry({ email, password }),
+    mutationFn: () => resetExpiry({ email }),
     onMutate: () => {
       const previousMember = queryClient.getQueryData<Member | null>(['member', email])
       const previousMembers = queryClient.getQueryData<Member[]>(MEMBERS_QUERY_KEY)
@@ -432,7 +432,7 @@ const UserInner = () => {
   })
 
   const downloadsMutation = useMutation({
-    mutationFn: (allow: boolean) => setMemberDownloads({ email, allow, password }),
+    mutationFn: (allow: boolean) => setMemberDownloads({ email, allow }),
     onMutate: (allow) => {
       const previousMember = queryClient.getQueryData<Member | null>(['member', email])
       const previousMembers = queryClient.getQueryData<Member[]>(MEMBERS_QUERY_KEY)
@@ -456,7 +456,7 @@ const UserInner = () => {
   })
 
   const tagMutation = useMutation({
-    mutationFn: (tag: MemberTag | null) => setMemberTag({ email, tag, password }),
+    mutationFn: (tag: MemberTag | null) => setMemberTag({ email, tag }),
     onSuccess: (result) => {
       applyToMemberCaches((row) => ({ ...row, tag: result.tag }))
       void queryClient.invalidateQueries({ queryKey: ['member-events', email] })
@@ -471,7 +471,7 @@ const UserInner = () => {
   })
 
   const cancelSubMutation = useMutation({
-    mutationFn: () => cancelSubscription({ email, password }),
+    mutationFn: () => cancelSubscription({ email }),
     onSuccess: (result) => {
       setCancelNotice(
         result.cancel_at
@@ -499,7 +499,7 @@ const UserInner = () => {
   const notesDirty = notes !== savedNotes
 
   const notesMutation = useMutation({
-    mutationFn: (value: string) => saveMemberNotes({ email, notes: value, password }),
+    mutationFn: (value: string) => saveMemberNotes({ email, notes: value }),
     onSuccess: (result) => {
       queryClient.setQueryData(['member-notes', email], result)
       setNotesDraft(null)

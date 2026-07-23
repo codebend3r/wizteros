@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import styles from '@/components/SideMenu/SideMenu.module.scss'
+import { useAuthStore } from '@/stores/authStore'
 
 export const menuRoutes = [
   { label: 'Home', path: '/' },
@@ -11,6 +12,8 @@ export const menuRoutes = [
 
 export const SideMenu = () => {
   const [open, setOpen] = useState(false)
+  const status = useAuthStore((state) => state.status)
+  const signOut = useAuthStore((state) => state.signOut)
   return (
     <aside className={styles.sideMenu}>
       <button
@@ -41,6 +44,11 @@ export const SideMenu = () => {
             </li>
           ))}
         </ul>
+        {status === 'signed-in' && (
+          <button className={styles.signOut} type="button" onClick={() => void signOut()}>
+            Sign out
+          </button>
+        )}
       </nav>
     </aside>
   )
