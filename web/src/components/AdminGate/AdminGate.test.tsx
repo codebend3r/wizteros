@@ -1,22 +1,44 @@
 import { render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { afterEach, expect, test } from 'vitest'
 import AdminGate from '@/components/AdminGate/AdminGate'
+import { useAuthStore } from '@/stores/authStore'
+
+const initialState = useAuthStore.getInitialState()
 
 afterEach(() => {
-  sessionStorage.clear()
+  useAuthStore.setState(initialState, true)
 })
 
-test('hides children until a password is entered', async () => {
+test('renders children directly while Supabase is unconfigured', () => {
   render(
     <AdminGate title="Test gate">
       <p>secret content</p>
     </AdminGate>,
   )
+  expect(screen.getByText('secret content')).toBeInTheDocument()
+})
+
+test('shows the Supabase login instead of the children when signed out', () => {
+  useAuthStore.setState({ enabled: true, status: 'signed-out' })
+  render(
+    <AdminGate title="Test gate">
+      <p>secret content</p>
+    </AdminGate>,
+  )
+  expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
   expect(screen.queryByText('secret content')).toBeNull()
+})
 
-  await userEvent.type(screen.getByLabelText('Password'), 'morty8229!')
-  await userEvent.click(screen.getByRole('button', { name: 'Enter' }))
-
+test('renders children for an allowlisted signed-in session', () => {
+  useAuthStore.setState({
+    enabled: true,
+    status: 'signed-in',
+    email: 'cj.rivas.dev@gmail.com',
+  })
+  render(
+    <AdminGate title="Test gate">
+      <p>secret content</p>
+    </AdminGate>,
+  )
   expect(screen.getByText('secret content')).toBeInTheDocument()
 })

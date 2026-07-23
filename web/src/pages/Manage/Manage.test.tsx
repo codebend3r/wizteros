@@ -1,10 +1,11 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import Manage from '@/pages/Manage/Manage'
 import { AdminAuthError, type Member } from '@/lib/adminApi'
+import { useAuthStore } from '@/stores/authStore'
 
 const member: Member = {
   member: 'cj',
@@ -40,20 +41,16 @@ const renderManage = () => {
   )
 }
 
-beforeEach(() => {
-  sessionStorage.setItem('westeroz-admin-password', 'secret')
-})
-
 afterEach(() => {
-  sessionStorage.clear()
   vi.restoreAllMocks()
+  useAuthStore.setState(useAuthStore.getInitialState(), true)
 })
 
 test('loads and renders members after the gate', async () => {
   vi.mocked(fetchMembers).mockResolvedValue([member])
   renderManage()
   expect(await screen.findByText('cj')).toBeInTheDocument()
-  expect(fetchMembers).toHaveBeenCalledWith({ password: 'secret' })
+  expect(fetchMembers).toHaveBeenCalledWith()
 })
 
 test('shows a preloader while members are loading', () => {
@@ -62,10 +59,12 @@ test('shows a preloader while members are loading', () => {
   expect(screen.getByRole('status')).toBeInTheDocument()
 })
 
-test('returns to the password gate on an auth error during load', async () => {
+test('signs out of the Supabase session on an auth error during load', async () => {
+  const signOut = vi.fn(async () => {})
+  useAuthStore.setState({ signOut })
   vi.mocked(fetchMembers).mockRejectedValue(new AdminAuthError('nope'))
   renderManage()
-  expect(await screen.findByLabelText('Password')).toBeInTheDocument()
+  await waitFor(() => expect(signOut).toHaveBeenCalled())
 })
 
 test('filters members by email with the search input', async () => {
@@ -103,7 +102,6 @@ test('inviting to a tier confirms via modal then updates the row optimistically'
   expect(reissueInvite).toHaveBeenCalledWith({
     email: 'cj@x.com',
     tier: 'gold',
-    password: 'secret',
   })
   // Access only starts at redemption, so the row reads Invited, not
   // Subscribed Monthly, until the member redeems the new link.

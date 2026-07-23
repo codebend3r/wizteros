@@ -2,9 +2,11 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 
+import jwt
 import requests
 import stripe
 from fastapi import APIRouter, Depends, Header, HTTPException
+from jwt import PyJWKClient
 from pydantic import BaseModel
 
 import plex
@@ -15,7 +17,20 @@ from wizarr import WizarrClient
 
 log = logging.getLogger("bridge.admin")
 
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+# Admin auth is a Supabase session: the frontend sends the user's access
+# token as `Authorization: Bearer <jwt>`. We verify the ES256 signature
+# against Supabase's JWKS (public keys), then require an allowlisted email.
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
+SUPABASE_ISSUER = f"{SUPABASE_URL}/auth/v1" if SUPABASE_URL else ""
+SUPABASE_JWKS_URL = f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json" if SUPABASE_URL else ""
+ADMIN_ALLOWED_EMAILS = {
+    e.strip().lower()
+    for e in os.environ.get("ADMIN_ALLOWED_EMAILS", "").split(",")
+    if e.strip()
+}
+
+# PyJWKClient fetches and caches the signing keys; created once at import.
+_jwks_client = PyJWKClient(SUPABASE_JWKS_URL) if SUPABASE_JWKS_URL else None
 WIZARR_BASE_URL = os.environ.get("WIZARR_BASE_URL", "").rstrip("/")
 WIZARR_API_KEY = os.environ.get("WIZARR_API_KEY", "")
 MAP_DB_PATH = os.environ.get("MAP_DB_PATH", "/data/bridge.db")
@@ -27,12 +42,33 @@ client = WizarrClient(WIZARR_BASE_URL, WIZARR_API_KEY)
 router = APIRouter()
 
 
-def require_admin(x_admin_password: str = Header(default="")) -> None:
-    """Reject any admin request whose header doesn't match ADMIN_PASSWORD.
+def require_admin(authorization: str = Header(default="")) -> None:
+    """Reject any admin request without a valid, allowlisted Supabase session.
 
-    Fails closed: an unset ADMIN_PASSWORD rejects everything.
+    Fails closed: unset config, a missing/malformed bearer token, a bad
+    signature, or a non-allowlisted email all reject.
     """
-    if not ADMIN_PASSWORD or x_admin_password != ADMIN_PASSWORD:
+    if _jwks_client is None or not ADMIN_ALLOWED_EMAILS:
+        raise HTTPException(status_code=401, detail="unauthorized")
+
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        raise HTTPException(status_code=401, detail="unauthorized")
+
+    try:
+        signing_key = _jwks_client.get_signing_key_from_jwt(token)
+        claims = jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=["ES256"],
+            audience="authenticated",
+            issuer=SUPABASE_ISSUER,
+        )
+    except Exception:
+        raise HTTPException(status_code=401, detail="unauthorized")
+
+    email = str(claims.get("email", "")).lower()
+    if email not in ADMIN_ALLOWED_EMAILS:
         raise HTTPException(status_code=401, detail="unauthorized")
 
 

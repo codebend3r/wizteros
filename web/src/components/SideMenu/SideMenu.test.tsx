@@ -1,8 +1,15 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import userEvent from '@testing-library/user-event'
-import { expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import { menuRoutes, SideMenu } from '@/components/SideMenu/SideMenu'
+import { useAuthStore } from '@/stores/authStore'
+
+const initialState = useAuthStore.getInitialState()
+
+afterEach(() => {
+  useAuthStore.setState(initialState, true)
+})
 
 test('lists a link for every route', () => {
   render(
@@ -48,4 +55,25 @@ test('toggle opens the drawer and a link click closes it', async () => {
   expect(toggle).toHaveAttribute('aria-expanded', 'true')
   await userEvent.click(screen.getByRole('link', { name: 'Members' }))
   expect(toggle).toHaveAttribute('aria-expanded', 'false')
+})
+
+test('hides the sign-out button while signed out', () => {
+  render(
+    <MemoryRouter initialEntries={['/manage']}>
+      <SideMenu />
+    </MemoryRouter>,
+  )
+  expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument()
+})
+
+test('shows the sign-out button while signed in and signs out on click', async () => {
+  const signOut = vi.fn(async () => {})
+  useAuthStore.setState({ status: 'signed-in', email: 'cj.rivas.dev@gmail.com', signOut })
+  render(
+    <MemoryRouter initialEntries={['/manage']}>
+      <SideMenu />
+    </MemoryRouter>,
+  )
+  await userEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+  expect(signOut).toHaveBeenCalled()
 })

@@ -26,7 +26,7 @@ type PendingInvite = {
 }
 
 const ManageInner = () => {
-  const { password, deauthenticate } = useAdminAuth()
+  const { deauthenticate } = useAdminAuth()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [pendingInvite, setPendingInvite] = useState<PendingInvite | null>(null)
@@ -39,7 +39,7 @@ const ManageInner = () => {
     isPending,
   } = useQuery({
     queryKey: MEMBERS_QUERY_KEY,
-    queryFn: () => fetchMembers({ password }),
+    queryFn: () => fetchMembers(),
     staleTime: 5 * 60 * 1000,
   })
 
@@ -58,8 +58,7 @@ const ManageInner = () => {
   }, [members, search])
 
   const inviteMutation = useMutation({
-    mutationFn: ({ member, tier }: PendingInvite) =>
-      reissueInvite({ email: member.email, tier, password }),
+    mutationFn: ({ member, tier }: PendingInvite) => reissueInvite({ email: member.email, tier }),
     onSuccess: (result, { member, tier }) => {
       setInviteResult(result)
       // Existing access survives the invite window now, so keep expiry and

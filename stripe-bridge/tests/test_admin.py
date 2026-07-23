@@ -9,7 +9,6 @@ import responses
 
 # Env required before importing the module (mirrors test_bridge).
 os.environ.update({
-    "ADMIN_PASSWORD": "secret",
     "WIZARR_BASE_URL": "http://wizarr.test", "WIZARR_API_KEY": "k",
     "INVITE_EXPIRES_DAYS": "14", "ACCESS_DURATION": "35",
     "PUBLIC_INVITE_BASE": "http://inv.test",
@@ -48,21 +47,41 @@ def admin_db(tmp_path, monkeypatch):
     return admin, dbp
 
 
-def test_require_admin_rejects_wrong_or_missing_password(admin_db):
+def test_require_admin_rejects_missing_or_malformed_bearer(admin_db, monkeypatch):
     a, _ = admin_db
-    with pytest.raises(HTTPException) as bad:
-        a.require_admin("nope")
-    assert bad.value.status_code == 401
-    with pytest.raises(HTTPException):
-        a.require_admin("")
-    assert a.require_admin("secret") is None  # correct password passes
+    monkeypatch.setattr(a, "_jwks_client", MagicMock())
+    monkeypatch.setattr(a, "ADMIN_ALLOWED_EMAILS", {"cj.rivas.dev@gmail.com"})
+    for header in ("", "nope", "Basic abc", "Bearer "):
+        with pytest.raises(HTTPException) as e:
+            a.require_admin(header)
+        assert e.value.status_code == 401
 
 
-def test_require_admin_fails_closed_when_password_unset(admin_db, monkeypatch):
+def test_require_admin_fails_closed_without_config(admin_db, monkeypatch):
     a, _ = admin_db
-    monkeypatch.setattr(a, "ADMIN_PASSWORD", "")
+    monkeypatch.setattr(a, "ADMIN_ALLOWED_EMAILS", {"cj.rivas.dev@gmail.com"})
+    monkeypatch.setattr(a, "_jwks_client", None)  # JWKS unconfigured -> reject everything
     with pytest.raises(HTTPException) as e:
-        a.require_admin("secret")  # even the "right" value is rejected when no password is configured
+        a.require_admin("Bearer whatever")
+    assert e.value.status_code == 401
+
+
+def test_require_admin_accepts_allowlisted_supabase_session(admin_db, monkeypatch):
+    a, _ = admin_db
+    monkeypatch.setattr(a, "_jwks_client", MagicMock())
+    monkeypatch.setattr(a, "ADMIN_ALLOWED_EMAILS", {"cj.rivas.dev@gmail.com"})
+    # mixed case in the claim proves the comparison is case-insensitive
+    monkeypatch.setattr(a.jwt, "decode", lambda *args, **kwargs: {"email": "CJ.Rivas.dev@gmail.com"})
+    assert a.require_admin("Bearer good.token.here") is None
+
+
+def test_require_admin_rejects_non_allowlisted_email(admin_db, monkeypatch):
+    a, _ = admin_db
+    monkeypatch.setattr(a, "_jwks_client", MagicMock())
+    monkeypatch.setattr(a, "ADMIN_ALLOWED_EMAILS", {"cj.rivas.dev@gmail.com"})
+    monkeypatch.setattr(a.jwt, "decode", lambda *args, **kwargs: {"email": "stranger@example.com"})
+    with pytest.raises(HTTPException) as e:
+        a.require_admin("Bearer good.token.here")
     assert e.value.status_code == 401
 
 
