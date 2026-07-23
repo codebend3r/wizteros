@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { Member, PaidTier } from '@/lib/adminApi'
 import { isPaidTier, PAID_TIERS, TIER_LABELS } from '@/lib/inviteRules'
@@ -6,7 +6,11 @@ import { deriveStatus } from '@/lib/memberStatus'
 import TierIcon from '@/components/TierIcon/TierIcon'
 import styles from '@/components/MembersTable/MembersTable.module.scss'
 
-const PAGE_SIZE = 25
+const PAGE_SIZES = [10, 25, 50, 100, 250] as const
+
+type SortColumn = 'member' | 'email' | 'status'
+type SortDirection = 'asc' | 'desc'
+type SortState = { column: SortColumn; direction: SortDirection }
 
 type MembersTableProps = {
   members: ReadonlyArray<Member>
@@ -29,13 +33,106 @@ const formatDownloads = (downloads: boolean | null): string => {
   return downloads ? '✓' : '✗'
 }
 
+const sortValue = ({ member, column }: { member: Member; column: SortColumn }): string =>
+  column === 'status' ? deriveStatus({ member }) : member[column]
+
+type SortHeaderProps = {
+  column: SortColumn
+  label: string
+  sort: SortState | null
+  onToggle: (column: SortColumn) => void
+}
+
+const SortHeader = ({ column, label, sort, onToggle }: SortHeaderProps) => {
+  const active = sort?.column === column
+  return (
+    <th aria-sort={active ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
+      <button className={styles.sortButton} type="button" onClick={() => onToggle(column)}>
+        {label}
+        {active && <span aria-hidden="true">{sort.direction === 'asc' ? ' ▲' : ' ▼'}</span>}
+      </button>
+    </th>
+  )
+}
+
+type PagerProps = {
+  current: number
+  pageCount: number
+  onPageChange: (page: number) => void
+  pageSize?: number
+  onPageSizeChange?: (size: number) => void
+}
+
+const Pager = ({ current, pageCount, onPageChange, pageSize, onPageSizeChange }: PagerProps) => (
+  <div className={styles.pager}>
+    {!!pageSize && !!onPageSizeChange && (
+      <select
+        className={styles.pageSize}
+        aria-label="Rows per page"
+        value={pageSize}
+        onChange={(event) => onPageSizeChange(Number(event.target.value))}
+      >
+        {PAGE_SIZES.map((size) => (
+          <option key={size} value={size}>
+            {size} rows
+          </option>
+        ))}
+      </select>
+    )}
+    <button type="button" onClick={() => onPageChange(current - 1)} disabled={current === 0}>
+      Prev
+    </button>
+    <span className={styles.count}>
+      Page {current + 1} of {pageCount}
+    </span>
+    <button
+      type="button"
+      onClick={() => onPageChange(current + 1)}
+      disabled={current >= pageCount - 1}
+    >
+      Next
+    </button>
+  </div>
+)
+
 const MembersTable = ({ members, onSelectTier, invitingEmail }: MembersTableProps) => {
   const [page, setPage] = useState(0)
+  const [pageSize, setPageSize] = useState<number>(25)
+  const [sort, setSort] = useState<SortState | null>(null)
   const [menuEmail, setMenuEmail] = useState<string | null>(null)
-  const pageCount = Math.max(1, Math.ceil(members.length / PAGE_SIZE))
+
+  const sorted = useMemo(() => {
+    if (!sort) {
+      return members
+    }
+    const factor = sort.direction === 'asc' ? 1 : -1
+    return [...members].sort(
+      (a, b) =>
+        factor *
+        sortValue({ member: a, column: sort.column }).localeCompare(
+          sortValue({ member: b, column: sort.column }),
+        ),
+    )
+  }, [members, sort])
+
+  const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize))
   const current = Math.min(page, pageCount - 1)
-  const start = current * PAGE_SIZE
-  const visible = members.slice(start, start + PAGE_SIZE)
+  const start = current * pageSize
+  const visible = sorted.slice(start, start + pageSize)
+
+  const toggleSort = (column: SortColumn) => {
+    setPage(0)
+    setSort(
+      sort?.column === column
+        ? { column, direction: sort.direction === 'asc' ? 'desc' : 'asc' }
+        : { column, direction: 'asc' },
+    )
+  }
+
+  const changePageSize = (size: number) => {
+    setPage(0)
+    setPageSize(size)
+  }
 
   useEffect(() => {
     if (!menuEmail) {
@@ -57,16 +154,23 @@ const MembersTable = ({ members, onSelectTier, invitingEmail }: MembersTableProp
 
   return (
     <div className={styles.wrap}>
+      <Pager
+        current={current}
+        pageCount={pageCount}
+        onPageChange={setPage}
+        pageSize={pageSize}
+        onPageSizeChange={changePageSize}
+      />
       <table className={styles.table}>
         <thead>
           <tr>
-            <th>Member</th>
-            <th>Email</th>
+            <SortHeader column="member" label="Member" sort={sort} onToggle={toggleSort} />
+            <SortHeader column="email" label="Email" sort={sort} onToggle={toggleSort} />
             <th>Tier</th>
             <th>Downloads</th>
             <th>Servers</th>
             <th>Expiry</th>
-            <th>Status</th>
+            <SortHeader column="status" label="Status" sort={sort} onToggle={toggleSort} />
             <th>Action</th>
           </tr>
         </thead>
@@ -158,21 +262,7 @@ const MembersTable = ({ members, onSelectTier, invitingEmail }: MembersTableProp
           })}
         </tbody>
       </table>
-      <div className={styles.pager}>
-        <button type="button" onClick={() => setPage(current - 1)} disabled={current === 0}>
-          Prev
-        </button>
-        <span className={styles.count}>
-          Page {current + 1} of {pageCount}
-        </span>
-        <button
-          type="button"
-          onClick={() => setPage(current + 1)}
-          disabled={current >= pageCount - 1}
-        >
-          Next
-        </button>
-      </div>
+      <Pager current={current} pageCount={pageCount} onPageChange={setPage} />
     </div>
   )
 }

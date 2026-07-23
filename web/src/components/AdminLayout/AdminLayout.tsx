@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { useIsFetching, useQueryClient } from '@tanstack/react-query'
 import Footer from '@/components/Footer/Footer'
 import Header from '@/components/Header/Header'
+import { SideMenu } from '@/components/SideMenu/SideMenu'
 import { siteConfig } from '@/site.config'
 import styles from '@/components/AdminLayout/AdminLayout.module.scss'
 
@@ -15,7 +16,10 @@ const AdminLayout = ({ children }: AdminLayoutProps) => {
   return (
     <div className={styles.layout}>
       <Header brandName={siteConfig.brandName} />
-      {children}
+      <div className={styles.body}>
+        <SideMenu />
+        <div className={styles.content}>{children}</div>
+      </div>
       <Footer memberUrl={siteConfig.memberUrl} billingPortalUrl={siteConfig.billingPortalUrl} />
       <button
         className={styles.hardRefresh}

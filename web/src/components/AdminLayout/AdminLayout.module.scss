@@ -6,6 +6,26 @@
   min-height: 100vh;
 }
 
+// Sidebar + content split for the middle row; single column on mobile where
+// the sidebar collapses into SideMenu's hamburger drawer.
+.body {
+  display: grid;
+  grid-template-columns: 14rem 1fr;
+  gap: var(--space-3);
+  padding: var(--space-3);
+}
+
+.content {
+  display: grid;
+  min-width: 0;
+}
+
+@media (max-width: 48rem) {
+  .body {
+    grid-template-columns: 1fr;
+  }
+}
+
 .hardRefresh {
   position: fixed;
   right: var(--space-3);

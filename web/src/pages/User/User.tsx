@@ -13,6 +13,7 @@ import {
   fetchMember,
   fetchMemberEvents,
   fetchMemberNotes,
+  fetchPlexAccess,
   reissueInvite,
   resetExpiry,
   resetTier,
@@ -24,6 +25,7 @@ import {
   type MemberEvent,
   type MemberTag,
   type PaidTier,
+  type PlexAccess,
 } from '@/lib/adminApi'
 import { isPaidTier, PAID_TIERS, TIER_DOWNLOADS, TIER_LABELS } from '@/lib/inviteRules'
 import { deriveStatus, type MemberStatus } from '@/lib/memberStatus'
@@ -85,11 +87,15 @@ const formatLibraryCount = (count: number): string =>
 
 const MemberDetails = ({
   member,
+  plexAccess,
+  plexChecking,
   expiryUpdating,
   downloadsUpdating,
   onToggleDownloads,
 }: {
   member: Member
+  plexAccess: PlexAccess | undefined
+  plexChecking: boolean
   expiryUpdating: boolean
   downloadsUpdating: boolean
   onToggleDownloads: () => void
@@ -112,12 +118,19 @@ const MemberDetails = ({
       .then(() => setCopied(true))
       .catch(() => undefined)
   }
-  const serverEntries = member.servers.map((server) => ({
-    server,
-    // ?. survives old-shape members restored from the persisted query cache
-    // (written before the bridge sent libraries).
-    libraries: member.libraries?.[server] ?? [],
-  }))
+  // The live plex.tv share is ground truth when we have it — it covers legacy
+  // shares whose unknown tier derives zero libraries. Servers only plex.tv
+  // knows about are unioned in; the rest fall back to the tier-derived list.
+  const plexServers = plexAccess?.servers ?? {}
+  const serverEntries = [...new Set([...member.servers, ...Object.keys(plexServers)])]
+    .sort((a, b) => a.localeCompare(b))
+    .map((server) => ({
+      server,
+      allLibraries: !!plexServers[server]?.all_libraries,
+      // ?. survives old-shape members restored from the persisted query cache
+      // (written before the bridge sent libraries).
+      libraries: plexServers[server]?.libraries ?? member.libraries?.[server] ?? [],
+    }))
   const totalLibraries = serverEntries.reduce((sum, entry) => sum + entry.libraries.length, 0)
   return (
     <dl className={styles.details}>
@@ -181,14 +194,19 @@ const MemberDetails = ({
             <p className={styles.serversSummary}>
               {serverEntries.length} {serverEntries.length === 1 ? 'server' : 'servers'} ·{' '}
               {formatLibraryCount(totalLibraries)}
+              {plexChecking && (
+                <span className={styles.spinner} role="status" aria-label="Checking plex.tv" />
+              )}
             </p>
             <ul className={styles.serverList}>
-              {serverEntries.map(({ server, libraries }) => (
+              {serverEntries.map(({ server, allLibraries, libraries }) => (
                 <li key={server} className={styles.server}>
                   <span className={styles.serverHeading}>
                     <span className={styles.serverName}>{server}</span>
                     <span className={styles.serverCount}>
-                      {formatLibraryCount(libraries.length)}
+                      {allLibraries
+                        ? `all libraries (${libraries.length})`
+                        : formatLibraryCount(libraries.length)}
                     </span>
                   </span>
                   {!!libraries.length && (
@@ -204,6 +222,8 @@ const MemberDetails = ({
               ))}
             </ul>
           </div>
+        ) : plexChecking ? (
+          <span className={styles.spinner} role="status" aria-label="Checking plex.tv" />
         ) : (
           '—'
         )}
@@ -248,14 +268,31 @@ const UserInner = () => {
         ?.find((row) => row.email.toLowerCase() === email.toLowerCase()),
   })
 
-  const { data: memberNotes, error: notesError } = useQuery({
+  // Best-effort: a bridge without the endpoint (or plex.tv down) just leaves
+  // the tier-derived fallback in place.
+  const { data: plexAccess, isPending: plexChecking } = useQuery({
+    queryKey: ['plex-access', email],
+    queryFn: () => fetchPlexAccess({ email, password }),
+    enabled: !!email,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const {
+    data: memberNotes,
+    error: notesError,
+    isPending: notesPending,
+  } = useQuery({
     queryKey: ['member-notes', email],
     queryFn: () => fetchMemberNotes({ email, password }),
     enabled: !!email,
     staleTime: 5 * 60 * 1000,
   })
 
-  const { data: memberEvents, error: eventsError } = useQuery({
+  const {
+    data: memberEvents,
+    error: eventsError,
+    isPending: eventsPending,
+  } = useQuery({
     queryKey: ['member-events', email],
     queryFn: () => fetchMemberEvents({ email, password }),
     enabled: !!email,
@@ -522,6 +559,8 @@ const UserInner = () => {
           <>
             <MemberDetails
               member={member}
+              plexAccess={plexAccess}
+              plexChecking={plexChecking}
               expiryUpdating={expiryMutation.isPending || neverExpireMutation.isPending}
               downloadsUpdating={downloadsMutation.isPending}
               onToggleDownloads={() => {
@@ -591,6 +630,9 @@ const UserInner = () => {
                     <TierIcon tier={tier} /> {TIER_LABELS[tier]}
                   </button>
                 ))}
+                {tierResetMutation.isPending && (
+                  <span className={styles.spinner} role="status" aria-label="Resetting tier" />
+                )}
               </div>
             </section>
             <section className={styles.controlSection}>
@@ -706,13 +748,19 @@ const UserInner = () => {
               </div>
             </section>
             <section className={styles.notesSection}>
-              <h2 className={styles.sectionTitle}>Notes</h2>
+              <h2 className={styles.sectionTitle}>
+                Notes
+                {notesPending && (
+                  <span className={styles.spinner} role="status" aria-label="Loading notes" />
+                )}
+              </h2>
               <textarea
                 className={styles.notes}
                 value={notes}
                 placeholder="Notes about this member…"
                 aria-label="Member notes"
                 rows={6}
+                disabled={notesPending}
                 onChange={(event) => setNotesDraft(event.target.value)}
               />
               <div className={styles.notesActions}>
@@ -731,7 +779,9 @@ const UserInner = () => {
             </section>
             <section className={styles.historySection}>
               <h2 className={styles.sectionTitle}>History</h2>
-              {historyRows.length ? (
+              {eventsPending ? (
+                <span className={styles.spinner} role="status" aria-label="Loading history" />
+              ) : historyRows.length ? (
                 <ul className={styles.history}>
                   {historyRows.map((event) => (
                     <li key={event.id} className={styles.historyRow}>

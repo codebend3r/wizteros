@@ -12,6 +12,14 @@ A self-hosted stack that gates Plex access behind a recurring Stripe "server-cos
 
 The contribution framing is deliberate (Plex TOS prohibits selling access, Stripe TOS prohibits selling rights you don't own). When suggesting copy, product descriptions, or UX text, lean toward infrastructure/hosting language. Never reference content, libraries, or titles in user-facing payment surfaces.
 
+## React
+
+- Never use default exports if it can be avoided, prefer named exports
+- Always import all React methods, constants, and types from `react`, e.g. `import { useState } from 'react'`
+- Prefer using latest features in React when possible
+- Prefer using the `use` hook pattern for state management
+- Prefer using zustand always for global state management
+
 ## Typescript
 
 - Always use type aliases. Never use TypeScript interfaces anywhere, including `declare global` augmentations; lint enforces this (`@typescript-eslint/consistent-type-definitions`).
@@ -32,6 +40,7 @@ The contribution framing is deliberate (Plex TOS prohibits selling access, Strip
 
 ## Code style
 
+- Always prefer immutable data structures and operations
 - Prefer `reduce` over `for` loops when possible. Never use `for/in` or `for/of` loops; reach for `Array.prototype` methods (`map`, `filter`, `reduce`, `flatMap`, etc.) when the value is an array.
 - Prefer double-bang (`!!value`) for boolean conversion.
 - Prefer short-circuit (`&&`) over a ternary when the else branch is `null` or `undefined`, especially in React rendering. Do: `{isActive && <Badge />}`. Don't: `{isActive ? <Badge /> : null}`. Guard the condition so it is a real boolean (`!!count && ...`), never a bare number that could render `0`.
