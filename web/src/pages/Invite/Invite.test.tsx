@@ -1,10 +1,11 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import Invite from '@/pages/Invite/Invite'
 import { AdminAuthError, type InviteResult, type Member } from '@/lib/adminApi'
+import { useAuthStore } from '@/stores/authStore'
 
 vi.mock('@/lib/adminApi', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/adminApi')>()),
@@ -28,19 +29,19 @@ const renderInvite = (
 })
 
 beforeEach(() => {
-  sessionStorage.setItem('westeroz-admin-password', 'secret')
   vi.mocked(fetchMembers).mockResolvedValue([])
 })
 
 afterEach(() => {
-  sessionStorage.clear()
   vi.restoreAllMocks()
+  useAuthStore.setState(useAuthStore.getInitialState(), true)
 })
 
-test('requires the admin password gate', () => {
-  sessionStorage.clear()
+test('requires the Supabase login gate when signed out', () => {
+  useAuthStore.setState({ enabled: true, status: 'signed-out' })
   renderInvite()
-  expect(screen.getByLabelText('Password')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
+  expect(screen.queryByLabelText('Email address')).toBeNull()
 })
 
 test('shows the invite heading and back link after the gate', () => {
@@ -84,7 +85,6 @@ test('sends an invite for the typed email and selected tier, then clears the for
   expect(reissueInvite).toHaveBeenCalledWith({
     email: 'new@x.com',
     tier: 'gold',
-    password: 'secret',
   })
   expect(await screen.findByText(/Invite emailed/)).toBeInTheDocument()
   expect(screen.getByRole('link', { name: 'https://x/j/abc' })).toBeInTheDocument()
@@ -150,7 +150,9 @@ test('a failed invite email shows the manual-send link', async () => {
   expect(screen.getByRole('link', { name: 'https://x/j/abc' })).toBeInTheDocument()
 })
 
-test('an auth error during send returns to the password gate', async () => {
+test('signs out of the Supabase session on an auth error during send', async () => {
+  const signOut = vi.fn(async () => {})
+  useAuthStore.setState({ signOut })
   vi.mocked(reissueInvite).mockRejectedValue(new AdminAuthError('nope'))
   renderInvite()
   await userEvent.type(screen.getByLabelText('Email address'), 'new@x.com')
@@ -159,7 +161,7 @@ test('an auth error during send returns to the password gate', async () => {
   await userEvent.click(
     within(screen.getByRole('dialog')).getByRole('button', { name: 'Send invite' }),
   )
-  expect(await screen.findByLabelText('Password')).toBeInTheDocument()
+  await waitFor(() => expect(signOut).toHaveBeenCalled())
 })
 
 const existing: Member = {

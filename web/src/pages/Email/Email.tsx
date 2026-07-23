@@ -11,7 +11,7 @@ import { MEMBERS_QUERY_KEY } from '@/pages/Manage/Manage'
 import styles from '@/pages/Email/Email.module.scss'
 
 const EmailInner = () => {
-  const { password, deauthenticate } = useAdminAuth()
+  const { deauthenticate } = useAdminAuth()
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
   const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set())
@@ -22,7 +22,7 @@ const EmailInner = () => {
     isPending,
   } = useQuery({
     queryKey: MEMBERS_QUERY_KEY,
-    queryFn: () => fetchMembers({ password }),
+    queryFn: () => fetchMembers(),
     staleTime: 5 * 60 * 1000,
   })
 

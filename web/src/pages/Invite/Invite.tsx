@@ -39,7 +39,7 @@ type PendingSend = {
 }
 
 const InviteInner = () => {
-  const { password, deauthenticate } = useAdminAuth()
+  const { deauthenticate } = useAdminAuth()
   const queryClient = useQueryClient()
   const [email, setEmail] = useState('')
   const [tier, setTier] = useState<PaidTier | null>(null)
@@ -58,7 +58,7 @@ const InviteInner = () => {
     isPending: membersPending,
   } = useQuery({
     queryKey: MEMBERS_QUERY_KEY,
-    queryFn: () => fetchMembers({ password }),
+    queryFn: () => fetchMembers(),
     staleTime: 5 * 60 * 1000,
   })
 
@@ -70,7 +70,7 @@ const InviteInner = () => {
 
   const inviteMutation = useMutation({
     mutationFn: ({ email: to, tier: paid }: PendingSend) =>
-      reissueInvite({ email: to, tier: paid, password }),
+      reissueInvite({ email: to, tier: paid }),
     onSuccess: (result, { email: to, tier: paid }) => {
       setInviteResult(result)
       setSentEmail(to)

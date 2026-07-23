@@ -21,7 +21,7 @@ const EXPIRY_PRESETS: ReadonlyArray<{ label: string; days: number | null }> = [
 ]
 
 const ResetUserInner = () => {
-  const { password, deauthenticate } = useAdminAuth()
+  const { deauthenticate } = useAdminAuth()
   const [email, setEmail] = useState('')
   const [member, setMember] = useState<Member | null>(null)
   const [status, setStatus] = useState<string | null>(null)
@@ -47,7 +47,7 @@ const ResetUserInner = () => {
     setError(null)
     setStatus(null)
     setMember(null)
-    fetchMember({ email, password })
+    fetchMember({ email })
       .then((result) => {
         if (result === null) {
           setError('No member found for that email.')
@@ -70,7 +70,7 @@ const ResetUserInner = () => {
     setBusy(true)
     setError(null)
     setStatus(null)
-    reissueInvite({ email: member.email, tier, password })
+    reissueInvite({ email: member.email, tier })
       .then((result) =>
         setStatus(
           result.emailed
@@ -93,7 +93,7 @@ const ResetUserInner = () => {
     setBusy(true)
     setError(null)
     setStatus(null)
-    resetExpiry({ email: member.email, days, password })
+    resetExpiry({ email: member.email, days })
       .then(() => setStatus(days === null ? 'Expiry cleared.' : `Expiry set to ${days} days.`))
       .catch((cause) => {
         if (!onAuthError(cause)) {

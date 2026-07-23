@@ -1,10 +1,11 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import ResetUser from '@/pages/ResetUser/ResetUser'
 import { AdminAuthError, type Member } from '@/lib/adminApi'
+import { useAuthStore } from '@/stores/authStore'
 
 const renderResetUser = () =>
   render(
@@ -37,13 +38,9 @@ vi.mock('@/lib/adminApi', async (importOriginal) => ({
 
 const api = await import('@/lib/adminApi')
 
-beforeEach(() => {
-  sessionStorage.setItem('westeroz-admin-password', 'secret')
-})
-
 afterEach(() => {
-  sessionStorage.clear()
   vi.restoreAllMocks()
+  useAuthStore.setState(useAuthStore.getInitialState(), true)
 })
 
 test('disables Find until the input is a valid email', async () => {
@@ -63,7 +60,7 @@ test('looks up a member and applies an expiry preset', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Find' }))
 
   await userEvent.click(await screen.findByRole('button', { name: '35 days' }))
-  expect(api.resetExpiry).toHaveBeenCalledWith({ email: 'cj@x.com', days: 35, password: 'secret' })
+  expect(api.resetExpiry).toHaveBeenCalledWith({ email: 'cj@x.com', days: 35 })
 })
 
 test('applies a tier preset via reissue-invite', async () => {
@@ -83,7 +80,6 @@ test('applies a tier preset via reissue-invite', async () => {
   expect(api.reissueInvite).toHaveBeenCalledWith({
     email: 'cj@x.com',
     tier: 'silver',
-    password: 'secret',
   })
 })
 
@@ -95,12 +91,14 @@ test('shows a not-found message when the member does not exist', async () => {
   expect(await screen.findByText('No member found for that email.')).toBeInTheDocument()
 })
 
-test('returns to the password gate when a tier reset hits an auth error', async () => {
+test('signs out of the Supabase session when a tier reset hits an auth error', async () => {
+  const signOut = vi.fn(async () => {})
+  useAuthStore.setState({ signOut })
   vi.mocked(api.fetchMember).mockResolvedValue(member)
   vi.mocked(api.reissueInvite).mockRejectedValue(new AdminAuthError('nope'))
   renderResetUser()
   await userEvent.type(screen.getByPlaceholderText('member@email.com'), 'cj@x.com')
   await userEvent.click(screen.getByRole('button', { name: 'Find' }))
   await userEvent.click(await screen.findByRole('button', { name: 'silver' }))
-  expect(await screen.findByLabelText('Password')).toBeInTheDocument()
+  await waitFor(() => expect(signOut).toHaveBeenCalled())
 })

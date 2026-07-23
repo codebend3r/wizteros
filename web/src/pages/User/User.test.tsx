@@ -66,14 +66,12 @@ const renderUser = ({ email }: { email: string | null }) => {
 }
 
 beforeEach(() => {
-  sessionStorage.setItem('westeroz-admin-password', 'secret')
   vi.mocked(fetchMemberNotes).mockResolvedValue({ email: 'max@y.com', notes: '' })
   vi.mocked(fetchMemberEvents).mockResolvedValue([])
   vi.mocked(fetchPlexAccess).mockResolvedValue({ email: 'max@y.com', servers: {} })
 })
 
 afterEach(() => {
-  sessionStorage.clear()
   vi.restoreAllMocks()
 })
 
@@ -82,7 +80,7 @@ test('loads the member from the email query param and shows every detail', async
   renderUser({ email: 'max@y.com' })
 
   expect(await screen.findByRole('heading', { name: 'max' })).toBeInTheDocument()
-  expect(fetchMember).toHaveBeenCalledWith({ email: 'max@y.com', password: 'secret' })
+  expect(fetchMember).toHaveBeenCalledWith({ email: 'max@y.com' })
   expect(screen.getByText('max@y.com')).toBeInTheDocument()
   expect(screen.getByText('Subscribed Monthly')).toBeInTheDocument()
   expect(screen.getByText('🟢')).toBeInTheDocument()
@@ -165,7 +163,6 @@ test('re-invites through the tier menu and confirm modal', async () => {
   expect(reissueInvite).toHaveBeenCalledWith({
     email: 'max@y.com',
     tier: 'gold',
-    password: 'secret',
   })
   expect(await screen.findByText('http://inv/j/xyz')).toBeInTheDocument()
   expect(screen.getByText(/Invite emailed/)).toBeInTheDocument()
@@ -205,7 +202,6 @@ test('hard resets the tier in place and reflects it in the details', async () =>
   expect(resetTier).toHaveBeenCalledWith({
     email: 'max@y.com',
     tier: 'silver',
-    password: 'secret',
   })
   // details tier flips to silver without any invite flow
   await waitFor(() => expect(screen.getAllByRole('img', { name: 'silver tier' })).toHaveLength(2))
@@ -229,7 +225,7 @@ test.each([
   expect(resetTier).not.toHaveBeenCalled()
   await user.click(within(dialog).getByRole('button', { name: 'Hard reset' }))
 
-  expect(resetTier).toHaveBeenCalledWith({ email: 'max@y.com', tier, password: 'secret' })
+  expect(resetTier).toHaveBeenCalledWith({ email: 'max@y.com', tier })
 })
 
 test('cancelling the tier reset confirmation makes no change', async () => {
@@ -278,7 +274,6 @@ test('sets the expiry optimistically with a spinner while in flight', async () =
   expect(resetExpiry).toHaveBeenCalledWith({
     email: 'max@y.com',
     expiresAt: pickedIso,
-    password: 'secret',
   })
   // optimistic: the details row shows the new expiry before the bridge replies
   expect(screen.getByText(new Date(pickedIso).toLocaleString())).toBeInTheDocument()
@@ -338,7 +333,7 @@ test('sets never expire through the confirm modal and clears the expiry row', as
   expect(resetExpiry).not.toHaveBeenCalled()
   await user.click(within(dialog).getByRole('button', { name: 'Never expire' }))
 
-  expect(resetExpiry).toHaveBeenCalledWith({ email: 'max@y.com', password: 'secret' })
+  expect(resetExpiry).toHaveBeenCalledWith({ email: 'max@y.com' })
   // the expiry row optimistically flips to the explicit never-expires state
   await waitFor(() => expect(screen.queryByText(/days left/)).not.toBeInTheDocument())
   expect(screen.getByText('♾️ Never expires')).toBeInTheDocument()
@@ -373,7 +368,7 @@ test('cancels the Stripe subscription through the confirm modal', async () => {
   expect(cancelSubscription).not.toHaveBeenCalled()
   await user.click(within(dialog).getByRole('button', { name: 'Cancel subscription' }))
 
-  expect(cancelSubscription).toHaveBeenCalledWith({ email: 'max@y.com', password: 'secret' })
+  expect(cancelSubscription).toHaveBeenCalledWith({ email: 'max@y.com' })
   expect(await screen.findByText(/Cancellation scheduled — access ends/)).toBeInTheDocument()
 })
 
@@ -401,7 +396,7 @@ test('tags the member VIP and reflects it in the status and tag rows', async () 
   expect(screen.getByText('Subscribed Monthly')).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: '💎 VIP' }))
 
-  expect(setMemberTag).toHaveBeenCalledWith({ email: 'max@y.com', tag: 'vip', password: 'secret' })
+  expect(setMemberTag).toHaveBeenCalledWith({ email: 'max@y.com', tag: 'vip' })
   // the tag row joins the (now disabled) tag button in showing 💎 VIP
   expect(await screen.findAllByText('💎 VIP')).toHaveLength(2)
   expect(screen.getByText('VIP')).toBeInTheDocument()
@@ -418,7 +413,7 @@ test('clears a tag and returns to the derived status', async () => {
   expect(screen.getByText('HVU')).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Clear tag' }))
 
-  expect(setMemberTag).toHaveBeenCalledWith({ email: 'max@y.com', tag: null, password: 'secret' })
+  expect(setMemberTag).toHaveBeenCalledWith({ email: 'max@y.com', tag: null })
   expect(await screen.findByText('Subscribed Monthly')).toBeInTheDocument()
   // only the tag row clears to the em dash; the ⭐ HVU button remains
   expect(screen.getByText('—')).toBeInTheDocument()
@@ -527,7 +522,6 @@ test('toggles downloads off through the confirm modal, optimistically', async ()
   expect(setMemberDownloads).toHaveBeenCalledWith({
     email: 'max@y.com',
     allow: false,
-    password: 'secret',
   })
   // optimistic: the row flips before the bridge replies
   expect(screen.getByText('❌')).toBeInTheDocument()
@@ -588,7 +582,6 @@ test('loads saved notes and saves an edited draft', async () => {
   expect(saveMemberNotes).toHaveBeenCalledWith({
     email: 'max@y.com',
     notes: 'met at work, kind',
-    password: 'secret',
   })
   expect(await screen.findByText('Saved ✓')).toBeInTheDocument()
 })
@@ -665,7 +658,7 @@ test('merges the live plex.tv share into the servers row', async () => {
 
   // Meleys shows the real share, not the tier-derived list.
   expect(await screen.findByText('90. Private')).toBeInTheDocument()
-  expect(fetchPlexAccess).toHaveBeenCalledWith({ email: 'max@y.com', password: 'secret' })
+  expect(fetchPlexAccess).toHaveBeenCalledWith({ email: 'max@y.com' })
   expect(screen.getByText('all libraries (2)')).toBeInTheDocument()
   expect(screen.queryByText('03. 4K TV Shows')).not.toBeInTheDocument()
   // Vermithor has no plex.tv data and falls back to the tier-derived list.

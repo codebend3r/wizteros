@@ -27,3 +27,9 @@ venv/
 
 # Local Netlify folder
 .netlify
+
+# supabase cli
+web/supabase/.temp/
+
+# supabase cli (root)
+supabase/.temp/
