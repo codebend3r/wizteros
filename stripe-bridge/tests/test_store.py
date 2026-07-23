@@ -155,3 +155,46 @@ def test_all_customer_tiers_includes_untiered_rows(tmp_path):
     store.upsert_pending(db, "cus_2", "b@x.com", "def")  # subscriber with no tier yet
     # unlike tiers_by_email, the untiered row is kept (value None)
     assert store.all_customer_tiers(db) == {"a@x.com": "gold", "b@x.com": None}
+
+
+def test_customer_ids_for_email_excludes_admin_placeholders(tmp_path):
+    db = str(tmp_path / "bridge.db")
+    store.init_db(db)
+
+    assert store.customer_ids_for_email(db, "a@example.com") == []
+
+    store.upsert_pending(db, "cus_1", "A@Example.com", "abc")
+    store.upsert_pending_by_email(db, "b@example.com", "xyz")
+    assert store.customer_ids_for_email(db, "a@example.com") == ["cus_1"]
+    assert store.customer_ids_for_email(db, "b@example.com") == []
+
+
+def test_member_tags_roundtrip_lowercased_and_cleared(tmp_path):
+    db = str(tmp_path / "bridge.db")
+    store.init_db(db)
+
+    assert store.all_member_tags(db) == {}
+    store.set_member_tag(db, "A@Example.com", "vip")
+    store.set_member_tag(db, "b@example.com", "hvu")
+    assert store.all_member_tags(db) == {"a@example.com": "vip", "b@example.com": "hvu"}
+
+    store.set_member_tag(db, "a@example.com", "hvu")  # overwrite
+    assert store.all_member_tags(db)["a@example.com"] == "hvu"
+
+    store.set_member_tag(db, "A@example.com", None)  # clear
+    assert store.all_member_tags(db) == {"b@example.com": "hvu"}
+
+
+def test_member_downloads_roundtrip_lowercased_and_overwritten(tmp_path):
+    db = str(tmp_path / "bridge.db")
+    store.init_db(db)
+
+    assert store.get_member_downloads(db, "a@example.com") is None
+    assert store.all_member_downloads(db) == {}
+
+    store.set_member_downloads(db, "A@Example.com", False)
+    assert store.get_member_downloads(db, "a@example.com") is False
+
+    store.set_member_downloads(db, "a@example.com", True)
+    assert store.get_member_downloads(db, "A@example.com") is True
+    assert store.all_member_downloads(db) == {"a@example.com": True}

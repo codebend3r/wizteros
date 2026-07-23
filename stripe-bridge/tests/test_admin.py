@@ -1,8 +1,10 @@
 import importlib
+import json
 import os
 from unittest.mock import MagicMock
 
 import pytest
+import responses
 
 # Env required before importing the module (mirrors test_bridge).
 os.environ.update({
@@ -16,6 +18,7 @@ os.environ.update({
 import admin  # noqa: E402
 import store  # noqa: E402
 from fastapi import HTTPException  # noqa: E402
+from wizarr import WizarrClient  # noqa: E402
 
 USERS = [
     {"id": 1, "username": "cj", "email": "A@X.com", "server": "Meleys", "expires": "2026-09-01T00:00:00+00:00"},
@@ -167,6 +170,26 @@ def test_reset_expiry_clears_with_null_days(admin_db):
     out = a.reset_expiry(a.ResetExpiryBody(email="a@x.com", days=None))
     assert out == {"updated": 1, "expires": None}
     a.client.set_expiry.assert_called_once_with(9, None)
+
+
+@responses.activate
+def test_reset_expiry_never_expire_reaches_wizarr_as_an_empty_body(admin_db):
+    """Route through the REAL WizarrClient down to the wire.
+
+    The unit tests above mock the client, which is exactly how a
+    serialization bug (a literal null Wizarr 400s) once slipped through —
+    this pins the actual HTTP body a never-expire produces.
+    """
+    a, _ = admin_db
+    a.client = WizarrClient("http://wizarr.test", "k")
+    responses.get("http://wizarr.test/api/users", json={"users": [
+        {"id": 9, "username": "cj", "email": "a@x.com", "server": "Meleys"},
+    ]})
+    responses.put("http://wizarr.test/api/users/9/update-expiry",
+                  json={"message": "ok", "new_expiry": None})
+    out = a.reset_expiry(a.ResetExpiryBody(email="a@x.com"))
+    assert out == {"updated": 1, "expires": None}
+    assert json.loads(responses.calls[1].request.body) == {}
 
 
 def test_reset_expiry_accepts_absolute_datetime(admin_db):
@@ -335,3 +358,142 @@ def test_bridge_app_mounts_admin_routes_bare_and_prefixed():
     assert "/admin/reissue-invite" in paths
     assert "/admin/notes" in paths
     assert "/admin/events" in paths
+
+
+def _stripe_sub(sub_id: str, cancel_at: int | None = None, flagged: bool = False) -> MagicMock:
+    """A minimal Stripe subscription double with explicit (non-Mock) flags."""
+    sub = MagicMock()
+    sub.id = sub_id
+    sub.cancel_at_period_end = flagged
+    sub.cancel_at = cancel_at
+    return sub
+
+
+def _stripe_mock_with_subs(subs: list) -> MagicMock:
+    s = MagicMock()
+    s.Subscription.list.return_value.auto_paging_iter.return_value = subs
+    return s
+
+
+def test_cancel_subscription_flags_subs_for_stored_customer(admin_db, monkeypatch):
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_9", "a@x.com", "abc", tier="gold")
+    live = _stripe_sub("sub_1")
+    stripe_mock = _stripe_mock_with_subs([live])
+    stripe_mock.Subscription.modify.return_value = _stripe_sub(
+        "sub_1", cancel_at=1790000000, flagged=True)
+    monkeypatch.setattr(a, "stripe", stripe_mock)
+
+    result = a.cancel_subscription(a.CancelSubscriptionBody(email="A@X.com"))
+
+    stripe_mock.Subscription.list.assert_called_once_with(customer="cus_9")
+    stripe_mock.Subscription.modify.assert_called_once_with(
+        "sub_1", cancel_at_period_end=True)
+    stripe_mock.Customer.list.assert_not_called()  # mapping wins over email lookup
+    assert result["canceled"] == 1
+    assert result["cancel_at"].startswith("2026-")
+    events = store.events_for_email(dbp, "a@x.com")
+    assert events[0]["action"] == "Cancellation scheduled"
+    assert "by admin" in events[0]["detail"]
+
+
+def test_cancel_subscription_falls_back_to_stripe_email_lookup(admin_db, monkeypatch):
+    a, _ = admin_db
+    stripe_mock = _stripe_mock_with_subs([_stripe_sub("sub_2")])
+    customer = MagicMock()
+    customer.id = "cus_via_email"
+    stripe_mock.Customer.list.return_value.data = [customer]
+    stripe_mock.Subscription.modify.return_value = _stripe_sub(
+        "sub_2", cancel_at=1790000000, flagged=True)
+    monkeypatch.setattr(a, "stripe", stripe_mock)
+
+    result = a.cancel_subscription(a.CancelSubscriptionBody(email="nomap@x.com"))
+
+    stripe_mock.Customer.list.assert_called_once_with(email="nomap@x.com", limit=100)
+    stripe_mock.Subscription.list.assert_called_once_with(customer="cus_via_email")
+    assert result["canceled"] == 1
+
+
+def test_cancel_subscription_404s_without_customer_or_subscription(admin_db, monkeypatch):
+    a, dbp = admin_db
+    stripe_mock = _stripe_mock_with_subs([])
+    stripe_mock.Customer.list.return_value.data = []
+    monkeypatch.setattr(a, "stripe", stripe_mock)
+
+    with pytest.raises(HTTPException) as no_customer:
+        a.cancel_subscription(a.CancelSubscriptionBody(email="ghost@x.com"))
+    assert no_customer.value.status_code == 404
+
+    store.upsert_pending(dbp, "cus_idle", "idle@x.com", "abc", tier="gold")
+    with pytest.raises(HTTPException) as no_sub:
+        a.cancel_subscription(a.CancelSubscriptionBody(email="idle@x.com"))
+    assert no_sub.value.status_code == 404
+
+
+def test_cancel_subscription_is_idempotent_for_already_flagged_subs(admin_db, monkeypatch):
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_9", "a@x.com", "abc", tier="gold")
+    stripe_mock = _stripe_mock_with_subs(
+        [_stripe_sub("sub_1", cancel_at=1790000000, flagged=True)])
+    monkeypatch.setattr(a, "stripe", stripe_mock)
+
+    result = a.cancel_subscription(a.CancelSubscriptionBody(email="a@x.com"))
+
+    stripe_mock.Subscription.modify.assert_not_called()
+    assert result["canceled"] == 0
+    assert result["cancel_at"].startswith("2026-")
+    assert store.events_for_email(dbp, "a@x.com") == []  # no duplicate history row
+
+
+def test_set_tag_roundtrips_through_member_payloads(admin_db):
+    a, dbp = admin_db
+    a.set_tag(a.SetTagBody(email="A@X.com", tag="vip"))
+
+    assert a.get_member("a@x.com")["tag"] == "vip"
+    by_email = {m["email"].lower(): m for m in a.list_members()}
+    assert by_email["a@x.com"]["tag"] == "vip"
+    assert by_email["nora@x.com"]["tag"] is None
+
+    a.set_tag(a.SetTagBody(email="a@x.com", tag=None))
+    assert a.get_member("a@x.com")["tag"] is None
+
+    events = store.events_for_email(dbp, "a@x.com")
+    assert [e["detail"] for e in events] == ["tag cleared", "tagged VIP"]
+
+
+def test_set_tag_rejects_unknown_tags(admin_db):
+    a, _ = admin_db
+    with pytest.raises(HTTPException) as e:
+        a.set_tag(a.SetTagBody(email="a@x.com", tag="whale"))
+    assert e.value.status_code == 400
+
+
+def test_set_downloads_overrides_tier_default_in_member_payloads(admin_db):
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_1", "a@x.com", "abc", tier="gold")  # gold -> downloads True
+
+    a.set_downloads(a.SetDownloadsBody(email="A@X.com", allow=False))
+
+    assert a.get_member("a@x.com")["downloads"] is False  # override beats gold's True
+    by_email = {m["email"].lower(): m for m in a.list_members()}
+    assert by_email["a@x.com"]["downloads"] is False
+    events = store.events_for_email(dbp, "a@x.com")
+    assert events[0]["action"] == "Downloads toggled"
+    assert events[0]["detail"] == "turned off by admin"
+
+    a.set_downloads(a.SetDownloadsBody(email="a@x.com", allow=True))
+    assert a.get_member("a@x.com")["downloads"] is True
+
+
+def test_reissue_invite_applies_downloads_override(admin_db):
+    a, dbp = admin_db
+    a.client.list_libraries.return_value = FIXTURE_LIBRARIES
+    a.client.find_users_by_email.return_value = [{"id": 9, "server": "Vermithor"}]
+    a.client.create_invite.return_value = {"code": "xyz", "url": "http://wizarr-lan/j/xyz"}
+    store.set_member_downloads(dbp, "a@x.com", True)
+
+    a.reissue_invite(a.ReissueInviteBody(email="a@x.com", tier="silver"))
+
+    # silver's tier default is allow_downloads=False; the override wins
+    kwargs = a.client.create_invite.call_args.kwargs
+    assert kwargs["allow_downloads"] is True

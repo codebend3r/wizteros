@@ -127,6 +127,17 @@ def test_set_expiry_and_disable_call_correct_paths():
 
 
 @responses.activate
+def test_set_expiry_clears_by_omitting_the_expires_key():
+    # Wizarr validates the request body against its schema (expires must be a
+    # date-time string), so a literal null is rejected with a 400. Clearing to
+    # unlimited works by omitting the key entirely.
+    responses.put(f"{BASE}/api/users/9/update-expiry",
+                  json={"message": "ok", "new_expiry": None})
+    client().set_expiry(9, None)
+    assert json.loads(responses.calls[0].request.body) == {}
+
+
+@responses.activate
 def test_list_users_returns_all_records():
     responses.get(f"{BASE}/api/users", json={"users": [
         {"id": 9, "username": "cj", "email": "a@x.com", "server": "Meleys", "expires": None},

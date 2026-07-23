@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import User from '@/pages/User/User'
-import type { Member, ResetExpiryResult } from '@/lib/adminApi'
+import type { Member, ResetExpiryResult, SetDownloadsResult, SetTagResult } from '@/lib/adminApi'
 
 const member: Member = {
   member: 'max',
@@ -19,6 +19,7 @@ const member: Member = {
   },
   subscribed: true,
   invited_at: null,
+  tag: null,
 }
 
 vi.mock('@/lib/adminApi', async (importOriginal) => ({
@@ -30,6 +31,9 @@ vi.mock('@/lib/adminApi', async (importOriginal) => ({
   reissueInvite: vi.fn(),
   resetExpiry: vi.fn(),
   resetTier: vi.fn(),
+  cancelSubscription: vi.fn(),
+  setMemberTag: vi.fn(),
+  setMemberDownloads: vi.fn(),
 }))
 
 const {
@@ -40,6 +44,9 @@ const {
   reissueInvite,
   resetExpiry,
   resetTier,
+  cancelSubscription,
+  setMemberTag,
+  setMemberDownloads,
 } = await import('@/lib/adminApi')
 
 const renderUser = ({ email }: { email: string | null }) => {
@@ -111,6 +118,28 @@ test('shows ❌ downloads and no days-left bracket for a lapsed member', async (
 
   expect(await screen.findByText('❌')).toBeInTheDocument()
   expect(screen.queryByText(/days left/)).not.toBeInTheDocument()
+})
+
+test('shows Never expires on the expiry row when a joined member has no expiry', async () => {
+  vi.mocked(fetchMember).mockResolvedValue({ ...member, expires: null, subscribed: false })
+  renderUser({ email: 'max@y.com' })
+
+  expect(await screen.findByText('♾️ Never expires')).toBeInTheDocument()
+  expect(screen.queryByText(/days left/)).not.toBeInTheDocument()
+})
+
+test('keeps the em dash on the expiry row for a member with no server records', async () => {
+  vi.mocked(fetchMember).mockResolvedValue({
+    ...member,
+    expires: null,
+    subscribed: false,
+    servers: [],
+    libraries: {},
+  })
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  expect(screen.queryByText('♾️ Never expires')).not.toBeInTheDocument()
 })
 
 test('re-invites through the tier menu and confirm modal', async () => {
@@ -292,6 +321,249 @@ test('cancelling the expiry confirmation leaves the expiry untouched', async () 
 
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   expect(resetExpiry).not.toHaveBeenCalled()
+})
+
+test('sets never expire through the confirm modal and clears the expiry row', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  vi.mocked(resetExpiry).mockResolvedValue({ updated: 2, expires: null })
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  await user.click(screen.getByRole('button', { name: 'Never expire' }))
+  const dialog = screen.getByRole('dialog', { name: 'Confirm never expire' })
+  expect(resetExpiry).not.toHaveBeenCalled()
+  await user.click(within(dialog).getByRole('button', { name: 'Never expire' }))
+
+  expect(resetExpiry).toHaveBeenCalledWith({ email: 'max@y.com', password: 'secret' })
+  // the expiry row optimistically flips to the explicit never-expires state
+  await waitFor(() => expect(screen.queryByText(/days left/)).not.toBeInTheDocument())
+  expect(screen.getByText('♾️ Never expires')).toBeInTheDocument()
+})
+
+test('cancelling the never-expire confirmation makes no change', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  await user.click(screen.getByRole('button', { name: 'Never expire' }))
+  await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(resetExpiry).not.toHaveBeenCalled()
+})
+
+test('cancels the Stripe subscription through the confirm modal', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  vi.mocked(cancelSubscription).mockResolvedValue({
+    email: 'max@y.com',
+    canceled: 1,
+    cancel_at: '2026-08-22T00:00:00+00:00',
+  })
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  await user.click(screen.getByRole('button', { name: 'Cancel subscription' }))
+  const dialog = screen.getByRole('dialog', { name: 'Confirm subscription cancellation' })
+  expect(cancelSubscription).not.toHaveBeenCalled()
+  await user.click(within(dialog).getByRole('button', { name: 'Cancel subscription' }))
+
+  expect(cancelSubscription).toHaveBeenCalledWith({ email: 'max@y.com', password: 'secret' })
+  expect(await screen.findByText(/Cancellation scheduled — access ends/)).toBeInTheDocument()
+})
+
+test('shows an error when the subscription cancellation fails', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  vi.mocked(cancelSubscription).mockRejectedValue(new Error('boom'))
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  await user.click(screen.getByRole('button', { name: 'Cancel subscription' }))
+  const dialog = screen.getByRole('dialog', { name: 'Confirm subscription cancellation' })
+  await user.click(within(dialog).getByRole('button', { name: 'Cancel subscription' }))
+
+  expect(await screen.findByText('Could not cancel the subscription.')).toBeInTheDocument()
+})
+
+test('tags the member VIP and reflects it in the status and tag rows', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  vi.mocked(setMemberTag).mockResolvedValue({ email: 'max@y.com', tag: 'vip' })
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  expect(screen.getByText('Subscribed Monthly')).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: '💎 VIP' }))
+
+  expect(setMemberTag).toHaveBeenCalledWith({ email: 'max@y.com', tag: 'vip', password: 'secret' })
+  // the tag row joins the (now disabled) tag button in showing 💎 VIP
+  expect(await screen.findAllByText('💎 VIP')).toHaveLength(2)
+  expect(screen.getByText('VIP')).toBeInTheDocument()
+  expect(screen.queryByText('Subscribed Monthly')).not.toBeInTheDocument()
+})
+
+test('clears a tag and returns to the derived status', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue({ ...member, tag: 'hvu' })
+  vi.mocked(setMemberTag).mockResolvedValue({ email: 'max@y.com', tag: null })
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  expect(screen.getByText('HVU')).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Clear tag' }))
+
+  expect(setMemberTag).toHaveBeenCalledWith({ email: 'max@y.com', tag: null, password: 'secret' })
+  expect(await screen.findByText('Subscribed Monthly')).toBeInTheDocument()
+  // only the tag row clears to the em dash; the ⭐ HVU button remains
+  expect(screen.getByText('—')).toBeInTheDocument()
+  expect(screen.getAllByText('⭐ HVU')).toHaveLength(1)
+})
+
+test('shows a loader next to the clicked tag button while the tag saves', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  let settle: (value: SetTagResult) => void = () => undefined
+  vi.mocked(setMemberTag).mockImplementation(
+    () =>
+      new Promise<SetTagResult>((resolve) => {
+        settle = resolve
+      }),
+  )
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  await user.click(screen.getByRole('button', { name: '💎 VIP' }))
+
+  expect(screen.getByRole('status', { name: 'Updating tag' })).toBeInTheDocument()
+  settle({ email: 'max@y.com', tag: 'vip' })
+  await waitFor(() =>
+    expect(screen.queryByRole('status', { name: 'Updating tag' })).not.toBeInTheDocument(),
+  )
+})
+
+test('shows a loader next to the downloads toggle while it saves', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  let settle: (value: SetDownloadsResult) => void = () => undefined
+  vi.mocked(setMemberDownloads).mockImplementation(
+    () =>
+      new Promise<SetDownloadsResult>((resolve) => {
+        settle = resolve
+      }),
+  )
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  await user.click(screen.getByRole('button', { name: 'Toggle allow downloads' }))
+  const dialog = screen.getByRole('dialog', { name: 'Confirm downloads change' })
+  await user.click(within(dialog).getByRole('button', { name: 'Turn off downloads' }))
+
+  expect(screen.getByRole('status', { name: 'Updating downloads' })).toBeInTheDocument()
+  settle({ email: 'max@y.com', downloads: false })
+  await waitFor(() =>
+    expect(screen.queryByRole('status', { name: 'Updating downloads' })).not.toBeInTheDocument(),
+  )
+})
+
+test('shows a loader next to the Never expire button while the expiry clears', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  let settle: (value: ResetExpiryResult) => void = () => undefined
+  vi.mocked(resetExpiry).mockImplementation(
+    () =>
+      new Promise<ResetExpiryResult>((resolve) => {
+        settle = resolve
+      }),
+  )
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  await user.click(screen.getByRole('button', { name: 'Never expire' }))
+  const dialog = screen.getByRole('dialog', { name: 'Confirm never expire' })
+  await user.click(within(dialog).getByRole('button', { name: 'Never expire' }))
+
+  expect(screen.getByRole('status', { name: 'Clearing expiry' })).toBeInTheDocument()
+  settle({ updated: 2, expires: null })
+  await waitFor(() =>
+    expect(screen.queryByRole('status', { name: 'Clearing expiry' })).not.toBeInTheDocument(),
+  )
+})
+
+test('disables the active tag button and Clear when untagged', async () => {
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  expect(screen.getByRole('button', { name: '💎 VIP' })).toBeEnabled()
+  expect(screen.getByRole('button', { name: '⭐ HVU' })).toBeEnabled()
+  expect(screen.getByRole('button', { name: 'Clear tag' })).toBeDisabled()
+})
+
+test('toggles downloads off through the confirm modal, optimistically', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  let settle: (value: { email: string; downloads: boolean }) => void = () => undefined
+  vi.mocked(setMemberDownloads).mockImplementation(
+    () =>
+      new Promise<{ email: string; downloads: boolean }>((resolve) => {
+        settle = resolve
+      }),
+  )
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  expect(screen.getByText('✅')).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Toggle allow downloads' }))
+  const dialog = screen.getByRole('dialog', { name: 'Confirm downloads change' })
+  expect(setMemberDownloads).not.toHaveBeenCalled()
+  await user.click(within(dialog).getByRole('button', { name: 'Turn off downloads' }))
+
+  expect(setMemberDownloads).toHaveBeenCalledWith({
+    email: 'max@y.com',
+    allow: false,
+    password: 'secret',
+  })
+  // optimistic: the row flips before the bridge replies
+  expect(screen.getByText('❌')).toBeInTheDocument()
+
+  settle({ email: 'max@y.com', downloads: false })
+  await waitFor(() => expect(screen.getByText('❌')).toBeInTheDocument())
+  expect(screen.queryByText('✅')).not.toBeInTheDocument()
+})
+
+test('reverts the downloads toggle and shows an error when the bridge rejects it', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  vi.mocked(setMemberDownloads).mockRejectedValue(new Error('boom'))
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  await user.click(screen.getByRole('button', { name: 'Toggle allow downloads' }))
+  const dialog = screen.getByRole('dialog', { name: 'Confirm downloads change' })
+  await user.click(within(dialog).getByRole('button', { name: 'Turn off downloads' }))
+
+  expect(
+    await screen.findByText('Could not toggle allow downloads for this user.'),
+  ).toBeInTheDocument()
+  expect(screen.getByText('✅')).toBeInTheDocument()
+  expect(screen.queryByText('❌')).not.toBeInTheDocument()
+})
+
+test('cancelling the downloads confirmation makes no change', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  await user.click(screen.getByRole('button', { name: 'Toggle allow downloads' }))
+  await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(setMemberDownloads).not.toHaveBeenCalled()
+  expect(screen.getByText('✅')).toBeInTheDocument()
 })
 
 test('loads saved notes and saves an edited draft', async () => {

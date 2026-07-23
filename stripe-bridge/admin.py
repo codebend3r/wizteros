@@ -2,6 +2,7 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 
+import stripe
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
@@ -96,6 +97,24 @@ def _member_from_customer(email: str, row: dict) -> dict:
     }
 
 
+def _with_overrides(members: list[dict]) -> list[dict]:
+    """Stamp each member dict with its admin overrides.
+
+    tag: the manual designation ("vip"/"hvu"), None untagged. downloads: the
+    admin's toggle wins over the tier-derived value when set.
+    """
+    tags = store.all_member_tags(MAP_DB_PATH)
+    downloads = store.all_member_downloads(MAP_DB_PATH)
+    return [
+        {
+            **m,
+            "tag": tags.get(m["email"].lower()),
+            "downloads": downloads.get(m["email"].lower(), m["downloads"]),
+        }
+        for m in members
+    ]
+
+
 @router.get("/admin/members", dependencies=[Depends(require_admin)])
 def list_members() -> list[dict]:
     """Every member: Wizarr users AND Stripe subscribers who haven't joined yet.
@@ -111,7 +130,8 @@ def list_members() -> list[dict]:
         for email, row in customers.items()
         if email not in joined
     ]
-    return sorted(members + pending, key=lambda m: m["member"].lower())
+    return sorted(
+        _with_overrides(members + pending), key=lambda m: m["member"].lower())
 
 
 @router.get("/admin/member", dependencies=[Depends(require_admin)])
@@ -124,9 +144,9 @@ def get_member(email: str) -> dict:
         client.list_libraries(),
     )
     if matches:
-        return matches[0]
+        return _with_overrides(matches)[0]
     if email.lower() in customers:
-        return _member_from_customer(email, customers[email.lower()])
+        return _with_overrides([_member_from_customer(email, customers[email.lower()])])[0]
     raise HTTPException(status_code=404, detail="no member for that email")
 
 
@@ -168,6 +188,96 @@ class ResetTierBody(BaseModel):
 class ReissueInviteBody(BaseModel):
     email: str
     tier: str
+
+
+class CancelSubscriptionBody(BaseModel):
+    email: str
+
+
+MEMBER_TAGS = ("vip", "hvu")
+
+
+class SetTagBody(BaseModel):
+    email: str
+    tag: str | None = None
+
+
+@router.post("/admin/set-tag", dependencies=[Depends(require_admin)])
+def set_tag(body: SetTagBody) -> dict:
+    """Set (or clear, with tag null) the member's manual designation.
+
+    Purely a bridge-side label — Plex access, tier, and expiry are untouched.
+    """
+    if body.tag is not None and body.tag not in MEMBER_TAGS:
+        raise HTTPException(status_code=400, detail=f"unknown tag {body.tag!r}")
+    store.set_member_tag(MAP_DB_PATH, body.email, body.tag)
+    store.record_event(
+        MAP_DB_PATH, body.email, "Tag changed",
+        f"tagged {body.tag.upper()}" if body.tag else "tag cleared",
+    )
+    return {"email": body.email, "tag": body.tag}
+
+
+class SetDownloadsBody(BaseModel):
+    email: str
+    allow: bool
+
+
+@router.post("/admin/set-downloads", dependencies=[Depends(require_admin)])
+def set_downloads(body: SetDownloadsBody) -> dict:
+    """Toggle the member's allow-downloads override.
+
+    Wizarr has no per-user downloads endpoint, so this can't touch the
+    member's current Plex share. The override wins over the tier default on
+    every member payload and applies for real on the member's next reissued
+    invite.
+    """
+    store.set_member_downloads(MAP_DB_PATH, body.email, body.allow)
+    store.record_event(
+        MAP_DB_PATH, body.email, "Downloads toggled",
+        f"turned {'on' if body.allow else 'off'} by admin",
+    )
+    return {"email": body.email, "downloads": body.allow}
+
+
+@router.post("/admin/cancel-subscription", dependencies=[Depends(require_admin)])
+def cancel_subscription(body: CancelSubscriptionBody) -> dict:
+    """Flag every live Stripe subscription for an email to cancel at period end.
+
+    Mirrors a portal self-cancel: the member keeps access through the period
+    they already contributed for, then Stripe fires
+    customer.subscription.deleted and the webhook disables their records —
+    nothing is revoked here directly. Customer ids come from the bridge's own
+    mapping first, falling back to a live Stripe email lookup for members who
+    predate the mapping. Idempotent: subscriptions already flagged are left
+    alone and still count as scheduled.
+    """
+    customer_ids = store.customer_ids_for_email(MAP_DB_PATH, body.email)
+    if not customer_ids:
+        customer_ids = [c.id for c in stripe.Customer.list(email=body.email, limit=100).data]
+    if not customer_ids:
+        raise HTTPException(status_code=404, detail="no stripe customer for that email")
+    flagged = []
+    already = []
+    for customer_id in customer_ids:
+        for sub in stripe.Subscription.list(customer=customer_id).auto_paging_iter():
+            if getattr(sub, "cancel_at_period_end", False):
+                already.append(sub)
+            else:
+                flagged.append(stripe.Subscription.modify(sub.id, cancel_at_period_end=True))
+    if not flagged and not already:
+        raise HTTPException(status_code=404, detail="no active subscription for that email")
+    cancel_ts = max(
+        (getattr(sub, "cancel_at", None) or 0 for sub in flagged + already), default=0)
+    cancel_at = (
+        datetime.fromtimestamp(cancel_ts, timezone.utc).isoformat() if cancel_ts else None
+    )
+    if flagged:
+        store.record_event(
+            MAP_DB_PATH, body.email, "Cancellation scheduled",
+            f"by admin — access ends {cancel_at[:10]}" if cancel_at else "by admin",
+        )
+    return {"email": body.email, "canceled": len(flagged), "cancel_at": cancel_at}
 
 
 @router.post("/admin/reset-expiry", dependencies=[Depends(require_admin)])
@@ -234,12 +344,15 @@ def reissue_invite(body: ReissueInviteBody) -> dict:
     if not access["library_ids"]:
         raise HTTPException(status_code=502, detail=f"no libraries resolved for tier {tier}")
     records = client.find_users_by_email(body.email)
+    # The admin's downloads toggle wins over the tier default when set.
+    override = store.get_member_downloads(MAP_DB_PATH, body.email)
+    allow_downloads = access["allow_downloads"] if override is None else override
     # Create the invite BEFORE any disable: disable_user is account-wide (it
     # severs the plex.tv friendship on every server), so if create_invite raised
     # after a disable loop the member would be locked out with no link to redeem.
     invite = client.create_invite(
         access["server_ids"], INVITE_DAYS, ACCESS_DURATION,
-        library_ids=access["library_ids"], allow_downloads=access["allow_downloads"],
+        library_ids=access["library_ids"], allow_downloads=allow_downloads,
     )
     # The store row keeps the member on /admin/members while the invite is
     # pending and stamps invited_at for the grace-period status.

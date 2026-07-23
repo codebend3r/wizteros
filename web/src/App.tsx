@@ -10,7 +10,7 @@ const App = () => (
     <Hero brandName={siteConfig.brandName} tagline={siteConfig.tagline} />
     <Pricing tiers={siteConfig.tiers} />
     <Support items={siteConfig.supportItems} />
-    <Footer memberUrl={siteConfig.memberUrl} />
+    <Footer memberUrl={siteConfig.memberUrl} billingPortalUrl={siteConfig.billingPortalUrl} />
   </main>
 )
 

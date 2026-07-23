@@ -14,6 +14,7 @@ const makeMember = (overrides: Partial<Member>): Member => ({
   libraries: {},
   subscribed: false,
   invited_at: null,
+  tag: null,
   ...overrides,
 })
 
@@ -63,4 +64,14 @@ test('a legacy share with a fresh outstanding invite is Invited', () => {
   const invitedAt = new Date(Date.now() - 2 * DAY_MS).toISOString()
   const member = makeMember({ servers: ['Meleys'], invited_at: invitedAt })
   expect(deriveStatus({ member })).toBe('Invited')
+})
+
+test('a vip tag overrides every derived status', () => {
+  const member = makeMember({ expires: '2020-01-01T00:00:00+00:00', subscribed: true, tag: 'vip' })
+  expect(deriveStatus({ member })).toBe('VIP')
+})
+
+test('an hvu tag overrides every derived status', () => {
+  const member = makeMember({ expires: '2099-01-01T00:00:00+00:00', subscribed: true, tag: 'hvu' })
+  expect(deriveStatus({ member })).toBe('HVU')
 })

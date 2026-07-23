@@ -97,11 +97,16 @@ class WizarrClient:
         return [u["id"] for u in self._users({"username": used_by})]
 
     def set_expiry(self, user_id: int, expires_iso: str | None) -> None:
-        """Set a record's expiry to an absolute ISO datetime, or None to clear it."""
+        """Set a record's expiry to an absolute ISO datetime, or None to clear it.
+
+        Wizarr validates the body against its schema (expires: date-time
+        string), so a literal null is rejected with a 400 — clearing to
+        unlimited must omit the key entirely.
+        """
         r = requests.put(
             f"{self.base_url}/api/users/{user_id}/update-expiry",
             headers=self._headers(),
-            json={"expires": expires_iso},
+            json={} if expires_iso is None else {"expires": expires_iso},
             timeout=10,
         )
         r.raise_for_status()
