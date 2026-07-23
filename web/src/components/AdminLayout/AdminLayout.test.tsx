@@ -21,6 +21,8 @@ test('wraps children in the site chrome with a hard refresh button', async () =>
   expect(screen.getByRole('banner')).toBeInTheDocument()
   expect(screen.getByText('page content')).toBeInTheDocument()
   expect(screen.getByRole('contentinfo')).toBeInTheDocument()
+  expect(screen.getByRole('navigation', { name: 'Sections' })).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'Email' })).toHaveAttribute('href', '/email')
 
   await userEvent.click(screen.getByRole('button', { name: 'Hard refresh' }))
   expect(invalidate).toHaveBeenCalled()

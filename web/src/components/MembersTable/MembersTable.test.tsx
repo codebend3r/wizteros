@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import userEvent from '@testing-library/user-event'
 import { expect, test, vi } from 'vitest'
@@ -136,8 +136,141 @@ test('paginates at 25 rows per page', async () => {
 
   expect(screen.getByText('u0')).toBeInTheDocument()
   expect(screen.queryByText('u25')).toBeNull()
-  await userEvent.click(screen.getByRole('button', { name: 'Next' }))
+  await userEvent.click(screen.getAllByRole('button', { name: 'Next' })[0])
   expect(screen.getByText('u25')).toBeInTheDocument()
+})
+
+test('shows page navigation above and below the table', async () => {
+  const members = Array.from({ length: 30 }, (_, index) =>
+    makeMember({ member: `u${index}`, email: `u${index}@x.com` }),
+  )
+  render(
+    <MemoryRouter>
+      <MembersTable members={members} onSelectTier={vi.fn()} invitingEmail={null} />
+    </MemoryRouter>,
+  )
+
+  expect(screen.getAllByRole('button', { name: 'Prev' })).toHaveLength(2)
+  const nextButtons = screen.getAllByRole('button', { name: 'Next' })
+  expect(nextButtons).toHaveLength(2)
+  await userEvent.click(nextButtons[1])
+  expect(screen.getByText('u25')).toBeInTheDocument()
+  expect(screen.getAllByText('Page 2 of 2')).toHaveLength(2)
+})
+
+test('offers five page sizes and applies the selection', async () => {
+  const members = Array.from({ length: 30 }, (_, index) =>
+    makeMember({ member: `u${index}`, email: `u${index}@x.com` }),
+  )
+  render(
+    <MemoryRouter>
+      <MembersTable members={members} onSelectTier={vi.fn()} invitingEmail={null} />
+    </MemoryRouter>,
+  )
+
+  const select = screen.getByRole('combobox', { name: 'Rows per page' })
+  expect(
+    within(select)
+      .getAllByRole('option')
+      .map((option) => option.textContent),
+  ).toEqual(['10 rows', '25 rows', '50 rows', '100 rows', '250 rows'])
+
+  await userEvent.selectOptions(select, '10')
+  expect(screen.getByText('u9')).toBeInTheDocument()
+  expect(screen.queryByText('u10')).toBeNull()
+  expect(screen.getAllByText('Page 1 of 3')).toHaveLength(2)
+})
+
+test('sorting by member toggles between ascending and descending', async () => {
+  render(
+    <MemoryRouter>
+      <MembersTable
+        members={[
+          makeMember({ member: 'bran', email: 'b@x.com' }),
+          makeMember({ member: 'cersei', email: 'c@x.com' }),
+          makeMember({ member: 'arya', email: 'a@x.com' }),
+        ]}
+        onSelectTier={vi.fn()}
+        invitingEmail={null}
+      />
+    </MemoryRouter>,
+  )
+
+  const header = screen.getByRole('button', { name: 'Member' })
+  await userEvent.click(header)
+  expect(header.closest('th')).toHaveAttribute('aria-sort', 'ascending')
+  const ascending = screen.getAllByRole('row')
+  expect(ascending[1]).toHaveTextContent('arya')
+  expect(ascending[3]).toHaveTextContent('cersei')
+
+  await userEvent.click(header)
+  expect(header.closest('th')).toHaveAttribute('aria-sort', 'descending')
+  const descending = screen.getAllByRole('row')
+  expect(descending[1]).toHaveTextContent('cersei')
+  expect(descending[3]).toHaveTextContent('arya')
+})
+
+test('sorting by email orders rows by address', async () => {
+  render(
+    <MemoryRouter>
+      <MembersTable
+        members={[
+          makeMember({ member: 'u1', email: 'zed@x.com' }),
+          makeMember({ member: 'u2', email: 'ann@x.com' }),
+        ]}
+        onSelectTier={vi.fn()}
+        invitingEmail={null}
+      />
+    </MemoryRouter>,
+  )
+
+  await userEvent.click(screen.getByRole('button', { name: 'Email' }))
+  const rows = screen.getAllByRole('row')
+  expect(rows[1]).toHaveTextContent('ann@x.com')
+  expect(rows[2]).toHaveTextContent('zed@x.com')
+})
+
+test('sorting by status orders rows by derived status', async () => {
+  render(
+    <MemoryRouter>
+      <MembersTable
+        members={[
+          makeMember({ member: 'u1', email: 'free@x.com' }), // Uninvited
+          makeMember({
+            member: 'u2',
+            email: 'sub@x.com',
+            subscribed: true,
+            expires: '2099-01-01T00:00:00+00:00',
+          }), // Subscribed Monthly
+          makeMember({ member: 'u3', email: 'pending@x.com', servers: [] }), // Invited
+        ]}
+        onSelectTier={vi.fn()}
+        invitingEmail={null}
+      />
+    </MemoryRouter>,
+  )
+
+  await userEvent.click(screen.getByRole('button', { name: 'Status' }))
+  const rows = screen.getAllByRole('row')
+  expect(rows[1]).toHaveTextContent('pending@x.com')
+  expect(rows[2]).toHaveTextContent('sub@x.com')
+  expect(rows[3]).toHaveTextContent('free@x.com')
+})
+
+test('changing the sort returns to the first page', async () => {
+  const members = Array.from({ length: 30 }, (_, index) =>
+    makeMember({ member: `u${index}`, email: `u${index}@x.com` }),
+  )
+  render(
+    <MemoryRouter>
+      <MembersTable members={members} onSelectTier={vi.fn()} invitingEmail={null} />
+    </MemoryRouter>,
+  )
+
+  await userEvent.click(screen.getAllByRole('button', { name: 'Next' })[0])
+  expect(screen.getAllByText('Page 2 of 2')).toHaveLength(2)
+  await userEvent.click(screen.getByRole('button', { name: 'Member' }))
+  expect(screen.getAllByText('Page 1 of 2')).toHaveLength(2)
 })
 
 test('Invite opens a tier menu and picking one calls onSelectTier', async () => {
