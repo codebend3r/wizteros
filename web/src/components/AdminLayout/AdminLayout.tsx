@@ -16,7 +16,7 @@ const AdminLayout = ({ children }: AdminLayoutProps) => {
     <div className={styles.layout}>
       <Header brandName={siteConfig.brandName} />
       {children}
-      <Footer memberUrl={siteConfig.memberUrl} />
+      <Footer memberUrl={siteConfig.memberUrl} billingPortalUrl={siteConfig.billingPortalUrl} />
       <button
         className={styles.hardRefresh}
         type="button"

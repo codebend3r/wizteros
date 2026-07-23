@@ -26,6 +26,20 @@ CREATE TABLE IF NOT EXISTS member_notes (
 )
 """
 
+_TAGS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS member_tags (
+    email TEXT PRIMARY KEY,
+    tag   TEXT NOT NULL
+)
+"""
+
+_DOWNLOADS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS member_downloads (
+    email TEXT PRIMARY KEY,
+    allow INTEGER NOT NULL
+)
+"""
+
 _EVENT_LOG_SCHEMA = """
 CREATE TABLE IF NOT EXISTS event_log (
     id     INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -64,6 +78,8 @@ def init_db(path: str) -> None:
         c.execute(_SCHEMA)
         c.execute(_EVENTS_SCHEMA)
         c.execute(_NOTES_SCHEMA)
+        c.execute(_TAGS_SCHEMA)
+        c.execute(_DOWNLOADS_SCHEMA)
         c.execute(_EVENT_LOG_SCHEMA)
         _ensure_tier_column(c)
         _ensure_invited_at_column(c)
@@ -165,6 +181,23 @@ def mark_event_processed(path: str, event_id: str) -> bool:
         return cur.rowcount > 0
 
 
+def customer_ids_for_email(path: str, email: str) -> list[str]:
+    """Real Stripe customer ids recorded for an email, case-insensitive.
+
+    Admin-issued placeholder rows (keyed "admin:<email>") are excluded — they
+    have no Stripe side to act on.
+    """
+    with _conn(path) as c:
+        rows = c.execute(
+            "SELECT stripe_customer_id FROM customer_map WHERE lower(email) = lower(?)",
+            (email,),
+        ).fetchall()
+    return [
+        row["stripe_customer_id"] for row in rows
+        if not row["stripe_customer_id"].startswith(_ADMIN_KEY_PREFIX)
+    ]
+
+
 def get_mapping(path: str, stripe_customer_id: str) -> dict | None:
     """Fetch a customer's mapping as a plain dict, or None if unknown."""
     with _conn(path) as c:
@@ -205,6 +238,57 @@ def set_member_notes(path: str, email: str, notes: str) -> None:
             """,
             (email.lower(), notes),
         )
+
+
+def set_member_tag(path: str, email: str, tag: str | None) -> None:
+    """Save the manual designation for an email (keyed lowercased); None clears it."""
+    with _conn(path) as c:
+        if tag is None:
+            c.execute("DELETE FROM member_tags WHERE email = ?", (email.lower(),))
+        else:
+            c.execute(
+                """
+                INSERT INTO member_tags (email, tag) VALUES (?, ?)
+                ON CONFLICT(email) DO UPDATE SET tag = excluded.tag
+                """,
+                (email.lower(), tag),
+            )
+
+
+def all_member_tags(path: str) -> dict[str, str]:
+    """Map lowercased email -> manual tag for every tagged member."""
+    with _conn(path) as c:
+        rows = c.execute("SELECT email, tag FROM member_tags").fetchall()
+    return {row["email"]: row["tag"] for row in rows}
+
+
+def set_member_downloads(path: str, email: str, allow: bool) -> None:
+    """Save the admin's downloads override for an email (keyed lowercased)."""
+    with _conn(path) as c:
+        c.execute(
+            """
+            INSERT INTO member_downloads (email, allow) VALUES (?, ?)
+            ON CONFLICT(email) DO UPDATE SET allow = excluded.allow
+            """,
+            (email.lower(), int(allow)),
+        )
+
+
+def get_member_downloads(path: str, email: str) -> bool | None:
+    """The downloads override for an email; None when the tier default applies."""
+    with _conn(path) as c:
+        row = c.execute(
+            "SELECT allow FROM member_downloads WHERE email = ?",
+            (email.lower(),),
+        ).fetchone()
+    return bool(row["allow"]) if row else None
+
+
+def all_member_downloads(path: str) -> dict[str, bool]:
+    """Map lowercased email -> downloads override for every overridden member."""
+    with _conn(path) as c:
+        rows = c.execute("SELECT email, allow FROM member_downloads").fetchall()
+    return {row["email"]: bool(row["allow"]) for row in rows}
 
 
 def record_event(path: str, email: str, action: str, detail: str = "") -> None:

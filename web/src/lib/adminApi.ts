@@ -1,5 +1,6 @@
 export type PaidTier = 'bronze' | 'silver' | 'gold' | 'youth'
 export type Tier = PaidTier | 'unknown'
+export type MemberTag = 'vip' | 'hvu'
 
 export type Member = {
   member: string
@@ -11,6 +12,7 @@ export type Member = {
   libraries: Record<string, string[]>
   subscribed: boolean
   invited_at: string | null
+  tag: MemberTag | null
 }
 
 export type MemberNotes = {
@@ -44,6 +46,22 @@ export type ResetTierResult = {
   tier: string
 }
 
+export type CancelSubscriptionResult = {
+  email: string
+  canceled: number
+  cancel_at: string | null
+}
+
+export type SetTagResult = {
+  email: string
+  tag: MemberTag | null
+}
+
+export type SetDownloadsResult = {
+  email: string
+  downloads: boolean
+}
+
 export class AdminAuthError extends Error {}
 
 const ADMIN_API_BASE: string = import.meta.env.VITE_ADMIN_API_BASE ?? ''
@@ -62,12 +80,16 @@ const TIERS: ReadonlyArray<Tier> = ['bronze', 'silver', 'gold', 'youth', 'unknow
 const isTier = (value: unknown): value is Tier =>
   typeof value === 'string' && TIERS.some((tier) => tier === value)
 
-// A bridge deployed before the libraries map or invited_at stamp may still
-// omit them; tolerate that and normalize with toMember so the page degrades
-// to bare server names and a grace clock that never expires.
-type MemberPayload = Omit<Member, 'libraries' | 'invited_at'> & {
+const isMemberTag = (value: unknown): value is MemberTag => value === 'vip' || value === 'hvu'
+
+// A bridge deployed before the libraries map, invited_at stamp, or tag may
+// still omit them; tolerate that and normalize with toMember so the page
+// degrades to bare server names, a grace clock that never expires, and an
+// untagged member.
+type MemberPayload = Omit<Member, 'libraries' | 'invited_at' | 'tag'> & {
   libraries?: Record<string, string[]>
   invited_at?: string | null
+  tag?: MemberTag | null
 }
 
 const isMemberPayload = (value: unknown): value is MemberPayload =>
@@ -82,12 +104,14 @@ const isMemberPayload = (value: unknown): value is MemberPayload =>
   typeof value.subscribed === 'boolean' &&
   (value.invited_at === undefined ||
     value.invited_at === null ||
-    typeof value.invited_at === 'string')
+    typeof value.invited_at === 'string') &&
+  (value.tag === undefined || value.tag === null || isMemberTag(value.tag))
 
 const toMember = (payload: MemberPayload): Member => ({
   ...payload,
   libraries: payload.libraries ?? {},
   invited_at: payload.invited_at ?? null,
+  tag: payload.tag ?? null,
 })
 
 const isMemberNotes = (value: unknown): value is MemberNotes =>
@@ -122,6 +146,20 @@ const isResetExpiryResult = (value: unknown): value is ResetExpiryResult =>
 
 const isResetTierResult = (value: unknown): value is ResetTierResult =>
   isRecord(value) && typeof value.email === 'string' && typeof value.tier === 'string'
+
+const isCancelSubscriptionResult = (value: unknown): value is CancelSubscriptionResult =>
+  isRecord(value) &&
+  typeof value.email === 'string' &&
+  typeof value.canceled === 'number' &&
+  (typeof value.cancel_at === 'string' || value.cancel_at === null)
+
+const isSetTagResult = (value: unknown): value is SetTagResult =>
+  isRecord(value) &&
+  typeof value.email === 'string' &&
+  (value.tag === null || isMemberTag(value.tag))
+
+const isSetDownloadsResult = (value: unknown): value is SetDownloadsResult =>
+  isRecord(value) && typeof value.email === 'string' && typeof value.downloads === 'boolean'
 
 type RequestArgs = {
   path: string
@@ -285,6 +323,67 @@ export const resetTier = async ({
   })
   if (!isResetTierResult(data)) {
     throw new Error('Unexpected reset-tier response')
+  }
+  return data
+}
+
+export const cancelSubscription = async ({
+  email,
+  password,
+}: {
+  email: string
+  password: string
+}): Promise<CancelSubscriptionResult> => {
+  const data = await requestJson({
+    path: '/admin/cancel-subscription',
+    password,
+    method: 'POST',
+    body: { email },
+  })
+  if (!isCancelSubscriptionResult(data)) {
+    throw new Error('Unexpected cancel-subscription response')
+  }
+  return data
+}
+
+export const setMemberTag = async ({
+  email,
+  tag,
+  password,
+}: {
+  email: string
+  tag: MemberTag | null
+  password: string
+}): Promise<SetTagResult> => {
+  const data = await requestJson({
+    path: '/admin/set-tag',
+    password,
+    method: 'POST',
+    body: { email, tag },
+  })
+  if (!isSetTagResult(data)) {
+    throw new Error('Unexpected set-tag response')
+  }
+  return data
+}
+
+export const setMemberDownloads = async ({
+  email,
+  allow,
+  password,
+}: {
+  email: string
+  allow: boolean
+  password: string
+}): Promise<SetDownloadsResult> => {
+  const data = await requestJson({
+    path: '/admin/set-downloads',
+    password,
+    method: 'POST',
+    body: { email, allow },
+  })
+  if (!isSetDownloadsResult(data)) {
+    throw new Error('Unexpected set-downloads response')
   }
   return data
 }

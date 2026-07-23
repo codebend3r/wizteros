@@ -131,6 +131,7 @@ test('primes the members cache with a pending row after a successful send', asyn
       tier: 'gold',
       subscribed: false,
       invited_at: expect.any(String),
+      tag: null,
       expires: null,
     }),
   )
@@ -171,6 +172,7 @@ const existing: Member = {
   libraries: {},
   subscribed: false,
   invited_at: null,
+  tag: null,
 }
 
 test('blocks an email that already belongs to a member', async () => {

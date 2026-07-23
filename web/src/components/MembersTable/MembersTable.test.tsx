@@ -15,6 +15,7 @@ const makeMember = (overrides: Partial<Member>): Member => ({
   libraries: {},
   subscribed: false,
   invited_at: null,
+  tag: null,
   ...overrides,
 })
 
@@ -86,6 +87,25 @@ test('shows a tier icon next to Subscribed Monthly for paid tiers', () => {
   )
   // One icon beside the tier name, one beside Subscribed Monthly.
   expect(screen.getAllByRole('img', { name: 'gold tier' })).toHaveLength(2)
+})
+
+test('shows the tag emoji next to VIP and HVU statuses', () => {
+  render(
+    <MemoryRouter>
+      <MembersTable
+        members={[
+          makeMember({ email: 'vip@x.com', tag: 'vip' }),
+          makeMember({ email: 'hvu@x.com', tag: 'hvu' }),
+        ]}
+        onSelectTier={vi.fn()}
+        invitingEmail={null}
+      />
+    </MemoryRouter>,
+  )
+  expect(screen.getByText('💎')).toBeInTheDocument()
+  expect(screen.getByText('VIP')).toBeInTheDocument()
+  expect(screen.getByText('⭐')).toBeInTheDocument()
+  expect(screen.getByText('HVU')).toBeInTheDocument()
 })
 
 test('emails link to the /user detail route', () => {

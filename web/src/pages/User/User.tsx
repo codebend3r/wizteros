@@ -9,6 +9,7 @@ import Preloader from '@/components/Preloader/Preloader'
 import TierIcon from '@/components/TierIcon/TierIcon'
 import {
   AdminAuthError,
+  cancelSubscription,
   fetchMember,
   fetchMemberEvents,
   fetchMemberNotes,
@@ -16,9 +17,12 @@ import {
   resetExpiry,
   resetTier,
   saveMemberNotes,
+  setMemberDownloads,
+  setMemberTag,
   type InviteResult,
   type Member,
   type MemberEvent,
+  type MemberTag,
   type PaidTier,
 } from '@/lib/adminApi'
 import { isPaidTier, PAID_TIERS, TIER_DOWNLOADS, TIER_LABELS } from '@/lib/inviteRules'
@@ -35,6 +39,12 @@ const STATUS_EMOJI: Record<MemberStatus, string> = {
   'Declined Invite': '🚫',
   Uninvited: '⚪',
   VIP: '💎',
+  HVU: '⭐',
+}
+
+const TAG_LABELS: Record<MemberTag, string> = {
+  vip: '💎 VIP',
+  hvu: '⭐ HVU',
 }
 
 const parseExpiry = (expires: string | null): Date | null => {
@@ -73,7 +83,17 @@ const formatDownloads = (downloads: boolean | null): string => {
 const formatLibraryCount = (count: number): string =>
   `${count} ${count === 1 ? 'library' : 'libraries'}`
 
-const MemberDetails = ({ member, expiryUpdating }: { member: Member; expiryUpdating: boolean }) => {
+const MemberDetails = ({
+  member,
+  expiryUpdating,
+  downloadsUpdating,
+  onToggleDownloads,
+}: {
+  member: Member
+  expiryUpdating: boolean
+  downloadsUpdating: boolean
+  onToggleDownloads: () => void
+}) => {
   const status = deriveStatus({ member })
   const expiry = parseExpiry(member.expires)
   const [copied, setCopied] = useState(false)
@@ -120,8 +140,22 @@ const MemberDetails = ({ member, expiryUpdating }: { member: Member; expiryUpdat
         {isPaidTier(member.tier) && <TierIcon tier={member.tier} />}{' '}
         {isPaidTier(member.tier) ? TIER_LABELS[member.tier] : member.tier}
       </dd>
+      <dt>Tag</dt>
+      <dd>{member.tag ? TAG_LABELS[member.tag] : '—'}</dd>
       <dt>Downloads</dt>
-      <dd>{formatDownloads(member.downloads)}</dd>
+      <dd className={styles.downloadsValue}>
+        <button
+          className={styles.downloadsToggle}
+          type="button"
+          onClick={onToggleDownloads}
+          aria-label="Toggle allow downloads"
+        >
+          {formatDownloads(member.downloads)}
+        </button>
+        {downloadsUpdating && (
+          <span className={styles.spinner} role="status" aria-label="Updating downloads" />
+        )}
+      </dd>
       <dt>Expiry</dt>
       <dd className={styles.expiryValue}>
         {expiry ? (
@@ -129,6 +163,10 @@ const MemberDetails = ({ member, expiryUpdating }: { member: Member; expiryUpdat
             <span>{expiry.toLocaleString()}</span>
             <span className={styles.daysLeft}>({formatDaysLeft(expiry)})</span>
           </>
+        ) : member.servers.length ? (
+          // A joined member with no expiry has unlimited access — say so
+          // instead of the pending-member em dash.
+          <span>♾️ Never expires</span>
         ) : (
           '—'
         )}
@@ -187,6 +225,10 @@ const UserInner = () => {
   const [expiryDraft, setExpiryDraft] = useState<string | null>(null)
   const [pendingHardReset, setPendingHardReset] = useState<PaidTier | null>(null)
   const [pendingExpiry, setPendingExpiry] = useState<string | null>(null)
+  const [pendingNeverExpire, setPendingNeverExpire] = useState(false)
+  const [pendingCancelSub, setPendingCancelSub] = useState(false)
+  const [cancelNotice, setCancelNotice] = useState<string | null>(null)
+  const [pendingDownloads, setPendingDownloads] = useState<boolean | null>(null)
 
   const {
     data: member,
@@ -327,6 +369,89 @@ const UserInner = () => {
     },
   })
 
+  const neverExpireMutation = useMutation({
+    mutationFn: () => resetExpiry({ email, password }),
+    onMutate: () => {
+      const previousMember = queryClient.getQueryData<Member | null>(['member', email])
+      const previousMembers = queryClient.getQueryData<Member[]>(MEMBERS_QUERY_KEY)
+      // A cleared expiry reads back as "—": the bridge derives subscribed
+      // from the expiry, so both flip together.
+      applyToMemberCaches((row) => ({ ...row, expires: null, subscribed: false }))
+      return { previousMember, previousMembers }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['member-events', email] })
+      setExpiryDraft(null)
+    },
+    onError: (cause, _variables, context) => {
+      queryClient.setQueryData(['member', email], context?.previousMember)
+      queryClient.setQueryData(MEMBERS_QUERY_KEY, context?.previousMembers)
+      if (cause instanceof AdminAuthError) {
+        deauthenticate()
+        return
+      }
+      setActionError('Could not clear expiry.')
+    },
+  })
+
+  const downloadsMutation = useMutation({
+    mutationFn: (allow: boolean) => setMemberDownloads({ email, allow, password }),
+    onMutate: (allow) => {
+      const previousMember = queryClient.getQueryData<Member | null>(['member', email])
+      const previousMembers = queryClient.getQueryData<Member[]>(MEMBERS_QUERY_KEY)
+      applyToMemberCaches((row) => ({ ...row, downloads: allow }))
+      return { previousMember, previousMembers }
+    },
+    onSuccess: (result) => {
+      // Settle on the bridge's canonical value.
+      applyToMemberCaches((row) => ({ ...row, downloads: result.downloads }))
+      void queryClient.invalidateQueries({ queryKey: ['member-events', email] })
+    },
+    onError: (cause, _allow, context) => {
+      queryClient.setQueryData(['member', email], context?.previousMember)
+      queryClient.setQueryData(MEMBERS_QUERY_KEY, context?.previousMembers)
+      if (cause instanceof AdminAuthError) {
+        deauthenticate()
+        return
+      }
+      setActionError('Could not toggle allow downloads for this user.')
+    },
+  })
+
+  const tagMutation = useMutation({
+    mutationFn: (tag: MemberTag | null) => setMemberTag({ email, tag, password }),
+    onSuccess: (result) => {
+      applyToMemberCaches((row) => ({ ...row, tag: result.tag }))
+      void queryClient.invalidateQueries({ queryKey: ['member-events', email] })
+    },
+    onError: (cause) => {
+      if (cause instanceof AdminAuthError) {
+        deauthenticate()
+        return
+      }
+      setActionError('Could not change the tag.')
+    },
+  })
+
+  const cancelSubMutation = useMutation({
+    mutationFn: () => cancelSubscription({ email, password }),
+    onSuccess: (result) => {
+      setCancelNotice(
+        result.cancel_at
+          ? `Cancellation scheduled — access ends ${new Date(result.cancel_at).toLocaleString()}.`
+          : 'Cancellation scheduled.',
+      )
+      void queryClient.invalidateQueries({ queryKey: ['member-events', email] })
+    },
+    onError: (cause) => {
+      if (cause instanceof AdminAuthError) {
+        deauthenticate()
+        return
+      }
+      setActionError('Could not cancel the subscription.')
+    },
+  })
+
   const expiryValue =
     expiryDraft ??
     toExpiryDraft(parseExpiry(member?.expires ?? null) ?? new Date(Date.now() + DAY_MS))
@@ -395,7 +520,15 @@ const UserInner = () => {
         {member === null && <p className={styles.notice}>No member found for {email}.</p>}
         {!!member && (
           <>
-            <MemberDetails member={member} expiryUpdating={expiryMutation.isPending} />
+            <MemberDetails
+              member={member}
+              expiryUpdating={expiryMutation.isPending || neverExpireMutation.isPending}
+              downloadsUpdating={downloadsMutation.isPending}
+              onToggleDownloads={() => {
+                setActionError(null)
+                setPendingDownloads(!(member.downloads ?? false))
+              }}
+            />
             <div className={styles.actions}>
               <div className={styles.menuWrap}>
                 <button
@@ -461,6 +594,57 @@ const UserInner = () => {
               </div>
             </section>
             <section className={styles.controlSection}>
+              <h2 className={styles.sectionTitle}>Tag</h2>
+              <p className={styles.controlHint}>
+                A manual designation shown as the member's status — VIP or High-Volume User (HVU) —
+                it overrides the derived status until cleared.
+              </p>
+              <div className={styles.controlRow}>
+                <button
+                  className={styles.controlButton}
+                  type="button"
+                  onClick={() => {
+                    setActionError(null)
+                    tagMutation.mutate('vip')
+                  }}
+                  disabled={tagMutation.isPending || member.tag === 'vip'}
+                >
+                  💎 VIP
+                </button>
+                {tagMutation.isPending && tagMutation.variables === 'vip' && (
+                  <span className={styles.spinner} role="status" aria-label="Updating tag" />
+                )}
+                <button
+                  className={styles.controlButton}
+                  type="button"
+                  onClick={() => {
+                    setActionError(null)
+                    tagMutation.mutate('hvu')
+                  }}
+                  disabled={tagMutation.isPending || member.tag === 'hvu'}
+                >
+                  ⭐ HVU
+                </button>
+                {tagMutation.isPending && tagMutation.variables === 'hvu' && (
+                  <span className={styles.spinner} role="status" aria-label="Updating tag" />
+                )}
+                <button
+                  className={styles.controlButton}
+                  type="button"
+                  onClick={() => {
+                    setActionError(null)
+                    tagMutation.mutate(null)
+                  }}
+                  disabled={tagMutation.isPending || !member.tag}
+                >
+                  Clear tag
+                </button>
+                {tagMutation.isPending && tagMutation.variables === null && (
+                  <span className={styles.spinner} role="status" aria-label="Updating tag" />
+                )}
+              </div>
+            </section>
+            <section className={styles.controlSection}>
               <h2 className={styles.sectionTitle}>Set expiry</h2>
               <form
                 className={styles.controlRow}
@@ -484,7 +668,42 @@ const UserInner = () => {
                 >
                   Set expiry
                 </button>
+                <button
+                  className={styles.dangerButton}
+                  type="button"
+                  onClick={() => {
+                    setActionError(null)
+                    setPendingNeverExpire(true)
+                  }}
+                  disabled={expiryMutation.isPending || neverExpireMutation.isPending}
+                >
+                  Never expire
+                </button>
+                {neverExpireMutation.isPending && (
+                  <span className={styles.spinner} role="status" aria-label="Clearing expiry" />
+                )}
               </form>
+            </section>
+            <section className={styles.controlSection}>
+              <h2 className={styles.sectionTitle}>Subscription</h2>
+              <p className={styles.controlHint}>
+                Flags the member's Stripe subscription to cancel at the end of the billing period —
+                access shuts off automatically when it lapses.
+              </p>
+              {!!cancelNotice && <p className={styles.cancelNotice}>{cancelNotice}</p>}
+              <div className={styles.controlRow}>
+                <button
+                  className={styles.dangerButton}
+                  type="button"
+                  onClick={() => {
+                    setActionError(null)
+                    setPendingCancelSub(true)
+                  }}
+                  disabled={cancelSubMutation.isPending}
+                >
+                  {cancelSubMutation.isPending ? 'Cancelling…' : 'Cancel subscription'}
+                </button>
+              </div>
             </section>
             <section className={styles.notesSection}>
               <h2 className={styles.sectionTitle}>Notes</h2>
@@ -567,6 +786,64 @@ const UserInner = () => {
               {new Date(pendingExpiry).toLocaleString()}.
             </p>
             <p className={styles.controlHint}>Applies to every server record for this email.</p>
+          </ConfirmActionModal>
+        )}
+        {!!member && pendingDownloads !== null && (
+          <ConfirmActionModal
+            title="Confirm downloads change"
+            confirmLabel={pendingDownloads ? 'Turn on downloads' : 'Turn off downloads'}
+            onConfirm={() => {
+              downloadsMutation.mutate(pendingDownloads)
+              setPendingDownloads(null)
+            }}
+            onCancel={() => setPendingDownloads(null)}
+          >
+            <p>
+              Turn downloads {pendingDownloads ? 'on' : 'off'} for {member.member} ({member.email}
+              ).
+            </p>
+            <p className={styles.controlHint}>
+              The record updates immediately; the Plex-side permission applies with the member's
+              next reissued invite.
+            </p>
+          </ConfirmActionModal>
+        )}
+        {!!member && pendingNeverExpire && (
+          <ConfirmActionModal
+            title="Confirm never expire"
+            confirmLabel="Never expire"
+            onConfirm={() => {
+              neverExpireMutation.mutate()
+              setPendingNeverExpire(false)
+            }}
+            onCancel={() => setPendingNeverExpire(false)}
+          >
+            <p>
+              Set {member.member} ({member.email}) to never expire.
+            </p>
+            <p className={styles.controlHint}>
+              Clears the expiry on every server record for this email — access stays on until you
+              change it again.
+            </p>
+          </ConfirmActionModal>
+        )}
+        {!!member && pendingCancelSub && (
+          <ConfirmActionModal
+            title="Confirm subscription cancellation"
+            confirmLabel="Cancel subscription"
+            onConfirm={() => {
+              cancelSubMutation.mutate()
+              setPendingCancelSub(false)
+            }}
+            onCancel={() => setPendingCancelSub(false)}
+          >
+            <p>
+              Cancel the Stripe subscription for {member.member} ({member.email}).
+            </p>
+            <p className={styles.controlHint}>
+              They keep access until the end of the period they already contributed for; the bridge
+              shuts them off automatically when it ends.
+            </p>
           </ConfirmActionModal>
         )}
         {!!member && !!pendingTier && (

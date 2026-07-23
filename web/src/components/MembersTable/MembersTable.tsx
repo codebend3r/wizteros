@@ -106,6 +106,8 @@ const MembersTable = ({ members, onSelectTier, invitingEmail }: MembersTableProp
                     {status === 'Subscribed Monthly' && isPaidTier(member.tier) && (
                       <TierIcon tier={member.tier} />
                     )}
+                    {status === 'VIP' && <span aria-hidden="true">💎</span>}
+                    {status === 'HVU' && <span aria-hidden="true">⭐</span>}
                     <span className={status === 'Subscribed Monthly' ? styles.subscribed : ''}>
                       {status}
                     </span>
