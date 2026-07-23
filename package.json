@@ -22,6 +22,9 @@
     "test:unit": "docker run --rm -v \"$PWD/stripe-bridge:/app\" -w /app stripe-bridge sh -c 'pip install -q pytest responses >/dev/null 2>&1 && python -m pytest -q'",
     "test:e2e": "node --env-file=.env scripts/e2e-retest.mjs",
     "retest": "run-s bridge:build bridge:up test:e2e",
+    "release:patch": "bash scripts/release.sh patch",
+    "release:minor": "bash scripts/release.sh minor",
+    "release:major": "bash scripts/release.sh major",
     "deploy:nas": "bash scripts/deploy-nas.sh"
   },
   "lint-staged": {
