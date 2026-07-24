@@ -1,9 +1,10 @@
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from '@/test/vi'
 import {
   AdminAuthError,
   fetchMember,
   fetchMembers,
   fetchPlexAccess,
+  type Member,
   reissueInvite,
   resetExpiry,
   setMemberTag,
@@ -11,15 +12,22 @@ import {
 
 // The bridge is now authorized by the Supabase session; stub the client so
 // authHeader() emits a bearer token to assert on.
+// mock.module is process-global and cannot be un-registered in bun, so this
+// mock leaks into every later test file. It must therefore implement every
+// supabase.auth method the app calls (a dangling deauth effect elsewhere would
+// otherwise throw "signOut is not a function").
 vi.mock('@/lib/supabaseClient', () => ({
   supabase: {
     auth: {
       getSession: async () => ({ data: { session: { access_token: 'tok123' } } }),
+      signOut: async () => ({ error: null }),
+      signInWithPassword: async () => ({ data: { session: null }, error: null }),
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => undefined } } }),
     },
   },
 }))
 
-const member = {
+const member: Member = {
   member: 'cj',
   email: 'a@x.com',
   tier: 'gold',
@@ -93,7 +101,9 @@ test('fetchMembers defaults missing libraries and invited_at (pre-deploy bridge)
     vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [legacyMember] }),
   )
   const result = await fetchMembers()
-  expect(result).toEqual([{ ...legacyMember, libraries: {}, invited_at: null }])
+  // Equivalent to legacyMember + the parser's defaults, but typed as Member so
+  // bun's strict expect<Member[]> accepts it.
+  expect(result).toEqual([{ ...member, libraries: {}, invited_at: null }])
 })
 
 test('fetchMembers rejects a malformed member (missing fields)', async () => {

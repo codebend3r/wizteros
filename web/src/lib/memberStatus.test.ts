@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest'
+import { expect, test } from '@/test/vi'
 import type { Member } from '@/lib/adminApi'
 import { deriveStatus } from '@/lib/memberStatus'
 

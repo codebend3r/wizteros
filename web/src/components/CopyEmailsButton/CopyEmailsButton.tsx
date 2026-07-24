@@ -4,13 +4,14 @@ import styles from '@/components/CopyEmailsButton/CopyEmailsButton.module.scss'
 
 type CopyEmailsButtonProps = {
   emails: ReadonlyArray<string>
+  label?: string
 }
 
 type CopyState = 'idle' | 'copied' | 'failed'
 
 const RESET_MS = 2000
 
-const CopyEmailsButton = ({ emails }: CopyEmailsButtonProps) => {
+const CopyEmailsButton = ({ emails, label = 'Copy all emails' }: CopyEmailsButtonProps) => {
   const [state, setState] = useState<CopyState>('idle')
   const deduped = dedupeEmails(emails)
 
@@ -31,12 +32,12 @@ const CopyEmailsButton = ({ emails }: CopyEmailsButtonProps) => {
     }
   }
 
-  const label =
+  const buttonLabel =
     state === 'copied'
       ? 'Copied!'
       : state === 'failed'
         ? 'Copy failed'
-        : `Copy all emails (${deduped.length})`
+        : `${label} (${deduped.length})`
 
   return (
     <button
@@ -45,7 +46,7 @@ const CopyEmailsButton = ({ emails }: CopyEmailsButtonProps) => {
       onClick={() => void handleCopy()}
       disabled={!deduped.length}
     >
-      {label}
+      {buttonLabel}
     </button>
   )
 }

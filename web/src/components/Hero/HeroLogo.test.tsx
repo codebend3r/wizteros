@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { vi } from 'vitest'
+import { expect, test, vi } from '@/test/vi'
 import HeroLogo from '@/components/Hero/HeroLogo'
 
 test('renders the mascot image', () => {

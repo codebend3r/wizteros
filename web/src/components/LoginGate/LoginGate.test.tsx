@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from '@/test/vi'
 import { LoginGate } from '@/components/LoginGate/LoginGate'
 import { useAuthStore } from '@/stores/authStore'
 

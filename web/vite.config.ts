@@ -1,5 +1,5 @@
 import { fileURLToPath } from 'node:url'
-import { defineConfig } from 'vitest/config'
+import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
@@ -14,17 +14,6 @@ export default defineConfig({
       scss: {
         api: 'modern-compiler',
       },
-    },
-  },
-  test: {
-    environment: 'jsdom',
-    globals: true,
-    setupFiles: './src/test-setup.ts',
-    // Keep the Supabase client dormant in tests even when web/.env sets
-    // these; auth flows are driven through the store instead.
-    env: {
-      VITE_SUPABASE_URL: '',
-      VITE_SUPABASE_PUBLISHABLE_KEY: '',
     },
   },
 })

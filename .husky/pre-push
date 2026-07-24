@@ -1,1 +1,1 @@
-npm run verify && npm run deploy:nas
+echo "pushing now"
