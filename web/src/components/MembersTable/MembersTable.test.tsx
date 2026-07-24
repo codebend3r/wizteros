@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import userEvent from '@testing-library/user-event'
-import { expect, test, vi } from 'vitest'
+import { expect, test, vi } from '@/test/vi'
 import MembersTable from '@/components/MembersTable/MembersTable'
 import type { Member } from '@/lib/adminApi'
 

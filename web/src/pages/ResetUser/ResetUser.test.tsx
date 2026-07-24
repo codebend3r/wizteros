@@ -2,8 +2,9 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from '@/test/vi'
 import ResetUser from '@/pages/ResetUser/ResetUser'
+import * as adminApiOriginal from '@/lib/adminApi'
 import { AdminAuthError, type Member } from '@/lib/adminApi'
 import { useAuthStore } from '@/stores/authStore'
 
@@ -29,8 +30,8 @@ const member: Member = {
   tag: null,
 }
 
-vi.mock('@/lib/adminApi', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/lib/adminApi')>()),
+vi.mock('@/lib/adminApi', () => ({
+  ...adminApiOriginal,
   fetchMember: vi.fn(),
   resetExpiry: vi.fn(),
   reissueInvite: vi.fn(),

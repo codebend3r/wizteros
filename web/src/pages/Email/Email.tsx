@@ -36,6 +36,20 @@ const EmailInner = () => {
     () => dedupeEmails((members ?? []).map((member) => member.email)),
     [members],
   )
+  const nonVipEmails = useMemo(
+    () =>
+      dedupeEmails(
+        (members ?? []).filter((member) => member.tag !== 'vip').map((member) => member.email),
+      ),
+    [members],
+  )
+  const vipEmails = useMemo(
+    () =>
+      dedupeEmails(
+        (members ?? []).filter((member) => member.tag === 'vip').map((member) => member.email),
+      ),
+    [members],
+  )
   const recipients = useMemo(
     () => allEmails.filter((email) => !excluded.has(email)),
     [allEmails, excluded],
@@ -65,7 +79,11 @@ const EmailInner = () => {
             </Link>
             <h1 className={styles.title}>Email members</h1>
           </div>
-          <CopyEmailsButton emails={allEmails} />
+          <div className={styles.copyGroup}>
+            <CopyEmailsButton emails={allEmails} />
+            <CopyEmailsButton label="Copy non-VIP emails" emails={nonVipEmails} />
+            <CopyEmailsButton label="Copy VIP emails" emails={vipEmails} />
+          </div>
         </div>
         {!!error && <p className={styles.error}>{error}</p>}
         {isPending && !error && <Preloader message="Loading members… (this can take ~15s)" />}

@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react'
-import { afterEach, expect, test } from 'vitest'
+import { afterEach, expect, test } from '@/test/vi'
 import AdminGate from '@/components/AdminGate/AdminGate'
 import { useAuthStore } from '@/stores/authStore'
 

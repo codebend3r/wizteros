@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest'
+import { expect, test } from '@/test/vi'
 import { buildMailto, dedupeEmails } from '@/lib/emails'
 
 test('dedupeEmails trims, drops empties, and dedupes case-insensitively', () => {
