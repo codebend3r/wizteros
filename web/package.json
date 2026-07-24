@@ -4,11 +4,16 @@
   "version": "0.1.3",
   "type": "module",
   "scripts": {
+    "preinstall": "node ../scripts/only-bun.mjs",
+    "predev": "node ../scripts/only-bun.mjs",
     "dev": "vite",
+    "prebuild": "node ../scripts/only-bun.mjs",
     "build": "tsc && vite build",
+    "prepreview": "node ../scripts/only-bun.mjs",
     "preview": "vite preview",
     "typecheck": "tsc",
-    "test": "vitest run"
+    "pretest": "node ../scripts/only-bun.mjs",
+    "test": "bun test"
   },
   "dependencies": {
     "@fontsource-variable/bricolage-grotesque": "5.2.10",
@@ -26,17 +31,18 @@
     "zustand": "5.0.14"
   },
   "devDependencies": {
+    "@happy-dom/global-registrator": "20.11.1",
     "@testing-library/jest-dom": "6.9.1",
     "@testing-library/react": "16.3.2",
     "@testing-library/user-event": "14.6.1",
+    "@types/bun": "1.3.14",
     "@types/node": "26.1.1",
     "@types/react": "18.3.31",
     "@types/react-dom": "18.3.7",
     "@vitejs/plugin-react": "4.7.0",
-    "jsdom": "25.0.1",
+    "happy-dom": "20.11.1",
     "sass": "1.101.0",
     "typescript": "5.9.3",
-    "vite": "5.4.21",
-    "vitest": "2.1.9"
+    "vite": "5.4.21"
   }
 }

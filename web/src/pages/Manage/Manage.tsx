@@ -102,7 +102,21 @@ const ManageInner = () => {
       <main className={styles.page}>
         <div className={styles.header}>
           <h1 className={styles.title}>Members</h1>
-          <CopyEmailsButton emails={(members ?? []).map((member) => member.email)} />
+          <div className={styles.copyGroup}>
+            <CopyEmailsButton emails={(members ?? []).map((member) => member.email)} />
+            <CopyEmailsButton
+              label="Copy non-VIP emails"
+              emails={(members ?? [])
+                .filter((member) => member.tag !== 'vip')
+                .map((member) => member.email)}
+            />
+            <CopyEmailsButton
+              label="Copy VIP emails"
+              emails={(members ?? [])
+                .filter((member) => member.tag === 'vip')
+                .map((member) => member.email)}
+            />
+          </div>
         </div>
         <div className={styles.actions}>
           <Link className={styles.inviteLink} to="/invite">

@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { expect, test } from 'vitest'
+import { expect, test } from '@/test/vi'
 import Header from '@/components/Header/Header'
 
 test('links the brand home and Members to /manage', () => {

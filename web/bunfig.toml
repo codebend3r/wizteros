@@ -1,0 +1,4 @@
+[test]
+# env.ts stubs the dormant Supabase env first; happy-dom must register the DOM
+# before test-setup imports Testing Library.
+preload = ["./src/test/env.ts", "./src/test/happy-dom.ts", "./src/test-setup.ts"]

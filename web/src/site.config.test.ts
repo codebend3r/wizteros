@@ -1,3 +1,4 @@
+import { expect, test } from '@/test/vi'
 import { resolveConfig } from '@/site.config'
 
 test('defines the four tiers in order with CAD prices', () => {

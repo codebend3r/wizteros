@@ -12,6 +12,19 @@ A self-hosted stack that gates Plex access behind a recurring Stripe "server-cos
 
 The contribution framing is deliberate (Plex TOS prohibits selling access, Stripe TOS prohibits selling rights you don't own). When suggesting copy, product descriptions, or UX text, lean toward infrastructure/hosting language. Never reference content, libraries, or titles in user-facing payment surfaces.
 
+## Structure
+
+- Source lives under `src/` (`src/app`, `src/components`, `src/lib`, `src/styles`); `prisma/`, `public/`, config files, `.github/`, and `.husky/` stay at the repo root. Path references below (e.g. `styles/globals.scss`, `lib/foo.ts`) are under `src/`, and the `@/*` import alias maps to `src/*` (`@public/*` and `@generated/*` map to the root `public/` and `generated/` dirs).
+- Import via aliases, never parent-relative paths (`../`); lint enforces this. Same-directory `./` imports (co-located styles, tests) are fine.
+
+## Workflow
+
+- Do not commit anything until I tell you to.
+- Do not push anything until I tell you to.
+- Do not merge anything until I tell you to.
+- Do not create a PR until I tell you to.
+- Do not create a branch until I tell you to.
+
 ## React
 
 - Never use default exports if it can be avoided, prefer named exports
@@ -68,3 +81,8 @@ The contribution framing is deliberate (Plex TOS prohibits selling access, Strip
 - Create a commit after every logical change, batch if they are related.
 - Subject must start with `WZ:` followed by a short title (e.g., `WZ: a short title`).
 - Favor bullet points in the body. Keep it concise and easy to read.
+
+## Pull Requests
+
+- Should follow the same naming convention as commits and every PR title should start with `WZ: a short title`
+- The body of the PR should be minimal and favour bullet points

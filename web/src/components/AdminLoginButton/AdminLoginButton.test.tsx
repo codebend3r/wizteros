@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { afterEach, expect, test } from 'vitest'
+import { afterEach, expect, test } from '@/test/vi'
 import { AdminLoginButton } from '@/components/AdminLoginButton/AdminLoginButton'
 import { useAuthStore } from '@/stores/authStore'
 
