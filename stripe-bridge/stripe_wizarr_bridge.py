@@ -150,6 +150,8 @@ def _dispatch(etype: str, obj: dict) -> None:
             return
         customer_id = obj["customer"]
         email = obj.get("customer_email") or customer_email(customer_id)
+        if email:
+            store.set_subscribed(MAP_DB_PATH, email, True)
         ids = resolve_user_ids(client, MAP_DB_PATH, customer_id, email)
         expires = access_expiry_iso()
         for uid in ids:
@@ -165,6 +167,8 @@ def _dispatch(etype: str, obj: dict) -> None:
         customer_id = obj["customer"]
         m = store.get_mapping(MAP_DB_PATH, customer_id)
         email = (m and m["email"]) or customer_email(customer_id)
+        if email:
+            store.set_subscribed(MAP_DB_PATH, email, False)
         ids = resolve_user_ids(client, MAP_DB_PATH, customer_id, email)
         for uid in ids:
             client.disable_user(uid)
