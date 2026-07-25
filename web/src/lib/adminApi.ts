@@ -116,20 +116,72 @@ type MemberPayload = Omit<Member, 'libraries' | 'invited_at' | 'tag'> & {
   tag?: MemberTag | null
 }
 
+// Kept as per-field checks rather than one boolean chain so a rejected payload
+// can say which field failed. One malformed row from the bridge sinks the
+// whole list, and "Unexpected members response" alone gives nothing to go on.
+type MemberFieldCheck = {
+  field: string
+  valid: (value: Record<string, unknown>) => boolean
+}
+
+const MEMBER_FIELD_CHECKS: ReadonlyArray<MemberFieldCheck> = [
+  { field: 'member', valid: (value) => typeof value.member === 'string' },
+  { field: 'email', valid: (value) => typeof value.email === 'string' },
+  { field: 'tier', valid: (value) => isTier(value.tier) },
+  {
+    field: 'downloads',
+    valid: (value) => typeof value.downloads === 'boolean' || value.downloads === null,
+  },
+  {
+    field: 'expires',
+    valid: (value) => typeof value.expires === 'string' || value.expires === null,
+  },
+  { field: 'servers', valid: (value) => isStringArray(value.servers) },
+  {
+    field: 'libraries',
+    valid: (value) => value.libraries === undefined || isLibrariesMap(value.libraries),
+  },
+  { field: 'subscribed', valid: (value) => typeof value.subscribed === 'boolean' },
+  {
+    field: 'invited_at',
+    valid: (value) =>
+      value.invited_at === undefined ||
+      value.invited_at === null ||
+      typeof value.invited_at === 'string',
+  },
+  {
+    field: 'tag',
+    valid: (value) => value.tag === undefined || value.tag === null || isMemberTag(value.tag),
+  },
+]
+
+const invalidMemberFields = (value: unknown): string[] =>
+  isRecord(value)
+    ? MEMBER_FIELD_CHECKS.filter(({ valid }) => !valid(value)).map(({ field }) => field)
+    : ['(not an object)']
+
 const isMemberPayload = (value: unknown): value is MemberPayload =>
-  isRecord(value) &&
-  typeof value.member === 'string' &&
-  typeof value.email === 'string' &&
-  isTier(value.tier) &&
-  (typeof value.downloads === 'boolean' || value.downloads === null) &&
-  (typeof value.expires === 'string' || value.expires === null) &&
-  isStringArray(value.servers) &&
-  (value.libraries === undefined || isLibrariesMap(value.libraries)) &&
-  typeof value.subscribed === 'boolean' &&
-  (value.invited_at === undefined ||
-    value.invited_at === null ||
-    typeof value.invited_at === 'string') &&
-  (value.tag === undefined || value.tag === null || isMemberTag(value.tag))
+  invalidMemberFields(value).length === 0
+
+// Points at the first row the bridge got wrong so a single bad member is
+// identifiable from the admin page without opening devtools.
+const describeMembersMismatch = (data: unknown): string => {
+  if (!Array.isArray(data)) {
+    return `expected an array, got ${typeof data}`
+  }
+  const invalid = data
+    .map((row: unknown, index) => ({ row, index, fields: invalidMemberFields(row) }))
+    .filter(({ fields }) => fields.length > 0)
+  const [first] = invalid
+  if (!first) {
+    return 'no offending row found'
+  }
+  const who =
+    isRecord(first.row) && typeof first.row.email === 'string' && !!first.row.email
+      ? first.row.email
+      : `row ${first.index}`
+  return `${invalid.length} of ${data.length} rows invalid; first is ${who} (bad fields: ${first.fields.join(', ')})`
+}
 
 const toMember = (payload: MemberPayload): Member => ({
   ...payload,
@@ -203,6 +255,17 @@ type RequestArgs = {
   body?: unknown
 }
 
+// The bridge reports failures as {"detail": "..."}; carrying a snippet of it
+// into the thrown error is what distinguishes a dead upstream from a bad
+// request once the page only shows the message.
+const bodySnippet = async (response: Response): Promise<string> => {
+  try {
+    return (await response.text()).slice(0, 200)
+  } catch {
+    return ''
+  }
+}
+
 const requestJson = async ({ path, method = 'GET', body }: RequestArgs): Promise<unknown> => {
   const response = await fetch(`${ADMIN_API_BASE}${path}`, {
     method,
@@ -216,15 +279,33 @@ const requestJson = async ({ path, method = 'GET', body }: RequestArgs): Promise
     throw new AdminAuthError('Not signed in')
   }
   if (!response.ok) {
-    throw new Error(`Request failed (${response.status})`)
+    const detail = await bodySnippet(response)
+    throw new Error(`Request failed (${response.status})${!!detail ? `: ${detail}` : ''}`)
+  }
+  // With VITE_ADMIN_API_BASE unset every call is relative, so the dev server
+  // and Netlify both answer with index.html at 200. Name that instead of
+  // letting it surface as an opaque JSON parse error.
+  const contentType = response.headers?.get('content-type') ?? ''
+  if (!!contentType && !contentType.includes('json')) {
+    throw new Error(
+      `Expected JSON from ${path} but got ${contentType}. Is VITE_ADMIN_API_BASE set?`,
+    )
   }
   return response.json()
 }
 
+// The cause carries the only clue about a bridge-side failure (status, the
+// bridge's own detail, or the offending row), so the pages render it rather
+// than collapsing every load error into the same sentence.
+export const loadErrorMessage = (cause: unknown): string =>
+  cause instanceof Error && !!cause.message
+    ? `Could not load members. ${cause.message}`
+    : 'Could not load members.'
+
 export const fetchMembers = async (): Promise<Member[]> => {
   const data = await requestJson({ path: '/admin/members' })
   if (!isMemberPayloadArray(data)) {
-    throw new Error('Unexpected members response')
+    throw new Error(`Unexpected members response: ${describeMembersMismatch(data)}`)
   }
   return data.map(toMember)
 }

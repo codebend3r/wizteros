@@ -5,7 +5,7 @@ import AdminGate, { useAdminAuth } from '@/components/AdminGate/AdminGate'
 import AdminLayout from '@/components/AdminLayout/AdminLayout'
 import CopyEmailsButton from '@/components/CopyEmailsButton/CopyEmailsButton'
 import Preloader from '@/components/Preloader/Preloader'
-import { AdminAuthError, fetchMembers } from '@/lib/adminApi'
+import { AdminAuthError, fetchMembers, loadErrorMessage } from '@/lib/adminApi'
 import { buildMailto, dedupeEmails } from '@/lib/emails'
 import { MEMBERS_QUERY_KEY } from '@/pages/Manage/Manage'
 import styles from '@/pages/Email/Email.module.scss'
@@ -67,7 +67,7 @@ const EmailInner = () => {
   }
 
   const error =
-    loadError && !(loadError instanceof AdminAuthError) ? 'Could not load members.' : null
+    loadError && !(loadError instanceof AdminAuthError) ? loadErrorMessage(loadError) : null
 
   return (
     <AdminLayout>
