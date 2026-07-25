@@ -30,7 +30,11 @@ test('shows a status per row; subscribed members get Re-invite, the rest Invite'
             expires: '2099-01-01T00:00:00+00:00',
           }),
           makeMember({ email: 'free@x.com' }),
-          makeMember({ email: 'pending@x.com', servers: [] }),
+          makeMember({
+            email: 'pending@x.com',
+            servers: [],
+            invited_at: new Date().toISOString(),
+          }),
           makeMember({
             email: 'old@x.com',
             subscribed: true,
@@ -89,13 +93,17 @@ test('shows a tier icon next to Subscribed Monthly for paid tiers', () => {
   expect(screen.getAllByRole('img', { name: 'gold tier' })).toHaveLength(2)
 })
 
-test('shows the tag emoji next to VIP and HVU statuses', () => {
+test('shows the VIP diamond and the Invited envelope in the status cell', () => {
   render(
     <MemoryRouter>
       <MembersTable
         members={[
           makeMember({ email: 'vip@x.com', tag: 'vip' }),
-          makeMember({ email: 'hvu@x.com', tag: 'hvu' }),
+          makeMember({
+            email: 'invited@x.com',
+            servers: [],
+            invited_at: new Date().toISOString(),
+          }),
         ]}
         onSelectTier={vi.fn()}
         invitingEmail={null}
@@ -104,8 +112,29 @@ test('shows the tag emoji next to VIP and HVU statuses', () => {
   )
   expect(screen.getByText('💎')).toBeInTheDocument()
   expect(screen.getByText('VIP')).toBeInTheDocument()
-  expect(screen.getByText('⭐')).toBeInTheDocument()
-  expect(screen.getByText('HVU')).toBeInTheDocument()
+  expect(screen.getByText('✉️')).toBeInTheDocument()
+  expect(screen.getByText('Invited')).toBeInTheDocument()
+})
+
+test('an hvu-tagged member shows its lifecycle status, not the HVU tag', () => {
+  render(
+    <MemoryRouter>
+      <MembersTable
+        members={[
+          makeMember({
+            email: 'hvu@x.com',
+            tag: 'hvu',
+            subscribed: true,
+            expires: '2099-01-01T00:00:00+00:00',
+          }),
+        ]}
+        onSelectTier={vi.fn()}
+        invitingEmail={null}
+      />
+    </MemoryRouter>,
+  )
+  expect(screen.getByText('Subscribed Monthly')).toBeInTheDocument()
+  expect(screen.queryByText('HVU')).not.toBeInTheDocument()
 })
 
 test('emails link to the /user detail route', () => {
@@ -242,7 +271,12 @@ test('sorting by status orders rows by derived status', async () => {
             subscribed: true,
             expires: '2099-01-01T00:00:00+00:00',
           }), // Subscribed Monthly
-          makeMember({ member: 'u3', email: 'pending@x.com', servers: [] }), // Invited
+          makeMember({
+            member: 'u3',
+            email: 'pending@x.com',
+            servers: [],
+            invited_at: new Date().toISOString(),
+          }), // Invited
         ]}
         onSelectTier={vi.fn()}
         invitingEmail={null}

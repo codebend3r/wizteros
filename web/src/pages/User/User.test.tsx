@@ -407,19 +407,19 @@ test('tags the member VIP and reflects it in the status and tag rows', async () 
 
 test('clears a tag and returns to the derived status', async () => {
   const user = userEvent.setup()
-  vi.mocked(fetchMember).mockResolvedValue({ ...member, tag: 'hvu' })
+  vi.mocked(fetchMember).mockResolvedValue({ ...member, tag: 'vip' })
   vi.mocked(setMemberTag).mockResolvedValue({ email: 'max@y.com', tag: null })
   renderUser({ email: 'max@y.com' })
 
   await screen.findByRole('heading', { name: 'max' })
-  expect(screen.getByText('HVU')).toBeInTheDocument()
+  expect(screen.getByText('VIP')).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Clear tag' }))
 
   expect(setMemberTag).toHaveBeenCalledWith({ email: 'max@y.com', tag: null })
   expect(await screen.findByText('Subscribed Monthly')).toBeInTheDocument()
-  // only the tag row clears to the em dash; the ⭐ HVU button remains
+  // only the tag row clears to the em dash; the 💎 VIP button remains
   expect(screen.getByText('—')).toBeInTheDocument()
-  expect(screen.getAllByText('⭐ HVU')).toHaveLength(1)
+  expect(screen.getAllByText('💎 VIP')).toHaveLength(1)
 })
 
 // TODO(bun-migration): Under Bun test the tag mutation does not leave isPending

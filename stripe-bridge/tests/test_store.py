@@ -94,6 +94,64 @@ def test_upsert_pending_replaces_placeholder_on_real_checkout(tmp_path):
     assert store.all_customer_tiers(db) == {"a@x.com": "silver"}
 
 
+def test_subscribed_flag_defaults_false_and_checkout_sets_it(tmp_path):
+    db = str(tmp_path / "bridge.db")
+    store.init_db(db)
+    # admin-issued invite: no payment yet -> not subscribed
+    store.upsert_pending_by_email(db, "a@x.com", "INV1", tier="gold")
+    assert store.all_customer_rows(db)["a@x.com"]["subscribed"] is False
+    # a real checkout is the confirmed-payment path -> subscribed
+    store.upsert_pending(db, "cus_1", "a@x.com", "abc", tier="gold")
+    assert store.all_customer_rows(db)["a@x.com"]["subscribed"] is True
+
+
+def test_set_subscribed_toggles_every_row_for_email(tmp_path):
+    db = str(tmp_path / "bridge.db")
+    store.init_db(db)
+    store.upsert_pending(db, "cus_1", "A@X.com", "abc", tier="gold")
+    store.set_subscribed(db, "a@x.com", False)  # a cancel clears it
+    assert store.all_customer_rows(db)["a@x.com"]["subscribed"] is False
+    store.set_subscribed(db, "A@X.com", True)   # a renewal restores it (case-insensitive)
+    assert store.all_customer_rows(db)["a@x.com"]["subscribed"] is True
+
+
+def test_init_db_adds_subscribed_column_to_legacy_table(tmp_path):
+    import sqlite3
+    db = str(tmp_path / "legacy.db")
+    # simulate a pre-payment-signal prod DB (has invited_at, lacks subscribed)
+    with sqlite3.connect(db) as c:
+        c.execute(
+            "CREATE TABLE customer_map (stripe_customer_id TEXT PRIMARY KEY, "
+            "email TEXT, invite_code TEXT, tier TEXT, invited_at TEXT)"
+        )
+        c.execute(
+            "INSERT INTO customer_map VALUES ('cus_legacy', 'old@x.com', 'i', 'gold', '2026-01-01T00:00:00+00:00')"
+        )
+    store.init_db(db)  # must ALTER, not crash, and default existing rows to False
+    assert store.all_customer_rows(db)["old@x.com"]["subscribed"] is False
+
+
+def test_stamp_invited_inserts_placeholder_without_tier_or_payment(tmp_path):
+    db = str(tmp_path / "bridge.db")
+    store.init_db(db)
+    store.stamp_invited(db, "New@X.com")
+    row = store.all_customer_rows(db)["new@x.com"]
+    assert row["invited_at"] is not None  # grace clock started
+    assert row["tier"] is None            # no fabricated tier
+    assert row["subscribed"] is False     # not a payment
+
+
+def test_stamp_invited_preserves_existing_tier_and_flag(tmp_path):
+    db = str(tmp_path / "bridge.db")
+    store.init_db(db)
+    store.upsert_pending(db, "cus_1", "a@x.com", "abc", tier="gold")  # real payment: subscribed, gold
+    store.stamp_invited(db, "A@X.com")
+    row = store.all_customer_rows(db)["a@x.com"]
+    assert row["tier"] == "gold"       # tier untouched
+    assert row["subscribed"] is True   # payment flag untouched
+    assert store.get_mapping(db, "cus_1")["invite_code"] == "abc"  # code untouched
+
+
 def test_set_tier_updates_existing_row_keeping_invite_code(tmp_path):
     db = str(tmp_path / "bridge.db")
     store.init_db(db)
