@@ -10,6 +10,7 @@ import Preloader from '@/components/Preloader/Preloader'
 import {
   AdminAuthError,
   fetchMembers,
+  loadErrorMessage,
   reissueInvite,
   type InviteResult,
   type Member,
@@ -95,7 +96,7 @@ const ManageInner = () => {
   }
 
   const error =
-    loadError && !(loadError instanceof AdminAuthError) ? 'Could not load members.' : actionError
+    loadError && !(loadError instanceof AdminAuthError) ? loadErrorMessage(loadError) : actionError
 
   return (
     <AdminLayout>

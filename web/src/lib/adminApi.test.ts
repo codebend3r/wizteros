@@ -192,3 +192,47 @@ test('fetchPlexAccess rejects an unexpected shape', async () => {
     'Unexpected plex-access response',
   )
 })
+
+// An unset VITE_ADMIN_API_BASE makes every admin call relative, so the dev
+// server (and Netlify) answer it with index.html at 200, which the old code
+// only blew up on later as an opaque JSON parse error.
+test('requestJson names the HTML fallback instead of failing to parse it', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: { get: () => 'text/html; charset=UTF-8' },
+      json: async () => {
+        throw new SyntaxError('Unexpected token <')
+      },
+    }),
+  )
+  await expect(fetchMembers()).rejects.toThrow('VITE_ADMIN_API_BASE')
+})
+
+test('requestJson surfaces the bridge error body on a failed request', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      text: async () => '{"detail":"wizarr unreachable"}',
+    }),
+  )
+  await expect(fetchMembers()).rejects.toThrow('wizarr unreachable')
+})
+
+test('fetchMembers names the offending row and field when validation fails', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => [member, { ...member, email: 'bad@x.com', tier: 'platinum' }],
+    }),
+  )
+  const failure = fetchMembers()
+  await expect(failure).rejects.toThrow('bad@x.com')
+  await expect(failure).rejects.toThrow('tier')
+})
