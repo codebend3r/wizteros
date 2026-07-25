@@ -9,7 +9,8 @@ CREATE TABLE IF NOT EXISTS customer_map (
     stripe_customer_id TEXT PRIMARY KEY,
     email              TEXT,
     invite_code        TEXT,
-    tier               TEXT
+    tier               TEXT,
+    subscribed         INTEGER NOT NULL DEFAULT 0
 )
 """
 
@@ -72,6 +73,18 @@ def _ensure_invited_at_column(c: sqlite3.Connection) -> None:
         c.execute("ALTER TABLE customer_map ADD COLUMN invited_at TEXT")
 
 
+def _ensure_subscribed_column(c: sqlite3.Connection) -> None:
+    """Add customer_map.subscribed to a pre-payment-signal prod DB; no-op once present.
+
+    The flag is the durable record of a confirmed Stripe payment — set by the
+    webhooks, not inferred from a Wizarr expiry — so a member can carry an
+    expiry (a manual access deadline) without reading as a paying subscriber.
+    """
+    cols = [row["name"] for row in c.execute("PRAGMA table_info(customer_map)")]
+    if "subscribed" not in cols:
+        c.execute("ALTER TABLE customer_map ADD COLUMN subscribed INTEGER NOT NULL DEFAULT 0")
+
+
 def init_db(path: str) -> None:
     """Create the tables if missing and backfill the tier column; safe every startup."""
     with _conn(path) as c:
@@ -83,6 +96,7 @@ def init_db(path: str) -> None:
         c.execute(_EVENT_LOG_SCHEMA)
         _ensure_tier_column(c)
         _ensure_invited_at_column(c)
+        _ensure_subscribed_column(c)
 
 
 _ADMIN_KEY_PREFIX = "admin:"
@@ -94,6 +108,8 @@ def upsert_pending(path: str, stripe_customer_id: str, email: str,
 
     Stamps invited_at with the current UTC time — every upsert corresponds to
     a freshly issued invite, and the stamp anchors the grace-period status.
+    Marks the member subscribed: this is the confirmed-payment path (a Stripe
+    checkout completed), which is what "Subscribed Monthly" keys off.
     """
     invited_at = datetime.now(timezone.utc).isoformat()
     with _conn(path) as c:
@@ -105,13 +121,15 @@ def upsert_pending(path: str, stripe_customer_id: str, email: str,
         )
         c.execute(
             """
-            INSERT INTO customer_map (stripe_customer_id, email, invite_code, tier, invited_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO customer_map
+                (stripe_customer_id, email, invite_code, tier, invited_at, subscribed)
+            VALUES (?, ?, ?, ?, ?, 1)
             ON CONFLICT(stripe_customer_id)
             DO UPDATE SET email = excluded.email,
                           invite_code = excluded.invite_code,
                           tier = excluded.tier,
-                          invited_at = excluded.invited_at
+                          invited_at = excluded.invited_at,
+                          subscribed = 1
             """,
             (stripe_customer_id, email, invite_code, tier, invited_at),
         )
@@ -141,6 +159,28 @@ def upsert_pending_by_email(path: str, email: str, invite_code: str,
             )
 
 
+def stamp_invited(path: str, email: str) -> None:
+    """Record that an invite was sent to an email: set invited_at = now only.
+
+    Leaves tier, invite code, and the subscribed flag untouched — for members
+    invited manually outside the bridge (no bridge-issued code). Inserts an
+    admin-keyed placeholder (subscribed defaults to 0) when no row exists yet, so
+    the member reads as "Invited" on /admin/members while the grace clock runs.
+    """
+    invited_at = datetime.now(timezone.utc).isoformat()
+    with _conn(path) as c:
+        cur = c.execute(
+            "UPDATE customer_map SET invited_at = ? WHERE lower(email) = lower(?)",
+            (invited_at, email),
+        )
+        if cur.rowcount == 0:
+            c.execute(
+                "INSERT INTO customer_map (stripe_customer_id, email, invite_code, tier, invited_at) "
+                "VALUES (?, ?, NULL, NULL, ?)",
+                (_ADMIN_KEY_PREFIX + email.lower(), email, invited_at),
+            )
+
+
 def set_tier(path: str, email: str, tier: str) -> None:
     """Hard-set the recorded tier for an email, leaving its invite code alone.
 
@@ -159,6 +199,20 @@ def set_tier(path: str, email: str, tier: str) -> None:
                 "VALUES (?, ?, NULL, ?)",
                 (_ADMIN_KEY_PREFIX + email.lower(), email, tier),
             )
+
+
+def set_subscribed(path: str, email: str, value: bool) -> None:
+    """Set the confirmed-payment flag on every row for an email (case-insensitive).
+
+    Driven by the Stripe webhooks — a paid invoice sets it, a deleted
+    subscription clears it. No-op when the bridge has no row for the email yet
+    (a renewal always follows the checkout that created the row).
+    """
+    with _conn(path) as c:
+        c.execute(
+            "UPDATE customer_map SET subscribed = ? WHERE lower(email) = lower(?)",
+            (int(value), email),
+        )
 
 
 def is_event_processed(path: str, event_id: str) -> bool:
@@ -333,16 +387,23 @@ def all_customer_tiers(path: str) -> dict[str, str | None]:
 
 
 def all_customer_rows(path: str) -> dict[str, dict]:
-    """Every customer's lowercased email -> {"tier", "invited_at"} (values may be None).
+    """Every customer's lowercased email -> {"tier", "invited_at", "subscribed"}.
 
-    The invited_at stamp lets the admin UI age a pending invite into the
-    "Declined Invite" status once the grace period lapses.
+    tier and invited_at may be None. The invited_at stamp lets the admin UI age
+    a pending invite into the "Declined Invite" status once the grace period
+    lapses; subscribed is the confirmed-payment flag that drives "Subscribed
+    Monthly" independently of any Wizarr expiry.
     """
     with _conn(path) as c:
         rows = c.execute(
-            "SELECT email, tier, invited_at FROM customer_map WHERE email IS NOT NULL"
+            "SELECT email, tier, invited_at, subscribed "
+            "FROM customer_map WHERE email IS NOT NULL"
         ).fetchall()
     return {
-        row["email"].lower(): {"tier": row["tier"], "invited_at": row["invited_at"]}
+        row["email"].lower(): {
+            "tier": row["tier"],
+            "invited_at": row["invited_at"],
+            "subscribed": bool(row["subscribed"]),
+        }
         for row in rows
     }

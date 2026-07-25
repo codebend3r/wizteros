@@ -37,11 +37,10 @@ const DAY_MS = 24 * 60 * 60 * 1000
 const STATUS_EMOJI: Record<MemberStatus, string> = {
   'Subscribed Monthly': '🟢',
   'Expired Member': '🔴',
-  Invited: '🟡',
+  Invited: '✉️',
   'Declined Invite': '🚫',
   Uninvited: '⚪',
   VIP: '💎',
-  HVU: '⭐',
 }
 
 const TAG_LABELS: Record<MemberTag, string> = {

@@ -108,6 +108,19 @@ def test_list_members_dedupes_and_joins_tier(admin_db):
     assert nora["libraries"] == {"Syrax": []}  # unknown tier grants nothing
 
 
+def test_subscribed_is_the_flag_not_the_expiry(admin_db):
+    # a@x.com carries a future Wizarr expiry in USERS, but only an admin-issued
+    # invite (no confirmed payment). subscribed must be False despite the expiry
+    # — this is what lets a member read "Invited" while a 14-day clock counts down.
+    a, dbp = admin_db
+    store.upsert_pending_by_email(dbp, "a@x.com", "INV1", tier="gold")
+    by_email = {m["email"].lower(): m for m in a.list_members()}
+    cj = by_email["a@x.com"]
+    assert cj["expires"] == "2026-09-10T00:00:00+00:00"  # future expiry present
+    assert cj["subscribed"] is False                     # but no payment on record
+    assert cj["invited_at"] is not None                  # admin invite stamped it
+
+
 def test_get_member_found_and_missing(admin_db):
     a, dbp = admin_db
     store.upsert_pending(dbp, "cus_1", "a@x.com", "abc", tier="gold")
@@ -128,7 +141,7 @@ def test_list_members_includes_subscribers_not_yet_joined(admin_db):
     mx = by_email["max@x.com"]
     assert mx["tier"] == "youth"
     assert mx["downloads"] is True    # derived from youth
-    assert mx["subscribed"] is False  # no expiry -> Invite button in the UI
+    assert mx["subscribed"] is True   # checkout completed -> confirmed payment
     assert mx["servers"] == []
     assert mx["libraries"] == {}      # not on any server yet
     assert mx["invited_at"] is not None  # upsert stamped the grace clock
@@ -140,7 +153,7 @@ def test_get_member_falls_back_to_subscriber(admin_db):
     m = a.get_member("max@x.com")
     assert m["email"].lower() == "max@x.com"
     assert m["tier"] == "youth"
-    assert m["subscribed"] is False
+    assert m["subscribed"] is True  # checkout completed -> confirmed payment
     with pytest.raises(HTTPException) as missing:
         a.get_member("nobody@nowhere.com")  # in neither Wizarr nor customer_map
     assert missing.value.status_code == 404
