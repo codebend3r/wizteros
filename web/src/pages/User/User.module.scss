@@ -103,6 +103,17 @@
   color: var(--color-muted);
 }
 
+// Marks an expiry that is derived from the invite window rather than a real
+// access deadline recorded against a server.
+.inviteWindow {
+  padding: calc(var(--space-1) / 2) var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  color: var(--color-muted);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+}
+
 .expiryValue {
   display: flex;
   align-items: center;

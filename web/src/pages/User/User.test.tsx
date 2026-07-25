@@ -67,6 +67,10 @@ const renderUser = ({ email }: { email: string | null }) => {
   )
 }
 
+// The value cell paired with a label in the member details list.
+const detailValue = (label: string): string =>
+  screen.getByText(label, { selector: 'dt' }).nextElementSibling?.textContent ?? ''
+
 beforeEach(() => {
   vi.mocked(fetchMemberNotes).mockResolvedValue({ email: 'max@y.com', notes: '' })
   vi.mocked(fetchMemberEvents).mockResolvedValue([])
@@ -143,6 +147,50 @@ test('keeps the em dash on the expiry row for a member with no server records', 
 
   await screen.findByRole('heading', { name: 'max' })
   expect(screen.queryByText('♾️ Never expires')).not.toBeInTheDocument()
+})
+
+test('shows the invite date and time, and an em dash when never invited', async () => {
+  const invitedAt = '2099-08-01T10:30:00+00:00'
+  vi.mocked(fetchMember).mockResolvedValue({ ...member, invited_at: invitedAt })
+  const { unmount } = renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  expect(detailValue('Invited')).toBe(new Date(invitedAt).toLocaleString())
+  unmount()
+
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  expect(detailValue('Invited')).toBe('—')
+})
+
+test('expires an unredeemed invite 14 days after the invite date', async () => {
+  const invitedAt = '2099-08-01T10:30:00+00:00'
+  vi.mocked(fetchMember).mockResolvedValue({
+    ...member,
+    expires: null,
+    subscribed: false,
+    servers: [],
+    libraries: {},
+    invited_at: invitedAt,
+  })
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  const expiry = new Date(new Date(invitedAt).getTime() + 14 * 24 * 60 * 60 * 1000)
+  expect(detailValue('Expiry')).toContain(expiry.toLocaleString())
+  expect(detailValue('Expiry')).toContain('14 days from the invite')
+  expect(detailValue('Expiry')).toMatch(/\(\d+ days left\)/)
+})
+
+test('keeps a real access expiry ahead of the invite window', async () => {
+  vi.mocked(fetchMember).mockResolvedValue({ ...member, invited_at: '2099-08-01T10:30:00+00:00' })
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  expect(detailValue('Expiry')).toContain(new Date('2099-09-01T00:00:00+00:00').toLocaleString())
+  expect(detailValue('Expiry')).not.toContain('14 days from the invite')
 })
 
 test('re-invites through the tier menu and confirm modal', async () => {
@@ -418,7 +466,7 @@ test('clears a tag and returns to the derived status', async () => {
   expect(setMemberTag).toHaveBeenCalledWith({ email: 'max@y.com', tag: null })
   expect(await screen.findByText('Subscribed Monthly')).toBeInTheDocument()
   // only the tag row clears to the em dash; the 💎 VIP button remains
-  expect(screen.getByText('—')).toBeInTheDocument()
+  expect(detailValue('Tag')).toBe('—')
   expect(screen.getAllByText('💎 VIP')).toHaveLength(1)
 })
 

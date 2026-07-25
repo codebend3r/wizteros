@@ -27,7 +27,13 @@ import {
   type PaidTier,
   type PlexAccess,
 } from '@/lib/adminApi'
-import { isPaidTier, PAID_TIERS, TIER_DOWNLOADS, TIER_LABELS } from '@/lib/inviteRules'
+import {
+  INVITE_LINK_DAYS,
+  isPaidTier,
+  PAID_TIERS,
+  TIER_DOWNLOADS,
+  TIER_LABELS,
+} from '@/lib/inviteRules'
 import { deriveStatus, type MemberStatus } from '@/lib/memberStatus'
 import { MEMBERS_QUERY_KEY } from '@/pages/Manage/Manage'
 import styles from '@/pages/User/User.module.scss'
@@ -48,13 +54,18 @@ const TAG_LABELS: Record<MemberTag, string> = {
   hvu: '⭐ HVU',
 }
 
-const parseExpiry = (expires: string | null): Date | null => {
-  if (!expires) {
+const parseTimestamp = (value: string | null): Date | null => {
+  if (!value) {
     return null
   }
-  const date = new Date(expires)
+  const date = new Date(value)
   return Number.isNaN(date.getTime()) ? null : date
 }
+
+// The invite link stops working INVITE_LINK_DAYS after it was sent, which is
+// also when the status ages from Invited into Declined Invite.
+const inviteWindowEnd = (invitedAt: Date): Date =>
+  new Date(invitedAt.getTime() + INVITE_LINK_DAYS * DAY_MS)
 
 // The picker's seed: the given date (current expiry, else tomorrow) at one
 // minute after midnight, in the local datetime-local format.
@@ -100,7 +111,11 @@ const MemberDetails = ({
   onToggleDownloads: () => void
 }) => {
   const status = deriveStatus({ member })
-  const expiry = parseExpiry(member.expires)
+  const expiry = parseTimestamp(member.expires)
+  const invitedAt = parseTimestamp(member.invited_at)
+  // A member with no server records and no expiry has nothing but their open
+  // invite, so the invite's own deadline is the expiry that matters to them.
+  const inviteExpiry = invitedAt ? inviteWindowEnd(invitedAt) : null
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
@@ -168,6 +183,8 @@ const MemberDetails = ({
           <span className={styles.spinner} role="status" aria-label="Updating downloads" />
         )}
       </dd>
+      <dt>Invited</dt>
+      <dd>{invitedAt ? invitedAt.toLocaleString() : '—'}</dd>
       <dt>Expiry</dt>
       <dd className={styles.expiryValue}>
         {expiry ? (
@@ -179,6 +196,12 @@ const MemberDetails = ({
           // A joined member with no expiry has unlimited access — say so
           // instead of the pending-member em dash.
           <span>♾️ Never expires</span>
+        ) : inviteExpiry ? (
+          <>
+            <span>{inviteExpiry.toLocaleString()}</span>
+            <span className={styles.daysLeft}>({formatDaysLeft(inviteExpiry)})</span>
+            <span className={styles.inviteWindow}>{INVITE_LINK_DAYS} days from the invite</span>
+          </>
         ) : (
           '—'
         )}
@@ -490,7 +513,7 @@ const UserInner = () => {
 
   const expiryValue =
     expiryDraft ??
-    toExpiryDraft(parseExpiry(member?.expires ?? null) ?? new Date(Date.now() + DAY_MS))
+    toExpiryDraft(parseTimestamp(member?.expires ?? null) ?? new Date(Date.now() + DAY_MS))
   const expiryValid = !Number.isNaN(new Date(expiryValue).getTime())
 
   const savedNotes = memberNotes?.notes ?? ''
@@ -637,8 +660,7 @@ const UserInner = () => {
             <section className={styles.controlSection}>
               <h2 className={styles.sectionTitle}>Tag</h2>
               <p className={styles.controlHint}>
-                A manual designation shown as the member's status — VIP or High-Volume User (HVU) —
-                it overrides the derived status until cleared.
+                A manual designation shown as the member's status
               </p>
               <div className={styles.controlRow}>
                 <button
