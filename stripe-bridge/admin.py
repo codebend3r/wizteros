@@ -135,6 +135,42 @@ def _member_from_customer(email: str, row: dict) -> dict:
     }
 
 
+def _with_plex_access(members: list[dict]) -> list[dict]:
+    """Union each member's live plex.tv share into their servers and libraries.
+
+    plex.tv is ground truth for what a member can actually see: it covers
+    legacy shares that never went through an invite, and members whose tier
+    was never recorded (whose tier-derived library list is empty). One bulk
+    lookup — the same handful of calls a single-member lookup costs — serves
+    every row. Best effort: an unset token or a plex.tv failure leaves the
+    tier-derived values in place rather than failing the whole list.
+    """
+    if not plex.PLEX_TOKEN:
+        return members
+    try:
+        access = plex.shared_access_all()
+    except requests.RequestException as exc:
+        log.error("plex.tv bulk lookup failed; falling back to tier access: %s", exc)
+        return members
+    merged = []
+    for member in members:
+        shares = access.get(member["email"].lower()) if member["email"] else None
+        if not shares:
+            merged.append(member)
+            continue
+        servers = sorted({*member["servers"], *shares})
+        merged.append({
+            **member,
+            "servers": servers,
+            "libraries": {
+                server: (shares[server]["libraries"] if server in shares
+                         else member["libraries"].get(server, []))
+                for server in servers
+            },
+        })
+    return merged
+
+
 def _with_overrides(members: list[dict]) -> list[dict]:
     """Stamp each member dict with its admin overrides.
 
@@ -158,7 +194,8 @@ def list_members() -> list[dict]:
     """Every member: Wizarr users AND Stripe subscribers who haven't joined yet.
 
     Wizarr's user list only has people who redeemed an invite, so subscribers
-    still holding a pending invite are unioned in from the bridge's customer_map.
+    still holding a pending invite are unioned in from the bridge's customer_map,
+    and each row's servers/libraries are reconciled against the live plex.tv share.
     """
     customers = store.all_customer_rows(MAP_DB_PATH)
     members = _dedupe_members(client.list_users(), customers, client.list_libraries())
@@ -169,7 +206,8 @@ def list_members() -> list[dict]:
         if email not in joined
     ]
     return sorted(
-        _with_overrides(members + pending), key=lambda m: m["member"].lower())
+        _with_overrides(_with_plex_access(members + pending)),
+        key=lambda m: m["member"].lower())
 
 
 @router.get("/admin/member", dependencies=[Depends(require_admin)])
