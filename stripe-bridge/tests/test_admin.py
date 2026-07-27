@@ -41,6 +41,9 @@ def admin_db(tmp_path, monkeypatch):
     store.init_db(dbp)
     monkeypatch.setattr(admin, "MAP_DB_PATH", dbp)
     monkeypatch.setattr(admin, "send_invite_email", MagicMock(), raising=False)
+    # No plex.tv by default: the members list must be reachable without a token,
+    # and tests that exercise the live union opt in explicitly.
+    monkeypatch.setattr(admin.plex, "PLEX_TOKEN", "")
     admin.client = MagicMock()
     admin.client.list_users.return_value = USERS
     admin.client.list_libraries.return_value = LIBRARIES
@@ -106,6 +109,76 @@ def test_list_members_dedupes_and_joins_tier(admin_db):
     assert nora["tier"] == "unknown"
     assert nora["downloads"] is None
     assert nora["libraries"] == {"Syrax": []}  # unknown tier grants nothing
+
+
+PLEX_SHARES = {
+    "a@x.com": {
+        "Meleys": {"all_libraries": True, "allow_sync": True,
+                   "libraries": ["01. Movies", "05. TV Shows"]},
+        "Caraxes": {"all_libraries": False, "allow_sync": False,
+                    "libraries": ["09. Basketball"]},
+    },
+    "nora@x.com": {
+        "Syrax": {"all_libraries": False, "allow_sync": False, "libraries": ["02. Anime"]},
+    },
+}
+
+
+def test_list_members_unions_the_live_plex_share(admin_db, monkeypatch):
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_1", "a@x.com", "abc", tier="gold")
+    monkeypatch.setattr(a.plex, "PLEX_TOKEN", "tok")
+    monkeypatch.setattr(a.plex, "shared_access_all", lambda: PLEX_SHARES)
+    by_email = {m["email"].lower(): m for m in a.list_members()}
+
+    cj = by_email["a@x.com"]
+    # a server only plex.tv knows about is unioned in with Wizarr's records
+    assert cj["servers"] == ["Caraxes", "Meleys", "Vhagar"]
+    # plex is ground truth where it has an answer...
+    assert cj["libraries"]["Meleys"] == ["01. Movies", "05. TV Shows"]
+    assert cj["libraries"]["Caraxes"] == ["09. Basketball"]
+    # ...and the tier-derived list stands for a server plex didn't report
+    assert cj["libraries"]["Vhagar"] == ["03. 4K Movies"]
+
+    # unknown tier derives no libraries, so plex is the only real answer here
+    assert by_email["nora@x.com"]["libraries"] == {"Syrax": ["02. Anime"]}
+
+
+def test_list_members_gives_plex_only_servers_to_a_member_who_never_joined(admin_db, monkeypatch):
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_max", "max@x.com", "INV1", tier="youth")
+    monkeypatch.setattr(a.plex, "PLEX_TOKEN", "tok")
+    monkeypatch.setattr(a.plex, "shared_access_all", lambda: {
+        "max@x.com": {"Meleys": {"all_libraries": False, "allow_sync": False,
+                                 "libraries": ["03. Family Movies"]}},
+    })
+    by_email = {m["email"].lower(): m for m in a.list_members()}
+    mx = by_email["max@x.com"]
+    assert mx["servers"] == ["Meleys"]  # legacy share, no Wizarr record
+    assert mx["libraries"] == {"Meleys": ["03. Family Movies"]}
+
+
+def test_list_members_falls_back_to_tier_access_without_a_plex_token(admin_db):
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_1", "a@x.com", "abc", tier="gold")
+    cj = {m["email"].lower(): m for m in a.list_members()}["a@x.com"]
+    assert cj["servers"] == ["Meleys", "Vhagar"]
+    assert cj["libraries"] == {"Meleys": ["01. Movies"], "Vhagar": ["03. 4K Movies"]}
+
+
+def test_list_members_survives_a_plex_tv_failure(admin_db, monkeypatch):
+    # plex.tv is an enrichment, never a dependency: the table must still load.
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_1", "a@x.com", "abc", tier="gold")
+    monkeypatch.setattr(a.plex, "PLEX_TOKEN", "tok")
+
+    def boom():
+        raise requests.ConnectionError("plex.tv down")
+
+    monkeypatch.setattr(a.plex, "shared_access_all", boom)
+    cj = {m["email"].lower(): m for m in a.list_members()}["a@x.com"]
+    assert cj["servers"] == ["Meleys", "Vhagar"]
+    assert cj["libraries"] == {"Meleys": ["01. Movies"], "Vhagar": ["03. 4K Movies"]}
 
 
 def test_subscribed_is_the_flag_not_the_expiry(admin_db):
