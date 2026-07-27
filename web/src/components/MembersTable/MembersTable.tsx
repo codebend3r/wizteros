@@ -26,6 +26,15 @@ const formatExpiry = (expires: string | null): string => {
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString()
 }
 
+// Old-shape members restored from the persisted query cache were written
+// before the bridge sent libraries, so the map can be missing entirely.
+const countLibraries = (libraries: Member['libraries']): number =>
+  Object.values(libraries ?? {}).reduce((total, names) => total + names.length, 0)
+
+const accessLabel = ({ servers, libraries }: { servers: number; libraries: number }): string =>
+  `${servers} ${servers === 1 ? 'server' : 'servers'}, ` +
+  `${libraries} ${libraries === 1 ? 'library' : 'libraries'}`
+
 const formatDownloads = (downloads: boolean | null): string => {
   if (downloads === null) {
     return '—'
@@ -168,7 +177,7 @@ const MembersTable = ({ members, onSelectTier, invitingEmail }: MembersTableProp
             <SortHeader column="email" label="Email" sort={sort} onToggle={toggleSort} />
             <th>Tier</th>
             <th>Downloads</th>
-            <th>Servers</th>
+            <th>Servers/Libs</th>
             <th>Expiry</th>
             <SortHeader column="status" label="Status" sort={sort} onToggle={toggleSort} />
             <th>Action</th>
@@ -177,6 +186,7 @@ const MembersTable = ({ members, onSelectTier, invitingEmail }: MembersTableProp
         <tbody>
           {visible.map((member) => {
             const status = deriveStatus({ member })
+            const libraryCount = countLibraries(member.libraries)
             return (
               <tr key={`${member.email}-${member.member}`}>
                 <td>{member.member}</td>
@@ -197,8 +207,15 @@ const MembersTable = ({ members, onSelectTier, invitingEmail }: MembersTableProp
                 <td>{formatDownloads(member.downloads)}</td>
                 <td>
                   {member.servers.length ? (
-                    <span className={styles.servers} title={member.servers.join(', ')}>
-                      {member.servers.length}
+                    <span
+                      className={styles.servers}
+                      title={member.servers.join(', ')}
+                      aria-label={accessLabel({
+                        servers: member.servers.length,
+                        libraries: libraryCount,
+                      })}
+                    >
+                      {member.servers.length} / {libraryCount}
                     </span>
                   ) : (
                     '—'

@@ -75,3 +75,21 @@ def test_shared_access_skips_unshared_sections():
 def test_shared_access_empty_for_unknown_email():
     _mock_plex_tv()
     assert plex.shared_access_for_email("ghost@x.com") == {}
+
+
+@responses.activate
+def test_shared_access_all_groups_every_email_in_one_pass():
+    # A shared_servers document lists every account the server is shared with,
+    # so the whole roster costs one call per owned server — not per member.
+    _mock_plex_tv()
+    access = plex.shared_access_all()
+    assert set(access) == {"harman@x.com", "other@x.com"}       # keys lowercased
+    assert set(access["other@x.com"]) == {"Meleys", "Vermithor"}
+    assert access["harman@x.com"]["Meleys"] == {
+        "all_libraries": True,
+        "allow_sync": True,
+        "libraries": ["01. Movies", "90. Private"],
+    }
+    assert access["other@x.com"]["Vermithor"]["libraries"] == ["02. Anime"]  # shared="0" dropped
+    shared_calls = [c for c in responses.calls if "shared_servers" in c.request.url]
+    assert len(shared_calls) == 2  # one per owned server, regardless of member count
