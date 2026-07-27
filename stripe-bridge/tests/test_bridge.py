@@ -85,6 +85,53 @@ def test_checkout_existing_member_keeps_access_when_servers_covered(bridge):
     bridge.send_invite_email.assert_called_once_with("a@x.com", "http://inv.test/j/abc")
 
 
+def test_checkout_existing_covered_member_expiry_resets_to_access_duration(bridge):
+    # A covered member keeps access without ever redeeming the new invite, so
+    # the checkout itself must stamp the paid expiry (now + ACCESS_DURATION)
+    # on every surviving record — otherwise a short pre-signup window (e.g. the
+    # 14-day Invited backfill) survives the purchase.
+    from datetime import datetime, timedelta, timezone
+    bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
+    bridge.client.create_invite.return_value = {"code": "abc", "url": "http://x/j/abc"}
+    bridge.client.find_users_by_email.return_value = [
+        {"id": 147, "server": "Vermithor"},
+        {"id": 57, "server": "Meleys"},
+    ]
+    bridge.handle_event({
+        "type": "checkout.session.completed",
+        "id": "evt_checkout_covered_expiry",
+        "data": {"object": {"id": "cs_1", "customer": "cus_1",
+                            "customer_details": {"email": "a@x.com"},
+                            "metadata": {"tier": "gold"}}},
+    })
+    calls = bridge.client.set_expiry.call_args_list
+    assert sorted(c.args[0] for c in calls) == [57, 147]
+    expiries = {c.args[1] for c in calls}
+    assert len(expiries) == 1  # one absolute expiry applied uniformly
+    expected = datetime.now(timezone.utc) + timedelta(days=35)
+    assert abs((datetime.fromisoformat(expiries.pop()) - expected).total_seconds()) < 60
+
+
+def test_checkout_vip_member_is_never_time_boxed(bridge):
+    import store
+    store.set_member_tag(bridge.MAP_DB_PATH, "vip@x.com", "vip")
+    bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
+    bridge.client.create_invite.return_value = {"code": "abc", "url": "http://x/j/abc"}
+    bridge.client.find_users_by_email.return_value = [
+        {"id": 147, "server": "Vermithor"},
+        {"id": 57, "server": "Meleys"},
+    ]
+    bridge.handle_event({
+        "type": "checkout.session.completed",
+        "id": "evt_checkout_vip",
+        "data": {"object": {"id": "cs_1", "customer": "cus_1",
+                            "customer_details": {"email": "VIP@x.com"},
+                            "metadata": {"tier": "gold"}}},
+    })
+    bridge.client.set_expiry.assert_not_called()
+    bridge.client.disable_user.assert_not_called()
+
+
 def test_checkout_existing_member_resets_all_records_when_a_server_drops(bridge):
     # Wizarr has no per-server unshare (disable severs the whole plex.tv
     # friendship), so when the new tier leaves a current server uncovered the
@@ -156,6 +203,88 @@ def test_invoice_paid_renewal_extends(bridge):
     events = store.events_for_email(bridge.MAP_DB_PATH, "a@x.com")
     assert events[0]["action"] == "Payment received"
     assert "access extended to" in events[0]["detail"]
+
+
+def test_invoice_paid_renewal_leaves_vip_expiry_alone(bridge):
+    import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "vip@x.com", "abc")
+    store.set_member_tag(bridge.MAP_DB_PATH, "vip@x.com", "vip")
+    bridge.client.find_user_ids_by_email.return_value = [9, 10]  # would be stamped if not VIP
+    bridge.handle_event({
+        "type": "invoice.paid",
+        "id": "evt_inv_vip",
+        "data": {"object": {"customer": "cus_1", "customer_email": "vip@x.com",
+                            "billing_reason": "subscription_cycle"}},
+    })
+    bridge.client.set_expiry.assert_not_called()
+    # the payment itself is still acknowledged
+    assert store.all_customer_rows(bridge.MAP_DB_PATH)["vip@x.com"]["subscribed"] is True
+    events = store.events_for_email(bridge.MAP_DB_PATH, "vip@x.com")
+    assert events[0]["action"] == "Payment received"
+
+
+def test_reconcile_stamps_new_member_records_that_joined_without_expiry(bridge):
+    # Wizarr never applies an invite's duration to the records it creates, so a
+    # brand-new member redeems into expires=None. The sweep must stamp
+    # invited_at + ACCESS_DURATION on exactly those records.
+    from datetime import datetime, timedelta, timezone
+    import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "new@x.com", "abc", tier="gold")
+    bridge.client.list_users.return_value = [
+        {"id": 259, "email": "new@x.com", "server": "Vermithor", "expires": None},
+        {"id": 260, "email": "new@x.com", "server": "Meleys", "expires": None},
+        {"id": 9, "email": "other@x.com", "server": "Vermithor", "expires": None},
+    ]
+    stamped = bridge.reconcile_pending_expiries()
+    assert stamped == 2
+    calls = bridge.client.set_expiry.call_args_list
+    assert sorted(c.args[0] for c in calls) == [259, 260]
+    invited_at = datetime.fromisoformat(
+        store.all_customer_rows(bridge.MAP_DB_PATH)["new@x.com"]["invited_at"])
+    expected = invited_at + timedelta(days=35)
+    assert all(datetime.fromisoformat(c.args[1]) == expected for c in calls)
+    events = store.events_for_email(bridge.MAP_DB_PATH, "new@x.com")
+    assert events[0]["action"] == "Expiry stamped"
+
+
+def test_reconcile_skips_vips_and_records_with_an_expiry(bridge):
+    import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "vip@x.com", "abc")
+    store.set_member_tag(bridge.MAP_DB_PATH, "vip@x.com", "vip")
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_2", "paid@x.com", "def")
+    bridge.client.list_users.return_value = [
+        {"id": 1, "email": "vip@x.com", "server": "Vermithor", "expires": None},
+        {"id": 2, "email": "paid@x.com", "server": "Vermithor", "expires": "2099-01-01T00:00:00"},
+    ]
+    assert bridge.reconcile_pending_expiries() == 0
+    bridge.client.set_expiry.assert_not_called()
+
+
+def test_reconcile_ignores_unsubscribed_members(bridge):
+    import store
+    store.stamp_invited(bridge.MAP_DB_PATH, "invited@x.com")  # invited, never paid
+    bridge.client.list_users.return_value = [
+        {"id": 1, "email": "invited@x.com", "server": "Vermithor", "expires": None},
+    ]
+    assert bridge.reconcile_pending_expiries() == 0
+    bridge.client.set_expiry.assert_not_called()
+    # nothing pending at all -> the slow Wizarr users call is skipped entirely
+    bridge.client.list_users.assert_not_called()
+
+
+def test_reconcile_never_stamps_a_date_already_in_the_past(bridge, monkeypatch):
+    # A stale subscribed row (e.g. expiry manually cleared long after signup)
+    # must not let a background sweep revoke access with a past-dated expiry.
+    import sqlite3
+    import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "old@x.com", "abc")
+    with sqlite3.connect(bridge.MAP_DB_PATH) as c:
+        c.execute("UPDATE customer_map SET invited_at = '2020-01-01T00:00:00+00:00'")
+    bridge.client.list_users.return_value = [
+        {"id": 1, "email": "old@x.com", "server": "Vermithor", "expires": None},
+    ]
+    assert bridge.reconcile_pending_expiries() == 0
+    bridge.client.set_expiry.assert_not_called()
 
 
 def test_duplicate_event_is_ignored(bridge):

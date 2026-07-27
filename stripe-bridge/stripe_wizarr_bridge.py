@@ -1,6 +1,8 @@
+import asyncio
 import json
 import logging
 import os
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
 import stripe
@@ -24,6 +26,7 @@ ACCESS_DURATION = os.environ.get("ACCESS_DURATION", "35")
 PUBLIC_INVITE_BASE = os.environ["PUBLIC_INVITE_BASE"].rstrip("/")
 
 MAP_DB_PATH = os.environ.get("MAP_DB_PATH", "/data/bridge.db")
+RECONCILE_INTERVAL_SECONDS = int(os.environ.get("RECONCILE_INTERVAL_SECONDS", "3600"))
 
 stripe.api_key = STRIPE_API_KEY
 log = logging.getLogger("bridge")
@@ -32,7 +35,67 @@ logging.basicConfig(level=logging.INFO)
 client = WizarrClient(WIZARR_BASE_URL, WIZARR_API_KEY)
 store.init_db(MAP_DB_PATH)
 
-app = FastAPI()
+def reconcile_pending_expiries() -> int:
+    """Stamp the paid expiry on records that joined without one; returns records stamped.
+
+    Wizarr does not translate an invite's duration into record expiry, so a
+    brand-new member redeems into records with no expiry at all — and no
+    webhook fires at redemption to correct it. Sweep every subscribed, non-VIP
+    member and stamp invited_at + ACCESS_DURATION (the signup date anchors the
+    window) on any of their records still unlimited. Records that already
+    carry an expiry are never touched, and a computed date already in the past
+    is skipped rather than letting a background job revoke access.
+    """
+    customers = store.all_customer_rows(MAP_DB_PATH)
+    tags = store.all_member_tags(MAP_DB_PATH)
+    pending = {
+        email: row for email, row in customers.items()
+        if row["subscribed"] and row["invited_at"] and tags.get(email) != "vip"
+    }
+    if not pending:
+        return 0
+    users = client.list_users()
+    now = datetime.now(timezone.utc)
+    stamped = 0
+    for email, row in pending.items():
+        records = [u for u in users
+                   if (u.get("email") or "").lower() == email and not u.get("expires")]
+        if not records:
+            continue
+        expiry = datetime.fromisoformat(row["invited_at"]) + timedelta(days=int(ACCESS_DURATION))
+        if expiry <= now:
+            log.warning("reconcile: computed expiry %s for %s is already past; skipping",
+                        expiry.isoformat(), email)
+            continue
+        for u in records:
+            client.set_expiry(u["id"], expiry.isoformat())
+        stamped += len(records)
+        log.info("reconcile: stamped expiry %s on %d record(s) for %s",
+                 expiry.isoformat(), len(records), email)
+        store.record_event(MAP_DB_PATH, email, "Expiry stamped",
+                           f"joined with no expiry — set to {expiry.isoformat()[:10]}")
+    return stamped
+
+
+async def _reconcile_loop() -> None:
+    """Run the expiry sweep now and every RECONCILE_INTERVAL_SECONDS thereafter."""
+    while True:
+        try:
+            await asyncio.to_thread(reconcile_pending_expiries)
+        except Exception:
+            log.exception("expiry reconcile sweep failed")
+        await asyncio.sleep(RECONCILE_INTERVAL_SECONDS)
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    """Keep the reconcile sweep running for the life of the server."""
+    task = asyncio.create_task(_reconcile_loop())
+    yield
+    task.cancel()
+
+
+app = FastAPI(lifespan=_lifespan)
 
 ADMIN_ALLOWED_ORIGINS = [
     o.strip() for o in os.environ.get("ADMIN_ALLOWED_ORIGINS", "").split(",") if o.strip()
@@ -127,6 +190,12 @@ def _dispatch(etype: str, obj: dict) -> None:
         log.info("sent invite to %s", email)
         store.record_event(MAP_DB_PATH, email, "Signed up",
                            f"{tier} tier — invite emailed")
+        # VIP access is never time-boxed or reshuffled — a VIP's checkout is
+        # just a contribution, so their records stay exactly as they are (no
+        # disable, no expiry stamp).
+        if store.get_member_tag(MAP_DB_PATH, email) == "vip":
+            log.info("%s is VIP — existing records left untouched", email)
+            return
         # Existing access survives the invite window: redeeming re-scopes the
         # share in place on every covered server. Disable-first only when the
         # new tier leaves a current server uncovered (no per-server unshare),
@@ -143,6 +212,18 @@ def _dispatch(etype: str, obj: dict) -> None:
         if existing:
             log.info("reset %d existing record(s) for %s pending re-join",
                      len(existing), email)
+        # Covered records keep access without ever redeeming the new invite,
+        # so the purchase itself must stamp the paid expiry — otherwise a
+        # shorter pre-signup window (e.g. the 14-day Invited backfill) would
+        # survive the checkout.
+        disabled = set(existing)
+        surviving = [r["id"] for r in records if r["id"] not in disabled]
+        expires = access_expiry_iso()
+        for uid in surviving:
+            client.set_expiry(uid, expires)
+        if surviving:
+            log.info("stamped expiry %s on %d surviving record(s) for %s",
+                     expires, len(surviving), email)
 
     elif etype == "invoice.paid":
         if obj.get("billing_reason") == "subscription_create":
@@ -152,6 +233,12 @@ def _dispatch(etype: str, obj: dict) -> None:
         email = obj.get("customer_email") or customer_email(customer_id)
         if email:
             store.set_subscribed(MAP_DB_PATH, email, True)
+        # VIP access is never time-boxed — acknowledge the payment, leave expiry alone.
+        if email and store.get_member_tag(MAP_DB_PATH, email) == "vip":
+            log.info("renewal: %s is VIP — expiry untouched", email)
+            store.record_event(MAP_DB_PATH, email, "Payment received",
+                               "VIP — expiry untouched")
+            return
         ids = resolve_user_ids(client, MAP_DB_PATH, customer_id, email)
         expires = access_expiry_iso()
         for uid in ids:

@@ -309,6 +309,16 @@ def set_member_tag(path: str, email: str, tag: str | None) -> None:
             )
 
 
+def get_member_tag(path: str, email: str) -> str | None:
+    """The member's manual designation ("vip"/"hvu"), or None when untagged."""
+    with _conn(path) as c:
+        row = c.execute(
+            "SELECT tag FROM member_tags WHERE email = ?",
+            (email.lower(),),
+        ).fetchone()
+    return row["tag"] if row else None
+
+
 def all_member_tags(path: str) -> dict[str, str]:
     """Map lowercased email -> manual tag for every tagged member."""
     with _conn(path) as c:
