@@ -387,3 +387,43 @@ test('formats a real expiry date and shows — for null', () => {
     screen.getByText(new Date('2099-09-01T00:00:00+00:00').toLocaleDateString()),
   ).toBeInTheDocument()
 })
+
+test('Servers/Libs counts the servers and their libraries', () => {
+  render(
+    <MemoryRouter>
+      <MembersTable
+        members={[
+          makeMember({
+            email: 'many@x.com',
+            servers: ['Meleys', 'Vhagar'],
+            libraries: { Meleys: ['01. Movies', '02. TV Shows'], Vhagar: ['03. 4K Movies'] },
+          }),
+          makeMember({
+            email: 'one@x.com',
+            servers: ['Syrax'],
+            libraries: { Syrax: ['01. Movies'] },
+          }),
+        ]}
+        onSelectTier={vi.fn()}
+        invitingEmail={null}
+      />
+    </MemoryRouter>,
+  )
+  expect(screen.getByRole('columnheader', { name: 'Servers/Libs' })).toBeInTheDocument()
+  expect(screen.getByLabelText('2 servers, 3 libraries')).toHaveTextContent('2 / 3')
+  // the count reads as prose for a screen reader, and singulars stay singular
+  expect(screen.getByLabelText('1 server, 1 library')).toHaveTextContent('1 / 1')
+})
+
+test('Servers/Libs shows — for a member with no access at all', () => {
+  render(
+    <MemoryRouter>
+      <MembersTable
+        members={[makeMember({ email: 'none@x.com', servers: [], libraries: {} })]}
+        onSelectTier={vi.fn()}
+        invitingEmail={null}
+      />
+    </MemoryRouter>,
+  )
+  expect(screen.queryByLabelText(/server/)).not.toBeInTheDocument()
+})
