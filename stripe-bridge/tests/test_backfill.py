@@ -7,7 +7,7 @@ os.environ.setdefault("WIZARR_API_KEY", "k")
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 import backfill_invited_expiry as backfill  # noqa: E402
-import store  # noqa: E402
+from stripe_bridge import store  # noqa: E402
 
 
 def _setup(tmp_path, monkeypatch, emails):

@@ -1,4 +1,4 @@
-from email_template import render_invite_email
+from stripe_bridge.email_template import render_invite_email
 
 
 def test_render_contains_invite_url_and_expiry():

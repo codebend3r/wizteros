@@ -28,11 +28,11 @@ FIXTURE_LIBRARIES = [
 def bridge(tmp_path, monkeypatch):
     """Fresh bridge module per test: temp SQLite db, mocked Wizarr client and email."""
     import importlib
-    import stripe_wizarr_bridge as b
+    from stripe_bridge import stripe_wizarr_bridge as b
     importlib.reload(b)
     dbp = str(tmp_path / "bridge.db")
     monkeypatch.setattr(b, "MAP_DB_PATH", dbp)
-    import store
+    from stripe_bridge import store
     store.init_db(dbp)
     b.client = MagicMock()
     monkeypatch.setattr(b, "send_invite_email", MagicMock())
@@ -56,7 +56,7 @@ def test_checkout_brand_new_member_invites_for_its_tier(bridge):
     bridge.send_invite_email.assert_called_once_with("a@x.com", "http://inv.test/j/abc")
     # brand-new member has no records to time-box; invite redemption sets expiry
     bridge.client.set_expiry.assert_not_called()
-    import store
+    from stripe_bridge import store
     assert store.get_mapping(bridge.MAP_DB_PATH, "cus_1")["invite_code"] == "abc"
     # checkout is the confirmed-payment signal that drives "Subscribed Monthly"
     assert store.all_customer_rows(bridge.MAP_DB_PATH)["a@x.com"]["subscribed"] is True
@@ -113,7 +113,7 @@ def test_checkout_existing_covered_member_expiry_resets_to_access_duration(bridg
 
 
 def test_checkout_vip_member_is_never_time_boxed(bridge):
-    import store
+    from stripe_bridge import store
     store.set_member_tag(bridge.MAP_DB_PATH, "vip@x.com", "vip")
     bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
     bridge.client.create_invite.return_value = {"code": "abc", "url": "http://x/j/abc"}
@@ -184,7 +184,7 @@ def test_invoice_paid_first_charge_is_skipped(bridge):
 
 
 def test_invoice_paid_renewal_extends(bridge):
-    import store
+    from stripe_bridge import store
     store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "a@x.com", "abc")
     store.set_subscribed(bridge.MAP_DB_PATH, "a@x.com", False)  # prove the renewal restores it
     bridge.client.find_user_ids_by_email.return_value = [9, 10]
@@ -206,7 +206,7 @@ def test_invoice_paid_renewal_extends(bridge):
 
 
 def test_invoice_paid_renewal_leaves_vip_expiry_alone(bridge):
-    import store
+    from stripe_bridge import store
     store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "vip@x.com", "abc")
     store.set_member_tag(bridge.MAP_DB_PATH, "vip@x.com", "vip")
     bridge.client.find_user_ids_by_email.return_value = [9, 10]  # would be stamped if not VIP
@@ -228,7 +228,7 @@ def test_reconcile_stamps_new_member_records_that_joined_without_expiry(bridge):
     # brand-new member redeems into expires=None. The sweep must stamp
     # invited_at + ACCESS_DURATION on exactly those records.
     from datetime import datetime, timedelta, timezone
-    import store
+    from stripe_bridge import store
     store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "new@x.com", "abc", tier="gold")
     bridge.client.list_users.return_value = [
         {"id": 259, "email": "new@x.com", "server": "Vermithor", "expires": None},
@@ -248,7 +248,7 @@ def test_reconcile_stamps_new_member_records_that_joined_without_expiry(bridge):
 
 
 def test_reconcile_skips_vips_and_records_with_an_expiry(bridge):
-    import store
+    from stripe_bridge import store
     store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "vip@x.com", "abc")
     store.set_member_tag(bridge.MAP_DB_PATH, "vip@x.com", "vip")
     store.upsert_pending(bridge.MAP_DB_PATH, "cus_2", "paid@x.com", "def")
@@ -261,7 +261,7 @@ def test_reconcile_skips_vips_and_records_with_an_expiry(bridge):
 
 
 def test_reconcile_ignores_unsubscribed_members(bridge):
-    import store
+    from stripe_bridge import store
     store.stamp_invited(bridge.MAP_DB_PATH, "invited@x.com")  # invited, never paid
     bridge.client.list_users.return_value = [
         {"id": 1, "email": "invited@x.com", "server": "Vermithor", "expires": None},
@@ -276,7 +276,7 @@ def test_reconcile_never_stamps_a_date_already_in_the_past(bridge, monkeypatch):
     # A stale subscribed row (e.g. expiry manually cleared long after signup)
     # must not let a background sweep revoke access with a past-dated expiry.
     import sqlite3
-    import store
+    from stripe_bridge import store
     store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "old@x.com", "abc")
     with sqlite3.connect(bridge.MAP_DB_PATH) as c:
         c.execute("UPDATE customer_map SET invited_at = '2020-01-01T00:00:00+00:00'")
@@ -288,7 +288,7 @@ def test_reconcile_never_stamps_a_date_already_in_the_past(bridge, monkeypatch):
 
 
 def test_duplicate_event_is_ignored(bridge):
-    import store
+    from stripe_bridge import store
     store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "a@x.com", "abc")
     bridge.client.find_user_ids_by_email.return_value = [9]
     event = {
@@ -304,7 +304,7 @@ def test_duplicate_event_is_ignored(bridge):
 
 
 def test_subscription_deleted_disables_all_records(bridge):
-    import store
+    from stripe_bridge import store
     store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "a@x.com", "abc")
     bridge.client.find_user_ids_by_email.return_value = [147, 57, 106, 155, 204]
     bridge.handle_event({
@@ -371,7 +371,7 @@ def test_customer_email_reads_stripe_object(bridge, monkeypatch):
 
 
 def test_resolve_falls_back_from_email_to_invite(bridge):
-    import store
+    from stripe_bridge import store
     store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "a@x.com", "abc")
     # email miss (Stripe email != Plex email) -> resolve via the stored invite code
     bridge.client.find_user_ids_by_email.return_value = []
@@ -459,7 +459,7 @@ def test_cancel_with_no_records_is_noop(bridge, monkeypatch):
 
 
 def test_cancel_prefers_stored_email_over_stripe_lookup(bridge, monkeypatch):
-    import store
+    from stripe_bridge import store
     store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "a@x.com", "abc")
     stripe_lookup = MagicMock()
     monkeypatch.setattr(bridge, "customer_email", stripe_lookup)
@@ -570,13 +570,13 @@ def test_checkout_records_tier_for_the_customer(bridge):
                             "customer_details": {"email": "a@x.com"},
                             "metadata": {"tier": "gold"}}},
     })
-    import store
+    from stripe_bridge import store
     assert store.tiers_by_email(bridge.MAP_DB_PATH) == {"a@x.com": "gold"}
 
 
 def test_send_invite_email_sends_via_smtp_starttls(monkeypatch):
     import importlib
-    import mailer as b
+    from stripe_bridge import mailer as b
     importlib.reload(b)
 
     sent = {}

@@ -1,4 +1,4 @@
-import store
+from stripe_bridge import store
 
 
 def test_upsert_and_get(tmp_path):

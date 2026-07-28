@@ -15,10 +15,10 @@ os.environ.update({
     "SMTP_HOST": "smtp.test", "SMTP_USER": "u", "SMTP_PASS": "p",
 })
 
-import admin  # noqa: E402
-import store  # noqa: E402
+from stripe_bridge import admin  # noqa: E402
+from stripe_bridge import store  # noqa: E402
 from fastapi import HTTPException  # noqa: E402
-from wizarr import WizarrClient  # noqa: E402
+from stripe_bridge.wizarr import WizarrClient  # noqa: E402
 
 USERS = [
     {"id": 1, "username": "cj", "email": "A@X.com", "server": "Meleys", "expires": "2026-09-01T00:00:00+00:00"},
@@ -452,7 +452,7 @@ def test_bridge_app_mounts_admin_routes_bare_and_prefixed():
         "SMTP_PASS": "p", "FROM_ADDR": "server@test",
         "MAP_DB_PATH": "/tmp/mount-test.db",
     })
-    import stripe_wizarr_bridge as b
+    from stripe_bridge import stripe_wizarr_bridge as b
     importlib.reload(b)
     # openapi()["paths"] rather than walking b.app.routes directly: installed
     # fastapi>=0.139 represents each include_router()-mounted router as an

@@ -9,11 +9,11 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from jwt import PyJWKClient
 from pydantic import BaseModel
 
-import plex
-import store
-import tiers
-from mailer import send_invite_email
-from wizarr import WizarrClient
+from stripe_bridge import plex
+from stripe_bridge import store
+from stripe_bridge import tiers
+from stripe_bridge.mailer import send_invite_email
+from stripe_bridge.wizarr import WizarrClient
 
 log = logging.getLogger("bridge.admin")
 

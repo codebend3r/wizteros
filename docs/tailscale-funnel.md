@@ -62,7 +62,7 @@ sudo tailscale funnel status                                          # prints t
 
 Longest-prefix match sends `/stripe/...` to the bridge and everything else to
 Wizarr. Tailscale strips the `/stripe` prefix, so the bridge receives
-`/webhook` — which it also serves (see `stripe_wizarr_bridge.py`), so no
+`/webhook` — which it also serves (see `stripe_bridge/stripe_wizarr_bridge.py`), so no
 funnel-side path juggling is needed. Verify:
 
 ```sh
