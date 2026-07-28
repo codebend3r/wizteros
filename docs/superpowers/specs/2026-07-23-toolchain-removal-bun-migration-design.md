@@ -3,7 +3,7 @@
 **Status:** Approved (design), pending implementation plan
 **Author:** CJ Rivas
 **Date:** 2026-07-23
-**Related:** `web/docs/prd/tooling-migration-prd.md`
+**Related:** `docs/prd/tooling-migration-prd.md`
 
 ---
 
