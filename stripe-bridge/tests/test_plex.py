@@ -6,7 +6,7 @@ import responses
 # Env required before (re)loading the module — plex reads it at import time.
 os.environ.update({"PLEX_TOKEN": "tok", "PLEX_TV_BASE": "http://plex.test"})
 
-import plex  # noqa: E402
+from stripe_bridge import plex  # noqa: E402
 
 importlib.reload(plex)
 

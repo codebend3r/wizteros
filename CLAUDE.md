@@ -14,8 +14,13 @@ The contribution framing is deliberate (Plex TOS prohibits selling access, Strip
 
 ## Structure
 
-- Source lives under `src/` (`src/app`, `src/components`, `src/lib`, `src/styles`); `prisma/`, `public/`, config files, `.github/`, and `.husky/` stay at the repo root. Path references below (e.g. `styles/globals.scss`, `lib/foo.ts`) are under `src/`, and the `@/*` import alias maps to `src/*` (`@public/*` and `@generated/*` map to the root `public/` and `generated/` dirs).
-- Import via aliases, never parent-relative paths (`../`); lint enforces this. Same-directory `./` imports (co-located styles, tests) are fine.
+- Two apps sit side by side at the repo root:
+  - `web/` — Vite + React SPA (TypeScript, bun). Source under `web/src/` (`components/`, `pages/`, `lib/`, `stores/`, `styles/`, `test/`); `web/public/`, `index.html`, `vite.config.ts`, and `tsconfig.json` live at the app root.
+  - `stripe-bridge/` — FastAPI service (Python 3.12). All runtime code lives in the `stripe_bridge/` package (`stripe_wizarr_bridge.py` is the app entrypoint, plus `wizarr.py`, `plex.py`, `store.py`, `tiers.py`, `mailer.py`, `email_template.py`, `admin.py`); `tests/`, `scripts/`, `Dockerfile`, `pytest.ini`, and `requirements*.txt` sit at the app root, outside the package.
+- Import bridge modules package-absolute — `from stripe_bridge import store`, `from stripe_bridge.wizarr import WizarrClient`. New modules go inside `stripe_bridge/` and need no Dockerfile change; the image copies the whole package.
+- The repo root orchestrates both: `package.json` (verify/release/deploy scripts), `scripts/`, `docs/` (all specs, plans, and PRDs for both apps), `netlify.toml` (builds `web/` only), `.github/`, `.husky/`.
+- Path references below (e.g. `styles/globals.scss`, `lib/foo.ts`) are under `web/src/`, and the `@/*` import alias maps to `web/src/*` — declared in both `web/tsconfig.json` and `web/vite.config.ts`, so new aliases must be added in both.
+- Import via the `@/` alias, never parent-relative paths (`../`). Same-directory `./` imports (co-located styles, tests) are fine. There is no linter in this repo, so this is convention rather than something tooling catches.
 
 ## Workflow
 

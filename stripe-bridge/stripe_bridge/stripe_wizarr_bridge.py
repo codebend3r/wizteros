@@ -9,11 +9,11 @@ import stripe
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-import admin
-import store
-import tiers
-from mailer import send_invite_email
-from wizarr import WizarrClient
+from stripe_bridge import admin
+from stripe_bridge import store
+from stripe_bridge import tiers
+from stripe_bridge.mailer import send_invite_email
+from stripe_bridge.wizarr import WizarrClient
 
 STRIPE_API_KEY = os.environ["STRIPE_API_KEY"]
 STRIPE_WEBHOOK_SECRET = os.environ["STRIPE_WEBHOOK_SECRET"]
