@@ -8,7 +8,7 @@ import os
 import smtplib
 from email.message import EmailMessage
 
-from email_template import render_invite_email
+from stripe_bridge.email_template import render_invite_email
 
 SMTP_HOST = os.environ["SMTP_HOST"]
 SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))

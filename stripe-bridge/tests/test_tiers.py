@@ -1,6 +1,6 @@
 import logging
 
-import tiers
+from stripe_bridge import tiers
 
 LIBRARIES = [
     {"id": 9, "name": "01. Classic TV Shows", "server_id": 5, "server_name": "Syrax", "enabled": True},

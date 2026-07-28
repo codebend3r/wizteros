@@ -3,7 +3,7 @@ import json
 import pytest
 import requests
 import responses
-from wizarr import WizarrClient
+from stripe_bridge.wizarr import WizarrClient
 
 BASE = "http://wizarr.test"
 
