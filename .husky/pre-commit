@@ -1,1 +1,3 @@
+# Fast gate: oxlint, gale on SCSS, oxfmt --check, tsgo.
+# Fix with: bun run lint:fix, bun run lint:css:fix, bun run format.
 bun run system-check

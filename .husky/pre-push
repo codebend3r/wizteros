@@ -1,1 +1,3 @@
-echo "pushing now"
+# Full gate: system-check (lint, SCSS lint, format check, typecheck) plus the
+# web and bridge test suites. Bridge tests need the venv: bun run setup:py.
+bun run verify

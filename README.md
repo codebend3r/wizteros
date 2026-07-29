@@ -45,6 +45,8 @@ npm run verify     # lint + format check + typecheck + web and bridge unit tests
 - End-to-end flow test against a running bridge: `npm run retest`
 - Deploy the stack to the NAS: `npm run deploy:nas`
 
-Hooks run automatically: pre-commit lints and formats staged files; pre-push runs `npm run verify` and then syncs the code to the NAS (`npm run deploy:nas`). CI runs the same lint, web, and bridge checks on every push.
+Hooks run automatically: pre-commit runs `bun run system-check` (oxlint, gale on SCSS, `oxfmt --check`, tsgo); pre-push runs `bun run verify`, which is system-check plus the web and bridge test suites. CI runs the same checks on every push.
+
+The web toolchain is Rust/Go based: [oxlint](https://oxc.rs) for TS/JS, [gale](https://github.com/LyricalString/gale) for SCSS, [oxfmt](https://oxc.rs) for formatting (TS, JS, SCSS, JSON, YAML, Markdown), and [tsgo](https://www.npmjs.com/package/@typescript/native-preview) for type checking. Configs live in `web/`: `.oxlintrc.json`, `gale.json`, `.oxfmtrc.json`, plus `.editorconfig` in `web/` and `stripe-bridge/`. Fix what is fixable with `npm run lint:fix`, `npm run lint:css:fix`, and `npm run format`. `npm run typecheck:tsc` keeps tsc available as an escape hatch while tsgo is a preview release.
 
 Deployment details live in `docs/nas-deployment.md` and `docs/tailscale-funnel.md`; the invite/renewal/cancel flow in `docs/invite-flow.md`; working conventions in `CLAUDE.md`.
