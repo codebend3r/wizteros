@@ -3,7 +3,7 @@ import logoImage from '@/assets/logo.jpg'
 import logoVideo from '@/assets/logo.mp4'
 import styles from '@/components/Hero/HeroLogo.module.scss'
 
-const HeroLogo = () => {
+export const HeroLogo = () => {
   const [isHovering, setIsHovering] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
 
@@ -44,5 +44,3 @@ const HeroLogo = () => {
     </figure>
   )
 }
-
-export default HeroLogo

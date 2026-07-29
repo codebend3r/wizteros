@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from '@/test/vi'
-import CopyEmailsButton from '@/components/CopyEmailsButton/CopyEmailsButton'
+import { CopyEmailsButton } from '@/components/CopyEmailsButton/CopyEmailsButton'
 
 const writeText = vi.fn().mockResolvedValue(undefined)
 

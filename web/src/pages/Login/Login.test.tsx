@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, expect, test } from '@/test/vi'
-import Login from '@/pages/Login/Login'
+import { Login } from '@/pages/Login/Login'
 import { useAuthStore } from '@/stores/authStore'
 
 const initialState = useAuthStore.getInitialState()

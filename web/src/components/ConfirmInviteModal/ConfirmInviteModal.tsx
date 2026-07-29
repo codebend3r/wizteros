@@ -1,7 +1,7 @@
 import type { Member, PaidTier } from '@/lib/adminApi'
 import { ACCESS_DAYS, INVITE_LINK_DAYS, TIER_DOWNLOADS, TIER_LABELS } from '@/lib/inviteRules'
-import TierIcon from '@/components/TierIcon/TierIcon'
-import ConfirmActionModal from '@/components/ConfirmActionModal/ConfirmActionModal'
+import { TierIcon } from '@/components/TierIcon/TierIcon'
+import { ConfirmActionModal } from '@/components/ConfirmActionModal/ConfirmActionModal'
 import styles from '@/components/ConfirmInviteModal/ConfirmInviteModal.module.scss'
 
 type ConfirmInviteModalProps = {
@@ -12,7 +12,7 @@ type ConfirmInviteModalProps = {
   onCancel: () => void
 }
 
-const ConfirmInviteModal = ({
+export const ConfirmInviteModal = ({
   member,
   tier,
   sending,
@@ -49,5 +49,3 @@ const ConfirmInviteModal = ({
     </p>
   </ConfirmActionModal>
 )
-
-export default ConfirmInviteModal

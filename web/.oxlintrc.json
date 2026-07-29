@@ -41,7 +41,7 @@
     "eslint/no-iterator": "error",
     "unicorn/prefer-array-flat-map": "error",
     "unicorn/no-array-for-each": "warn",
-    "import/no-default-export": "warn"
+    "import/no-default-export": "error"
   },
   "ignorePatterns": ["dist", "public"],
   "overrides": [

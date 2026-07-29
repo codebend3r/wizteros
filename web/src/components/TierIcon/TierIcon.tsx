@@ -12,8 +12,6 @@ const TIER_CLASS: Record<PaidTier, string> = {
   youth: styles.youth,
 }
 
-const TierIcon = ({ tier }: TierIconProps) => (
+export const TierIcon = ({ tier }: TierIconProps) => (
   <span className={`${styles.icon} ${TIER_CLASS[tier]}`} role="img" aria-label={`${tier} tier`} />
 )
-
-export default TierIcon

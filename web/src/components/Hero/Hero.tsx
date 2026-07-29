@@ -1,4 +1,4 @@
-import HeroLogo from '@/components/Hero/HeroLogo'
+import { HeroLogo } from '@/components/Hero/HeroLogo'
 import styles from '@/components/Hero/Hero.module.scss'
 
 type HeroProps = {
@@ -6,7 +6,7 @@ type HeroProps = {
   tagline: string
 }
 
-const Hero = ({ brandName, tagline }: HeroProps) => (
+export const Hero = ({ brandName, tagline }: HeroProps) => (
   <section className={styles.hero}>
     <HeroLogo />
     <h1 className={styles.brand}>{brandName}</h1>
@@ -16,5 +16,3 @@ const Hero = ({ brandName, tagline }: HeroProps) => (
     </a>
   </section>
 )
-
-export default Hero

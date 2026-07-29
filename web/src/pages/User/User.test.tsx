@@ -3,7 +3,7 @@ import { MemoryRouter } from 'react-router-dom'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, test, vi } from '@/test/vi'
-import User from '@/pages/User/User'
+import { User } from '@/pages/User/User'
 import type { Member, ResetExpiryResult, SetDownloadsResult, SetTagResult } from '@/lib/adminApi'
 
 const member: Member = {

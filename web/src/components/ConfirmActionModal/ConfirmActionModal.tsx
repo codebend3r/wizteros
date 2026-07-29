@@ -11,7 +11,7 @@ type ConfirmActionModalProps = {
   children: ReactNode
 }
 
-const ConfirmActionModal = ({
+export const ConfirmActionModal = ({
   title,
   confirmLabel,
   busy = false,
@@ -63,5 +63,3 @@ const ConfirmActionModal = ({
     </div>
   )
 }
-
-export default ConfirmActionModal

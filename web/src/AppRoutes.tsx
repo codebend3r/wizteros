@@ -1,13 +1,13 @@
 import { Route, Routes } from 'react-router-dom'
-import App from '@/App'
-import Email from '@/pages/Email/Email'
-import Invite from '@/pages/Invite/Invite'
-import Login from '@/pages/Login/Login'
-import Manage from '@/pages/Manage/Manage'
-import ResetUser from '@/pages/ResetUser/ResetUser'
-import User from '@/pages/User/User'
+import { App } from '@/App'
+import { Email } from '@/pages/Email/Email'
+import { Invite } from '@/pages/Invite/Invite'
+import { Login } from '@/pages/Login/Login'
+import { Manage } from '@/pages/Manage/Manage'
+import { ResetUser } from '@/pages/ResetUser/ResetUser'
+import { User } from '@/pages/User/User'
 
-const AppRoutes = () => (
+export const AppRoutes = () => (
   <Routes>
     <Route path="/" element={<App />} />
     <Route path="/login" element={<Login />} />
@@ -18,5 +18,3 @@ const AppRoutes = () => (
     <Route path="/user" element={<User />} />
   </Routes>
 )
-
-export default AppRoutes

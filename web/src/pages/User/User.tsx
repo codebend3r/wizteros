@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import AdminGate, { useAdminAuth } from '@/components/AdminGate/AdminGate'
-import AdminLayout from '@/components/AdminLayout/AdminLayout'
-import ConfirmActionModal from '@/components/ConfirmActionModal/ConfirmActionModal'
-import ConfirmInviteModal from '@/components/ConfirmInviteModal/ConfirmInviteModal'
-import Preloader from '@/components/Preloader/Preloader'
-import TierIcon from '@/components/TierIcon/TierIcon'
+import { AdminGate, useAdminAuth } from '@/components/AdminGate/AdminGate'
+import { AdminLayout } from '@/components/AdminLayout/AdminLayout'
+import { ConfirmActionModal } from '@/components/ConfirmActionModal/ConfirmActionModal'
+import { ConfirmInviteModal } from '@/components/ConfirmInviteModal/ConfirmInviteModal'
+import { Preloader } from '@/components/Preloader/Preloader'
+import { TierIcon } from '@/components/TierIcon/TierIcon'
 import {
   AdminAuthError,
   cancelSubscription,
@@ -931,10 +931,8 @@ const UserInner = () => {
   )
 }
 
-const User = () => (
+export const User = () => (
   <AdminGate title="Westeroz — Member">
     <UserInner />
   </AdminGate>
 )
-
-export default User
