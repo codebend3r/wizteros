@@ -1,11 +1,10 @@
-export const dedupeEmails = (emails: ReadonlyArray<string>): string[] =>
-  emails
-    .map((email) => email.trim())
-    .filter(Boolean)
-    .reduce<string[]>((acc, email) => {
-      const exists = acc.some((seen) => seen.toLowerCase() === email.toLowerCase())
-      return exists ? acc : [...acc, email]
-    }, [])
+// Keeps the first spelling of each address. The lowercased keys ride along so
+// the comparison stays case-insensitive without rescanning what came before.
+export const dedupeEmails = (emails: ReadonlyArray<string>): string[] => {
+  const trimmed = emails.map((email) => email.trim()).filter(Boolean)
+  const keys = trimmed.map((email) => email.toLowerCase())
+  return trimmed.filter((_, index) => keys.indexOf(keys[index]) === index)
+}
 
 type MailtoParams = {
   recipients: ReadonlyArray<string>

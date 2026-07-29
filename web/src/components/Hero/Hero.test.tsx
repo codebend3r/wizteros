@@ -1,6 +1,6 @@
 import { expect, test } from '@/test/vi'
 import { render, screen } from '@testing-library/react'
-import Hero from '@/components/Hero/Hero'
+import { Hero } from '@/components/Hero/Hero'
 
 const props = {
   brandName: 'Westeroz',

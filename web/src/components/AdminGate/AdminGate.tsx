@@ -18,8 +18,6 @@ type AdminGateProps = {
   children: ReactNode
 }
 
-const AdminGate = ({ title, children }: AdminGateProps) => (
+export const AdminGate = ({ title, children }: AdminGateProps) => (
   <LoginGate title={title}>{children}</LoginGate>
 )
-
-export default AdminGate

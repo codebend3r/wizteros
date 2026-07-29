@@ -8,7 +8,7 @@ type PricingProps = {
 const CHECK_PATH = 'M3.5 8.5 6.5 11.5 12.5 4.5'
 const CROSS_PATH = 'M4.5 4.5 11.5 11.5 M11.5 4.5 4.5 11.5'
 
-const Pricing = ({ tiers }: PricingProps) => (
+export const Pricing = ({ tiers }: PricingProps) => (
   <section id="pricing" className={styles.pricing}>
     <header className={styles.header}>
       <p className={styles.eyebrow}>Membership</p>
@@ -50,5 +50,3 @@ const Pricing = ({ tiers }: PricingProps) => (
     </div>
   </section>
 )
-
-export default Pricing

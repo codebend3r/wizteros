@@ -1,6 +1,6 @@
 import { expect, test } from '@/test/vi'
 import { render, screen } from '@testing-library/react'
-import Footer from '@/components/Footer/Footer'
+import { Footer } from '@/components/Footer/Footer'
 
 test('shows the member link when a member url is provided', () => {
   render(<Footer memberUrl="https://invite.example.com" billingPortalUrl={null} />)

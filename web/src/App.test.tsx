@@ -1,6 +1,6 @@
 import { expect, test } from '@/test/vi'
 import { render, screen } from '@testing-library/react'
-import App from '@/App'
+import { App } from '@/App'
 
 test('renders the brand heading', () => {
   render(<App />)
@@ -14,9 +14,10 @@ test('hero CTA scrolls to the pricing section', () => {
 
 test('renders the four tier cards', () => {
   render(<App />)
-  ;['Bronze', 'Silver', 'Gold', 'Youth'].forEach((name) => {
-    expect(screen.getByRole('heading', { name })).toBeInTheDocument()
-  })
+  expect(screen.getByRole('heading', { name: 'Bronze' })).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'Silver' })).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'Gold' })).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'Youth' })).toBeInTheDocument()
 })
 
 test('renders the three support items', () => {

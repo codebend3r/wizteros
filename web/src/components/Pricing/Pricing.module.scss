@@ -106,8 +106,8 @@
     var(--color-bronze)
   );
   mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
+    linear-gradient(#ffffff 0 0) content-box,
+    linear-gradient(#ffffff 0 0);
   mask-composite: exclude;
   opacity: 0;
   transition: opacity 0.2s ease;
@@ -211,7 +211,7 @@
   width: 1em;
   height: 1em;
   fill: none;
-  stroke: currentColor;
+  stroke: currentcolor;
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;

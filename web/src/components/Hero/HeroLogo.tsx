@@ -3,7 +3,7 @@ import logoImage from '@/assets/logo.jpg'
 import logoVideo from '@/assets/logo.mp4'
 import styles from '@/components/Hero/HeroLogo.module.scss'
 
-const HeroLogo = () => {
+export const HeroLogo = () => {
   const [isHovering, setIsHovering] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
 
@@ -26,6 +26,9 @@ const HeroLogo = () => {
   }
 
   return (
+    // Hover swaps in a decorative, aria-hidden video. Nothing is conveyed by it,
+    // so there is no keyboard equivalent to add.
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
     <figure className={styles.logo} onMouseEnter={showVideo} onMouseLeave={showImage}>
       <img className={styles.image} src={logoImage} alt="Westeroz mascot" />
       <video
@@ -41,5 +44,3 @@ const HeroLogo = () => {
     </figure>
   )
 }
-
-export default HeroLogo

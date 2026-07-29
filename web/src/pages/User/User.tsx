@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import AdminGate, { useAdminAuth } from '@/components/AdminGate/AdminGate'
-import AdminLayout from '@/components/AdminLayout/AdminLayout'
-import ConfirmActionModal from '@/components/ConfirmActionModal/ConfirmActionModal'
-import ConfirmInviteModal from '@/components/ConfirmInviteModal/ConfirmInviteModal'
-import Preloader from '@/components/Preloader/Preloader'
-import TierIcon from '@/components/TierIcon/TierIcon'
+import { AdminGate, useAdminAuth } from '@/components/AdminGate/AdminGate'
+import { AdminLayout } from '@/components/AdminLayout/AdminLayout'
+import { ConfirmActionModal } from '@/components/ConfirmActionModal/ConfirmActionModal'
+import { ConfirmInviteModal } from '@/components/ConfirmInviteModal/ConfirmInviteModal'
+import { Preloader } from '@/components/Preloader/Preloader'
+import { TierIcon } from '@/components/TierIcon/TierIcon'
 import {
   AdminAuthError,
   cancelSubscription,
@@ -67,12 +67,12 @@ const parseTimestamp = (value: string | null): Date | null => {
 const inviteWindowEnd = (invitedAt: Date): Date =>
   new Date(invitedAt.getTime() + INVITE_LINK_DAYS * DAY_MS)
 
+const pad = (value: number): string => String(value).padStart(2, '0')
+
 // The picker's seed: the given date (current expiry, else tomorrow) at one
 // minute after midnight, in the local datetime-local format.
-const toExpiryDraft = (date: Date): string => {
-  const pad = (value: number) => String(value).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T00:01`
-}
+const toExpiryDraft = (date: Date): string =>
+  `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T00:01`
 
 const formatDaysLeft = (expiry: Date): string => {
   const days = Math.ceil((expiry.getTime() - Date.now()) / DAY_MS)
@@ -931,10 +931,8 @@ const UserInner = () => {
   )
 }
 
-const User = () => (
+export const User = () => (
   <AdminGate title="Westeroz — Member">
     <UserInner />
   </AdminGate>
 )
-
-export default User

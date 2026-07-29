@@ -1,6 +1,6 @@
 import { expect, test } from '@/test/vi'
 import { render, screen, within } from '@testing-library/react'
-import Pricing from '@/components/Pricing/Pricing'
+import { Pricing } from '@/components/Pricing/Pricing'
 import type { Tier } from '@/site.config'
 
 const TIERS: ReadonlyArray<Tier> = [

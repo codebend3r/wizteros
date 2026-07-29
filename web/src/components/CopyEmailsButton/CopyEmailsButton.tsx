@@ -11,7 +11,7 @@ type CopyState = 'idle' | 'copied' | 'failed'
 
 const RESET_MS = 2000
 
-const CopyEmailsButton = ({ emails, label = 'Copy all emails' }: CopyEmailsButtonProps) => {
+export const CopyEmailsButton = ({ emails, label = 'Copy all emails' }: CopyEmailsButtonProps) => {
   const [state, setState] = useState<CopyState>('idle')
   const deduped = dedupeEmails(emails)
 
@@ -50,5 +50,3 @@ const CopyEmailsButton = ({ emails, label = 'Copy all emails' }: CopyEmailsButto
     </button>
   )
 }
-
-export default CopyEmailsButton

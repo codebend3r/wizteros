@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import AdminGate, { useAdminAuth } from '@/components/AdminGate/AdminGate'
-import AdminLayout from '@/components/AdminLayout/AdminLayout'
-import CopyEmailsButton from '@/components/CopyEmailsButton/CopyEmailsButton'
-import Preloader from '@/components/Preloader/Preloader'
+import { AdminGate, useAdminAuth } from '@/components/AdminGate/AdminGate'
+import { AdminLayout } from '@/components/AdminLayout/AdminLayout'
+import { CopyEmailsButton } from '@/components/CopyEmailsButton/CopyEmailsButton'
+import { Preloader } from '@/components/Preloader/Preloader'
 import { AdminAuthError, fetchMembers, loadErrorMessage } from '@/lib/adminApi'
 import { buildMailto, dedupeEmails } from '@/lib/emails'
 import { MEMBERS_QUERY_KEY } from '@/pages/Manage/Manage'
@@ -157,10 +157,8 @@ const EmailInner = () => {
   )
 }
 
-const Email = () => (
+export const Email = () => (
   <AdminGate title="Westeroz — Email">
     <EmailInner />
   </AdminGate>
 )
-
-export default Email

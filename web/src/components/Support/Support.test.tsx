@@ -1,6 +1,6 @@
 import { expect, test } from '@/test/vi'
 import { render, screen } from '@testing-library/react'
-import Support from '@/components/Support/Support'
+import { Support } from '@/components/Support/Support'
 
 const items = [
   { title: 'Server hardware', detail: 'Always-on machines.' },

@@ -6,7 +6,7 @@ type HeaderProps = {
   brandName: string
 }
 
-const Header = ({ brandName }: HeaderProps) => (
+export const Header = ({ brandName }: HeaderProps) => (
   <header className={styles.header}>
     <Link className={styles.brand} to="/">
       <span className={styles.logoFrame}>
@@ -21,5 +21,3 @@ const Header = ({ brandName }: HeaderProps) => (
     </nav>
   </header>
 )
-
-export default Header

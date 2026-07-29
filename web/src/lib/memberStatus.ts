@@ -2,7 +2,12 @@ import type { Member } from '@/lib/adminApi'
 import { INVITE_GRACE_DAYS } from '@/lib/inviteRules'
 
 export type MemberStatus =
-  'Uninvited' | 'Invited' | 'Declined Invite' | 'Subscribed Monthly' | 'VIP' | 'Expired Member'
+  | 'Uninvited'
+  | 'Invited'
+  | 'Declined Invite'
+  | 'Subscribed Monthly'
+  | 'VIP'
+  | 'Expired Member'
 
 const GRACE_MS = INVITE_GRACE_DAYS * 24 * 60 * 60 * 1000
 
