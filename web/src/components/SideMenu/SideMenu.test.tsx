@@ -17,9 +17,9 @@ test('lists a link for every route', () => {
       <SideMenu />
     </MemoryRouter>,
   )
-  menuRoutes.forEach(({ label, path }) => {
-    expect(screen.getByRole('link', { name: label })).toHaveAttribute('href', path)
-  })
+  expect(
+    menuRoutes.map(({ label }) => screen.getByRole('link', { name: label }).getAttribute('href')),
+  ).toEqual(menuRoutes.map(({ path }) => path))
   expect(screen.queryByRole('link', { name: 'Member' })).not.toBeInTheDocument()
   expect(screen.queryByRole('link', { name: 'Reset user' })).not.toBeInTheDocument()
 })

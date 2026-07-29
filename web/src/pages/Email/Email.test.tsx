@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, test, vi } from '@/test/vi'
-import Email from '@/pages/Email/Email'
+import { Email } from '@/pages/Email/Email'
 import type { Member } from '@/lib/adminApi'
 
 import * as adminApiOriginal from '@/lib/adminApi'

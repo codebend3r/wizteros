@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
-import AdminGate, { useAdminAuth } from '@/components/AdminGate/AdminGate'
-import AdminLayout from '@/components/AdminLayout/AdminLayout'
+import { AdminGate, useAdminAuth } from '@/components/AdminGate/AdminGate'
+import { AdminLayout } from '@/components/AdminLayout/AdminLayout'
 import {
   AdminAuthError,
   fetchMember,
@@ -167,10 +167,8 @@ const ResetUserInner = () => {
   )
 }
 
-const ResetUser = () => (
+export const ResetUser = () => (
   <AdminGate title="Westeroz — Reset user">
     <ResetUserInner />
   </AdminGate>
 )
-
-export default ResetUser

@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import AdminGate, { useAdminAuth } from '@/components/AdminGate/AdminGate'
-import AdminLayout from '@/components/AdminLayout/AdminLayout'
-import ConfirmInviteModal from '@/components/ConfirmInviteModal/ConfirmInviteModal'
-import CopyEmailsButton from '@/components/CopyEmailsButton/CopyEmailsButton'
-import MembersTable from '@/components/MembersTable/MembersTable'
-import Preloader from '@/components/Preloader/Preloader'
+import { AdminGate, useAdminAuth } from '@/components/AdminGate/AdminGate'
+import { AdminLayout } from '@/components/AdminLayout/AdminLayout'
+import { ConfirmInviteModal } from '@/components/ConfirmInviteModal/ConfirmInviteModal'
+import { CopyEmailsButton } from '@/components/CopyEmailsButton/CopyEmailsButton'
+import { MembersTable } from '@/components/MembersTable/MembersTable'
+import { Preloader } from '@/components/Preloader/Preloader'
 import {
   AdminAuthError,
   fetchMembers,
@@ -173,10 +173,8 @@ const ManageInner = () => {
   )
 }
 
-const Manage = () => (
+export const Manage = () => (
   <AdminGate title="Westeroz — Manage">
     <ManageInner />
   </AdminGate>
 )
-
-export default Manage

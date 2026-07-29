@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { useIsFetching, useQueryClient } from '@tanstack/react-query'
-import Footer from '@/components/Footer/Footer'
-import Header from '@/components/Header/Header'
+import { Footer } from '@/components/Footer/Footer'
+import { Header } from '@/components/Header/Header'
 import { SideMenu } from '@/components/SideMenu/SideMenu'
 import { siteConfig } from '@/site.config'
 import styles from '@/components/AdminLayout/AdminLayout.module.scss'
@@ -10,7 +10,7 @@ type AdminLayoutProps = {
   children: ReactNode
 }
 
-const AdminLayout = ({ children }: AdminLayoutProps) => {
+export const AdminLayout = ({ children }: AdminLayoutProps) => {
   const queryClient = useQueryClient()
   const fetching = useIsFetching() > 0
   return (
@@ -32,5 +32,3 @@ const AdminLayout = ({ children }: AdminLayoutProps) => {
     </div>
   )
 }
-
-export default AdminLayout

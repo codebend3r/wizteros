@@ -1,12 +1,12 @@
 import { AdminLoginButton } from '@/components/AdminLoginButton/AdminLoginButton'
-import Hero from '@/components/Hero/Hero'
-import Pricing from '@/components/Pricing/Pricing'
-import Support from '@/components/Support/Support'
-import Footer from '@/components/Footer/Footer'
+import { Hero } from '@/components/Hero/Hero'
+import { Pricing } from '@/components/Pricing/Pricing'
+import { Support } from '@/components/Support/Support'
+import { Footer } from '@/components/Footer/Footer'
 import { siteConfig } from '@/site.config'
 import styles from '@/App.module.scss'
 
-const App = () => (
+export const App = () => (
   <main className={styles.page}>
     <AdminLoginButton />
     <Hero brandName={siteConfig.brandName} tagline={siteConfig.tagline} />
@@ -15,5 +15,3 @@ const App = () => (
     <Footer memberUrl={siteConfig.memberUrl} billingPortalUrl={siteConfig.billingPortalUrl} />
   </main>
 )
-
-export default App

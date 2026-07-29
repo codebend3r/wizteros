@@ -5,7 +5,7 @@ type SupportProps = {
   items: ReadonlyArray<SupportItem>
 }
 
-const Support = ({ items }: SupportProps) => (
+export const Support = ({ items }: SupportProps) => (
   <section className={styles.support}>
     {items.map(({ title, detail }) => (
       <article key={title} className={styles.item}>
@@ -15,5 +15,3 @@ const Support = ({ items }: SupportProps) => (
     ))}
   </section>
 )
-
-export default Support

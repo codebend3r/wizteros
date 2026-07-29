@@ -1,27 +1,23 @@
 # wizteros
 
-A self-hosted stack that gates access to a private Plex setup behind a recurring Stripe "server-cost contribution". It glues together:
-
-- **[Wizarr](https://github.com/wizarrrr/wizarr)** — invite-based user onboarding
-- **[Tautulli](https://github.com/Tautulli/Tautulli)** — usage monitoring and analytics
-- **stripe-bridge** (`stripe-bridge/`) — a small FastAPI service that turns Stripe webhooks into Wizarr API calls, and serves the admin API
-- **web** (`web/`) — a Vite + React site: a public landing page with the four pricing tiers, plus password-gated admin pages (`/manage`, `/invite`, `/reset-user`) backed by the bridge
+A self-hosted stack that gates access to a private Plex setup behind a recurring Stripe "server-cost contribution". Stripe webhooks drive Wizarr invites, so paying members are onboarded and expired ones are disabled without manual work.
 
 ```
 Stripe checkout → webhook → stripe-bridge → Wizarr → Plex
 ```
 
-On `checkout.session.completed` the bridge creates a Wizarr invite and emails it to the customer. On `invoice.paid` (renewals) it extends the member's access for another cycle. On `customer.subscription.deleted` it disables the member's records.
+## Tech stack
 
-### Tiers
-
-Each Stripe Payment Link carries a `tier` metadata key that scopes the invite: **Bronze** ($8, everything except 4K), **Silver** ($14, everything, no downloads), **Gold** ($20, everything + downloads), **Youth** ($10, a curated family allowlist + downloads) — all CAD/month. Libraries named `9X. …` are never shared, on any tier.
+- **[Wizarr](https://github.com/wizarrrr/wizarr)**: invite-based user onboarding
+- **[Tautulli](https://github.com/Tautulli/Tautulli)**: usage monitoring and analytics
+- **`stripe-bridge/`**: FastAPI service (Python 3.12) that turns Stripe webhooks into Wizarr API calls and serves the admin API. Tested with pytest
+- **`web/`**: Vite + React 19 SPA (TypeScript, SCSS modules, zustand, TanStack Query) with the public landing page and the password-gated admin pages. Tested with bun test
+- **Tooling**: bun as package manager, [oxlint](https://oxc.rs) for TS/JS, [gale](https://github.com/LyricalString/gale) for SCSS, [oxfmt](https://oxc.rs) for formatting, [tsgo](https://www.npmjs.com/package/@typescript/native-preview) for type checking, husky for git hooks
+- **Hosting**: Docker Compose on a NAS, Netlify for the SPA, Tailscale Funnel for webhook ingress
 
 ## Getting started
 
-### Run the stack
-
-You need Docker + Compose, a Plex server you administer, a Stripe account with a recurring Payment Link, SMTP credentials for the invite email, and public ingress for the webhook (this deployment uses Tailscale Funnel — see `docs/tailscale-funnel.md`).
+You need Docker + Compose, a Plex server you administer, a Stripe account with a recurring Payment Link, SMTP credentials for the invite email, and public ingress for the webhook.
 
 ```bash
 git clone https://github.com/codebend3r/wizteros.git
@@ -35,16 +31,17 @@ On first boot, open Wizarr at `http://<host>:5690` and complete the setup wizard
 ### Develop
 
 ```bash
-npm install        # root tooling — also installs the husky git hooks
-npm run setup:py   # local venv for the bridge test suite
-npm run verify     # lint + format check + typecheck + web and bridge unit tests
+bun install        # root tooling, also installs the husky git hooks
+bun run setup:py   # local venv for the bridge test suite
+bun run verify     # lint, format check, typecheck, web and bridge tests
 ```
 
 - Landing page dev server: `cd web && bun install && bun run dev`
-- Bridge unit tests: `npm run test:bridge` (or `npm run test:unit` to run them in docker)
-- End-to-end flow test against a running bridge: `npm run retest`
-- Deploy the stack to the NAS: `npm run deploy:nas`
+- Fix what is fixable: `bun run lint:fix`, `bun run lint:css:fix`, `bun run format`
+- Deploy the stack to the NAS: `bun run deploy:nas`
 
-Hooks run automatically: pre-commit lints and formats staged files; pre-push runs `npm run verify` and then syncs the code to the NAS (`npm run deploy:nas`). CI runs the same lint, web, and bridge checks on every push.
+Hooks run automatically: pre-commit runs `bun run system-check` (lint, SCSS lint, format check, typecheck); pre-push runs `bun run verify`. CI runs the same checks on every push.
 
-Deployment details live in `docs/nas-deployment.md` and `docs/tailscale-funnel.md`; the invite/renewal/cancel flow in `docs/invite-flow.md`; working conventions in `CLAUDE.md`.
+## Docs
+
+Tiers and the invite/renewal/cancel flow in `docs/invite-flow.md`; deployment in `docs/nas-deployment.md` and `docs/tailscale-funnel.md`; working conventions in `CLAUDE.md`.

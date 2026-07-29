@@ -9,7 +9,7 @@ import '@fontsource-variable/instrument-sans'
 import '@fontsource-variable/jetbrains-mono'
 import '@fontsource/lily-script-one'
 import '@fontsource/silkscreen'
-import AppRoutes from '@/AppRoutes'
+import { AppRoutes } from '@/AppRoutes'
 import '@/styles/globals.scss'
 
 // The members call is ~15s (Wizarr fan-out), so never refetch it just for

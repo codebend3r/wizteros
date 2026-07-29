@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import AdminGate, { useAdminAuth } from '@/components/AdminGate/AdminGate'
-import AdminLayout from '@/components/AdminLayout/AdminLayout'
-import ConfirmActionModal from '@/components/ConfirmActionModal/ConfirmActionModal'
-import TierIcon from '@/components/TierIcon/TierIcon'
+import { AdminGate, useAdminAuth } from '@/components/AdminGate/AdminGate'
+import { AdminLayout } from '@/components/AdminLayout/AdminLayout'
+import { ConfirmActionModal } from '@/components/ConfirmActionModal/ConfirmActionModal'
+import { TierIcon } from '@/components/TierIcon/TierIcon'
 import {
   AdminAuthError,
   fetchMembers,
@@ -249,10 +249,8 @@ const InviteInner = () => {
   )
 }
 
-const Invite = () => (
+export const Invite = () => (
   <AdminGate title="Westeroz — Invite">
     <InviteInner />
   </AdminGate>
 )
-
-export default Invite

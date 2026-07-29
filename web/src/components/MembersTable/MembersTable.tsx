@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import type { Member, PaidTier } from '@/lib/adminApi'
 import { isPaidTier, PAID_TIERS, TIER_LABELS } from '@/lib/inviteRules'
 import { deriveStatus } from '@/lib/memberStatus'
-import TierIcon from '@/components/TierIcon/TierIcon'
+import { TierIcon } from '@/components/TierIcon/TierIcon'
 import styles from '@/components/MembersTable/MembersTable.module.scss'
 
 const PAGE_SIZES = [10, 25, 50, 100, 250] as const
@@ -104,7 +104,7 @@ const Pager = ({ current, pageCount, onPageChange, pageSize, onPageSizeChange }:
   </div>
 )
 
-const MembersTable = ({ members, onSelectTier, invitingEmail }: MembersTableProps) => {
+export const MembersTable = ({ members, onSelectTier, invitingEmail }: MembersTableProps) => {
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState<number>(25)
   const [sort, setSort] = useState<SortState | null>(null)
@@ -283,5 +283,3 @@ const MembersTable = ({ members, onSelectTier, invitingEmail }: MembersTableProp
     </div>
   )
 }
-
-export default MembersTable
