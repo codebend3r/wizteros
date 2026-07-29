@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   web:
-    name: System check
+    name: Web checks
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -36,7 +36,7 @@ jobs:
         run: bun run test
 
   bridge:
-    name: Bridge tests
+    name: Stripe bridge checks
     runs-on: ubuntu-latest
     defaults:
       run:
