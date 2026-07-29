@@ -26,6 +26,9 @@ const HeroLogo = () => {
   }
 
   return (
+    // Hover swaps in a decorative, aria-hidden video. Nothing is conveyed by it,
+    // so there is no keyboard equivalent to add.
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
     <figure className={styles.logo} onMouseEnter={showVideo} onMouseLeave={showImage}>
       <img className={styles.image} src={logoImage} alt="Westeroz mascot" />
       <video

@@ -1,0 +1,71 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["eslint", "typescript", "oxc", "unicorn", "react", "jsx-a11y", "import", "promise"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "warn",
+    "pedantic": "off",
+    "style": "off"
+  },
+  "env": {
+    "browser": true,
+    "es2024": true
+  },
+  "rules": {
+    // React 19 with the automatic JSX runtime ("jsx": "react-jsx"): React is
+    // never in scope, and the repo imports hooks by name from 'react'.
+    "react/react-in-jsx-scope": "off",
+    // Side-effect imports are how fonts and globals.scss get pulled into main.tsx.
+    "import/no-unassigned-import": "off",
+    // `role="status"` live regions and `role="img"` on inline SVG are deliberate;
+    // <output> and <img> are not equivalent replacements here.
+    "jsx-a11y/prefer-tag-over-role": "off",
+    // tsconfig targets lib ES2020, which has no Array#toSorted. Call sites
+    // already copy with [...arr] before sorting, so nothing is mutated.
+    "unicorn/no-array-sort": "off",
+    // The house style is `!!value` for boolean conversion, including in guards.
+    "eslint/no-extra-boolean-cast": "off",
+    // Fetch chains here exist for their setState side effects, not to pass values on.
+    "promise/always-return": "off",
+    "unicorn/consistent-function-scoping": "warn",
+
+    // Conventions from CLAUDE.md.
+    "typescript/no-explicit-any": "error",
+    "typescript/consistent-type-definitions": ["error", "type"],
+    "typescript/no-non-null-assertion": "error",
+    "eslint/no-var": "error",
+    "eslint/prefer-const": "error",
+    "eslint/eqeqeq": ["error", "always", { "null": "ignore" }],
+    "eslint/no-console": ["warn", { "allow": ["warn", "error"] }],
+    "eslint/no-iterator": "error",
+    "unicorn/prefer-array-flat-map": "error",
+    "unicorn/no-array-for-each": "warn",
+    "import/no-default-export": "warn"
+  },
+  "ignorePatterns": ["dist", "public"],
+  "overrides": [
+    {
+      // Vite needs a default export; ambient .d.ts files declare, they don't export.
+      "files": ["vite.config.ts", "**/*.d.ts"],
+      "rules": {
+        "import/no-default-export": "off"
+      }
+    },
+    {
+      // Declaration merging into bun:test's Matchers requires `interface`.
+      "files": ["**/*.d.ts"],
+      "rules": {
+        "typescript/consistent-type-definitions": "off"
+      }
+    },
+    {
+      "files": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/test/**", "src/test-setup.ts"],
+      "rules": {
+        "eslint/no-console": "off",
+        "typescript/no-non-null-assertion": "off",
+        "unicorn/consistent-function-scoping": "off"
+      }
+    }
+  ]
+}
