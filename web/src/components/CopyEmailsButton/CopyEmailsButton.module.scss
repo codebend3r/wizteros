@@ -10,12 +10,14 @@
   white-space: nowrap;
   cursor: pointer;
 
-  &:hover:not(:disabled) {
-    border-color: var(--color-accent);
-  }
-
+  // Lower specificity first: the two states are mutually exclusive, so the
+  // order is only about keeping the cascade readable.
   &:disabled {
     color: var(--color-muted);
     cursor: not-allowed;
+  }
+
+  &:hover:not(:disabled) {
+    border-color: var(--color-accent);
   }
 }

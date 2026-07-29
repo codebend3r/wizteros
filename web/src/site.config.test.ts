@@ -5,7 +5,7 @@ test('defines the four tiers in order with CAD prices', () => {
   const config = resolveConfig({ env: {} })
   expect(config.tiers.map((tier) => tier.id)).toEqual(['bronze', 'silver', 'gold', 'youth'])
   expect(config.tiers.map((tier) => tier.price)).toEqual(['$8', '$14', '$20', '$10'])
-  config.tiers.forEach((tier) => expect(tier.cadence).toBe('CAD / month'))
+  expect(config.tiers.map((tier) => tier.cadence)).toEqual(config.tiers.map(() => 'CAD / month'))
 })
 
 test('adult tiers list the same five features; youth swaps in youth-scoped library rows', () => {
@@ -47,7 +47,7 @@ test('every tier except youth includes the lossless music library', () => {
 
 test('tier payment links fall back to empty strings with empty env', () => {
   const config = resolveConfig({ env: {} })
-  config.tiers.forEach((tier) => expect(tier.paymentLinkUrl).toBe(''))
+  expect(config.tiers.map((tier) => tier.paymentLinkUrl)).toEqual(config.tiers.map(() => ''))
 })
 
 test('maps each payment link env var to its tier', () => {

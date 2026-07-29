@@ -67,12 +67,12 @@ const parseTimestamp = (value: string | null): Date | null => {
 const inviteWindowEnd = (invitedAt: Date): Date =>
   new Date(invitedAt.getTime() + INVITE_LINK_DAYS * DAY_MS)
 
+const pad = (value: number): string => String(value).padStart(2, '0')
+
 // The picker's seed: the given date (current expiry, else tomorrow) at one
 // minute after midnight, in the local datetime-local format.
-const toExpiryDraft = (date: Date): string => {
-  const pad = (value: number) => String(value).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T00:01`
-}
+const toExpiryDraft = (date: Date): string =>
+  `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T00:01`
 
 const formatDaysLeft = (expiry: Date): string => {
   const days = Math.ceil((expiry.getTime() - Date.now()) / DAY_MS)

@@ -18,6 +18,4 @@ const DORMANT_VARS: ReadonlyArray<string> = [
   'VITE_PAYMENT_LINK_YOUTH_URL',
 ]
 
-DORMANT_VARS.forEach((name) => {
-  process.env[name] = ''
-})
+Object.assign(process.env, Object.fromEntries(DORMANT_VARS.map((name) => [name, ''])))
