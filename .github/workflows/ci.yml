@@ -19,7 +19,7 @@ jobs:
         working-directory: web
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: 🥟 Set up Bun
         uses: oven-sh/setup-bun@v2
       - name: 📦 Install dependencies
@@ -43,9 +43,9 @@ jobs:
         working-directory: stripe-bridge
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: 🐍 Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           # Matches the runtime image (stripe-bridge/Dockerfile: python:3.12-slim).
           python-version: '3.12'
