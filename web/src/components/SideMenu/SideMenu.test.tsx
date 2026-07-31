@@ -26,6 +26,10 @@ test('marks the current route as active', () => {
   )
   expect(screen.getByRole('link', { name: 'Invite' })).toHaveAttribute('aria-current', 'page')
   expect(screen.getByRole('link', { name: 'Home' })).not.toHaveAttribute('aria-current')
+  // Also pins the scss-modules test loader: without it `styles.link` resolves
+  // to String.prototype.link and React drops the className entirely.
+  expect(screen.getByRole('link', { name: 'Invite' })).toHaveClass('link', 'linkActive')
+  expect(screen.getByRole('link', { name: 'Home' })).toHaveClass('link')
 })
 
 test('home link is only active on exactly /', () => {
