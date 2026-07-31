@@ -176,6 +176,7 @@ const existing: Member = {
   subscribed: false,
   invited_at: null,
   tag: null,
+  customer_id: null,
 }
 
 test('blocks an email that already belongs to a member', async () => {

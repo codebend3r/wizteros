@@ -28,6 +28,7 @@ const member: Member = {
   subscribed: false,
   invited_at: null,
   tag: null,
+  customer_id: null,
 }
 
 vi.mock('@/lib/adminApi', () => ({

@@ -18,6 +18,7 @@ const member: Member = {
   subscribed: false,
   invited_at: null,
   tag: null,
+  customer_id: null,
 }
 
 import * as adminApiOriginal from '@/lib/adminApi'

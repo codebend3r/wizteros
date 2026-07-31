@@ -232,6 +232,21 @@ def test_get_member_falls_back_to_subscriber(admin_db):
     assert missing.value.status_code == 404
 
 
+def test_member_payloads_carry_the_stripe_customer_id(admin_db):
+    """Real cus_ ids surface on both endpoints; admin placeholders never leak."""
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_1", "a@x.com", "abc", tier="gold")
+    store.upsert_pending_by_email(dbp, "max@x.com", "INV1", tier="youth")
+
+    by_email = {m["email"].lower(): m for m in a.list_members()}
+    assert by_email["a@x.com"]["customer_id"] == "cus_1"
+    assert by_email["max@x.com"]["customer_id"] is None   # admin:<email> placeholder
+    assert by_email["nora@x.com"]["customer_id"] is None  # no customer_map row at all
+
+    assert a.get_member("a@x.com")["customer_id"] == "cus_1"       # joined member
+    assert a.get_member("max@x.com")["customer_id"] is None        # pending subscriber
+
+
 FIXTURE_LIBRARIES = [
     {"id": 17, "name": "01. TV Shows", "server_id": 1, "server_name": "Vermithor", "enabled": True},
     {"id": 20, "name": "04. 4K Family Movies", "server_id": 1, "server_name": "Vermithor", "enabled": True},

@@ -114,6 +114,7 @@ def _dedupe_members(users: list, customers: dict, libraries: list) -> list[dict]
             "libraries": {server: tier_libraries.get(server, []) for server in servers},
             "subscribed": bool(row.get("subscribed")),
             "invited_at": row.get("invited_at"),
+            "customer_id": row.get("customer_id"),
         })
     members.sort(key=lambda m: m["member"].lower())
     return members
@@ -132,6 +133,7 @@ def _member_from_customer(email: str, row: dict) -> dict:
         "libraries": {},
         "subscribed": bool(row.get("subscribed")),
         "invited_at": row.get("invited_at"),
+        "customer_id": row.get("customer_id"),
     }
 
 
