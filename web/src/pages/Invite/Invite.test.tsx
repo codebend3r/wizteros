@@ -36,7 +36,6 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks()
-  useAuthStore.setState(useAuthStore.getInitialState(), true)
 })
 
 test('requires the Supabase login gate when signed out', () => {

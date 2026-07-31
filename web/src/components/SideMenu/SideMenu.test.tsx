@@ -1,15 +1,9 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import userEvent from '@testing-library/user-event'
-import { afterEach, expect, test, vi } from '@/test/vi'
+import { expect, test, vi } from '@/test/vi'
 import { menuRoutes, SideMenu } from '@/components/SideMenu/SideMenu'
 import { useAuthStore } from '@/stores/authStore'
-
-const initialState = useAuthStore.getInitialState()
-
-afterEach(() => {
-  useAuthStore.setState(initialState, true)
-})
 
 test('lists a link for every route', () => {
   render(

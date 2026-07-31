@@ -1,14 +1,8 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { afterEach, expect, test } from '@/test/vi'
+import { expect, test } from '@/test/vi'
 import { AdminLoginButton } from '@/components/AdminLoginButton/AdminLoginButton'
 import { useAuthStore } from '@/stores/authStore'
-
-const initialState = useAuthStore.getInitialState()
-
-afterEach(() => {
-  useAuthStore.setState(initialState, true)
-})
 
 test('renders nothing while Supabase is unconfigured', () => {
   const { container } = render(

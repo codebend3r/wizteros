@@ -45,7 +45,6 @@ const renderManage = () => {
 
 afterEach(() => {
   vi.restoreAllMocks()
-  useAuthStore.setState(useAuthStore.getInitialState(), true)
 })
 
 test('loads and renders members after the gate', async () => {

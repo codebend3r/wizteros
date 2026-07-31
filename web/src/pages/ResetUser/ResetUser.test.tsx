@@ -41,7 +41,6 @@ const api = await import('@/lib/adminApi')
 
 afterEach(() => {
   vi.restoreAllMocks()
-  useAuthStore.setState(useAuthStore.getInitialState(), true)
 })
 
 test('disables Find until the input is a valid email', async () => {
