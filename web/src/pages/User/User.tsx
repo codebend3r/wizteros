@@ -36,6 +36,7 @@ import {
 } from '@/lib/inviteRules'
 import { deriveStatus, type MemberStatus } from '@/lib/memberStatus'
 import { MEMBERS_QUERY_KEY } from '@/pages/Manage/Manage'
+import { siteConfig } from '@/site.config'
 import styles from '@/pages/User/User.module.scss'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -169,6 +170,21 @@ const MemberDetails = ({
       </dd>
       <dt>Tag</dt>
       <dd>{member.tag ? TAG_LABELS[member.tag] : '—'}</dd>
+      <dt>Stripe</dt>
+      <dd>
+        {member.customer_id && siteConfig.stripeDashboardUrl ? (
+          <a
+            className={styles.stripeLink}
+            href={`${siteConfig.stripeDashboardUrl}/customers/${member.customer_id}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {member.customer_id} ↗
+          </a>
+        ) : (
+          '—'
+        )}
+      </dd>
       <dt>Downloads</dt>
       <dd className={styles.downloadsValue}>
         <button

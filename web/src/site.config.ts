@@ -23,6 +23,7 @@ type SiteConfig = {
   tagline: string
   memberUrl: string | null
   billingPortalUrl: string | null
+  stripeDashboardUrl: string | null
   supportItems: ReadonlyArray<SupportItem>
   tiers: ReadonlyArray<Tier>
 }
@@ -34,6 +35,7 @@ type RawEnv = {
   VITE_PAYMENT_LINK_YOUTH_URL?: string
   VITE_MEMBER_URL?: string
   VITE_BILLING_PORTAL_URL?: string
+  VITE_STRIPE_DASHBOARD_URL?: string
 }
 
 const SUPPORT_ITEMS: ReadonlyArray<SupportItem> = [
@@ -83,6 +85,7 @@ export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
   tagline: 'A community-run media server. Contribute to the cost of keeping it online.',
   memberUrl: env.VITE_MEMBER_URL ?? null,
   billingPortalUrl: env.VITE_BILLING_PORTAL_URL ?? null,
+  stripeDashboardUrl: env.VITE_STRIPE_DASHBOARD_URL ?? null,
   supportItems: SUPPORT_ITEMS,
   tiers: [
     {
@@ -163,6 +166,7 @@ const env: RawEnv = {
   VITE_PAYMENT_LINK_YOUTH_URL: import.meta.env.VITE_PAYMENT_LINK_YOUTH_URL,
   VITE_MEMBER_URL: import.meta.env.VITE_MEMBER_URL,
   VITE_BILLING_PORTAL_URL: import.meta.env.VITE_BILLING_PORTAL_URL,
+  VITE_STRIPE_DASHBOARD_URL: import.meta.env.VITE_STRIPE_DASHBOARD_URL,
 }
 
 export const siteConfig = resolveConfig({ env })

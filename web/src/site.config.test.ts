@@ -81,6 +81,14 @@ test('uses the billing portal url from env when set, null otherwise', () => {
   expect(resolveConfig({ env: {} }).billingPortalUrl).toBeNull()
 })
 
+test('uses the stripe dashboard url from env when set, null otherwise', () => {
+  const config = resolveConfig({
+    env: { VITE_STRIPE_DASHBOARD_URL: 'https://dashboard.stripe.com/acct_1' },
+  })
+  expect(config.stripeDashboardUrl).toBe('https://dashboard.stripe.com/acct_1')
+  expect(resolveConfig({ env: {} }).stripeDashboardUrl).toBeNull()
+})
+
 test('provides three support items', () => {
   const config = resolveConfig({ env: {} })
   expect(config.supportItems).toHaveLength(3)

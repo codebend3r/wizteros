@@ -1,14 +1,8 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, expect, test, vi } from '@/test/vi'
+import { expect, test, vi } from '@/test/vi'
 import { LoginGate } from '@/components/LoginGate/LoginGate'
 import { useAuthStore } from '@/stores/authStore'
-
-const initialState = useAuthStore.getInitialState()
-
-afterEach(() => {
-  useAuthStore.setState(initialState, true)
-})
 
 test('renders children directly while Supabase is unconfigured', () => {
   render(

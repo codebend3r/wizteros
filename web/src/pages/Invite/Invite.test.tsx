@@ -36,7 +36,6 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks()
-  useAuthStore.setState(useAuthStore.getInitialState(), true)
 })
 
 test('requires the Supabase login gate when signed out', () => {
@@ -177,6 +176,7 @@ const existing: Member = {
   subscribed: false,
   invited_at: null,
   tag: null,
+  customer_id: null,
 }
 
 test('blocks an email that already belongs to a member', async () => {

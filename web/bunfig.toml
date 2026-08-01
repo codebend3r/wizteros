@@ -1,4 +1,10 @@
 [test]
 # env.ts stubs the dormant Supabase env first; happy-dom must register the DOM
-# before test-setup imports Testing Library.
-preload = ["./src/test/env.ts", "./src/test/happy-dom.ts", "./src/test-setup.ts"]
+# before test-setup imports Testing Library. scss-modules registers its loader
+# ahead of any component import, so no stylesheet slips through as a string.
+preload = [
+  "./src/test/env.ts",
+  "./src/test/happy-dom.ts",
+  "./src/test/scss-modules.ts",
+  "./src/test-setup.ts",
+]

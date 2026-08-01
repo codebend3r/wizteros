@@ -99,6 +99,13 @@
   gap: var(--space-1);
 }
 
+// The link text is the raw cus_ id; mono matches the email row so ids can be
+// eyeball-compared against the Stripe dashboard.
+.stripeLink {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+}
+
 .daysLeft {
   color: var(--color-muted);
 }

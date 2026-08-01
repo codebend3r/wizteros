@@ -18,6 +18,7 @@ const member: Member = {
   subscribed: false,
   invited_at: null,
   tag: null,
+  customer_id: null,
 }
 
 import * as adminApiOriginal from '@/lib/adminApi'
@@ -45,7 +46,6 @@ const renderManage = () => {
 
 afterEach(() => {
   vi.restoreAllMocks()
-  useAuthStore.setState(useAuthStore.getInitialState(), true)
 })
 
 test('loads and renders members after the gate', async () => {

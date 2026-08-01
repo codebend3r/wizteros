@@ -397,20 +397,24 @@ def all_customer_tiers(path: str) -> dict[str, str | None]:
 
 
 def all_customer_rows(path: str) -> dict[str, dict]:
-    """Every customer's lowercased email -> {"tier", "invited_at", "subscribed"}.
+    """Every customer's lowercased email -> {"customer_id", "tier", "invited_at", "subscribed"}.
 
     tier and invited_at may be None. The invited_at stamp lets the admin UI age
     a pending invite into the "Declined Invite" status once the grace period
     lapses; subscribed is the confirmed-payment flag that drives "Subscribed
-    Monthly" independently of any Wizarr expiry.
+    Monthly" independently of any Wizarr expiry. customer_id is the real Stripe
+    id (cus_...) or None — admin-issued placeholder rows are keyed
+    "admin:<email>" and must never leak as a customer id.
     """
     with _conn(path) as c:
         rows = c.execute(
-            "SELECT email, tier, invited_at, subscribed "
+            "SELECT stripe_customer_id, email, tier, invited_at, subscribed "
             "FROM customer_map WHERE email IS NOT NULL"
         ).fetchall()
     return {
         row["email"].lower(): {
+            "customer_id": (row["stripe_customer_id"]
+                            if (row["stripe_customer_id"] or "").startswith("cus_") else None),
             "tier": row["tier"],
             "invited_at": row["invited_at"],
             "subscribed": bool(row["subscribed"]),

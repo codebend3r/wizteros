@@ -1,15 +1,11 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, expect, test } from '@/test/vi'
 import { AppRoutes } from '@/AppRoutes'
 import { useAuthStore } from '@/stores/authStore'
 
 afterEach(() => {
-  // Unmount before resetting the store, so flipping `enabled` back to false
-  // can't re-render a still-mounted /manage into its (QueryClient-less) body.
-  cleanup()
   sessionStorage.clear()
-  useAuthStore.setState(useAuthStore.getInitialState(), true)
 })
 
 test('renders the landing page at /', () => {

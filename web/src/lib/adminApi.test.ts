@@ -38,6 +38,7 @@ const member: Member = {
   subscribed: true,
   invited_at: '2026-07-01T00:00:00+00:00',
   tag: null,
+  customer_id: 'cus_1',
 }
 
 afterEach(() => {
@@ -92,9 +93,11 @@ test('reissueInvite posts email + tier and returns the invite link', async () =>
   expect(JSON.parse(init.body)).toEqual({ email: 'a@x.com', tier: 'bronze' })
 })
 
-test('fetchMembers defaults missing libraries and invited_at (pre-deploy bridge)', async () => {
+test('fetchMembers defaults missing libraries, invited_at, and customer_id (pre-deploy bridge)', async () => {
   const legacyMember = Object.fromEntries(
-    Object.entries(member).filter(([key]) => key !== 'libraries' && key !== 'invited_at'),
+    Object.entries(member).filter(
+      ([key]) => key !== 'libraries' && key !== 'invited_at' && key !== 'customer_id',
+    ),
   )
   vi.stubGlobal(
     'fetch',
@@ -103,7 +106,7 @@ test('fetchMembers defaults missing libraries and invited_at (pre-deploy bridge)
   const result = await fetchMembers()
   // Equivalent to legacyMember + the parser's defaults, but typed as Member so
   // bun's strict expect<Member[]> accepts it.
-  expect(result).toEqual([{ ...member, libraries: {}, invited_at: null }])
+  expect(result).toEqual([{ ...member, libraries: {}, invited_at: null, customer_id: null }])
 })
 
 test('fetchMembers rejects a malformed member (missing fields)', async () => {
