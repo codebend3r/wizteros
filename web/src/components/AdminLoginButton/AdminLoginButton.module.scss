@@ -1,18 +1,22 @@
+// A deliberately invisible hotspot anchored to the very bottom of the
+// landing page — admin access without advertising it. The name stays in the
+// accessibility tree, and keyboard focus makes it visible again so the
+// control is still discoverable without a mouse.
 .button {
-  position: fixed;
-  top: var(--space-2);
-  right: var(--space-2);
+  position: absolute;
+  bottom: 0;
+  right: 0;
   z-index: 10;
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
+  display: grid;
+  place-items: center;
+  width: 6.25rem;
+  height: 6.25rem;
+  opacity: 0;
   color: var(--color-muted);
   font-size: var(--font-size-sm);
   text-decoration: none;
 
-  &:hover {
-    background: var(--color-bg);
-    color: var(--color-text);
+  &:focus-visible {
+    opacity: 1;
   }
 }
