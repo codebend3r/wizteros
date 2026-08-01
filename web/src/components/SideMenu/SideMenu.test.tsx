@@ -1,9 +1,11 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import userEvent from '@testing-library/user-event'
 import { expect, test, vi } from '@/test/vi'
+import { Header } from '@/components/Header/Header'
 import { menuRoutes, SideMenu } from '@/components/SideMenu/SideMenu'
 import { useAuthStore } from '@/stores/authStore'
+import { useMenuStore } from '@/stores/menuStore'
 
 test('lists a link for every route', () => {
   render(
@@ -41,9 +43,11 @@ test('home link is only active on exactly /', () => {
   expect(screen.getByRole('link', { name: 'Home' })).not.toHaveAttribute('aria-current')
 })
 
-test('toggle opens the drawer and a link click closes it', async () => {
+test('the header hamburger opens the drawer and a link click closes it', async () => {
+  useMenuStore.setState({ open: false })
   render(
     <MemoryRouter initialEntries={['/']}>
+      <Header brandName="Westeroz" />
       <SideMenu />
     </MemoryRouter>,
   )
@@ -51,8 +55,31 @@ test('toggle opens the drawer and a link click closes it', async () => {
   expect(toggle).toHaveAttribute('aria-expanded', 'false')
   await userEvent.click(toggle)
   expect(toggle).toHaveAttribute('aria-expanded', 'true')
-  await userEvent.click(screen.getByRole('link', { name: 'Members' }))
+  const drawer = screen.getByRole('navigation', { name: 'Sections' })
+  await userEvent.click(within(drawer).getByRole('link', { name: 'Members' }))
   expect(toggle).toHaveAttribute('aria-expanded', 'false')
+})
+
+test('clicking away from the drawer closes it', async () => {
+  useMenuStore.setState({ open: true })
+  render(
+    <MemoryRouter initialEntries={['/']}>
+      <SideMenu />
+    </MemoryRouter>,
+  )
+  await userEvent.click(screen.getByRole('button', { name: 'Close menu' }))
+  expect(useMenuStore.getState().open).toBe(false)
+})
+
+test('Escape closes the drawer', async () => {
+  useMenuStore.setState({ open: true })
+  render(
+    <MemoryRouter initialEntries={['/']}>
+      <SideMenu />
+    </MemoryRouter>,
+  )
+  await userEvent.keyboard('{Escape}')
+  expect(useMenuStore.getState().open).toBe(false)
 })
 
 test('hides the sign-out button while signed out', () => {
