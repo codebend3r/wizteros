@@ -650,3 +650,42 @@ def test_plex_access_maps_plex_tv_failure_to_502(admin_db, monkeypatch):
     with pytest.raises(HTTPException) as failed:
         a.get_plex_access("a@x.com")
     assert failed.value.status_code == 502
+
+
+def test_list_members_serves_the_warm_snapshot(admin_db):
+    a, _ = admin_db
+    first = a.list_members()
+    # Upstream changes but the snapshot keeps serving until a refresh runs.
+    a.client.list_users.return_value = []
+    assert a.list_members() == first
+    assert a.client.list_users.call_count == 1
+    a.members_snapshot.refresh()
+    assert a.list_members() == []
+
+
+def test_list_members_overrides_stay_live_on_a_cached_snapshot(admin_db):
+    a, dbp = admin_db
+    a.list_members()
+    store.set_member_tag(dbp, "a@x.com", "vip")
+    by_email = {m["email"].lower(): m for m in a.list_members()}
+    assert by_email["a@x.com"]["tag"] == "vip"  # DB join fresh despite cached upstream
+
+
+def test_reissue_invite_kicks_a_snapshot_refresh(admin_db, monkeypatch):
+    a, _ = admin_db
+    a.client.list_libraries.return_value = FIXTURE_LIBRARIES
+    a.client.find_users_by_email.return_value = [{"id": 9, "server": "Vermithor"}]
+    a.client.create_invite.return_value = {"code": "xyz", "url": "http://wizarr-lan/j/xyz"}
+    refreshed = MagicMock()
+    monkeypatch.setattr(a.members_snapshot, "refresh_async", refreshed)
+    a.reissue_invite(a.ReissueInviteBody(email="a@x.com", tier="silver"))
+    refreshed.assert_called_once()
+
+
+def test_reset_expiry_kicks_a_snapshot_refresh(admin_db, monkeypatch):
+    a, _ = admin_db
+    a.client.find_user_ids_by_email.return_value = [1]
+    refreshed = MagicMock()
+    monkeypatch.setattr(a.members_snapshot, "refresh_async", refreshed)
+    a.reset_expiry(a.ResetExpiryBody(email="a@x.com", days=30))
+    refreshed.assert_called_once()

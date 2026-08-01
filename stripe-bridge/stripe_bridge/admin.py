@@ -13,6 +13,7 @@ from stripe_bridge import plex
 from stripe_bridge import store
 from stripe_bridge import tiers
 from stripe_bridge.mailer import send_invite_email
+from stripe_bridge.snapshot import UpstreamSnapshot
 from stripe_bridge.wizarr import WizarrClient
 
 log = logging.getLogger("bridge.admin")
@@ -40,6 +41,29 @@ PUBLIC_INVITE_BASE = os.environ.get("PUBLIC_INVITE_BASE", "").rstrip("/")
 
 client = WizarrClient(WIZARR_BASE_URL, WIZARR_API_KEY)
 router = APIRouter()
+
+
+def _fetch_upstream() -> dict:
+    """One slow sweep of everything /admin/members needs from Wizarr and plex.tv.
+
+    plex_access is best effort, mirroring _with_plex_access: an unset token or
+    a plex.tv failure yields None and the members list falls back to
+    tier-derived access rather than failing.
+    """
+    users = client.list_users()
+    libraries = client.list_libraries()
+    plex_access = None
+    if plex.PLEX_TOKEN:
+        try:
+            plex_access = plex.shared_access_all()
+        except requests.RequestException as exc:
+            log.error("plex.tv bulk lookup failed; falling back to tier access: %s", exc)
+    return {"users": users, "libraries": libraries, "plex_access": plex_access}
+
+
+# Wizarr's users list alone takes ~15s, so /admin/members serves the last
+# snapshot instantly; the app's lifespan loop keeps it warm from boot.
+members_snapshot = UpstreamSnapshot(fetch=_fetch_upstream)
 
 
 def require_admin(authorization: str = Header(default="")) -> None:
@@ -137,22 +161,16 @@ def _member_from_customer(email: str, row: dict) -> dict:
     }
 
 
-def _with_plex_access(members: list[dict]) -> list[dict]:
+def _with_plex_access(members: list[dict], *, access: dict | None) -> list[dict]:
     """Union each member's live plex.tv share into their servers and libraries.
 
     plex.tv is ground truth for what a member can actually see: it covers
     legacy shares that never went through an invite, and members whose tier
-    was never recorded (whose tier-derived library list is empty). One bulk
-    lookup — the same handful of calls a single-member lookup costs — serves
-    every row. Best effort: an unset token or a plex.tv failure leaves the
-    tier-derived values in place rather than failing the whole list.
+    was never recorded (whose tier-derived library list is empty). access is
+    the bulk lookup from _fetch_upstream; None (no token, or plex.tv failed)
+    leaves the tier-derived values in place rather than failing the whole list.
     """
-    if not plex.PLEX_TOKEN:
-        return members
-    try:
-        access = plex.shared_access_all()
-    except requests.RequestException as exc:
-        log.error("plex.tv bulk lookup failed; falling back to tier access: %s", exc)
+    if access is None:
         return members
     merged = []
     for member in members:
@@ -198,9 +216,12 @@ def list_members() -> list[dict]:
     Wizarr's user list only has people who redeemed an invite, so subscribers
     still holding a pending invite are unioned in from the bridge's customer_map,
     and each row's servers/libraries are reconciled against the live plex.tv share.
+    The slow upstream reads come from the warm snapshot (only a cold first call
+    pays the full ~15s); tags, downloads, and tier joins stay live from the DB.
     """
+    snap = members_snapshot.get()
     customers = store.all_customer_rows(MAP_DB_PATH)
-    members = _dedupe_members(client.list_users(), customers, client.list_libraries())
+    members = _dedupe_members(snap["users"], customers, snap["libraries"])
     joined = {m["email"].lower() for m in members if m["email"]}
     pending = [
         _member_from_customer(email, row)
@@ -208,7 +229,7 @@ def list_members() -> list[dict]:
         if email not in joined
     ]
     return sorted(
-        _with_overrides(_with_plex_access(members + pending)),
+        _with_overrides(_with_plex_access(members + pending, access=snap["plex_access"])),
         key=lambda m: m["member"].lower())
 
 
@@ -396,6 +417,7 @@ def reset_expiry(body: ResetExpiryBody) -> dict:
     for uid in ids:
         client.set_expiry(uid, expires)
     store.record_event(MAP_DB_PATH, body.email, "Expiry reset", detail)
+    members_snapshot.refresh_async()
     return {"updated": len(ids), "expires": expires}
 
 
@@ -463,6 +485,7 @@ def reissue_invite(body: ReissueInviteBody) -> dict:
         MAP_DB_PATH, body.email, "Invite issued",
         f"{tier} tier — " + ("link emailed" if emailed else "email failed, link sent manually"),
     )
+    members_snapshot.refresh_async()
     return {
         "url": url,
         "code": invite["code"],
