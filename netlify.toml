@@ -6,3 +6,6 @@
 [build.environment]
   NODE_VERSION = "24"
   BUN_VERSION = "1.3.14"
+  # SMTP_USER and FROM_ADDR both hold the public contact email shown in the
+  # footer, not a secret
+  SECRETS_SCAN_OMIT_KEYS = "SMTP_USER,FROM_ADDR"

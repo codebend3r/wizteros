@@ -4,22 +4,10 @@
   align-content: start;
 }
 
-// Hamburger is a mobile-only affordance; desktop shows the menu persistently.
-.toggle {
+// Click-away target behind the mobile drawer; desktop shows the menu
+// persistently, so it only ever paints under the 48rem breakpoint.
+.backdrop {
   display: none;
-  justify-self: start;
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  color: var(--color-text);
-  font-family: var(--font-body);
-  font-size: var(--font-size-sm);
-  cursor: pointer;
-
-  &:hover {
-    background: var(--color-bg);
-  }
 }
 
 .list {
@@ -74,8 +62,15 @@
 }
 
 @media (max-width: 48rem) {
-  .toggle {
+  .backdrop {
     display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 15;
+    padding: 0;
+    border: none;
+    background: rgb(0 0 0 / 40%);
+    cursor: pointer;
   }
 
   .menu {

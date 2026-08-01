@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { NavLink } from 'react-router-dom'
 import styles from '@/components/SideMenu/SideMenu.module.scss'
 import { useAuthStore } from '@/stores/authStore'
+import { useMenuStore } from '@/stores/menuStore'
 
 export const menuRoutes = [
   { label: 'Home', path: '/' },
@@ -11,20 +12,41 @@ export const menuRoutes = [
 ] as const
 
 export const SideMenu = () => {
-  const [open, setOpen] = useState(false)
+  const open = useMenuStore((state) => state.open)
+  const setOpen = useMenuStore((state) => state.setOpen)
   const status = useAuthStore((state) => state.status)
   const signOut = useAuthStore((state) => state.signOut)
+  const navRef = useRef<HTMLElement>(null)
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+    navRef.current?.focus()
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpen({ open: false })
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open, setOpen])
+
   return (
     <aside className={styles.sideMenu}>
-      <button
-        className={styles.toggle}
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-      >
-        Menu
-      </button>
+      {open && (
+        <button
+          className={styles.backdrop}
+          type="button"
+          aria-label="Close menu"
+          onClick={() => setOpen({ open: false })}
+        />
+      )}
       <nav
+        ref={navRef}
+        tabIndex={-1}
         className={open ? `${styles.menu} ${styles.menuOpen}` : styles.menu}
         aria-label="Sections"
       >
@@ -37,7 +59,7 @@ export const SideMenu = () => {
                 }
                 to={path}
                 end={path === '/'}
-                onClick={() => setOpen(false)}
+                onClick={() => setOpen({ open: false })}
               >
                 {label}
               </NavLink>

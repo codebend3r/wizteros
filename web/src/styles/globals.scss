@@ -42,6 +42,9 @@
 }
 
 body {
+  // Positioning context spanning the full document, so absolute elements
+  // (the hidden admin-login hotspot) can pin to the page's true corners.
+  position: relative;
   margin: 0;
   background: var(--color-bg);
   color: var(--color-text);

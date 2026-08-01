@@ -6,6 +6,43 @@
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--color-border);
   background: var(--color-surface);
+
+  // The hamburger joins the row on phones; slim everything else down so
+  // brand + nav still fit a 320px viewport without widening the page.
+  @media (max-width: 48rem) {
+    padding-inline: var(--space-2);
+    gap: var(--space-1);
+  }
+}
+
+.brandGroup {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+
+  @media (max-width: 48rem) {
+    gap: var(--space-1);
+  }
+}
+
+// Mobile-only: the drawer it controls collapses into the layout on desktop.
+.menuToggle {
+  display: none;
+  padding: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--color-bg);
+  }
+
+  @media (max-width: 48rem) {
+    display: grid;
+    place-items: center;
+  }
 }
 
 .brand {
@@ -22,6 +59,10 @@
   &:hover {
     color: var(--color-gold);
   }
+
+  @media (max-width: 48rem) {
+    font-size: var(--font-size-lg);
+  }
 }
 
 // Circle-crops the square mascot art; the frame sets the size, the zoomed
@@ -31,6 +72,11 @@
   overflow: hidden;
   width: var(--space-6);
   height: var(--space-6);
+
+  @media (max-width: 48rem) {
+    width: var(--space-4);
+    height: var(--space-4);
+  }
   border: 1px solid var(--color-border);
   border-radius: 50%;
 }

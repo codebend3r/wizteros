@@ -1,11 +1,21 @@
 .page {
   display: grid;
+  // An implicit auto column floors the track at the widest child's
+  // min-content; minmax(0, 1fr) keeps the page at viewport width and lets
+  // the children wrap instead.
+  grid-template-columns: minmax(0, 1fr);
   align-content: start;
   gap: var(--space-3);
   width: 100%;
   max-width: var(--max-width);
   margin-inline: auto;
   padding: var(--space-4) var(--space-3);
+
+  // AdminLayout's body keeps a slim gutter on phones; adding our own on
+  // top of it wastes horizontal space.
+  @media (max-width: 48rem) {
+    padding-inline: 0;
+  }
 }
 
 .back {
@@ -23,11 +33,16 @@
   font-family: var(--font-display);
   font-size: var(--font-size-xl);
   font-weight: 700;
-  word-break: break-all;
+  // The title is a member name or a raw email; break-all split names
+  // mid-word, while anywhere only breaks when a single word can't fit.
+  overflow-wrap: anywhere;
 }
 
 .notice {
   color: var(--color-muted);
+  // The notice interpolates the looked-up email; an unbroken address must
+  // wrap instead of widening the page grid past the viewport.
+  overflow-wrap: anywhere;
 }
 
 .error {
@@ -38,6 +53,12 @@
   display: grid;
   grid-template-columns: auto 1fr;
   gap: var(--space-1) var(--space-3);
+
+  // Two columns squeeze the values into a sliver on a phone; stack each
+  // label above its value instead.
+  @media (max-width: 48rem) {
+    grid-template-columns: 1fr;
+  }
   margin: 0;
   padding: var(--space-3);
   border: 1px solid var(--color-border);
@@ -54,7 +75,10 @@
 
   dd {
     margin: 0;
-    word-break: break-word;
+    // break-word leaves min-content at the longest word, so an unbroken
+    // email or customer id still widens the 1fr track past a phone screen;
+    // anywhere shrinks min-content and inherits into the value links.
+    overflow-wrap: anywhere;
   }
 
   // The servers list spans several lines; pin its label to the first line
@@ -360,6 +384,9 @@
 }
 
 .expiryInput {
+  // The native datetime-local control is wider than a small phone's row;
+  // cap it at the section so it shrinks with the container.
+  max-width: 100%;
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -448,6 +475,7 @@
 
 .historyRow {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: var(--space-2);
   padding: var(--space-1) 0;
