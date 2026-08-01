@@ -170,115 +170,117 @@ export const MembersTable = ({ members, onSelectTier, invitingEmail }: MembersTa
         pageSize={pageSize}
         onPageSizeChange={changePageSize}
       />
-      <table className={styles.table}>
-        <thead>
-          <tr>
-            <SortHeader column="member" label="Member" sort={sort} onToggle={toggleSort} />
-            <SortHeader column="email" label="Email" sort={sort} onToggle={toggleSort} />
-            <th>Tier</th>
-            <th>Downloads</th>
-            <th>Servers/Libs</th>
-            <th>Expiry</th>
-            <SortHeader column="status" label="Status" sort={sort} onToggle={toggleSort} />
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {visible.map((member) => {
-            const status = deriveStatus({ member })
-            const libraryCount = countLibraries(member.libraries)
-            return (
-              <tr key={`${member.email}-${member.member}`}>
-                <td>{member.member}</td>
-                <td>
-                  <Link
-                    className={styles.emailLink}
-                    to={`/user?email=${encodeURIComponent(member.email)}`}
-                  >
-                    {member.email}
-                  </Link>
-                </td>
-                <td>
-                  <span className={styles.tierCell}>
-                    {isPaidTier(member.tier) && <TierIcon tier={member.tier} />}
-                    {member.tier}
-                  </span>
-                </td>
-                <td>{formatDownloads(member.downloads)}</td>
-                <td>
-                  {member.servers.length ? (
-                    <span
-                      className={styles.servers}
-                      title={member.servers.join(', ')}
-                      aria-label={accessLabel({
-                        servers: member.servers.length,
-                        libraries: libraryCount,
-                      })}
+      <div className={styles.scroller}>
+        <table className={styles.table}>
+          <thead>
+            <tr>
+              <SortHeader column="member" label="Member" sort={sort} onToggle={toggleSort} />
+              <SortHeader column="email" label="Email" sort={sort} onToggle={toggleSort} />
+              <th>Tier</th>
+              <th>Downloads</th>
+              <th>Servers/Libs</th>
+              <th>Expiry</th>
+              <SortHeader column="status" label="Status" sort={sort} onToggle={toggleSort} />
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visible.map((member) => {
+              const status = deriveStatus({ member })
+              const libraryCount = countLibraries(member.libraries)
+              return (
+                <tr key={`${member.email}-${member.member}`}>
+                  <td>{member.member}</td>
+                  <td>
+                    <Link
+                      className={styles.emailLink}
+                      to={`/user?email=${encodeURIComponent(member.email)}`}
                     >
-                      {member.servers.length} / {libraryCount}
+                      {member.email}
+                    </Link>
+                  </td>
+                  <td>
+                    <span className={styles.tierCell}>
+                      {isPaidTier(member.tier) && <TierIcon tier={member.tier} />}
+                      {member.tier}
                     </span>
-                  ) : (
-                    '—'
-                  )}
-                </td>
-                <td>{formatExpiry(member.expires)}</td>
-                <td>
-                  <span className={styles.status}>
-                    {status === 'Subscribed Monthly' && isPaidTier(member.tier) && (
-                      <TierIcon tier={member.tier} />
+                  </td>
+                  <td>{formatDownloads(member.downloads)}</td>
+                  <td>
+                    {member.servers.length ? (
+                      <span
+                        className={styles.servers}
+                        title={member.servers.join(', ')}
+                        aria-label={accessLabel({
+                          servers: member.servers.length,
+                          libraries: libraryCount,
+                        })}
+                      >
+                        {member.servers.length} / {libraryCount}
+                      </span>
+                    ) : (
+                      '—'
                     )}
-                    {status === 'VIP' && <span aria-hidden="true">💎</span>}
-                    {status === 'Invited' && <span aria-hidden="true">✉️</span>}
-                    <span className={status === 'Subscribed Monthly' ? styles.subscribed : ''}>
-                      {status}
+                  </td>
+                  <td>{formatExpiry(member.expires)}</td>
+                  <td>
+                    <span className={styles.status}>
+                      {status === 'Subscribed Monthly' && isPaidTier(member.tier) && (
+                        <TierIcon tier={member.tier} />
+                      )}
+                      {status === 'VIP' && <span aria-hidden="true">💎</span>}
+                      {status === 'Invited' && <span aria-hidden="true">✉️</span>}
+                      <span className={status === 'Subscribed Monthly' ? styles.subscribed : ''}>
+                        {status}
+                      </span>
                     </span>
-                  </span>
-                </td>
-                <td className={menuEmail === member.email ? styles.menuOpen : undefined}>
-                  <div className={styles.menuWrap}>
-                    <button
-                      className={styles.invite}
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        setMenuEmail(menuEmail === member.email ? null : member.email)
-                      }}
-                      disabled={invitingEmail === member.email}
-                      aria-haspopup="menu"
-                      aria-expanded={menuEmail === member.email}
-                    >
-                      {invitingEmail === member.email
-                        ? 'Inviting…'
-                        : status === 'Subscribed Monthly'
-                          ? 'Re-invite'
-                          : 'Invite'}
-                    </button>
-                    {menuEmail === member.email && (
-                      <ul className={styles.menu} role="menu">
-                        {PAID_TIERS.map((tier) => (
-                          <li key={tier} role="none">
-                            <button
-                              className={styles.menuItem}
-                              type="button"
-                              role="menuitem"
-                              onClick={() => {
-                                setMenuEmail(null)
-                                onSelectTier({ member, tier })
-                              }}
-                            >
-                              <TierIcon tier={tier} /> {TIER_LABELS[tier]} Tier
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+                  </td>
+                  <td className={menuEmail === member.email ? styles.menuOpen : undefined}>
+                    <div className={styles.menuWrap}>
+                      <button
+                        className={styles.invite}
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          setMenuEmail(menuEmail === member.email ? null : member.email)
+                        }}
+                        disabled={invitingEmail === member.email}
+                        aria-haspopup="menu"
+                        aria-expanded={menuEmail === member.email}
+                      >
+                        {invitingEmail === member.email
+                          ? 'Inviting…'
+                          : status === 'Subscribed Monthly'
+                            ? 'Re-invite'
+                            : 'Invite'}
+                      </button>
+                      {menuEmail === member.email && (
+                        <ul className={styles.menu} role="menu">
+                          {PAID_TIERS.map((tier) => (
+                            <li key={tier} role="none">
+                              <button
+                                className={styles.menuItem}
+                                type="button"
+                                role="menuitem"
+                                onClick={() => {
+                                  setMenuEmail(null)
+                                  onSelectTier({ member, tier })
+                                }}
+                              >
+                                <TierIcon tier={tier} /> {TIER_LABELS[tier]} Tier
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
       <Pager current={current} pageCount={pageCount} onPageChange={setPage} />
     </div>
   )
