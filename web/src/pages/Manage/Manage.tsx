@@ -17,6 +17,7 @@ import {
   type PaidTier,
 } from '@/lib/adminApi'
 import { TIER_DOWNLOADS } from '@/lib/inviteRules'
+import { deriveStatus } from '@/lib/memberStatus'
 import styles from '@/pages/Manage/Manage.module.scss'
 
 export const MEMBERS_QUERY_KEY = ['members'] as const
@@ -103,7 +104,7 @@ const ManageInner = () => {
       <main className={styles.page}>
         <div className={styles.header}>
           <h1 className={styles.title}>Members</h1>
-          <div className={styles.copyGroup}>
+          <div className={styles.copyGroup} role="group" aria-label="Copy email lists">
             <CopyEmailsButton emails={(members ?? []).map((member) => member.email)} />
             <CopyEmailsButton
               label="Copy non-VIP emails"
@@ -115,6 +116,12 @@ const ManageInner = () => {
               label="Copy VIP emails"
               emails={(members ?? [])
                 .filter((member) => member.tag === 'vip')
+                .map((member) => member.email)}
+            />
+            <CopyEmailsButton
+              label="Copy invited emails"
+              emails={(members ?? [])
+                .filter((member) => deriveStatus({ member }) === 'Invited')
                 .map((member) => member.email)}
             />
           </div>

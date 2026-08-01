@@ -24,11 +24,12 @@ The contribution framing is deliberate (Plex TOS prohibits selling access, Strip
 
 ## Workflow
 
-- Do not commit anything until I tell you to.
-- Do not push anything until I tell you to.
-- Do not merge anything until I tell you to.
-- Do not create a PR until I tell you to.
-- Do not create a branch until I tell you to.
+- Do not commit anything unless I tell you.
+- Do not switch branches unless I tell you.
+- Do not push anything unless I tell you.
+- Do not merge anything unless I tell you.
+- Do not create a PR unless I tell you.
+- Do not create a branch unless I tell you.
 
 ## React
 
