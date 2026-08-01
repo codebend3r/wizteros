@@ -26,6 +26,7 @@ const makeMember = (email: string): Member => ({
   subscribed: false,
   invited_at: null,
   tag: null,
+  customer_id: null,
 })
 
 const renderEmail = () => {

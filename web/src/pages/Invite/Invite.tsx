@@ -85,6 +85,7 @@ const InviteInner = () => {
         subscribed: false,
         invited_at: new Date().toISOString(),
         tag: null,
+        customer_id: null,
       }
       queryClient.setQueryData<Member[]>(MEMBERS_QUERY_KEY, (old) => {
         if (!old) {

@@ -28,6 +28,7 @@ const member: Member = {
   subscribed: false,
   invited_at: null,
   tag: null,
+  customer_id: null,
 }
 
 vi.mock('@/lib/adminApi', () => ({
@@ -41,7 +42,6 @@ const api = await import('@/lib/adminApi')
 
 afterEach(() => {
   vi.restoreAllMocks()
-  useAuthStore.setState(useAuthStore.getInitialState(), true)
 })
 
 test('disables Find until the input is a valid email', async () => {

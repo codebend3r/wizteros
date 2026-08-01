@@ -20,9 +20,21 @@ const member: Member = {
   subscribed: true,
   invited_at: null,
   tag: null,
+  customer_id: 'cus_123',
 }
 
 import * as adminApiOriginal from '@/lib/adminApi'
+import * as siteConfigOriginal from '@/site.config'
+
+// The test env keeps every VITE_* var dormant, so the resolved siteConfig has
+// no dashboard base URL; pin one here to exercise the Stripe link row.
+vi.mock('@/site.config', () => ({
+  ...siteConfigOriginal,
+  siteConfig: {
+    ...siteConfigOriginal.siteConfig,
+    stripeDashboardUrl: 'https://dashboard.stripe.com/acct_1',
+  },
+}))
 
 vi.mock('@/lib/adminApi', () => ({
   ...adminApiOriginal,
@@ -778,4 +790,23 @@ test('shows a spinner while a hard tier reset is in flight', async () => {
   await user.click(within(dialog).getByRole('button', { name: 'Hard reset' }))
 
   expect(await screen.findByRole('status', { name: 'Resetting tier' })).toBeInTheDocument()
+})
+
+test('links the member to their stripe customer record', async () => {
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  const link = screen.getByRole('link', { name: /cus_123/ })
+  expect(link).toHaveAttribute('href', 'https://dashboard.stripe.com/acct_1/customers/cus_123')
+  expect(link).toHaveAttribute('target', '_blank')
+  expect(link).toHaveAttribute('rel', 'noreferrer')
+})
+
+test('shows a dash on the Stripe row for a member with no customer id', async () => {
+  vi.mocked(fetchMember).mockResolvedValue({ ...member, customer_id: null })
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  expect(detailValue('Stripe')).toBe('—')
 })

@@ -1,15 +1,9 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import userEvent from '@testing-library/user-event'
-import { afterEach, expect, test, vi } from '@/test/vi'
+import { expect, test, vi } from '@/test/vi'
 import { menuRoutes, SideMenu } from '@/components/SideMenu/SideMenu'
 import { useAuthStore } from '@/stores/authStore'
-
-const initialState = useAuthStore.getInitialState()
-
-afterEach(() => {
-  useAuthStore.setState(initialState, true)
-})
 
 test('lists a link for every route', () => {
   render(
@@ -32,6 +26,10 @@ test('marks the current route as active', () => {
   )
   expect(screen.getByRole('link', { name: 'Invite' })).toHaveAttribute('aria-current', 'page')
   expect(screen.getByRole('link', { name: 'Home' })).not.toHaveAttribute('aria-current')
+  // Also pins the scss-modules test loader: without it `styles.link` resolves
+  // to String.prototype.link and React drops the className entirely.
+  expect(screen.getByRole('link', { name: 'Invite' })).toHaveClass('link', 'linkActive')
+  expect(screen.getByRole('link', { name: 'Home' })).toHaveClass('link')
 })
 
 test('home link is only active on exactly /', () => {

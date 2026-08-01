@@ -15,6 +15,7 @@ export type Member = {
   subscribed: boolean
   invited_at: string | null
   tag: MemberTag | null
+  customer_id: string | null
 }
 
 export type PlexServerAccess = {
@@ -106,14 +107,15 @@ const isTier = (value: unknown): value is Tier =>
 
 const isMemberTag = (value: unknown): value is MemberTag => value === 'vip' || value === 'hvu'
 
-// A bridge deployed before the libraries map, invited_at stamp, or tag may
-// still omit them; tolerate that and normalize with toMember so the page
-// degrades to bare server names, a grace clock that never expires, and an
-// untagged member.
-type MemberPayload = Omit<Member, 'libraries' | 'invited_at' | 'tag'> & {
+// A bridge deployed before the libraries map, invited_at stamp, tag, or
+// customer_id may still omit them; tolerate that and normalize with toMember
+// so the page degrades to bare server names, a grace clock that never
+// expires, an untagged member, and no Stripe link.
+type MemberPayload = Omit<Member, 'libraries' | 'invited_at' | 'tag' | 'customer_id'> & {
   libraries?: Record<string, string[]>
   invited_at?: string | null
   tag?: MemberTag | null
+  customer_id?: string | null
 }
 
 // Kept as per-field checks rather than one boolean chain so a rejected payload
@@ -153,6 +155,13 @@ const MEMBER_FIELD_CHECKS: ReadonlyArray<MemberFieldCheck> = [
     field: 'tag',
     valid: (value) => value.tag === undefined || value.tag === null || isMemberTag(value.tag),
   },
+  {
+    field: 'customer_id',
+    valid: (value) =>
+      value.customer_id === undefined ||
+      value.customer_id === null ||
+      typeof value.customer_id === 'string',
+  },
 ]
 
 const invalidMemberFields = (value: unknown): string[] =>
@@ -188,6 +197,7 @@ const toMember = (payload: MemberPayload): Member => ({
   libraries: payload.libraries ?? {},
   invited_at: payload.invited_at ?? null,
   tag: payload.tag ?? null,
+  customer_id: payload.customer_id ?? null,
 })
 
 const isPlexServerAccess = (value: unknown): value is PlexServerAccess =>
