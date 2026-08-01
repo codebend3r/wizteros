@@ -23,11 +23,38 @@
   font-weight: 700;
 }
 
+// A joined button group: the buttons share their inner borders and only the
+// group's outer ends keep the pill rounding.
 .copyGroup {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: var(--space-2);
+
+  > button {
+    border-radius: 0;
+
+    + button {
+      margin-inline-start: -1px;
+    }
+
+    &:first-child {
+      border-start-start-radius: var(--radius-md);
+      border-end-start-radius: var(--radius-md);
+    }
+
+    &:last-child {
+      border-start-end-radius: var(--radius-md);
+      border-end-end-radius: var(--radius-md);
+    }
+
+    // The -1px overlap hides a shared border under the next button; lift the
+    // hovered/focused one so its accent border shows on all four sides.
+    &:focus-visible,
+    &:hover:not(:disabled) {
+      position: relative;
+      z-index: 1;
+    }
+  }
 }
 
 .actions {

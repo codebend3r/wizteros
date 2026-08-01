@@ -152,3 +152,17 @@ test('links to the invite page', async () => {
   const link = await screen.findByRole('link', { name: '+ Invite someone' })
   expect(link).toHaveAttribute('href', '/invite')
 })
+
+test('the invited-emails button counts only members with an outstanding invite', async () => {
+  const invited: Member = {
+    ...member,
+    member: 'nick',
+    email: 'nick@x.com',
+    subscribed: false,
+    invited_at: new Date().toISOString(),
+  }
+  vi.mocked(fetchMembers).mockResolvedValue([member, invited])
+  renderManage()
+  expect(await screen.findByRole('button', { name: 'Copy invited emails (1)' })).toBeInTheDocument()
+  expect(screen.getByRole('group', { name: 'Copy email lists' })).toBeInTheDocument()
+})
