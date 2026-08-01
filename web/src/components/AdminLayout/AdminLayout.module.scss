@@ -23,6 +23,9 @@
 @media (max-width: 48rem) {
   .body {
     grid-template-columns: 1fr;
+    // Phones need every horizontal pixel; the pages drop their own inline
+    // padding at this breakpoint too, leaving this as the only gutter.
+    padding: var(--space-2) var(--space-1);
   }
 }
 

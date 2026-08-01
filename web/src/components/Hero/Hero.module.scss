@@ -28,4 +28,13 @@
   color: var(--color-accent-text);
   font-weight: 600;
   text-decoration: none;
+
+  // The global a:hover gold outranks the class color and washes the label
+  // out against the amber background; keep the dark label and brighten the
+  // fill instead.
+  &:hover,
+  &:focus-visible {
+    background: var(--color-gold);
+    color: var(--color-accent-text);
+  }
 }

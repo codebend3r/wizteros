@@ -27,6 +27,8 @@ PUBLIC_INVITE_BASE = os.environ["PUBLIC_INVITE_BASE"].rstrip("/")
 
 MAP_DB_PATH = os.environ.get("MAP_DB_PATH", "/data/bridge.db")
 RECONCILE_INTERVAL_SECONDS = int(os.environ.get("RECONCILE_INTERVAL_SECONDS", "3600"))
+MEMBERS_SNAPSHOT_INTERVAL_SECONDS = int(
+    os.environ.get("MEMBERS_SNAPSHOT_INTERVAL_SECONDS", "300"))
 
 stripe.api_key = STRIPE_API_KEY
 log = logging.getLogger("bridge")
@@ -87,12 +89,27 @@ async def _reconcile_loop() -> None:
         await asyncio.sleep(RECONCILE_INTERVAL_SECONDS)
 
 
+async def _snapshot_loop() -> None:
+    """Warm the members snapshot at boot and keep it fresh thereafter.
+
+    A failed refresh (Wizarr or plex.tv down) logs and retries next interval;
+    /admin/members keeps serving the previous snapshot in the meantime.
+    """
+    while True:
+        try:
+            await asyncio.to_thread(admin.members_snapshot.refresh)
+        except Exception:
+            log.exception("members snapshot refresh failed")
+        await asyncio.sleep(MEMBERS_SNAPSHOT_INTERVAL_SECONDS)
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    """Keep the reconcile sweep running for the life of the server."""
-    task = asyncio.create_task(_reconcile_loop())
+    """Keep the reconcile sweep and members-snapshot refresher running for the life of the server."""
+    tasks = [asyncio.create_task(_reconcile_loop()), asyncio.create_task(_snapshot_loop())]
     yield
-    task.cancel()
+    for task in tasks:
+        task.cancel()
 
 
 app = FastAPI(lifespan=_lifespan)

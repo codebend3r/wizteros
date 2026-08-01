@@ -24,11 +24,12 @@ The contribution framing is deliberate (Plex TOS prohibits selling access, Strip
 
 ## Workflow
 
-- Do not commit anything until I tell you to.
-- Do not push anything until I tell you to.
-- Do not merge anything until I tell you to.
-- Do not create a PR until I tell you to.
-- Do not create a branch until I tell you to.
+- Do not commit anything unless I tell you.
+- Do not switch branches unless I tell you.
+- Do not push anything unless I tell you.
+- Do not merge anything unless I tell you.
+- Do not create a PR unless I tell you.
+- Do not create a branch unless I tell you.
 
 ## React
 
@@ -55,6 +56,9 @@ The contribution framing is deliberate (Plex TOS prohibits selling access, Strip
 - Second preferred display value is flex
 - Avoid using plain divs; meaing divs with no class or id defined
 - Always use token values from `styles/globals.scss` when defining font sizes, colors, and other design tokens like padding, margin, gap, and border radius
+- Responsive design is a must: every page must render without horizontal page scroll down to a 320px viewport, in every state (loaded, loading, error, empty)
+- Wide content (tables, long emails/ids) scrolls inside its own `overflow-x: auto` container or wraps (`overflow-wrap: anywhere`, `flex-wrap: wrap`); the page itself never scrolls sideways. Watch grid/flex min-content traps: single-column page grids use `grid-template-columns: minmax(0, 1fr)`, and note `overflow-wrap: break-word` does not shrink min-content while `anywhere` does
+- Use `48rem` as the mobile breakpoint (`@media (max-width: 48rem)`) to stack side-by-side headers/columns, matching the admin sidebar collapse; `40rem`/`64rem` are the landing-page column steps
 
 ## Code style
 

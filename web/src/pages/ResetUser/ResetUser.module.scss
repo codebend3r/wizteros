@@ -1,11 +1,21 @@
 .page {
   display: grid;
+  // An implicit auto column floors the track at the widest child's
+  // min-content; minmax(0, 1fr) keeps the page at viewport width and lets
+  // the lookup input shrink instead.
+  grid-template-columns: minmax(0, 1fr);
   align-content: start;
   gap: var(--space-3);
   max-width: 40rem;
   width: 100%;
   margin-inline: auto;
   padding: var(--space-4) var(--space-3);
+
+  // AdminLayout's body keeps a slim gutter on phones; adding our own on
+  // top of it wastes horizontal space.
+  @media (max-width: 48rem) {
+    padding-inline: 0;
+  }
 }
 
 .title {
@@ -21,6 +31,9 @@
 
 .input {
   flex: 1;
+  // Text inputs carry a browser default min-width; without this the lookup
+  // row refuses to shrink and widens the page on narrow phones.
+  min-width: 0;
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);

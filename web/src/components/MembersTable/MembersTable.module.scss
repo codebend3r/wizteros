@@ -1,6 +1,10 @@
 .wrap {
   display: grid;
   gap: var(--space-2);
+}
+
+// Only the table scrolls sideways; the pagers above and below stay put.
+.scroller {
   overflow-x: auto;
 
   // macOS auto-hides overlay scrollbars, which made the overflowing Action
@@ -178,7 +182,12 @@
 .pager {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-2);
+
+  @media (max-width: 48rem) {
+    justify-content: center;
+  }
 
   button {
     padding: var(--space-1) var(--space-2);

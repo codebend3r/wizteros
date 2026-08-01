@@ -7,6 +7,12 @@
   width: 100%;
   margin-inline: auto;
   padding: var(--space-4) var(--space-3);
+
+  // AdminLayout's body keeps a slim gutter on phones; adding our own on
+  // top of it wastes horizontal space.
+  @media (max-width: 48rem) {
+    padding-inline: 0;
+  }
 }
 
 .back {
