@@ -8,6 +8,12 @@
   width: 100%;
   margin-inline: auto;
   padding: var(--space-4) var(--space-3);
+
+  // AdminLayout's body keeps a slim gutter on phones; adding our own on
+  // top of it wastes horizontal space.
+  @media (max-width: 48rem) {
+    padding-inline: 0;
+  }
 }
 
 .header {
@@ -15,6 +21,12 @@
   grid-template-columns: 1fr auto;
   align-items: center;
   gap: var(--space-2);
+
+  // The copy group's widest button sets the column's min-content; side by
+  // side with the title it cannot fit a phone, so stack the two rows.
+  @media (max-width: 48rem) {
+    grid-template-columns: 1fr;
+  }
 }
 
 .title {
@@ -53,6 +65,32 @@
     &:hover:not(:disabled) {
       position: relative;
       z-index: 1;
+    }
+  }
+
+  // The joined row wraps into a ragged stagger on a phone; stack it as one
+  // full-width column, rounding only the group's top and bottom corners.
+  @media (max-width: 48rem) {
+    flex-direction: column;
+    align-items: stretch;
+
+    > button {
+      + button {
+        margin-inline-start: 0;
+        margin-block-start: -1px;
+      }
+
+      &:first-child {
+        border-start-start-radius: var(--radius-md);
+        border-start-end-radius: var(--radius-md);
+        border-end-start-radius: 0;
+      }
+
+      &:last-child {
+        border-end-start-radius: var(--radius-md);
+        border-end-end-radius: var(--radius-md);
+        border-start-end-radius: 0;
+      }
     }
   }
 }
