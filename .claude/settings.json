@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(bun run verify)",
+      "Bash(bun run system-check)",
+      "Bash(bun run lint)",
+      "Bash(bun run lint:fix)",
+      "Bash(bun run lint:css)",
+      "Bash(bun run lint:css:fix)",
+      "Bash(bun run format)",
+      "Bash(bun run format:check)",
+      "Bash(bun run typecheck)",
+      "Bash(bun run typecheck:tsc)",
+      "Bash(bun run test:web)",
+      "Bash(bun run test:bridge)",
+      "Bash(bun run setup:py)",
+      "Bash(bun run --cwd web test:*)",
+      "Bash(bun test:*)",
+      "Bash(bun install)",
+      "Bash(python -m pytest:*)",
+      "Bash(venv/bin/python -m pytest:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git remote -v)",
+      "Bash(git ls-files:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr diff:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)",
+      "Bash(rg:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(ls:*)",
+      "Bash(wc:*)",
+      "Bash(docker compose ps:*)",
+      "Bash(docker logs:*)"
+    ],
+    "ask": [
+      "Bash(bun run deploy:nas)",
+      "Bash(bun run release:*)",
+      "Bash(bun run test:e2e)",
+      "Bash(bun run retest)",
+      "Bash(git push:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(docker compose up:*)",
+      "Bash(docker compose down:*)",
+      "Bash(rsync:*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./stripe-bridge-data/**)",
+      "Read(./wizarr-data/**)",
+      "Read(./tautulli-config/**)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$CLAUDE_FILE_PATHS\" | grep -qE '\\.(ts|tsx|js|jsx|json)$'; then cd \"$CLAUDE_PROJECT_DIR/web\" && bun run oxfmt $CLAUDE_FILE_PATHS 2>/dev/null || true; fi"
+          }
+        ]
+      }
+    ]
+  }
+}
