@@ -133,7 +133,7 @@ const MemberDetails = ({
       .then(() => setCopied(true))
       .catch(() => undefined)
   }
-  // The live plex.tv share is ground truth when we have it — it covers legacy
+  // The live plex.tv share is ground truth when we have it; it covers legacy
   // shares whose unknown tier derives zero libraries. Servers only plex.tv
   // knows about are unioned in; the rest fall back to the tier-derived list.
   const plexServers = plexAccess?.servers ?? {}
@@ -209,7 +209,7 @@ const MemberDetails = ({
             <span className={styles.daysLeft}>({formatDaysLeft(expiry)})</span>
           </>
         ) : member.servers.length ? (
-          // A joined member with no expiry has unlimited access — say so
+          // A joined member with no expiry has unlimited access, say so
           // instead of the pending-member em dash.
           <span>♾️ Never expires</span>
         ) : inviteExpiry ? (
@@ -298,7 +298,7 @@ const UserInner = () => {
     enabled: !!email,
     staleTime: 5 * 60 * 1000,
     // Seed from the /manage table so the detail page is instant when the
-    // member list is already cached — /admin/member costs the same ~15s
+    // member list is already cached; /admin/member costs the same ~15s
     // Wizarr fan-out as the full list.
     initialData: () =>
       queryClient
@@ -370,7 +370,7 @@ const UserInner = () => {
     onSuccess: (result, tier) => {
       setInviteResult(result)
       // Existing access survives the invite window now, so keep expiry and
-      // servers as they are — only the tier, downloads, and the freshly
+      // servers as they are; only the tier, downloads, and the freshly
       // restarted grace clock change until the member redeems.
       const apply = (row: Member): Member => ({
         ...row,
@@ -513,7 +513,7 @@ const UserInner = () => {
     onSuccess: (result) => {
       setCancelNotice(
         result.cancel_at
-          ? `Cancellation scheduled — access ends ${new Date(result.cancel_at).toLocaleString()}.`
+          ? `Cancellation scheduled, access ends ${new Date(result.cancel_at).toLocaleString()}.`
           : 'Cancellation scheduled.',
       )
       void queryClient.invalidateQueries({ queryKey: ['member-events', email] })
@@ -585,7 +585,7 @@ const UserInner = () => {
           <p className={styles.inviteNotice}>
             {inviteResult.emailed
               ? 'Invite emailed. Link: '
-              : 'Email failed — send this link manually: '}
+              : 'Email failed. Send this link manually: '}
             <a href={inviteResult.url}>{inviteResult.url}</a>
           </p>
         )}
@@ -651,7 +651,7 @@ const UserInner = () => {
             <section className={styles.controlSection}>
               <h2 className={styles.sectionTitle}>Hard reset tier</h2>
               <p className={styles.controlHint}>
-                Rewrites the recorded tier instantly — no new invite is sent.
+                Rewrites the recorded tier instantly; no new invite is sent.
               </p>
               <div className={styles.controlRow}>
                 {PAID_TIERS.map((tier) => (
@@ -766,7 +766,7 @@ const UserInner = () => {
             <section className={styles.controlSection}>
               <h2 className={styles.sectionTitle}>Subscription</h2>
               <p className={styles.controlHint}>
-                Flags the member's Stripe subscription to cancel at the end of the billing period —
+                Flags the member's Stripe subscription to cancel at the end of the billing period;
                 access shuts off automatically when it lapses.
               </p>
               {!!cancelNotice && <p className={styles.cancelNotice}>{cancelNotice}</p>}
@@ -853,7 +853,7 @@ const UserInner = () => {
               {TIER_LABELS[pendingHardReset]}.
             </p>
             <p className={styles.controlHint}>
-              Rewrites the recorded tier instantly — no new invite is sent and Plex access is
+              Rewrites the recorded tier instantly; no new invite is sent and Plex access is
               unchanged.
             </p>
           </ConfirmActionModal>
@@ -909,7 +909,7 @@ const UserInner = () => {
               Set {member.member} ({member.email}) to never expire.
             </p>
             <p className={styles.controlHint}>
-              Clears the expiry on every server record for this email — access stays on until you
+              Clears the expiry on every server record for this email; access stays on until you
               change it again.
             </p>
           </ConfirmActionModal>
@@ -948,7 +948,7 @@ const UserInner = () => {
 }
 
 export const User = () => (
-  <AdminGate title="Westeroz — Member">
+  <AdminGate title="Westeroz: Member">
     <UserInner />
   </AdminGate>
 )

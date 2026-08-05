@@ -2,7 +2,7 @@
 
 For each listed member this stamps invited_at = now in the bridge (so they read
 "Invited") and sets a real Wizarr access expiry 14 days out (so Wizarr removes
-their access if they don't sign up). It does NOT set the payment flag — their
+their access if they don't sign up). It does NOT set the payment flag; their
 status stays "Invited" until a real Stripe payment flips it to "Subscribed
 Monthly".
 
@@ -10,7 +10,7 @@ Idempotent and safe to re-run. Two members are skipped untouched:
   - anyone tagged `vip` (VIP access is never time-boxed), and
   - anyone already carrying a confirmed payment (`subscribed`).
 
-Deploy the payment-flag bridge changes FIRST — otherwise the old logic would
+Deploy the payment-flag bridge changes FIRST; otherwise the old logic would
 read these members as "Subscribed Monthly" the moment they get an expiry.
 
 Config comes from the bridge's own env (MAP_DB_PATH, WIZARR_BASE_URL,
@@ -34,8 +34,8 @@ from datetime import datetime, timedelta, timezone
 # the image); make both layouts importable.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from stripe_bridge import store  # noqa: E402
-from stripe_bridge.wizarr import WizarrClient  # noqa: E402
+from stripe_bridge import store
+from stripe_bridge.wizarr import WizarrClient
 
 log = logging.getLogger("bridge.backfill")
 
@@ -45,7 +45,7 @@ WIZARR_BASE_URL = os.environ.get("WIZARR_BASE_URL", "").rstrip("/")
 WIZARR_API_KEY = os.environ.get("WIZARR_API_KEY", "")
 
 # The 44 non-VIP members (the full Wizarr roster minus the 5 VIP emails).
-# Auditable — remove any address here to leave that member untouched.
+# Auditable: remove any address here to leave that member untouched.
 EMAILS = [
     "amolsharma@me.com",
     "andrewmasonmac@gmail.com",
@@ -105,16 +105,16 @@ def run(dry_run: bool) -> None:
     for email in EMAILS:
         key = email.lower()
         if tags.get(key) == "vip":
-            log.info("skip %s — VIP (never time-boxed)", email)
+            log.info("skip %s, VIP (never time-boxed)", email)
             skipped += 1
             continue
         if rows.get(key, {}).get("subscribed"):
-            log.info("skip %s — already subscribed (confirmed payment)", email)
+            log.info("skip %s, already subscribed (confirmed payment)", email)
             skipped += 1
             continue
 
         uids = client.find_user_ids_by_email(email)
-        log.info("%s%s — stamp Invited, expire %d Wizarr record(s) at %s",
+        log.info("%s%s: stamp Invited, expire %d Wizarr record(s) at %s",
                  "[dry-run] " if dry_run else "", email, len(uids), expires[:10])
         if dry_run:
             stamped += 1
@@ -124,7 +124,7 @@ def run(dry_run: bool) -> None:
         for uid in uids:
             client.set_expiry(uid, expires)
         store.record_event(MAP_DB_PATH, email, "Invited",
-                           f"manual — access ends {expires[:10]}")
+                           f"manual, access ends {expires[:10]}")
         stamped += 1
 
     log.info("%sdone: %d stamped, %d skipped, %d total",

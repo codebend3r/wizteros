@@ -3,10 +3,10 @@ import os
 
 import responses
 
-# Env required before (re)loading the module — plex reads it at import time.
+# Env required before (re)loading the module; plex reads it at import time.
 os.environ.update({"PLEX_TOKEN": "tok", "PLEX_TV_BASE": "http://plex.test"})
 
-from stripe_bridge import plex  # noqa: E402
+from stripe_bridge import plex
 
 importlib.reload(plex)
 
@@ -80,7 +80,7 @@ def test_shared_access_empty_for_unknown_email():
 @responses.activate
 def test_shared_access_all_groups_every_email_in_one_pass():
     # A shared_servers document lists every account the server is shared with,
-    # so the whole roster costs one call per owned server — not per member.
+    # so the whole roster costs one call per owned server, not per member.
     _mock_plex_tv()
     access = plex.shared_access_all()
     assert set(access) == {"harman@x.com", "other@x.com"}       # keys lowercased

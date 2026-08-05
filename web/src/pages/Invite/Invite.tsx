@@ -139,7 +139,7 @@ const InviteInner = () => {
           <p className={styles.resultNotice}>
             {inviteResult.emailed
               ? 'Invite emailed. Link: '
-              : 'Email failed — send this link manually: '}
+              : 'Email failed, send this link manually: '}
             <a href={inviteResult.url}>{inviteResult.url}</a>{' '}
             <Link className={styles.viewMember} to={`/user?email=${encodeURIComponent(sentEmail)}`}>
               View member
@@ -251,7 +251,7 @@ const InviteInner = () => {
 }
 
 export const Invite = () => (
-  <AdminGate title="Westeroz — Invite">
+  <AdminGate title="Westeroz: Invite">
     <InviteInner />
   </AdminGate>
 )

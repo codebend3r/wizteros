@@ -14,12 +14,12 @@ const GRACE_MS = INVITE_GRACE_DAYS * 24 * 60 * 60 * 1000
 /**
  * Derive a member's lifecycle status from the bridge's member record.
  *
- * - VIP: the admin's manual tag — overrides every derived status. VIP members
+ * - VIP: the admin's manual tag, overrides every derived status. VIP members
  *   keep access with no expiry and are never subject to the invite lifecycle.
  * - Subscribed Monthly / Expired Member: gated on `subscribed`, the bridge's
- *   confirmed-payment flag — NOT the presence of an expiry. This lets a member
+ *   confirmed-payment flag: NOT the presence of an expiry. This lets a member
  *   carry an expiry (a manual access deadline) without reading as a subscriber.
- * - Invited: an outstanding invite still inside the grace period — whether the
+ * - Invited: an outstanding invite still inside the grace period, whether the
  *   member has no access yet, or holds a legacy share while an invite is out.
  * - Declined Invite: the invite sat unredeemed past the grace period.
  * - Uninvited: known to the bridge but with no confirmed payment and no invite.

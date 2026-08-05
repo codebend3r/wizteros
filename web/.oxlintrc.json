@@ -34,6 +34,24 @@
     "typescript/no-explicit-any": "error",
     "typescript/consistent-type-definitions": ["error", "type"],
     "typescript/no-non-null-assertion": "error",
+    // Never cast, never double-cast. `as const` is still allowed: the rule
+    // only flags assertions that change a type, which is the rule CLAUDE.md
+    // states. Use a type annotation, a type guard, or `satisfies` instead.
+    "typescript/consistent-type-assertions": ["error", { "assertionStyle": "never" }],
+    // Import via the `@/` alias, never parent-relative paths. Same-directory
+    // `./` imports (co-located styles, tests) stay allowed. The glob must be
+    // `**/../**`; a bare `../*` silently matches nothing in oxlint.
+    "eslint/no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["**/../**"],
+            "message": "Use the @/ alias instead of parent-relative imports."
+          }
+        ]
+      }
+    ],
     "eslint/no-var": "error",
     "eslint/prefer-const": "error",
     "eslint/eqeqeq": ["error", "always", { "null": "ignore" }],

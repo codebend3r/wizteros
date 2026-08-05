@@ -7,9 +7,9 @@ Status: Approved (design), pending implementation plan
 
 Give the operator two password-gated admin pages in the `westeroz-web` app:
 
-- **`/manage`** — a paginated table of all members with a per-row Invite action or
+- **`/manage`**: a paginated table of all members with a per-row Invite action or
   a "Subscribed" label.
-- **`/reset-user`** — look a member up by email and apply pre-baked tier / expiry
+- **`/reset-user`**: look a member up by email and apply pre-baked tier / expiry
   presets.
 
 Both talk to Wizarr, but only ever through the existing `stripe-bridge` service so
@@ -24,12 +24,12 @@ the Wizarr admin key never reaches the browser.
   There is **no** first/last name, tier, or download flag.
   - "Member" name = the Plex `username`.
   - `expires: null` = no expiry.
-- That call takes **~14s** and returns **237 records — one per person per server**
+- That call takes **~14s** and returns **237 records, one per person per server**
   (5 servers), not 237 people.
 - Tier is a Stripe-metadata concept; nothing stores it per user today.
   `allow_downloads` is derivable from tier (`tiers.TIER_DOWNLOADS`: Gold/Kids = true,
   Bronze/Silver = false).
-- Wizarr **cannot** re-scope an existing member's libraries in place — disabling a
+- Wizarr **cannot** re-scope an existing member's libraries in place, disabling a
   user severs the whole plex.tv friendship (see `wizarr-disable-is-account-wide`
   memory and the bridge's reset-and-rejoin note). Re-scoping = disable + re-invite.
   Expiry changes _are_ in-place (`PUT /api/users/{id}/update-expiry`).
@@ -66,10 +66,10 @@ stripe-bridge admin API  ──uses──▶ WizarrClient ──▶ Wizarr /api/
   `/` (existing landing), `/manage`, `/reset-user`.
 - Netlify SPA fallback: `web/public/_redirects` → `/*  /index.html  200`.
 - New units (each SCSS-module styled, using `styles/globals.scss` tokens):
-  - `components/AdminGate/AdminGate.tsx` — shared password login wrapper.
+  - `components/AdminGate/AdminGate.tsx`: shared password login wrapper.
   - `pages/Manage/Manage.tsx` + a presentational `MembersTable` with client pagination.
   - `pages/ResetUser/ResetUser.tsx`.
-  - `lib/adminApi.ts` — typed fetch wrapper that injects `X-Admin-Password` and
+  - `lib/adminApi.ts`: typed fetch wrapper that injects `X-Admin-Password` and
     reads `VITE_ADMIN_API_BASE`.
 - New build-time env: `VITE_ADMIN_API_BASE`
   (prod `https://meleys.tail5586d4.ts.net/stripe`). Add to `web/.env.example`.
@@ -94,13 +94,13 @@ stripe-bridge admin API  ──uses──▶ WizarrClient ──▶ Wizarr /api/
   and `Content-Type` headers.
 - New env added to `.env.example`: `ADMIN_PASSWORD`, `ADMIN_ALLOWED_ORIGINS`.
 - **Dockerfile**: add any new `.py` modules to the explicit `COPY` line (per
-  CLAUDE.md — new modules must be listed).
+  CLAUDE.md: new modules must be listed).
 
 #### Endpoints (all require `X-Admin-Password`)
 
 | Method + path                | Body / query      | Behaviour                                                                                                                                                               |
 | ---------------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /admin/members`         | —                 | Wizarr users → dedupe by person → join tier → derive downloads. Returns `Member[]`.                                                                                     |
+| `GET /admin/members`         |, | Wizarr users → dedupe by person → join tier → derive downloads. Returns `Member[]`.                                                                                     |
 | `GET /admin/member`          | `?email=`         | Same shape for one email; `404` if no record.                                                                                                                           |
 | `POST /admin/reset-expiry`   | `{ email, days }` | `days: number \| null`; `null` clears expiry. `update-expiry` on every record for that email. Returns `{ updated: number, expires: string \| null }`.                   |
 | `POST /admin/reissue-invite` | `{ email, tier }` | Disable every existing record for that email, then create a tier-scoped invite (fail-closed, excludes `9X.` privates). Returns `{ url, code, tier, disabled: number }`. |
@@ -143,8 +143,8 @@ Dedupe key = lowercased email when present, else lowercased username.
 
 - On mount (post-gate) fetch `GET /admin/members`, show a loading state (call is
   ~14s), then a client-paginated table (page size **25**).
-- Columns: **Member**, **Email**, **Tier**, **Downloads** (✓ / ✗, `—` when
-  `downloads === null`), **Expiry** (formatted date or "—").
+- Columns: **Member**, **Email**, **Tier**, **Downloads** (✓ / ✗, `: ` when
+  `downloads === null`), **Expiry** (formatted date or ", ").
 - Per-row action: `subscribed` → **"Subscribed"** text label (no button);
   otherwise an **Invite** button.
 - **Invite button** → `POST /admin/reissue-invite { email, tier: 'bronze' }`,
@@ -179,7 +179,7 @@ Dedupe key = lowercased email when present, else lowercased username.
 - **Web (vitest + testing-library, mock `fetch`):**
   - `AdminGate`: hides children until the password is entered; passes header through.
   - `MembersTable`: renders Subscribed label vs Invite button by `subscribed`;
-    pagination slices pages; downloads renders ✓/✗/—.
+    pagination slices pages; downloads renders ✓/✗/, .
   - `ResetUser`: rejects non-email input; renders presets after a match; calls the
     right endpoint per button.
 
@@ -192,10 +192,10 @@ Dedupe key = lowercased email when present, else lowercased username.
 
 ## Known limitations (accepted)
 
-- No first/last name in Wizarr — "Member" is the Plex handle.
+- No first/last name in Wizarr, "Member" is the Plex handle.
 - Tier is best-effort by email join (Stripe email may differ from Plex email);
   pre-existing members read "unknown" until a future Stripe event.
-- Single shared weak password, server-validated — fine for "temporary," not for
+- Single shared weak password, server-validated, fine for "temporary," not for
   real multi-user admin.
 - `/manage` waits on the ~14s Wizarr call each load (no caching in v1).
 

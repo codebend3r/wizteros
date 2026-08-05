@@ -34,7 +34,7 @@ def owned_servers() -> list[dict]:
 def shared_access_all() -> dict[str, dict[str, dict]]:
     """Every shared account's plex.tv access, keyed by lowercased email then server.
 
-    Ground truth straight from plex.tv's shared_servers — independent of
+    Ground truth straight from plex.tv's shared_servers, independent of
     Wizarr and of the bridge's tier rules, so it also covers legacy shares
     that never went through an invite. A shared_servers document lists every
     account a server is shared with, so the whole roster costs one call per

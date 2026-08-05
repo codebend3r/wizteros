@@ -76,8 +76,8 @@ def _ensure_invited_at_column(c: sqlite3.Connection) -> None:
 def _ensure_subscribed_column(c: sqlite3.Connection) -> None:
     """Add customer_map.subscribed to a pre-payment-signal prod DB; no-op once present.
 
-    The flag is the durable record of a confirmed Stripe payment — set by the
-    webhooks, not inferred from a Wizarr expiry — so a member can carry an
+    The flag is the durable record of a confirmed Stripe payment (set by the
+    webhooks, not inferred from a Wizarr expiry), so a member can carry an
     expiry (a manual access deadline) without reading as a paying subscriber.
     """
     cols = [row["name"] for row in c.execute("PRAGMA table_info(customer_map)")]
@@ -106,7 +106,7 @@ def upsert_pending(path: str, stripe_customer_id: str, email: str,
                    invite_code: str, tier: str | None = None) -> None:
     """Insert or update ("upsert") the customer -> email + invite code + tier mapping.
 
-    Stamps invited_at with the current UTC time — every upsert corresponds to
+    Stamps invited_at with the current UTC time; every upsert corresponds to
     a freshly issued invite, and the stamp anchors the grace-period status.
     Marks the member subscribed: this is the confirmed-payment path (a Stripe
     checkout completed), which is what "Subscribed Monthly" keys off.
@@ -153,7 +153,8 @@ def upsert_pending_by_email(path: str, email: str, invite_code: str,
         )
         if cur.rowcount == 0:
             c.execute(
-                "INSERT INTO customer_map (stripe_customer_id, email, invite_code, tier, invited_at) "
+                "INSERT INTO customer_map "
+                "(stripe_customer_id, email, invite_code, tier, invited_at) "
                 "VALUES (?, ?, ?, ?, ?)",
                 (_ADMIN_KEY_PREFIX + email.lower(), email, invite_code, tier, invited_at),
             )
@@ -162,7 +163,7 @@ def upsert_pending_by_email(path: str, email: str, invite_code: str,
 def stamp_invited(path: str, email: str) -> None:
     """Record that an invite was sent to an email: set invited_at = now only.
 
-    Leaves tier, invite code, and the subscribed flag untouched — for members
+    Leaves tier, invite code, and the subscribed flag untouched, for members
     invited manually outside the bridge (no bridge-issued code). Inserts an
     admin-keyed placeholder (subscribed defaults to 0) when no row exists yet, so
     the member reads as "Invited" on /admin/members while the grace clock runs.
@@ -175,7 +176,8 @@ def stamp_invited(path: str, email: str) -> None:
         )
         if cur.rowcount == 0:
             c.execute(
-                "INSERT INTO customer_map (stripe_customer_id, email, invite_code, tier, invited_at) "
+                "INSERT INTO customer_map "
+                "(stripe_customer_id, email, invite_code, tier, invited_at) "
                 "VALUES (?, ?, NULL, NULL, ?)",
                 (_ADMIN_KEY_PREFIX + email.lower(), email, invited_at),
             )
@@ -204,7 +206,7 @@ def set_tier(path: str, email: str, tier: str) -> None:
 def set_subscribed(path: str, email: str, value: bool) -> None:
     """Set the confirmed-payment flag on every row for an email (case-insensitive).
 
-    Driven by the Stripe webhooks — a paid invoice sets it, a deleted
+    Driven by the Stripe webhooks; a paid invoice sets it, a deleted
     subscription clears it. No-op when the bridge has no row for the email yet
     (a renewal always follows the checkout that created the row).
     """
@@ -238,7 +240,7 @@ def mark_event_processed(path: str, event_id: str) -> bool:
 def customer_ids_for_email(path: str, email: str) -> list[str]:
     """Real Stripe customer ids recorded for an email, case-insensitive.
 
-    Admin-issued placeholder rows (keyed "admin:<email>") are excluded — they
+    Admin-issued placeholder rows (keyed "admin:<email>") are excluded; they
     have no Stripe side to act on.
     """
     with _conn(path) as c:
@@ -386,8 +388,8 @@ def all_customer_tiers(path: str) -> dict[str, str | None]:
     """Every customer's lowercased email -> tier (tier may be None).
 
     Unlike tiers_by_email, this keeps rows with no tier yet, so the admin table
-    can list every subscriber the bridge knows about — including people who paid
-    but have not redeemed their Wizarr invite — not just those with Plex records.
+    can list every subscriber the bridge knows about, including people who paid
+    but have not redeemed their Wizarr invite, not just those with Plex records.
     """
     with _conn(path) as c:
         rows = c.execute(
@@ -403,7 +405,7 @@ def all_customer_rows(path: str) -> dict[str, dict]:
     a pending invite into the "Declined Invite" status once the grace period
     lapses; subscribed is the confirmed-payment flag that drives "Subscribed
     Monthly" independently of any Wizarr expiry. customer_id is the real Stripe
-    id (cus_...) or None — admin-issued placeholder rows are keyed
+    id (cus_...) or None: admin-issued placeholder rows are keyed
     "admin:<email>" and must never leak as a customer id.
     """
     with _conn(path) as c:

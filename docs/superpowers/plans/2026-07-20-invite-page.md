@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add an admin-only `/invite` page that invites a brand-new person — type an email, pick a tier, send the scoped invite.
+**Goal:** Add an admin-only `/invite` page that invites a brand-new person, type an email, pick a tier, send the scoped invite.
 
 **Architecture:** Frontend-only. A new React page reuses the existing `POST /admin/reissue-invite` endpoint (already correct for a never-before-seen email: nothing to disable, writes a pending row, emails the link). A client-side guard blocks emails that already belong to a member and points the admin to the `/user` re-invite flow. No bridge/Python changes.
 
@@ -10,12 +10,12 @@
 
 ## Global Constraints
 
-- **TypeScript:** `type` aliases only — never `interface` (lint: `@typescript-eslint/consistent-type-definitions`). No `any`. No type casts. Prefer type guards.
+- **TypeScript:** `type` aliases only, never `interface` (lint: `@typescript-eslint/consistent-type-definitions`). No `any`. No type casts. Prefer type guards.
 - **Code style:** `Array.prototype` methods, never `for`/`for..of`. Double-bang (`!!v`) for booleans. Short-circuit `&&` (not ternary) for conditional React render where the else branch is null/undefined; guard numbers so `0` never renders. Optional chaining pairs with `??`. Single object param over positional params.
 - **CSS:** SCSS modules per component. All colors/spacing/radius/fonts come from `styles/globals.scss` tokens (`--color-*`, `--space-*`, `--radius-*`, `--font-*`). Container-driven layout with grid/flex + `gap`; no margins for spacing; no bare `<div>` without a class.
-- **Comments:** docstrings on functions only — never line-by-line, never on imports.
+- **Comments:** docstrings on functions only, never line-by-line, never on imports.
 - **Commits:** subject starts with `WZ:`; concise bullet body. Commit after each task.
-- **Payment/user-facing copy:** infrastructure/hosting framing; never reference content, libraries, or titles. (No such copy appears in this plan — tier summaries describe access scope, not content.)
+- **Payment/user-facing copy:** infrastructure/hosting framing; never reference content, libraries, or titles. (No such copy appears in this plan, tier summaries describe access scope, not content.)
 - **Reused exports (do not redefine):** `reissueInvite`, `fetchMembers`, types `InviteResult`, `Member`, `PaidTier`, `AdminAuthError` from `@/lib/adminApi`; `PAID_TIERS`, `TIER_LABELS`, `TIER_DOWNLOADS`, `ACCESS_DAYS`, `INVITE_LINK_DAYS`, `isPaidTier` from `@/lib/inviteRules`; `MEMBERS_QUERY_KEY` from `@/pages/Manage/Manage`; components `AdminGate`/`useAdminAuth`, `AdminLayout`, `ConfirmActionModal`, `TierIcon`.
 
 ---
@@ -39,7 +39,7 @@ Navigation scaffold: you can reach `/invite` (behind the password gate) from a l
 - Consumes: `AdminGate`, `useAdminAuth`, `AdminLayout`, `MEMBERS_QUERY_KEY` (existing).
 - Produces: default export `Invite` (a routed page component); route path `/invite`; a `/manage` link with accessible name `+ Invite someone` → `href="/invite"`. The SCSS module exposes classes `page`, `back`, `title` used by later tasks.
 
-- [ ] **Step 1: Write the failing test** — `web/src/pages/Invite/Invite.test.tsx`
+- [ ] **Step 1: Write the failing test**: `web/src/pages/Invite/Invite.test.tsx`
 
 ```tsx
 import { render, screen } from '@testing-library/react'
@@ -91,12 +91,12 @@ test('shows the invite heading and back link after the gate', () => {
 })
 ```
 
-- [ ] **Step 2: Run it — verify it fails**
+- [ ] **Step 2: Run it: verify it fails**
 
 Run: `bunx vitest run src/pages/Invite/Invite.test.tsx`
-Expected: FAIL — cannot resolve `@/pages/Invite/Invite`.
+Expected: FAIL: cannot resolve `@/pages/Invite/Invite`.
 
-- [ ] **Step 3: Create the SCSS module** — `web/src/pages/Invite/Invite.module.scss`
+- [ ] **Step 3: Create the SCSS module**: `web/src/pages/Invite/Invite.module.scss`
 
 ```scss
 .page {
@@ -127,7 +127,7 @@ Expected: FAIL — cannot resolve `@/pages/Invite/Invite`.
 }
 ```
 
-- [ ] **Step 4: Create the page shell** — `web/src/pages/Invite/Invite.tsx`
+- [ ] **Step 4: Create the page shell**: `web/src/pages/Invite/Invite.tsx`
 
 ```tsx
 import { Link } from 'react-router-dom'
@@ -147,7 +147,7 @@ const InviteInner = () => (
 )
 
 const Invite = () => (
-  <AdminGate title="Westeroz — Invite">
+  <AdminGate title="Westeroz: Invite">
     <InviteInner />
   </AdminGate>
 )
@@ -155,7 +155,7 @@ const Invite = () => (
 export default Invite
 ```
 
-- [ ] **Step 5: Register the route** — `web/src/AppRoutes.tsx`
+- [ ] **Step 5: Register the route**: `web/src/AppRoutes.tsx`
 
 Add the import (alphabetical among page imports) and the route:
 
@@ -180,12 +180,12 @@ const AppRoutes = () => (
 export default AppRoutes
 ```
 
-- [ ] **Step 6: Run the Invite test — verify it passes**
+- [ ] **Step 6: Run the Invite test, verify it passes**
 
 Run: `bunx vitest run src/pages/Invite/Invite.test.tsx`
 Expected: PASS (both tests).
 
-- [ ] **Step 7: Add the `/manage` entry link** — `web/src/pages/Manage/Manage.tsx`
+- [ ] **Step 7: Add the `/manage` entry link**: `web/src/pages/Manage/Manage.tsx`
 
 Add `Link` to the react-router import at the top:
 
@@ -202,7 +202,7 @@ Then insert the link directly under the `<h1>` in the returned JSX:
         </Link>
 ```
 
-- [ ] **Step 8: Style the link** — append to `web/src/pages/Manage/Manage.module.scss`
+- [ ] **Step 8: Style the link**: append to `web/src/pages/Manage/Manage.module.scss`
 
 ```scss
 .inviteLink {
@@ -222,7 +222,7 @@ Then insert the link directly under the `<h1>` in the returned JSX:
 }
 ```
 
-- [ ] **Step 9: Add the Manage link test** — append to `web/src/pages/Manage/Manage.test.tsx`
+- [ ] **Step 9: Add the Manage link test**: append to `web/src/pages/Manage/Manage.test.tsx`
 
 ```tsx
 test('links to the invite page', async () => {
@@ -233,7 +233,7 @@ test('links to the invite page', async () => {
 })
 ```
 
-- [ ] **Step 10: Run the Manage test + typecheck — verify pass**
+- [ ] **Step 10: Run the Manage test + typecheck, verify pass**
 
 Run: `bunx vitest run src/pages/Manage/Manage.test.tsx && bun run typecheck`
 Expected: PASS; typecheck clean.
@@ -265,7 +265,7 @@ The working form: email input, four tier cards, gating, confirm modal, the send 
 - Consumes: `reissueInvite({ email, tier, password }) -> Promise<InviteResult>`; `InviteResult = { url, code, tier, disabled, emailed }`; `Member`; `PaidTier`; `TIER_LABELS`, `TIER_DOWNLOADS`, `PAID_TIERS`, `ACCESS_DAYS`, `INVITE_LINK_DAYS`; `MEMBERS_QUERY_KEY`; `ConfirmActionModal`, `TierIcon`.
 - Produces: the full send behavior. Local `type PendingSend = { email: string; tier: PaidTier }` (used by the mutation). Accessible names later tasks/tests rely on: email field label **"Email address"**; tier card buttons whose names contain the tier label (e.g. `Gold`); primary button **"Send invite"** (label **"Sending…"** while pending); confirm dialog named **"Confirm invite"** with its own **"Send invite"** button.
 
-- [ ] **Step 1: Write the failing tests** — append to `web/src/pages/Invite/Invite.test.tsx`
+- [ ] **Step 1: Write the failing tests**: append to `web/src/pages/Invite/Invite.test.tsx`
 
 Add `within` and `userEvent` to imports at the top of the file:
 
@@ -294,7 +294,7 @@ const gold: InviteResult = {
 test('send stays disabled until a valid email and a tier are chosen', async () => {
   renderInvite()
   // findByRole (async) so this passes both before and after the members-query
-  // gate arrives — once loaded the label settles on "Send invite".
+  // gate arrives: once loaded the label settles on "Send invite".
   const send = await screen.findByRole('button', { name: 'Send invite' })
   expect(send).toBeDisabled()
   await userEvent.type(screen.getByLabelText('Email address'), 'not-an-email')
@@ -365,12 +365,12 @@ Add `AdminAuthError` and `InviteResult` to the type import used by the test file
 import { AdminAuthError, type InviteResult } from '@/lib/adminApi'
 ```
 
-- [ ] **Step 2: Run the tests — verify they fail**
+- [ ] **Step 2: Run the tests, verify they fail**
 
 Run: `bunx vitest run src/pages/Invite/Invite.test.tsx`
-Expected: FAIL — no "Email address" field / no tier buttons yet.
+Expected: FAIL: no "Email address" field / no tier buttons yet.
 
-- [ ] **Step 3: Replace the page implementation** — `web/src/pages/Invite/Invite.tsx` (full file)
+- [ ] **Step 3: Replace the page implementation**: `web/src/pages/Invite/Invite.tsx` (full file)
 
 ```tsx
 import { useState } from 'react'
@@ -431,7 +431,7 @@ const InviteInner = () => {
       setInviteResult(result)
       setSentEmail(to)
       // Prime the members cache so the new invitee shows up as a pending
-      // member on /manage and /user immediately — same shape the bridge's
+      // member on /manage and /user immediately, same shape the bridge's
       // _member_from_customer returns for a not-yet-joined subscriber.
       const pendingRow: Member = {
         member: to.split('@')[0] ?? to,
@@ -488,7 +488,7 @@ const InviteInner = () => {
           <p className={styles.resultNotice}>
             {inviteResult.emailed
               ? 'Invite emailed. Link: '
-              : 'Email failed — send this link manually: '}
+              : 'Email failed, send this link manually: '}
             <a href={inviteResult.url}>{inviteResult.url}</a>{' '}
             <Link className={styles.viewMember} to={`/user?email=${encodeURIComponent(sentEmail)}`}>
               View member
@@ -575,7 +575,7 @@ const InviteInner = () => {
 }
 
 const Invite = () => (
-  <AdminGate title="Westeroz — Invite">
+  <AdminGate title="Westeroz: Invite">
     <InviteInner />
   </AdminGate>
 )
@@ -583,7 +583,7 @@ const Invite = () => (
 export default Invite
 ```
 
-- [ ] **Step 4: Append the form styles** — `web/src/pages/Invite/Invite.module.scss`
+- [ ] **Step 4: Append the form styles**: `web/src/pages/Invite/Invite.module.scss`
 
 ```scss
 .form {
@@ -708,7 +708,7 @@ export default Invite
 }
 ```
 
-- [ ] **Step 5: Run the tests — verify they pass**
+- [ ] **Step 5: Run the tests, verify they pass**
 
 Run: `bunx vitest run src/pages/Invite/Invite.test.tsx`
 Expected: PASS (all Task 1 + Task 2 tests).
@@ -745,9 +745,9 @@ Block an email that already belongs to a member (link to the `/user` re-invite f
 **Interfaces:**
 
 - Consumes: `fetchMembers({ password }) -> Promise<Member[]>`; `MEMBERS_QUERY_KEY`; `isPaidTier`, `TIER_LABELS`; `Member`.
-- Produces: guard behavior — a matched email shows a notice containing "already a member" and a **Go to member** link to `/user?email=<encoded>`, and does NOT call `reissueInvite`. While the members query is loading, the primary button reads **"Checking members…"** and is disabled.
+- Produces: guard behavior: a matched email shows a notice containing "already a member" and a **Go to member** link to `/user?email=<encoded>`, and does NOT call `reissueInvite`. While the members query is loading, the primary button reads **"Checking members…"** and is disabled.
 
-- [ ] **Step 1: Write the failing tests** — append to `web/src/pages/Invite/Invite.test.tsx`
+- [ ] **Step 1: Write the failing tests**: append to `web/src/pages/Invite/Invite.test.tsx`
 
 ```tsx
 const existing: Member = {
@@ -792,12 +792,12 @@ Add `Member` to the test file's type import:
 import { AdminAuthError, type InviteResult, type Member } from '@/lib/adminApi'
 ```
 
-- [ ] **Step 2: Run the tests — verify they fail**
+- [ ] **Step 2: Run the tests, verify they fail**
 
 Run: `bunx vitest run src/pages/Invite/Invite.test.tsx`
-Expected: FAIL — no guard/notice; no "Checking members…" state.
+Expected: FAIL: no guard/notice; no "Checking members…" state.
 
-- [ ] **Step 3: Add the members query and imports** — `web/src/pages/Invite/Invite.tsx`
+- [ ] **Step 3: Add the members query and imports**: `web/src/pages/Invite/Invite.tsx`
 
 Update the React and react-query imports, and the adminApi / inviteRules imports, at the top:
 
@@ -825,7 +825,7 @@ import {
 } from '@/lib/inviteRules'
 ```
 
-- [ ] **Step 4: Add the guard state, query, and effect** — inside `InviteInner`, add `blockedMember` beside the other `useState` calls:
+- [ ] **Step 4: Add the guard state, query, and effect**: inside `InviteInner`, add `blockedMember` beside the other `useState` calls:
 
 ```tsx
 const [blockedMember, setBlockedMember] = useState<Member | null>(null)
@@ -851,7 +851,7 @@ useEffect(() => {
 }, [loadError, deauthenticate])
 ```
 
-- [ ] **Step 5: Add the guard to `handleSend`** — replace the existing `handleSend` with:
+- [ ] **Step 5: Add the guard to `handleSend`**: replace the existing `handleSend` with:
 
 ```tsx
 const handleSend = () => {
@@ -861,7 +861,7 @@ const handleSend = () => {
     return
   }
   // Guard runs only on a successfully loaded list; a failed members query
-  // (non-auth) skips the check and lets the send through — the bridge treats
+  // (non-auth) skips the check and lets the send through; the bridge treats
   // a duplicate as a safe re-invite anyway.
   const match = (members ?? []).find(
     (row) => row.email.toLowerCase() === trimmedEmail.toLowerCase(),
@@ -875,7 +875,7 @@ const handleSend = () => {
 }
 ```
 
-- [ ] **Step 6: Clear the block on edit + gate/label the button** — in the email `onChange`, add `setBlockedMember(null)`:
+- [ ] **Step 6: Clear the block on edit + gate/label the button**: in the email `onChange`, add `setBlockedMember(null)`:
 
 ```tsx
               onChange={(event) => {
@@ -898,7 +898,7 @@ Update the Send button's `disabled` and label to account for the loading list:
 </button>
 ```
 
-- [ ] **Step 7: Render the block notice** — add directly after the `inviteResult` notice block (before `<div className={styles.form}>`):
+- [ ] **Step 7: Render the block notice**: add directly after the `inviteResult` notice block (before `<div className={styles.form}>`):
 
 ```tsx
 {
@@ -918,7 +918,7 @@ Update the Send button's `disabled` and label to account for the loading list:
 }
 ```
 
-- [ ] **Step 8: Append the notice style** — `web/src/pages/Invite/Invite.module.scss`
+- [ ] **Step 8: Append the notice style**: `web/src/pages/Invite/Invite.module.scss`
 
 ```scss
 .blockedNotice {
@@ -929,10 +929,10 @@ Update the Send button's `disabled` and label to account for the loading list:
 }
 ```
 
-- [ ] **Step 9: Run the full Invite suite — verify pass**
+- [ ] **Step 9: Run the full Invite suite, verify pass**
 
 Run: `bunx vitest run src/pages/Invite/Invite.test.tsx`
-Expected: PASS (all tests, Tasks 1–3).
+Expected: PASS (all tests, Tasks 1, 3).
 
 - [ ] **Step 10: Typecheck + full test run**
 
@@ -967,7 +967,7 @@ git commit -m "WZ: Block invites to existing members on /invite
 - Guard readiness ("Checking members…") → Task 3. ✅
 - After send: result notice (emailed / manual), **View member** link, clear form, prime members cache → Task 2. ✅
 - Errors: `AdminAuthError` → deauthenticate; other → inline error → Tasks 2 & 3. ✅
-- Tests for gating, send, email-failed, auth error, dupe block, loading, Manage link → Tasks 1–3. ✅
+- Tests for gating, send, email-failed, auth error, dupe block, loading, Manage link → Tasks 1, 3. ✅
 - No bridge changes → honored. ✅
 
 **Placeholder scan:** No TBD/TODO; every code step shows complete content; no "add validation/error handling" hand-waves. ✅

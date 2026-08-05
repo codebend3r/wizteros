@@ -1,4 +1,4 @@
-# Sidemenu for admin routes — design
+# Sidemenu for admin routes: design
 
 Date: 2026-07-23
 Status: Approved
@@ -17,7 +17,7 @@ Add a sidemenu listing all app routes to the web app, visible only when logged i
   button toggles it as an overlay drawer.
 - **Routes listed:** Home `/`, Members `/manage`, Invite `/invite`, Email `/email`.
   Dropped after review: the bare `/user` link (without an `?email=` param the page
-  only shows "No email provided." — member detail stays reachable from the Members
+  only shows "No email provided.", member detail stays reachable from the Members
   table) and `/reset-user` (removed from the menu on request; the route itself
   remains directly reachable).
 
@@ -41,7 +41,7 @@ Add a sidemenu listing all app routes to the web app, visible only when logged i
 
 ## Error handling
 
-None required — purely presentational, no data fetching.
+None required: purely presentational, no data fetching.
 
 ## Testing
 

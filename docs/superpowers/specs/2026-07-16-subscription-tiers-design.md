@@ -40,12 +40,12 @@ under any tier, under any circumstance.
   in place (payment links accept metadata edits).
 - Stripe copies payment-link metadata onto the checkout session, so the
   `checkout.session.completed` payload the bridge already receives contains
-  `metadata.tier` directly — no extra API calls, no price-ID bookkeeping,
+  `metadata.tier` directly: no extra API calls, no price-ID bookkeeping,
   and Test/Live modes need no divergent config.
 - Missing or unknown tier → treat as Bronze (most restrictive) and log an
   error.
 - Product descriptions and all user-facing payment copy use infrastructure
-  language (streaming quality, offline sync) — never library or content
+  language (streaming quality, offline sync), never library or content
   names.
 
 ## Bridge changes (`stripe-bridge/`)
@@ -59,7 +59,7 @@ under any tier, under any circumstance.
 - `WizarrClient` gains `list_libraries()`; `create_invite` gains
   `library_ids` and `allow_downloads` parameters.
 - If a Kids allowlist entry doesn't match any live library (e.g. renamed),
-  log loudly and proceed with what matched — never block a paid signup.
+  log loudly and proceed with what matched, never block a paid signup.
 - `invoice.paid` (renewals) and `customer.subscription.deleted`
   (cancellation) flows are unchanged; tier only matters at invite creation.
 
@@ -86,7 +86,7 @@ under any tier, under any circumstance.
   only, Kids' exact set, downloads flags, and server-ID derivation.
 - Vitest (web): tier config resolution and pricing card rendering.
 - Manual E2E in Test mode: one test checkout per tier, then verify each
-  resulting invite via the Wizarr API — correct libraries, correct downloads
+  resulting invite via the Wizarr API, correct libraries, correct downloads
   flag, Kids invite spanning only Vermithor + Meleys.
 
 ## Rollout

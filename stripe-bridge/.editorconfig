@@ -1,6 +1,6 @@
 # EditorConfig for the FastAPI bridge. https://editorconfig.org
-# There is no Python formatter wired up, so max_line_length is a guide for
-# editors rather than something a tool enforces.
+# max_line_length mirrors line-length in ruff.toml, where ruff enforces it as
+# E501. There is still no Python formatter; see the note in ruff.toml.
 root = true
 
 [*]

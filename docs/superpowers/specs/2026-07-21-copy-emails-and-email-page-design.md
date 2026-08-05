@@ -11,7 +11,7 @@ There is **no server-side email sender** in this app, so "Send" is a pure client
 
 ## Components
 
-### `CopyEmailsButton` (new, reusable) — `src/components/CopyEmailsButton/`
+### `CopyEmailsButton` (new, reusable), `src/components/CopyEmailsButton/`
 
 - Props: `emails: ReadonlyArray<string>`.
 - Click writes a **deduped, empty-filtered, comma-separated** list to the clipboard via `navigator.clipboard.writeText`.
@@ -19,13 +19,13 @@ There is **no server-side email sender** in this app, so "Send" is a pure client
 - Disabled when the deduped list is empty.
 - Used on `/manage` and `/email` so copy behavior lives in one place.
 
-### Members page (`/manage`) — edit
+### Members page (`/manage`): edit
 
 - Wrap the `Members` `<h1>` and the action links in a title row (CSS grid, title left / actions right) so the copy button sits **top-right**.
 - Add an `Email all members` link (→ `/email`) alongside `+ Invite someone`.
 - Copy button receives `members.map(m => m.email)`.
 
-### `/email` page (new) — `src/pages/Email/`
+### `/email` page (new): `src/pages/Email/`
 
 - Same `AdminGate` + `AdminLayout` shell and `fetchMembers({ password })` query (shared `MEMBERS_QUERY_KEY`) as Manage/Invite.
 - Title row: `← All members` back link + title, copy button **top-right**.
@@ -33,7 +33,7 @@ There is **no server-side email sender** in this app, so "Send" is a pure client
 - **Subject** input + **Message** textarea (both optional; the form is a hand-off, not validated content).
 - **Send email** button builds `mailto:?bcc=<remaining>&subject=<subject>&body=<body>` (recipients in **BCC** to keep addresses private) and opens it via `window.location.href`. Disabled when zero recipients remain.
 
-### Route — edit `src/AppRoutes.tsx`
+### Route: edit `src/AppRoutes.tsx`
 
 - Add `<Route path="/email" element={<Email />} />`.
 

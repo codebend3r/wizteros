@@ -2,7 +2,7 @@ import { plugin } from 'bun'
 
 // Vite compiles `*.module.scss` into a class-name map; Bun's runtime has no CSS
 // module loader and falls back to the `file` loader, so the same import lands in
-// tests as a plain string — the stylesheet's path. Every `styles.foo` then reads
+// tests as a plain string: the stylesheet's path. Every `styles.foo` then reads
 // a property off a String, which is `undefined` for most names but resolves to a
 // real function for the legacy String.prototype members: `link`, `big`, `bold`,
 // `small`, `sub`, `sup`, `fixed`, `italics`, `strike`, `blink`, `anchor`,

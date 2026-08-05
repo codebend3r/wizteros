@@ -13,7 +13,7 @@
 Every task's requirements implicitly include these. Values are verbatim from the spec / `CLAUDE.md`.
 
 - **Framing:** All user-facing copy uses infrastructure/hosting language. No reference to content, libraries, titles, or the underlying media platform anywhere on the page.
-- **TypeScript:** Use type aliases only — never `interface`, including in `declare` blocks. Never `any`. Never cast types. Prefer type guards; use `unknown` if a type can't be inferred.
+- **TypeScript:** Use type aliases only, never `interface`, including in `declare` blocks. Never `any`. Never cast types. Prefer type guards; use `unknown` if a type can't be inferred.
 - **Code style:** Prefer a single configurable object parameter over positional params. Prefer `!!value` for boolean conversion. Prefer short-circuit (`&&`) over ternary when the else branch is null/undefined, with a guarded boolean (never a bare number). Optional chaining (`?.`) always paired with nullish coalescing (`??`). Prefer `Array.prototype` methods over `for` loops; never `for/in` or `for/of`.
 - **CSS:** SCSS modules (`*.module.scss`) for component styles; `styles/globals.scss` only for design tokens and typographic primitives. Container-driven layout. CSS grid with `gap` for spacing (avoid margins); flex second choice. No bare divs (every element has a class). All colors/font-sizes/spacing/radius from tokens in `globals.scss`.
 - **Commits:** One commit per logical change. Subject starts with `WZ:` followed by a short title. Favor concise bullet points in the body.
@@ -119,7 +119,7 @@ export default defineConfig({
 
 - [ ] **Step 4: Create `web/src/vite-env.d.ts`**
 
-Note: uses `const` declarations only — no `interface`, so it complies with the TS constraint. Does NOT augment `ImportMetaEnv` (that would require an interface); env access is handled with a local type alias in Task 3.
+Note: uses `const` declarations only; no `interface`, so it complies with the TS constraint. Does NOT augment `ImportMetaEnv` (that would require an interface); env access is handled with a local type alias in Task 3.
 
 ```ts
 /// <reference types="vite/client" />
@@ -144,7 +144,7 @@ import '@testing-library/jest-dom'
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Westeroz — media server hosting</title>
+    <title>Westeroz: media server hosting</title>
   </head>
   <body>
     <div id="root"></div>
@@ -202,7 +202,7 @@ body {
 }
 ```
 
-- [ ] **Step 8: Create `web/src/App.tsx` (placeholder — Task 7 composes the real page)**
+- [ ] **Step 8: Create `web/src/App.tsx` (placeholder, Task 7 composes the real page)**
 
 ```tsx
 const App = () => <main>Westeroz</main>
@@ -280,8 +280,8 @@ git commit -m "WZ: Scaffold Westeroz landing page (Vite + React + TS)"
 - Produces:
   - `type SupportItem = { title: string; detail: string }`
   - `type SiteConfig = { brandName: string; tagline: string; priceLabel: string; paymentLinkUrl: string; memberUrl: string | null; supportItems: ReadonlyArray<SupportItem> }`
-  - `resolveConfig({ env }: { env: RawEnv }): SiteConfig` — pure function, testable without `import.meta`.
-  - `siteConfig: SiteConfig` — the resolved singleton used by components.
+  - `resolveConfig({ env }: { env: RawEnv }): SiteConfig`: pure function, testable without `import.meta`.
+  - `siteConfig: SiteConfig`: the resolved singleton used by components.
   - Exported constant `DEFAULT_PAYMENT_LINK_URL` (the current Stripe test link).
 
 - [ ] **Step 1: Write the failing test `web/src/site.config.test.ts`**
@@ -316,11 +316,11 @@ test('provides three support items', () => {
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `cd web && npx vitest run src/site.config.test.ts`
-Expected: FAIL — cannot resolve `./site.config`.
+Expected: FAIL: cannot resolve `./site.config`.
 
 - [ ] **Step 3: Create `web/src/site.config.ts`**
 
-Note on `env`: `import.meta.env.VITE_*` is typed `any` via `vite/client`'s index signature. Read the two fields into a fresh `RawEnv` object literal — that narrows them to `string | undefined` without an explicit `any` or a cast. Do NOT assign `import.meta.env` directly to a `RawEnv` local: it fails to compile (`TS2559`) because `RawEnv` is an all-optional "weak type" and `ImportMetaEnv` shares no required property with it.
+Note on `env`: `import.meta.env.VITE_*` is typed `any` via `vite/client`'s index signature. Read the two fields into a fresh `RawEnv` object literal; that narrows them to `string | undefined` without an explicit `any` or a cast. Do NOT assign `import.meta.env` directly to a `RawEnv` local: it fails to compile (`TS2559`) because `RawEnv` is an all-optional "weak type" and `ImportMetaEnv` shares no required property with it.
 
 ```ts
 type SupportItem = {
@@ -430,7 +430,7 @@ test('renders the brand, price, and a Contribute link to the payment url', () =>
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `cd web && npx vitest run src/components/Hero/Hero.test.tsx`
-Expected: FAIL — cannot resolve `./Hero`.
+Expected: FAIL: cannot resolve `./Hero`.
 
 - [ ] **Step 3: Create `web/src/components/Hero/Hero.module.scss`**
 
@@ -547,7 +547,7 @@ test('renders one heading per support item', () => {
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `cd web && npx vitest run src/components/Support/Support.test.tsx`
-Expected: FAIL — cannot resolve `./Support`.
+Expected: FAIL: cannot resolve `./Support`.
 
 - [ ] **Step 3: Create `web/src/components/Support/Support.module.scss`**
 
@@ -656,7 +656,7 @@ test('always renders the framing disclaimer', () => {
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `cd web && npx vitest run src/components/Footer/Footer.test.tsx`
-Expected: FAIL — cannot resolve `./Footer`.
+Expected: FAIL: cannot resolve `./Footer`.
 
 - [ ] **Step 3: Create `web/src/components/Footer/Footer.module.scss`**
 
@@ -774,7 +774,7 @@ test('hides the member link by default (no VITE_MEMBER_URL)', () => {
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `cd web && npx vitest run src/App.test.tsx`
-Expected: FAIL — `App` still renders only the placeholder `Westeroz` text; support-item and CTA assertions fail.
+Expected: FAIL: `App` still renders only the placeholder `Westeroz` text; support-item and CTA assertions fail.
 
 - [ ] **Step 3: Create `web/src/App.module.scss`**
 
@@ -868,7 +868,7 @@ Note: with `base = "web"`, Netlify installs from `web/package.json` and resolves
 VITE_PAYMENT_LINK_URL=https://buy.stripe.com/test_bJe6oG2Yte2m7l1f721Nu00
 
 # Wizarr member sign-in URL (invite.<domain>). Leave unset until the
-# Cloudflare Tunnel is up — the member link stays hidden while empty.
+# Cloudflare Tunnel is up: the member link stays hidden while empty.
 # VITE_MEMBER_URL=https://invite.example.com
 ```
 
@@ -888,7 +888,7 @@ visitors to the Stripe Payment Link.
 
 Deploy: Netlify builds from the repo using `netlify.toml` (base `web/`,
 publish `web/dist`). Set `VITE_PAYMENT_LINK_URL` (and later `VITE_MEMBER_URL`)
-in the Netlify UI to switch the test link for the live one — no code change.
+in the Netlify UI to switch the test link for the live one; no code change.
 ```
 
 - [ ] **Step 4: Verify the config is valid by building once more**

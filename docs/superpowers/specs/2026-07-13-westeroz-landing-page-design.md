@@ -1,4 +1,4 @@
-# Westeroz landing page — design
+# Westeroz landing page: design
 
 Date: 2026-07-13
 Status: Approved (pending spec review)
@@ -7,12 +7,12 @@ Status: Approved (pending spec review)
 
 A public, static landing page hosted on Netlify at `westeroz.netlify.app` that
 introduces the community media server and funnels visitors to a single Stripe
-Payment Link. It is the public "front door" — the surface people read before they
+Payment Link. It is the public "front door"; the surface people read before they
 contribute.
 
 Everything else in the stack (Wizarr, Tautulli, stripe-bridge, Plex) stays
 self-hosted on a Synology NAS and is exposed via Cloudflare Tunnel. That backend
-work is **out of scope for this spec** — it is already covered by the existing
+work is **out of scope for this spec**: it is already covered by the existing
 plan/spec docs under `docs/superpowers/`.
 
 ## Constraints
@@ -90,7 +90,7 @@ understood without reading its siblings.
 A single typed config object is the source of truth for all copy and links.
 `paymentLinkUrl` and `memberUrl` may be overridden at build time by Vite env
 vars (set in the Netlify UI), so switching from the test Payment Link to the
-live one — or enabling the member link once the tunnel is up — requires no code
+live one: or enabling the member link once the tunnel is up, requires no code
 change.
 
 ```ts
@@ -130,11 +130,11 @@ adjusted during implementation, but must stay within the framing constraint):
     online."
   - Price: `priceLabel`
   - CTA button: "Contribute" → `paymentLinkUrl`
-- **Support** — three items describing what the contribution covers:
-  - **Server hardware** — "Always-on machines that host and stream the platform."
-  - **Storage & bandwidth** — "Disks and network capacity that keep everything
+- **Support**: three items describing what the contribution covers:
+  - **Server hardware**: "Always-on machines that host and stream the platform."
+  - **Storage & bandwidth**: "Disks and network capacity that keep everything
     available."
-  - **Maintenance & uptime** — "Updates, backups, and monitoring so it stays
+  - **Maintenance & uptime**: "Updates, backups, and monitoring so it stays
     reliable."
 - **Footer**
   - Member link (only when `memberUrl` is set): "Already contributing? Access

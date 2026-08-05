@@ -53,5 +53,7 @@ jobs:
           cache-dependency-path: stripe-bridge/requirements*.txt
       - name: 📦 Install dependencies
         run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: 🔍 Lint (ruff)
+        run: python -m ruff check .
       - name: 🧪 Test (pytest)
         run: python -m pytest -q

@@ -64,7 +64,7 @@ const ManageInner = () => {
     onSuccess: (result, { member, tier }) => {
       setInviteResult(result)
       // Existing access survives the invite window now, so keep expiry and
-      // servers as they are — only the tier, downloads, and the freshly
+      // servers as they are: only the tier, downloads, and the freshly
       // restarted grace clock change until the member redeems.
       queryClient.setQueryData<Member[]>(MEMBERS_QUERY_KEY, (old) =>
         old?.map((row) =>
@@ -139,7 +139,7 @@ const ManageInner = () => {
           <p className={styles.invite}>
             {inviteResult.emailed
               ? 'Invite emailed. Link: '
-              : 'Email failed — send this link manually: '}
+              : 'Email failed, send this link manually: '}
             <a href={inviteResult.url}>{inviteResult.url}</a>
           </p>
         )}
@@ -181,7 +181,7 @@ const ManageInner = () => {
 }
 
 export const Manage = () => (
-  <AdminGate title="Westeroz — Manage">
+  <AdminGate title="Westeroz: Manage">
     <ManageInner />
   </AdminGate>
 )

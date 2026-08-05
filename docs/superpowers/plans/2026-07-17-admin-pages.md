@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add two password-gated admin pages to `westeroz-web` — `/manage` (paginated member table with per-row invite) and `/reset-user` (email lookup + tier/expiry presets) — served by new admin endpoints on the stripe-bridge so the Wizarr key never reaches the browser.
+**Goal:** Add two password-gated admin pages to `westeroz-web`: `/manage` (paginated member table with per-row invite) and `/reset-user` (email lookup + tier/expiry presets), served by new admin endpoints on the stripe-bridge so the Wizarr key never reaches the browser.
 
 **Architecture:** The React SPA calls new `/admin/*` endpoints on the FastAPI bridge over Tailscale Funnel, sending a shared password in an `X-Admin-Password` header the bridge validates on every call. The bridge reuses its existing `WizarrClient` for all Wizarr work and reads tier from a new `customer_map.tier` column. The table shows one row per person (deduped across 5 servers); tier buttons disable + re-invite because Wizarr can't re-scope a member in place.
 
@@ -14,17 +14,17 @@ Spec: `docs/superpowers/specs/2026-07-17-admin-pages-design.md`.
 
 Every task's requirements implicitly include these.
 
-- **TypeScript (web/src):** type aliases only, never `interface`. No `any`. **No type assertions at all** (`as` is lint-banned, `assertionStyle: 'never'`) — narrow with type guards / `unknown` instead. Import via the `@/` alias, never relative paths. Never `for..of` / `for..in` — use `map`/`filter`/`reduce`. Prefer `&&` over a ternary only when the else branch is null; guard numbers so `0` never renders. Pair `?.` with `??`. Prefer a single object parameter over positional args.
+- **TypeScript (web/src):** type aliases only, never `interface`. No `any`. **No type assertions at all** (`as` is lint-banned, `assertionStyle: 'never'`), narrow with type guards / `unknown` instead. Import via the `@/` alias, never relative paths. Never `for..of` / `for..in`: use `map`/`filter`/`reduce`. Prefer `&&` over a ternary only when the else branch is null; guard numbers so `0` never renders. Pair `?.` with `??`. Prefer a single object parameter over positional args.
 - **CSS:** SCSS modules (`*.module.scss`) per component; only use token values from `src/styles/globals.scss` (colors `--color-*`, spacing `--space-*`, radius `--radius-*`, fonts `--font-*`, sizes `--font-size-*`). Layout with grid/flex + `gap`, not margins. No class-less `div`s.
-- **Python (bridge):** match existing style — small functions with one-line docstrings, list comprehensions / small loops (the JS for-loop ban does NOT apply to Python).
-- **Fail-closed rule:** never share a `9X.` library. Reuse `tiers.resolve_tier_access` — never hand-roll library selection.
+- **Python (bridge):** match existing style, small functions with one-line docstrings, list comprehensions / small loops (the JS for-loop ban does NOT apply to Python).
+- **Fail-closed rule:** never share a `9X.` library. Reuse `tiers.resolve_tier_access`: never hand-roll library selection.
 - **Bridge packaging:** any new `.py` module MUST be added to the Dockerfile `COPY` line.
 - **Commits:** subject starts with `WZ:`; concise bullet body. Husky + lint-staged auto-runs prettier/eslint on commit.
 - **Secrets:** never hardcode the Wizarr key or admin password in web code. The password lives only on the bridge (`ADMIN_PASSWORD`).
 
 ---
 
-## Phase A — Bridge (Python)
+## Phase A: Bridge (Python)
 
 ### Task 1: Persist tier on `customer_map`
 
@@ -37,7 +37,7 @@ Every task's requirements implicitly include these.
 
 - Produces: `store.upsert_pending(path, stripe_customer_id, email, invite_code, tier=None)`; `store.tiers_by_email(path) -> dict[str, str]` (lowercased email → tier, only rows with a tier). `store.get_mapping` shape is UNCHANGED (still 3 keys).
 
-- [ ] **Step 1: Write the failing tests** — append to `stripe-bridge/tests/test_store.py`:
+- [ ] **Step 1: Write the failing tests**: append to `stripe-bridge/tests/test_store.py`:
 
 ```python
 def test_tier_persisted_and_looked_up_by_email(tmp_path):
@@ -71,7 +71,7 @@ def test_init_db_adds_tier_column_to_legacy_table(tmp_path):
 Run: `cd stripe-bridge && python -m pytest tests/test_store.py -v`
 Expected: FAIL (`tiers_by_email` missing / `upsert_pending` rejects `tier`).
 
-- [ ] **Step 3: Implement** — edit `stripe-bridge/store.py`:
+- [ ] **Step 3: Implement**: edit `stripe-bridge/store.py`:
 
 Change the schema to include `tier`:
 
@@ -161,7 +161,7 @@ git commit -m "WZ: Persist member tier on customer_map"
 
 - Consumes: `store.upsert_pending(..., tier=)`, `store.tiers_by_email` (Task 1).
 
-- [ ] **Step 1: Write the failing test** — append to `stripe-bridge/tests/test_bridge.py`:
+- [ ] **Step 1: Write the failing test**: append to `stripe-bridge/tests/test_bridge.py`:
 
 ```python
 def test_checkout_records_tier_for_the_customer(bridge):
@@ -182,9 +182,9 @@ def test_checkout_records_tier_for_the_customer(bridge):
 - [ ] **Step 2: Run to verify it fails**
 
 Run: `cd stripe-bridge && python -m pytest tests/test_bridge.py::test_checkout_records_tier_for_the_customer -v`
-Expected: FAIL (`tiers_by_email` returns `{}` — tier not written).
+Expected: FAIL (`tiers_by_email` returns `{}`: tier not written).
 
-- [ ] **Step 3: Implement** — in `stripe_wizarr_bridge.py`, find in the `checkout.session.completed` branch:
+- [ ] **Step 3: Implement**: in `stripe_wizarr_bridge.py`, find in the `checkout.session.completed` branch:
 
 ```python
         if customer_id:
@@ -223,7 +223,7 @@ git commit -m "WZ: Record tier at checkout for the admin table"
 
 - Produces: `WizarrClient.list_users() -> list` (every record, one per person per server).
 
-- [ ] **Step 1: Write the failing test** — append to `stripe-bridge/tests/test_wizarr.py`:
+- [ ] **Step 1: Write the failing test**: append to `stripe-bridge/tests/test_wizarr.py`:
 
 ```python
 @responses.activate
@@ -241,7 +241,7 @@ def test_list_users_returns_all_records():
 Run: `cd stripe-bridge && python -m pytest tests/test_wizarr.py::test_list_users_returns_all_records -v`
 Expected: FAIL (`AttributeError: 'WizarrClient' object has no attribute 'list_users'`).
 
-- [ ] **Step 3: Implement** — in `stripe-bridge/wizarr.py`, add right after `_users`:
+- [ ] **Step 3: Implement**: in `stripe-bridge/wizarr.py`, add right after `_users`:
 
 ```python
     def list_users(self) -> list:
@@ -263,7 +263,7 @@ git commit -m "WZ: Add WizarrClient.list_users for the admin table"
 
 ---
 
-### Task 4: Admin module — auth + member read endpoints
+### Task 4: Admin module: auth + member read endpoints
 
 **Files:**
 
@@ -276,7 +276,7 @@ git commit -m "WZ: Add WizarrClient.list_users for the admin table"
 - Produces (used by Task 5 & the web): module globals `router` (APIRouter), `client` (WizarrClient), `MAP_DB_PATH`, `ADMIN_PASSWORD`; `require_admin(x_admin_password)`; `list_members() -> list[dict]`; `get_member(email) -> dict`; helper `_dedupe_members(users, tier_map) -> list[dict]`.
 - `Member` dict keys: `member, email, tier, downloads, expires, servers, subscribed`.
 
-- [ ] **Step 1: Write the failing tests** — create `stripe-bridge/tests/test_admin.py`:
+- [ ] **Step 1: Write the failing tests**: create `stripe-bridge/tests/test_admin.py`:
 
 ```python
 import importlib
@@ -359,7 +359,7 @@ def test_get_member_found_and_missing(admin_db):
 Run: `cd stripe-bridge && python -m pytest tests/test_admin.py -v`
 Expected: FAIL (`ModuleNotFoundError: No module named 'admin'`).
 
-- [ ] **Step 3: Implement** — create `stripe-bridge/admin.py`:
+- [ ] **Step 3: Implement**: create `stripe-bridge/admin.py`:
 
 ```python
 import os
@@ -461,7 +461,7 @@ git commit -m "WZ: Add admin auth + member read endpoints to the bridge"
 
 ---
 
-### Task 5: Admin module — reset-expiry + reissue-invite
+### Task 5: Admin module: reset-expiry + reissue-invite
 
 **Files:**
 
@@ -473,7 +473,7 @@ git commit -m "WZ: Add admin auth + member read endpoints to the bridge"
 - Consumes: `client.find_user_ids_by_email`, `client.set_expiry`, `client.disable_user`, `client.list_libraries`, `client.create_invite`, `tiers.resolve_tier_access`, `tiers.normalize_tier`.
 - Produces: `POST /admin/reset-expiry` (`ResetExpiryBody{email, days}`) → `{updated, expires}`; `POST /admin/reissue-invite` (`ReissueInviteBody{email, tier}`) → `{url, code, tier, disabled}`.
 
-- [ ] **Step 1: Write the failing tests** — append to `stripe-bridge/tests/test_admin.py`:
+- [ ] **Step 1: Write the failing tests**: append to `stripe-bridge/tests/test_admin.py`:
 
 ```python
 FIXTURE_LIBRARIES = [
@@ -528,7 +528,7 @@ def test_reissue_invite_disables_then_creates_scoped_invite(admin_db):
 - [ ] **Step 2: Run to verify they fail**
 
 Run: `cd stripe-bridge && python -m pytest tests/test_admin.py -k "reset_expiry or reissue" -v`
-Expected: FAIL (`AttributeError` — `reset_expiry` / `reissue_invite` / body models missing).
+Expected: FAIL (`AttributeError`: `reset_expiry` / `reissue_invite` / body models missing).
 
 - [ ] **Step 3: Implement**
 
@@ -546,7 +546,7 @@ First widen `WizarrClient.set_expiry` in `stripe-bridge/wizarr.py` to accept a c
         r.raise_for_status()
 ```
 
-Then add to `stripe-bridge/admin.py` — extend the imports at the top:
+Then add to `stripe-bridge/admin.py`: extend the imports at the top:
 
 ```python
 import os
@@ -629,7 +629,7 @@ Expected: PASS (all admin tests).
 
 - [ ] **Step 5: VERIFY THE NULL-EXPIRY CLEAR AGAINST LIVE WIZARR (operator-run, do not skip)**
 
-The "No expiry" preset assumes `PUT /api/users/{id}/update-expiry` accepts `{"expires": null}`. This has NOT been proven and must be checked before relying on it — pick a **known throwaway/test record id** with the operator's OK (never a random member):
+The "No expiry" preset assumes `PUT /api/users/{id}/update-expiry` accepts `{"expires": null}`. This has NOT been proven and must be checked before relying on it, pick a **known throwaway/test record id** with the operator's OK (never a random member):
 
 ```bash
 # Read the id + confirm it's safe to touch, then:
@@ -662,7 +662,7 @@ git commit -m "WZ: Add admin reset-expiry + reissue-invite endpoints"
 - Consumes: `admin.router` (Task 4/5).
 - Produces: `/admin/*` and `/stripe/admin/*` routes on the bridge app; CORS for the SPA origin.
 
-- [ ] **Step 1: Write the failing test** — append to `stripe-bridge/tests/test_admin.py`:
+- [ ] **Step 1: Write the failing test**: append to `stripe-bridge/tests/test_admin.py`:
 
 ```python
 def test_bridge_app_mounts_admin_routes_bare_and_prefixed():
@@ -685,7 +685,7 @@ def test_bridge_app_mounts_admin_routes_bare_and_prefixed():
 Run: `cd stripe-bridge && python -m pytest tests/test_admin.py::test_bridge_app_mounts_admin_routes_bare_and_prefixed -v`
 Expected: FAIL (admin routes not on the app).
 
-- [ ] **Step 3: Implement** — in `stripe-bridge/stripe_wizarr_bridge.py`:
+- [ ] **Step 3: Implement**: in `stripe-bridge/stripe_wizarr_bridge.py`:
 
 Add imports near the top (after `from fastapi import ...`):
 
@@ -723,7 +723,7 @@ COPY store.py wizarr.py tiers.py stripe_wizarr_bridge.py email_template.py admin
 Add the new vars to `.env.example` (root), under the Wizarr block:
 
 ```bash
-# Admin pages (/manage, /reset-user) — the shared password the bridge checks on
+# Admin pages (/manage, /reset-user); the shared password the bridge checks on
 # every /admin/* request, and the browser origins allowed to call it (CORS).
 ADMIN_PASSWORD=morty8229!
 ADMIN_ALLOWED_ORIGINS=http://localhost:5173,https://<your-netlify-site>.netlify.app
@@ -743,9 +743,9 @@ git commit -m "WZ: Mount admin router with CORS on the bridge"
 
 ---
 
-## Phase B — Web (React)
+## Phase B: Web (React)
 
-### Task 7: `lib/adminApi.ts` — typed client + guards
+### Task 7: `lib/adminApi.ts`: typed client + guards
 
 **Files:**
 
@@ -756,7 +756,7 @@ git commit -m "WZ: Mount admin router with CORS on the bridge"
 
 - Produces: types `PaidTier`, `Tier`, `Member`, `InviteResult`, `ResetExpiryResult`; class `AdminAuthError`; `fetchMembers({password})`, `fetchMember({email, password})` (→ `Member | null`), `resetExpiry({email, days, password})`, `reissueInvite({email, tier, password})`.
 
-- [ ] **Step 1: Write the failing tests** — create `web/src/lib/adminApi.test.ts`:
+- [ ] **Step 1: Write the failing tests**: create `web/src/lib/adminApi.test.ts`:
 
 ```ts
 import { afterEach, expect, test, vi } from 'vitest'
@@ -824,7 +824,7 @@ test('reissueInvite posts email + tier and returns the invite link', async () =>
 Run: `cd web && npx vitest run src/lib/adminApi.test.ts`
 Expected: FAIL (module not found).
 
-- [ ] **Step 3: Implement** — create `web/src/lib/adminApi.ts`:
+- [ ] **Step 3: Implement**: create `web/src/lib/adminApi.ts`:
 
 ```ts
 export type PaidTier = 'bronze' | 'silver' | 'gold' | 'kids'
@@ -1016,7 +1016,7 @@ git commit -m "WZ: Add typed admin API client for the web pages"
 
 ---
 
-### Task 8: `AdminGate` — shared password gate
+### Task 8: `AdminGate`: shared password gate
 
 **Files:**
 
@@ -1027,7 +1027,7 @@ git commit -m "WZ: Add typed admin API client for the web pages"
 
 - Produces: default export `AdminGate` (`{title, children}`); named export `useAdminAuth() -> {password, deauthenticate}`.
 
-- [ ] **Step 1: Write the failing test** — create `web/src/components/AdminGate/AdminGate.test.tsx`:
+- [ ] **Step 1: Write the failing test**: create `web/src/components/AdminGate/AdminGate.test.tsx`:
 
 ```tsx
 import { render, screen } from '@testing-library/react'
@@ -1059,7 +1059,7 @@ test('hides children until a password is entered', async () => {
 Run: `cd web && npx vitest run src/components/AdminGate/AdminGate.test.tsx`
 Expected: FAIL (module not found). (If `@testing-library/user-event` is absent, `npm i -D @testing-library/user-event` first.)
 
-- [ ] **Step 3: Implement** — create `web/src/components/AdminGate/AdminGate.tsx`:
+- [ ] **Step 3: Implement**: create `web/src/components/AdminGate/AdminGate.tsx`:
 
 ```tsx
 import { createContext, useContext, useState, type FormEvent, type ReactNode } from 'react'
@@ -1202,7 +1202,7 @@ git commit -m "WZ: Add shared AdminGate password wrapper"
 
 ---
 
-### Task 9: `MembersTable` — presentational table + client pagination
+### Task 9: `MembersTable`: presentational table + client pagination
 
 **Files:**
 
@@ -1214,7 +1214,7 @@ git commit -m "WZ: Add shared AdminGate password wrapper"
 - Consumes: `Member` (Task 7).
 - Produces: default export `MembersTable` (`{members, onInvite, invitingEmail}`). Page size 25.
 
-- [ ] **Step 1: Write the failing tests** — create `web/src/components/MembersTable/MembersTable.test.tsx`:
+- [ ] **Step 1: Write the failing tests**: create `web/src/components/MembersTable/MembersTable.test.tsx`:
 
 ```tsx
 import { render, screen } from '@testing-library/react'
@@ -1275,7 +1275,7 @@ test('calls onInvite with the member when Invite is clicked', async () => {
 Run: `cd web && npx vitest run src/components/MembersTable/MembersTable.test.tsx`
 Expected: FAIL (module not found).
 
-- [ ] **Step 3: Implement** — create `web/src/components/MembersTable/MembersTable.tsx`:
+- [ ] **Step 3: Implement**: create `web/src/components/MembersTable/MembersTable.tsx`:
 
 ```tsx
 import { useState } from 'react'
@@ -1292,15 +1292,15 @@ type MembersTableProps = {
 
 const formatExpiry = (expires: string | null): string => {
   if (!expires) {
-    return '—'
+    return ': '
   }
   const date = new Date(expires)
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString()
+  return Number.isNaN(date.getTime()) ? ', ' : date.toLocaleDateString()
 }
 
 const formatDownloads = (downloads: boolean | null): string => {
   if (downloads === null) {
-    return '—'
+    return ': '
   }
   return downloads ? '✓' : '✗'
 }
@@ -1472,7 +1472,7 @@ git commit -m "WZ: Add paginated MembersTable"
 - Consumes: `AdminGate`/`useAdminAuth` (Task 8), `MembersTable` (Task 9), `fetchMembers`/`reissueInvite`/`AdminAuthError` (Task 7).
 - Produces: default export `Manage`.
 
-- [ ] **Step 1: Write the failing test** — create `web/src/pages/Manage/Manage.test.tsx`:
+- [ ] **Step 1: Write the failing test**: create `web/src/pages/Manage/Manage.test.tsx`:
 
 ```tsx
 import { render, screen } from '@testing-library/react'
@@ -1520,7 +1520,7 @@ test('loads and renders members after the gate', async () => {
 Run: `cd web && npx vitest run src/pages/Manage/Manage.test.tsx`
 Expected: FAIL (module not found).
 
-- [ ] **Step 3: Implement** — create `web/src/pages/Manage/Manage.tsx`:
+- [ ] **Step 3: Implement**: create `web/src/pages/Manage/Manage.tsx`:
 
 ```tsx
 import { useEffect, useState } from 'react'
@@ -1596,7 +1596,7 @@ const ManageInner = () => {
 }
 
 const Manage = () => (
-  <AdminGate title="Westeroz — Manage">
+  <AdminGate title="Westeroz: Manage">
     <ManageInner />
   </AdminGate>
 )
@@ -1664,9 +1664,9 @@ git commit -m "WZ: Add /manage members page"
 - Consumes: `AdminGate`/`useAdminAuth` (Task 8), `fetchMember`/`resetExpiry`/`reissueInvite`/`AdminAuthError` (Task 7).
 - Produces: default export `ResetUser`.
 
-> If Task 5 Step 5 found that null-clear is unsupported, rename the first expiry preset label to "Effectively no expiry" (its `days` value stays what Task 5 chose) — the button wiring is unchanged.
+> If Task 5 Step 5 found that null-clear is unsupported, rename the first expiry preset label to "Effectively no expiry" (its `days` value stays what Task 5 chose); the button wiring is unchanged.
 
-- [ ] **Step 1: Write the failing tests** — create `web/src/pages/ResetUser/ResetUser.test.tsx`:
+- [ ] **Step 1: Write the failing tests**: create `web/src/pages/ResetUser/ResetUser.test.tsx`:
 
 ```tsx
 import { render, screen } from '@testing-library/react'
@@ -1749,7 +1749,7 @@ test('applies a tier preset via reissue-invite', async () => {
 Run: `cd web && npx vitest run src/pages/ResetUser/ResetUser.test.tsx`
 Expected: FAIL (module not found).
 
-- [ ] **Step 3: Implement** — create `web/src/pages/ResetUser/ResetUser.tsx`:
+- [ ] **Step 3: Implement**: create `web/src/pages/ResetUser/ResetUser.tsx`:
 
 ```tsx
 import { useState, type FormEvent } from 'react'
@@ -1870,11 +1870,11 @@ const ResetUserInner = () => {
       {!!member && (
         <section className={styles.member}>
           <p className={styles.summary}>
-            {member.member} — {member.email} ({member.tier})
+            {member.member}: {member.email} ({member.tier})
           </p>
           <div className={styles.group}>
             <p className={styles.groupLabel}>
-              Set tier — disables + re-invites; member must re-open the link
+              Set tier: disables + re-invites; member must re-open the link
             </p>
             <div className={styles.buttons}>
               {TIERS.map((tier) => (
@@ -1891,7 +1891,7 @@ const ResetUserInner = () => {
             </div>
           </div>
           <div className={styles.group}>
-            <p className={styles.groupLabel}>Set expiry — instant, in place</p>
+            <p className={styles.groupLabel}>Set expiry, instant, in place</p>
             <div className={styles.buttons}>
               {EXPIRY_PRESETS.map((preset) => (
                 <button
@@ -1913,7 +1913,7 @@ const ResetUserInner = () => {
 }
 
 const ResetUser = () => (
-  <AdminGate title="Westeroz — Reset user">
+  <AdminGate title="Westeroz: Reset user">
     <ResetUserInner />
   </AdminGate>
 )
@@ -2052,7 +2052,7 @@ git commit -m "WZ: Add /reset-user page"
 Run: `cd web && npm install react-router-dom@^7`
 Expected: `react-router-dom` added to `dependencies`.
 
-- [ ] **Step 2: Write the failing test** — create `web/src/AppRoutes.test.tsx`:
+- [ ] **Step 2: Write the failing test**: create `web/src/AppRoutes.test.tsx`:
 
 ```tsx
 import { render, screen } from '@testing-library/react'
@@ -2178,7 +2178,7 @@ git commit -m "WZ: Route /manage + /reset-user and wire admin API base"
 
 ## Post-implementation (operator, out of band)
 
-Not code — do NOT block the plan on these, but the pages are inert until they're done:
+Not code: do NOT block the plan on these, but the pages are inert until they're done:
 
 1. Set `ADMIN_PASSWORD` and `ADMIN_ALLOWED_ORIGINS` (the real Netlify origin) in the NAS `.env`; force-recreate the bridge so `admin.py` + CORS load.
 2. Set `VITE_ADMIN_API_BASE` in the Netlify dashboard; redeploy the web build.
@@ -2186,6 +2186,6 @@ Not code — do NOT block the plan on these, but the pages are inert until they'
 
 ## Self-Review notes
 
-- **Spec coverage:** routing (T12), auth gate (T8), members endpoint + dedupe + tier join + derived downloads (T4), member lookup (T4), reset-expiry (T5), reissue-invite fail-closed (T5), tier persistence (T1–T2), `list_users` (T3), CORS + mount + Dockerfile + env (T6), `/manage` table + pagination + invite (T9–T10), `/reset-user` presets + email validation (T11), `_redirects` (T12), null-expiry open risk (T5 Step 5). All spec sections map to a task.
-- **Types:** `Member`/`PaidTier`/`Tier` defined in T7 and reused verbatim in T9–T11; bridge `Member` dict keys match the TS `Member` fields; `reissueInvite`/`resetExpiry`/`fetchMember` signatures identical across definition (T7) and callers (T10–T11).
+- **Spec coverage:** routing (T12), auth gate (T8), members endpoint + dedupe + tier join + derived downloads (T4), member lookup (T4), reset-expiry (T5), reissue-invite fail-closed (T5), tier persistence (T1, T2), `list_users` (T3), CORS + mount + Dockerfile + env (T6), `/manage` table + pagination + invite (T9, T10), `/reset-user` presets + email validation (T11), `_redirects` (T12), null-expiry open risk (T5 Step 5). All spec sections map to a task.
+- **Types:** `Member`/`PaidTier`/`Tier` defined in T7 and reused verbatim in T9, T11; bridge `Member` dict keys match the TS `Member` fields; `reissueInvite`/`resetExpiry`/`fetchMember` signatures identical across definition (T7) and callers (T10, T11).
 - **No placeholders:** every code + test step is complete; the one conditional (null-expiry fallback) has explicit fallback instructions, not a TODO.

@@ -1,4 +1,4 @@
-# Plex server-cost subscriptions — two-tier design
+# Plex server-cost subscriptions, two-tier design
 
 **Date:** 2026-07-13
 **Status:** Approved (design), pending implementation plan
@@ -8,8 +8,8 @@
 
 Gate Plex access behind a two-tier model to help cover server costs:
 
-- **Free tier** — family and VIP users pay nothing, access never expires.
-- **Paid tier** — everyone else contributes **$8/month** via Stripe; access is
+- **Free tier**: family and VIP users pay nothing, access never expires.
+- **Paid tier**: everyone else contributes **$8/month** via Stripe; access is
   granted on payment, extended on each renewal, and disabled on cancellation.
 
 Wizarr manages invites and Plex user lifecycle. Stripe manages billing. The
@@ -17,9 +17,9 @@ existing `stripe-bridge` FastAPI service connects the two.
 
 ## Non-goals
 
-- No custom checkout UI — Stripe Payment Links only.
-- No unified pipeline for free users — they never touch Stripe (see below).
-- No refactor of Wizarr or Tautulli — they are used as-is via their APIs.
+- No custom checkout UI: Stripe Payment Links only.
+- No unified pipeline for free users; they never touch Stripe (see below).
+- No refactor of Wizarr or Tautulli; they are used as-is via their APIs.
 
 ## Two-tier model
 
@@ -53,14 +53,14 @@ Stripe webhook endpoint subscribes to exactly three events:
 ## Verified Wizarr API surface
 
 Confirmed against Wizarr source (`app/blueprints/api/api_routes.py`,
-`.../models.py`) — all endpoints exist and are authenticated by `X-API-Key`:
+`.../models.py`): all endpoints exist and are authenticated by `X-API-Key`:
 
-- `POST /api/invitations` — create invite (`server_ids`, `expires_in_days`, `duration`, `unlimited`).
-- `GET  /api/users` — list users (includes `id`, `email`, `expires`).
-- `POST /api/users/{id}/extend` — body `{"days": <int>}`, extends `expires` (adds to existing expiry if set, else from now).
-- `POST /api/users/{id}/disable` — revoke access, preserve the record.
-- `POST /api/users/{id}/enable` — re-activate a disabled user.
-- `DELETE /api/users/{id}` — hard removal (no longer used on cancel).
+- `POST /api/invitations`: create invite (`server_ids`, `expires_in_days`, `duration`, `unlimited`).
+- `GET  /api/users`: list users (includes `id`, `email`, `expires`).
+- `POST /api/users/{id}/extend`: body `{"days": <int>}`, extends `expires` (adds to existing expiry if set, else from now).
+- `POST /api/users/{id}/disable`: revoke access, preserve the record.
+- `POST /api/users/{id}/enable`: re-activate a disabled user.
+- `DELETE /api/users/{id}`: hard removal (no longer used on cancel).
 
 ## Changes to `stripe-bridge/stripe_wizarr_bridge.py`
 
@@ -74,7 +74,7 @@ On each successful monthly charge, extend the user's Wizarr membership by
 - **Skip the first invoice.** The initial invoice fires alongside
   `checkout.session.completed`; extending there would double-grant. Detect via
   `invoice.billing_reason == "subscription_cycle"` (renewals) vs
-  `"subscription_create"` (first charge — skip).
+  `"subscription_create"` (first charge, skip).
 - Resolve the Wizarr user via the identity mapping (below).
 
 ### 2. Cancel = disable, not delete
@@ -87,7 +87,7 @@ own expiry sweep will hard-remove stale users on its normal schedule.
 ### 3. Durable identity mapping (SQLite)
 
 Replace fragile email-based lookup with a small persistent mapping. Email lookup
-breaks when a customer pays with one email and signs into Plex with another —
+breaks when a customer pays with one email and signs into Plex with another;
 and renewals now need a reliable lookup on _every_ cycle, not just once.
 
 - Single SQLite table: `stripe_customer_id (PK) → wizarr_user_id`, plus `email`
@@ -100,8 +100,8 @@ and renewals now need a reliable lookup on _every_ cycle, not just once.
   email. Keep the email fallback as a secondary lookup path.
 - File lives on a mounted volume so it survives container restarts
   (`./stripe-bridge-data/bridge.db` or similar; add to compose + `.gitignore`).
-- ~1 table, ~15–25 lines. This is the one deliberate divergence from the repo's
-  "no DB until email lookup actually breaks" note — justified because auto-extend
+- ~1 table, ~15: 25 lines. This is the one deliberate divergence from the repo's
+  "no DB until email lookup actually breaks" note, justified because auto-extend
   makes the lookup a per-cycle hot path.
 
 ## Configuration
@@ -113,27 +113,27 @@ month + ~5-day grace) is reused as the extend increment. Add:
 
 No new secrets required beyond what `.env.example` already lists.
 
-## Deployment — two phases
+## Deployment: two phases
 
 The bridge runs **standalone** and talks to the operator's **existing, already
 configured Wizarr** (3 Plex servers) over the LAN. The local
 `/Users/snowball/Docker/docker-compose.yml` is out of scope and untouched.
 
-### Phase 1 — build + test locally (no DNS / no Cloudflare)
+### Phase 1: build + test locally (no DNS / no Cloudflare)
 
 1. Make the three bridge code changes (invoice.paid extend, cancel=disable,
    SQLite mapping).
 2. Generate a Wizarr API key; fill a local `.env` with
    `WIZARR_BASE_URL=http://192.168.50.141:5690` and the key.
 3. Run the bridge locally (`docker run` / `uvicorn`) on `:8000`.
-4. Forward Stripe test events to it with the Stripe CLI — **no public URL
+4. Forward Stripe test events to it with the Stripe CLI, **no public URL
    needed**: `stripe listen --forward-to localhost:8000/stripe/webhook`, then
    `stripe trigger checkout.session.completed` / `invoice.paid` /
    `customer.subscription.deleted`. `stripe listen` prints the `whsec_...`
    signing secret to use for `STRIPE_WEBHOOK_SECRET` during testing.
 5. Assert each event routes to the correct Wizarr API call.
 
-### Phase 2 — go live (deferred until Phase 1 passes)
+### Phase 2: go live (deferred until Phase 1 passes)
 
 1. Migrate `cjrivas.io` DNS to Cloudflare; create a Cloudflare Tunnel exposing
    `webhook.cjrivas.io → bridge:8000` (and optionally `invite.cjrivas.io`).
@@ -147,7 +147,7 @@ configured Wizarr** (3 Plex servers) over the LAN. The local
 ### Stripe artifacts (test mode, created 2026-07-13)
 
 - Product `prod_UsX4Mm0lFpwhCY`, Price `price_1Tsm0TC1UCLdptRFbZgAGUsL`
-  ("Media Server Hosting — Monthly", CA$8.00/month recurring).
+  ("Media Server Hosting: Monthly", CA$8.00/month recurring).
 - Payment Link `https://buy.stripe.com/test_bJe6oG2Yte2m7l1f721Nu00`.
 - Live-mode equivalents to be created in Phase 2.
 
@@ -175,13 +175,13 @@ configured Wizarr** (3 Plex servers) over the LAN. The local
   **content you don't own the rights to**. "Infrastructure contribution" framing
   lowers visibility but does not exempt either.
 - All user-facing payment surfaces (product name, description, invite email) use
-  infrastructure/hosting language only — **never** reference libraries, titles,
+  infrastructure/hosting language only, **never** reference libraries, titles,
   or media content.
 - Keep the group small, invite-only, unadvertised.
 
 ## Open items (deferred, not blocking)
 
 - Optional `invoice.payment_failed` handler to proactively warn users before
-  cancellation. Deferred — Stripe already handles retries.
+  cancellation. Deferred: Stripe already handles retries.
 - Grace-period tuning via `customer.subscription.updated` +
   `cancel_at_period_end` if instant cutoff proves too harsh.

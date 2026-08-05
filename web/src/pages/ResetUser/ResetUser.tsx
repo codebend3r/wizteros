@@ -75,7 +75,7 @@ const ResetUserInner = () => {
         setStatus(
           result.emailed
             ? `Reset to ${tier}. Re-join link emailed: ${result.url}`
-            : `Reset to ${tier}. Email failed — send this re-join link manually: ${result.url}`,
+            : `Reset to ${tier}. Email failed, send this re-join link manually: ${result.url}`,
         ),
       )
       .catch((cause) => {
@@ -124,11 +124,11 @@ const ResetUserInner = () => {
         {!!member && (
           <section className={styles.member}>
             <p className={styles.summary}>
-              {member.member} — {member.email} ({member.tier})
+              {member.member}, {member.email} ({member.tier})
             </p>
             <div className={styles.group}>
               <p className={styles.groupLabel}>
-                Set tier — disables + re-invites; member must re-open the link
+                Set tier: disables + re-invites; member must re-open the link
               </p>
               <div className={styles.buttons}>
                 {TIERS.map((tier) => (
@@ -145,7 +145,7 @@ const ResetUserInner = () => {
               </div>
             </div>
             <div className={styles.group}>
-              <p className={styles.groupLabel}>Set expiry — instant, in place</p>
+              <p className={styles.groupLabel}>Set expiry, instant, in place</p>
               <div className={styles.buttons}>
                 {EXPIRY_PRESETS.map((preset) => (
                   <button
@@ -168,7 +168,7 @@ const ResetUserInner = () => {
 }
 
 export const ResetUser = () => (
-  <AdminGate title="Westeroz — Reset user">
+  <AdminGate title="Westeroz: Reset user">
     <ResetUserInner />
   </AdminGate>
 )

@@ -15,7 +15,7 @@ type MailtoParams = {
 /**
  * Builds a `mailto:` hand-off link. Recipients go in BCC so addresses stay
  * private, and every part is percent-encoded (encodeURIComponent yields %20
- * for spaces, which mail clients read correctly — URLSearchParams' `+` does not).
+ * for spaces, which mail clients read correctly, URLSearchParams' `+` does not).
  */
 export const buildMailto = ({ recipients, subject, body }: MailtoParams): string => {
   const query = [

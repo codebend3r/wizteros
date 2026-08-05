@@ -9,7 +9,7 @@ export const TIER_LABELS: Record<PaidTier, string> = {
   youth: 'Youth',
 }
 
-// Mirrors the bridge's tiers.TIER_DOWNLOADS — downloads are a tier perk.
+// Mirrors the bridge's tiers.TIER_DOWNLOADS, downloads are a tier perk.
 export const TIER_DOWNLOADS: Record<PaidTier, boolean> = {
   bronze: false,
   silver: false,

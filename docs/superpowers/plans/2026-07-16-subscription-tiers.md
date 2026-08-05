@@ -16,12 +16,12 @@
 - "4K" library match is case-insensitive on the library name.
 - Kids allowlist (server, name): (Vermithor, "06. Kid Shows"), (Meleys, "02. Family Movies"), (Vermithor, "04. 4K Family Movies").
 - Downloads: Bronze off, Silver off, Gold on, Kids on.
-- Prices: Bronze $8, Silver $14, Gold $20, Kids $20 — all CAD, monthly.
+- Prices: Bronze $8, Silver $14, Gold $20, Kids $20, all CAD, monthly.
 - Missing/unknown tier metadata → treat as Bronze, log an error.
-- User-facing payment copy uses infrastructure language only — never library or content names.
+- User-facing payment copy uses infrastructure language only, never library or content names.
 - TypeScript: type aliases only (no interfaces), no `any`, no casts, `?.` always paired with `??`, short-circuit `&&` rendering guarded to real booleans, `Array.prototype` methods over loops.
 - CSS: SCSS modules, grid + `gap` layout, token values from `web/src/styles/globals.scss` only.
-- No back-compat shims — remove replaced code and env vars outright.
+- No back-compat shims: remove replaced code and env vars outright.
 - Web dependencies/commands run through bun (`bun run --cwd web test`); bridge tests run through the repo venv (`../venv/bin/python -m pytest` from `stripe-bridge/`).
 - Commits: subject starts with `WZ:`, short title, concise bullet body.
 
@@ -38,9 +38,9 @@
 
 - Consumes: nothing (pure module; takes the library list as data).
 - Produces (used by Task 3):
-  - `normalize_tier(raw) -> str` — maps checkout metadata to `"bronze" | "silver" | "gold" | "kids"`, defaulting unknown/missing to `"bronze"` with an error log.
-  - `resolve_tier_access(*, tier: str, libraries: list) -> dict` — returns `{"library_ids": list[int], "server_ids": list[int], "allow_downloads": bool}`. `libraries` is the raw list from Wizarr `GET /api/libraries` (dicts with `id`, `name`, `server_id`, `server_name`, `enabled`).
-  - `TIER_DOWNLOADS: dict[str, bool]` — the four known tier names to their downloads flag.
+  - `normalize_tier(raw) -> str`: maps checkout metadata to `"bronze" | "silver" | "gold" | "kids"`, defaulting unknown/missing to `"bronze"` with an error log.
+  - `resolve_tier_access(*, tier: str, libraries: list) -> dict`: returns `{"library_ids": list[int], "server_ids": list[int], "allow_downloads": bool}`. `libraries` is the raw list from Wizarr `GET /api/libraries` (dicts with `id`, `name`, `server_id`, `server_name`, `enabled`).
+  - `TIER_DOWNLOADS: dict[str, bool]`: the four known tier names to their downloads flag.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -269,8 +269,8 @@ git commit -m "WZ: Add tier rules module for invite scoping
 
 - Consumes: nothing new.
 - Produces (used by Task 3):
-  - `WizarrClient.list_libraries() -> list` — raw library dicts from `GET /api/libraries` (`id`, `name`, `server_id`, `server_name`, `enabled`).
-  - `WizarrClient.create_invite(server_ids, expires_in_days, duration, unlimited=False, library_ids=None, allow_downloads=False) -> dict` — `library_ids=None` omits the key from the payload (Wizarr's own default scoping); a list sends it verbatim. `allow_downloads` is always sent.
+  - `WizarrClient.list_libraries() -> list`: raw library dicts from `GET /api/libraries` (`id`, `name`, `server_id`, `server_name`, `enabled`).
+  - `WizarrClient.create_invite(server_ids, expires_in_days, duration, unlimited=False, library_ids=None, allow_downloads=False) -> dict`: `library_ids=None` omits the key from the payload (Wizarr's own default scoping); a list sends it verbatim. `allow_downloads` is always sent.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -451,7 +451,7 @@ def test_checkout_brand_new_member_invites_for_its_tier(bridge):
 
 5. In `test_checkout_existing_member_time_boxes_all_records`, replace the `list_server_ids` line with `bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES` and add `"metadata": {"tier": "bronze"},` to the session object (the time-boxing assertions stay unchanged).
 
-6. In `test_webhook_route_handles_stripe_object_event`, replace `bridge.client.list_server_ids.return_value = [1, 2, 3]` with `bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES` (the payload carries no metadata — the route must still work and default to bronze).
+6. In `test_webhook_route_handles_stripe_object_event`, replace `bridge.client.list_server_ids.return_value = [1, 2, 3]` with `bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES` (the payload carries no metadata; the route must still work and default to bronze).
 
 7. In `test_checkout_falls_back_to_customer_email_field`, replace `bridge.client.list_server_ids.return_value = [1]` with `bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES`.
 
@@ -516,14 +516,14 @@ def test_wizarr_http_errors_propagate():
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `cd stripe-bridge && ../venv/bin/python -m pytest tests/test_bridge.py -v`
-Expected: the checkout tests FAIL — `create_invite` still called with the old `([...], 7, "35")` shape (assertion mismatch on `library_ids`/`allow_downloads` kwargs).
+Expected: the checkout tests FAIL, `create_invite` still called with the old `([...], 7, "35")` shape (assertion mismatch on `library_ids`/`allow_downloads` kwargs).
 
 - [ ] **Step 3: Implement the handler changes**
 
 In `stripe-bridge/stripe_wizarr_bridge.py`:
 
 1. Add `import tiers` after `import store`.
-2. Delete the `WIZARR_SERVER_IDS` constant (lines 20–22: the two comment lines and the assignment).
+2. Delete the `WIZARR_SERVER_IDS` constant (lines 20, 22: the two comment lines and the assignment).
 3. Delete the whole `resolve_server_ids` function.
 4. In `handle_event`, replace the invite-creation line
 
@@ -747,7 +747,7 @@ export type { SiteConfig, SupportItem, Tier }
 - [ ] **Step 4: Run tests**
 
 Run: `cd web && bun run test`
-Expected: site.config tests pass. `App.test.tsx` now FAILS (it imports the removed `DEFAULT_PAYMENT_LINK_URL`) — expected mid-refactor; Task 5 rewrites it. Verify only the site.config file: `cd web && bun run test src/site.config.test.ts` → all pass.
+Expected: site.config tests pass. `App.test.tsx` now FAILS (it imports the removed `DEFAULT_PAYMENT_LINK_URL`), expected mid-refactor; Task 5 rewrites it. Verify only the site.config file: `cd web && bun run test src/site.config.test.ts` → all pass.
 
 - [ ] **Step 5: Commit**
 
@@ -1090,7 +1090,7 @@ Expected: four active links; each `metadata.tier` is exactly one of `bronze`, `s
 
 **Interfaces:**
 
-- Consumes: deployed bridge (Tasks 1–3), built web app (Tasks 4–5), payment links (Task 6).
+- Consumes: deployed bridge (Tasks 1, 3), built web app (Tasks 4, 5), payment links (Task 6).
 - Produces: verified tier flow in Test mode.
 
 - [ ] **Step 1: Update the NAS .env and deploy**

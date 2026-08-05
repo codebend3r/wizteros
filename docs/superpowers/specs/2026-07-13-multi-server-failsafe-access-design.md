@@ -1,4 +1,4 @@
-# Multi-Server Fail-Safe Access — Design
+# Multi-Server Fail-Safe Access, Design
 
 ## Problem
 
@@ -28,7 +28,7 @@ access**.
   `GET /api/users` hangs and must not be used.
 - `POST /api/users/{id}/extend {"days": n}`:
   - on a `null`-expiry record → **sets** expiry to `now + n days`.
-  - on a record that already has an expiry → **adds** n days (compounds) — so it
+  - on a record that already has an expiry → **adds** n days (compounds), so it
     is NOT used; see below.
 - `PUT /api/users/{id}/update-expiry {"expires": <ISO>}` sets an **absolute**
   expiry. An **empty body** `{}` sets "unlimited"; an explicit `null` is rejected
@@ -41,9 +41,9 @@ access**.
 
 Access is guaranteed to lapse for a non-paying member because every paid member's
 records carry an `expires` in the near future. Each paid event **sets** that expiry
-to `update-time + ACCESS_DURATION` — absolute, not additive — so a record always
+to `update-time + ACCESS_DURATION`: absolute, not additive, so a record always
 expires exactly `ACCESS_DURATION` days after the last payment. If any webhook is
-missed, access self-expires within `ACCESS_DURATION` days — the service fails
+missed, access self-expires within `ACCESS_DURATION` days; the service fails
 closed, with a bounded exposure window.
 
 | Stripe event                                      | Bridge action (across **all** of the member's records)                                                                                                                                                                                                                           |
@@ -65,13 +65,13 @@ immediately regardless of remaining expiry.
   yet at checkout, so the set-expiry loop is naturally a no-op and invite
   redemption sets their initial expiry.
 
-## Identity model — resolve to all records
+## Identity model: resolve to all records
 
 `wizarr.py`:
 
-- `find_user_ids_by_email(email) -> list[int]` — all records whose email matches
+- `find_user_ids_by_email(email) -> list[int]`: all records whose email matches
   (case-insensitive).
-- `find_user_ids_by_invite(code) -> list[int]` — resolve the Plex username via the
+- `find_user_ids_by_invite(code) -> list[int]`: resolve the Plex username via the
   invite's `used_by`, then return all records for that username. Fallback for when
   the Stripe email differs from the Plex account email.
 - `set_expiry(id, expires_iso)` (PUT update-expiry, absolute) and
@@ -80,7 +80,7 @@ immediately regardless of remaining expiry.
 
 `stripe_wizarr_bridge.py`:
 
-- `resolve_user_ids(client, db, customer_id, email) -> list[int]` — try email, then
+- `resolve_user_ids(client, db, customer_id, email) -> list[int]`: try email, then
   the invite-code fallback (via the stored `invite_code`). Returns a list (possibly
   empty). Replaces the single-id `resolve_user_id`.
 - `handle_event` loops `extend`/`disable` over every resolved id and logs the count.
@@ -123,4 +123,4 @@ unchanged.
 - Bulk migration of the existing never-expiring membership base (a separate
   operator task; this bridge only time-boxes members as they pass through checkout).
 - Any change to the free-tier manual-invite flow.
-- Public reachability / go-live (Cloudflare Tunnel, live keys) — tracked separately.
+- Public reachability / go-live (Cloudflare Tunnel, live keys), tracked separately.

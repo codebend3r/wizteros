@@ -1,3 +1,4 @@
-# Fast gate: oxlint, gale on SCSS, oxfmt --check, tsgo.
-# Fix with: bun run lint:fix, bun run lint:css:fix, bun run format.
+# Fast gate: oxlint, gale on SCSS, ruff on Python, oxfmt --check, tsgo, web tests.
+# Fix with: bun run lint:fix, bun run lint:css:fix, bun run lint:py:fix,
+# bun run format.
 bun run system-check

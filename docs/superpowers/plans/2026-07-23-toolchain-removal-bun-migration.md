@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- **Commit/push gate (CLAUDE.md):** Do NOT run `git commit` or `git push` without explicit user approval. Each task ends at a commit boundary — when you reach it, stage the changes, show the diff summary, and request approval before committing. The commit commands below are the intended boundaries, not license to auto-commit.
+- **Commit/push gate (CLAUDE.md):** Do NOT run `git commit` or `git push` without explicit user approval. Each task ends at a commit boundary, when you reach it, stage the changes, show the diff summary, and request approval before committing. The commit commands below are the intended boundaries, not license to auto-commit.
 - **Commit subject:** must start with `WZ:` followed by a short title. Favor bullet points in the body.
 - **No agent attribution** in any commit or PR (no Claude/Claude Code mentions, no co-author trailers).
 - **Package manager:** Bun only. Never run `npm`/`pnpm`/`yarn`. Use `bun install`, `bun add --exact`, `bun run <script>`, `bun test`.
@@ -205,7 +205,7 @@ Expected: `bun install` completes and creates/updates `bun.lock` at the repo roo
 Run: `cd web && npm run dev; echo "exit=$?"; cd ..`
 Expected: the Bun-only error and `exit=1` (npm never reaches Vite).
 
-Run (should pass the guard — Ctrl-C after Vite starts): `cd web && bun run predev; echo "exit=$?"; cd ..`
+Run (should pass the guard: Ctrl-C after Vite starts): `cd web && bun run predev; echo "exit=$?"; cd ..`
 Expected: `exit=0`, no error.
 
 - [ ] **Step 9: Verify husky hooks fire**
@@ -226,16 +226,16 @@ git commit -m "WZ: Enforce Bun as the only package manager and runner
 
 ---
 
-## Task 3: Bun test spike (harness + 2 representative files) — GATE
+## Task 3: Bun test spike (harness + 2 representative files), GATE
 
-> This is a spike: build the Bun test harness and prove it on `adminApi.test.ts` (hits `import.meta.env`, `vi.stubGlobal`, `vi.mock`, `vi.fn`, `vi.restoreAllMocks`) and `ResetUser.test.tsx` (hits component render + `vi.mocked` + `vi.mock` with `importOriginal`). Do NOT proceed to Task 4 until all three risks below are cleared. If a risk cannot be cleared cheaply, STOP and report — the fallback is keeping Vitest.
+> This is a spike: build the Bun test harness and prove it on `adminApi.test.ts` (hits `import.meta.env`, `vi.stubGlobal`, `vi.mock`, `vi.fn`, `vi.restoreAllMocks`) and `ResetUser.test.tsx` (hits component render + `vi.mocked` + `vi.mock` with `importOriginal`). Do NOT proceed to Task 4 until all three risks below are cleared. If a risk cannot be cleared cheaply, STOP and report; the fallback is keeping Vitest.
 
 **Files:**
 - Create: `web/bunfig.toml`, `web/src/test/vi.ts`
 - Modify: `web/src/test-setup.ts`, `web/tsconfig.json`, `web/package.json`, `web/src/lib/adminApi.test.ts`, `web/src/pages/ResetUser/ResetUser.test.tsx`
 
 **Interfaces:**
-- Produces: `web/src/test/vi.ts` — a compat module re-exporting `test, expect, describe, it, beforeEach, afterEach` from `bun:test` plus a `vi` object with `fn`, `spyOn`, `mock`, `mocked`, `stubGlobal`, `restoreAllMocks`. Task 4 migrates the remaining files by repointing their `from 'vitest'` import to `@/test/vi`.
+- Produces: `web/src/test/vi.ts`: a compat module re-exporting `test, expect, describe, it, beforeEach, afterEach` from `bun:test` plus a `vi` object with `fn`, `spyOn`, `mock`, `mocked`, `stubGlobal`, `restoreAllMocks`. Task 4 migrates the remaining files by repointing their `from 'vitest'` import to `@/test/vi`.
 
 - [ ] **Step 1: Install the DOM + Bun test type deps in web**
 
@@ -349,7 +349,7 @@ In both files, change the test-framework import source from `'vitest'` to `'@/te
 import { afterEach, expect, test, vi } from '@/test/vi'
 ```
 
-For `ResetUser.test.tsx`, likewise repoint whatever it imports (`describe`, `test`/`it`, `expect`, `vi`, `beforeEach`, etc.) from `'vitest'` to `'@/test/vi'`. Do not change any `vi.*` call sites — the shim mirrors the API.
+For `ResetUser.test.tsx`, likewise repoint whatever it imports (`describe`, `test`/`it`, `expect`, `vi`, `beforeEach`, etc.) from `'vitest'` to `'@/test/vi'`. Do not change any `vi.*` call sites; the shim mirrors the API.
 
 - [ ] **Step 7: Run the two spike files under Bun test**
 
@@ -359,9 +359,9 @@ Expected: all tests pass.
 - [ ] **Step 8: Clear the three go/no-go risks (decision point)**
 
 Verify explicitly and record the outcome:
-1. **`import.meta.env.VITE_*`** — `adminApi.ts` reads `import.meta.env.VITE_ADMIN_API_BASE`. Confirm the test passes without a `ReferenceError`/`undefined` crash. If Bun does not populate `import.meta.env`, add the env shim: create `web/src/test/env.ts` setting the needed `import.meta.env` values and preload it via `bunfig.toml` (append to the `preload` array), replicating the old vitest `env: { VITE_SUPABASE_URL: '', VITE_SUPABASE_PUBLISHABLE_KEY: '' }` stubbing.
-2. **`vi.stubGlobal('fetch', ...)`** — confirm the `fetchMembers` test asserts on the bearer token, i.e. the stubbed `fetch` is actually called and restored between tests (no leakage into the next test).
-3. **`vi.mock` isolation/hoisting** — confirm the `@/lib/supabaseClient` and `@/lib/adminApi` mocks take effect. If `mock.module` does not intercept because the real module was imported first, restructure: move the `mock.module` calls into a preload file, or convert the file's top-level imports of the mocked module to `await import(...)` inside the tests. Record which approach was needed.
+1. **`import.meta.env.VITE_*`**: `adminApi.ts` reads `import.meta.env.VITE_ADMIN_API_BASE`. Confirm the test passes without a `ReferenceError`/`undefined` crash. If Bun does not populate `import.meta.env`, add the env shim: create `web/src/test/env.ts` setting the needed `import.meta.env` values and preload it via `bunfig.toml` (append to the `preload` array), replicating the old vitest `env: { VITE_SUPABASE_URL: '', VITE_SUPABASE_PUBLISHABLE_KEY: '' }` stubbing.
+2. **`vi.stubGlobal('fetch', ...)`**: confirm the `fetchMembers` test asserts on the bearer token, i.e. the stubbed `fetch` is actually called and restored between tests (no leakage into the next test).
+3. **`vi.mock` isolation/hoisting**: confirm the `@/lib/supabaseClient` and `@/lib/adminApi` mocks take effect. If `mock.module` does not intercept because the real module was imported first, restructure: move the `mock.module` calls into a preload file, or convert the file's top-level imports of the mocked module to `await import(...)` inside the tests. Record which approach was needed.
 
 If all three pass with the shim as written, continue. If any needs a workaround, apply the minimal one above and re-run Step 7. If a risk is unresolvable cheaply, STOP and report for a keep-Vitest decision.
 
@@ -384,7 +384,7 @@ git commit -m "WZ: Stand up Bun test harness (spike)
 
 ---
 
-## Task 4: Full test sweep + remove Vitest — GATED on Task 3
+## Task 4: Full test sweep + remove Vitest, GATED on Task 3
 
 **Files:**
 - Modify: the remaining 23 `web/src/**/*.test.*` files, `web/vite.config.ts`, `web/package.json`
@@ -464,7 +464,7 @@ Expected: no errors (`vite.config.ts` no longer references vitest; `tsconfig` no
 
 - [ ] **Step 9: Confirm the CI web job still works as written**
 
-The CI `web` job runs `bun install --frozen-lockfile`, `bun run typecheck`, `bun run test`. `bun run test` now invokes `bun test`. No workflow edit needed — verify by re-reading `.github/workflows/ci.yml` and confirming the `web` job commands are unchanged and valid.
+The CI `web` job runs `bun install --frozen-lockfile`, `bun run typecheck`, `bun run test`. `bun run test` now invokes `bun test`. No workflow edit needed, verify by re-reading `.github/workflows/ci.yml` and confirming the `web` job commands are unchanged and valid.
 
 - [ ] **Step 10: Stage, request approval, then commit**
 
@@ -484,13 +484,13 @@ git commit -m "WZ: Migrate web unit tests from Vitest to Bun test
 **Spec coverage:**
 - §3 Workstream A → Task 1. ✓ (files deleted, deps/scripts removed, CI job removed)
 - §4 Workstream B (husky) → Task 2 Steps 4, 6, 9. ✓ (`system-check` placeholder, pre-commit, pre-push)
-- §5 Workstream C (bun-only) → Task 2 Steps 2–8. ✓ (guard, preinstall, pre<script>, root bun.lock, npm-run-all2 kept)
+- §5 Workstream C (bun-only) → Task 2 Steps 2, 8. ✓ (guard, preinstall, pre<script>, root bun.lock, npm-run-all2 kept)
 - §6 Workstream D1 (spike) → Task 3, with all three risks as explicit gate Step 8. ✓
 - §6 Workstream D2 (full sweep) → Task 4. ✓ (codemod, config removal, dep removal)
 - §7 Sequencing (A; B+C; D1 gate; D2) → Tasks 1/2/3/4 order. ✓
 
-**Placeholder scan:** `system-check` body is an intentional no-op placeholder per the spec (user defines later) — not a plan gap. Task 3 is explicitly a spike with a decision point; its workarounds (env shim, mock restructuring) are conditional and fully specified where they apply. No "TBD"/"handle edge cases" left.
+**Placeholder scan:** `system-check` body is an intentional no-op placeholder per the spec (user defines later), not a plan gap. Task 3 is explicitly a spike with a decision point; its workarounds (env shim, mock restructuring) are conditional and fully specified where they apply. No "TBD"/"handle edge cases" left.
 
-**Type consistency:** the shim exports `vi` with `{ fn, spyOn, mock, mocked, stubGlobal, restoreAllMocks }` — every `vi.*` used in the codebase (`vi.fn`, `vi.spyOn`, `vi.mock`, `vi.mocked`, `vi.stubGlobal`, `vi.restoreAllMocks`) is covered. `@/test/vi` import path is consistent across Tasks 3 and 4. Guard script name `scripts/only-bun.mjs` and its `../scripts/only-bun.mjs` web reference are consistent.
+**Type consistency:** the shim exports `vi` with `{ fn, spyOn, mock, mocked, stubGlobal, restoreAllMocks }`: every `vi.*` used in the codebase (`vi.fn`, `vi.spyOn`, `vi.mock`, `vi.mocked`, `vi.stubGlobal`, `vi.restoreAllMocks`) is covered. `@/test/vi` import path is consistent across Tasks 3 and 4. Guard script name `scripts/only-bun.mjs` and its `../scripts/only-bun.mjs` web reference are consistent.
 
 **Open risk carried into execution:** Task 3 Step 8 may require the env shim and/or mock restructuring; both are specified inline. If `mock.module` leakage appears only at full-suite scale, Task 4 Step 7 points back to the same fix.

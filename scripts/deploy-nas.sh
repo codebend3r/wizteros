@@ -8,7 +8,7 @@
 #   tautulli-config/     - live Tautulli state
 #   stripe-bridge-data/  - the bridge's SQLite mapping
 #
-# Prereq: mount the share first — Finder > Cmd+K > smb://192.168.50.2 > "docker".
+# Prereq: mount the share first, Finder > Cmd+K > smb://192.168.50.2 > "docker".
 # Override the destination with:  NAS_MOUNT=/Volumes/docker/wizteros npm run deploy:nas
 set -euo pipefail
 

@@ -1,0 +1,62 @@
+# Ruff config for the FastAPI bridge.
+#
+# Linting only: `ruff format` is deliberately NOT wired up. The bridge uses
+# hand-aligned call continuations (see the log.info calls in
+# stripe_wizarr_bridge.py) that a formatter would rewrite wholesale, so
+# formatting stays a matter of review rather than a tool. Line length below
+# matches .editorconfig.
+#
+# Run with: bun run lint:py   (fix with: bun run lint:py:fix)
+
+line-length = 100
+
+# Matches the runtime image (Dockerfile: python:3.12-slim) and CI, NOT the
+# local venv, which may be newer.
+target-version = "py312"
+
+exclude = ["data", ".pytest_cache"]
+
+[lint]
+select = [
+  "F",   # pyflakes: undefined names, unused imports and variables
+  "E",   # pycodestyle errors
+  "W",   # pycodestyle warnings
+  "I",   # isort: import ordering
+  "UP",  # pyupgrade: modern syntax for the target version
+  "B",   # bugbear: likely bugs and design problems
+  "C4",  # comprehensions
+  "SIM", # simplify
+  "DTZ", # flake8-datetimez: naive datetimes
+  "TID", # flake8-tidy-imports: relative import ban
+  "PIE", # misc lints
+  "RUF", # ruff-specific
+]
+
+ignore = [
+  # The bridge deliberately catches bare Exception around background loops and
+  # the SMTP send, so a failure there degrades instead of taking the request
+  # (or the app) down. Each site is commented with why.
+  "BLE001",
+  # `datetime.timezone.utc` -> `datetime.UTC`. Both are correct on py312; the
+  # codebase uses `timezone.utc` consistently and rewriting working datetime
+  # handling in a billing path is churn, not a fix. Drop this entry to adopt it.
+  "UP017",
+  # Reads set-subset checks (`SUBSET <= set(actual)`) as Yoda conditions. The
+  # subset-on-the-left form is the clearer way to assert containment.
+  "SIM300",
+]
+
+[lint.flake8-tidy-imports]
+# CLAUDE.md: import bridge modules package-absolute
+# (`from stripe_bridge import store`), never relatively.
+ban-relative-imports = "all"
+
+[lint.isort]
+known-first-party = ["stripe_bridge"]
+
+[lint.per-file-ignores]
+# The invite email is an HTML template: long inline style attributes are not
+# reflowable without breaking the rendered output.
+"stripe_bridge/email_template.py" = ["E501"]
+# Tests build fixture payloads inline; long literal rows stay readable as-is.
+"tests/*.py" = ["E501"]

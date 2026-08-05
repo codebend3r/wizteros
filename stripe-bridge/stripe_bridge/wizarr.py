@@ -100,7 +100,7 @@ class WizarrClient:
         """Set a record's expiry to an absolute ISO datetime, or None to clear it.
 
         Wizarr validates the body against its schema (expires: date-time
-        string), so a literal null is rejected with a 400 — clearing to
+        string), so a literal null is rejected with a 400; clearing to
         unlimited must omit the key entirely.
         """
         r = requests.put(

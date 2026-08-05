@@ -45,7 +45,7 @@ export const ConfirmInviteModal = ({
     </dl>
     <p className={styles.note}>
       A fresh {TIER_LABELS[tier]}-scoped invite link is generated and any existing server records
-      for this email are disabled — they re-join through the new link.
+      for this email are disabled; they re-join through the new link.
     </p>
   </ConfirmActionModal>
 )

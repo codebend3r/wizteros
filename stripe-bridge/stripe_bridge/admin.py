@@ -9,9 +9,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from jwt import PyJWKClient
 from pydantic import BaseModel
 
-from stripe_bridge import plex
-from stripe_bridge import store
-from stripe_bridge import tiers
+from stripe_bridge import plex, store, tiers
 from stripe_bridge.mailer import send_invite_email
 from stripe_bridge.snapshot import UpstreamSnapshot
 from stripe_bridge.wizarr import WizarrClient
@@ -89,7 +87,8 @@ def require_admin(authorization: str = Header(default="")) -> None:
             issuer=SUPABASE_ISSUER,
         )
     except Exception:
-        raise HTTPException(status_code=401, detail="unauthorized")
+        # `from None`: never leak why the token failed to the caller.
+        raise HTTPException(status_code=401, detail="unauthorized") from None
 
     email = str(claims.get("email", "")).lower()
     if email not in ADMIN_ALLOWED_EMAILS:
@@ -251,14 +250,14 @@ def get_member(email: str) -> dict:
 
 @router.get("/admin/plex-access", dependencies=[Depends(require_admin)])
 def get_plex_access(email: str) -> dict:
-    """The email's actual plex.tv share per server — covers uninvited legacy shares too."""
+    """The email's actual plex.tv share per server, covers uninvited legacy shares too."""
     if not plex.PLEX_TOKEN:
         raise HTTPException(status_code=503, detail="PLEX_TOKEN not configured")
     try:
         return {"email": email, "servers": plex.shared_access_for_email(email)}
     except requests.RequestException as exc:
         log.error("plex.tv lookup failed for %s: %s", email, exc)
-        raise HTTPException(status_code=502, detail="plex.tv lookup failed")
+        raise HTTPException(status_code=502, detail="plex.tv lookup failed") from exc
 
 
 @router.get("/admin/events", dependencies=[Depends(require_admin)])
@@ -317,7 +316,7 @@ class SetTagBody(BaseModel):
 def set_tag(body: SetTagBody) -> dict:
     """Set (or clear, with tag null) the member's manual designation.
 
-    Purely a bridge-side label — Plex access, tier, and expiry are untouched.
+    Purely a bridge-side label; Plex access, tier, and expiry are untouched.
     """
     if body.tag is not None and body.tag not in MEMBER_TAGS:
         raise HTTPException(status_code=400, detail=f"unknown tag {body.tag!r}")
@@ -357,7 +356,7 @@ def cancel_subscription(body: CancelSubscriptionBody) -> dict:
 
     Mirrors a portal self-cancel: the member keeps access through the period
     they already contributed for, then Stripe fires
-    customer.subscription.deleted and the webhook disables their records —
+    customer.subscription.deleted and the webhook disables their records;
     nothing is revoked here directly. Customer ids come from the bridge's own
     mapping first, falling back to a live Stripe email lookup for members who
     predate the mapping. Idempotent: subscriptions already flagged are left
@@ -386,7 +385,7 @@ def cancel_subscription(body: CancelSubscriptionBody) -> dict:
     if flagged:
         store.record_event(
             MAP_DB_PATH, body.email, "Cancellation scheduled",
-            f"by admin — access ends {cancel_at[:10]}" if cancel_at else "by admin",
+            f"by admin: access ends {cancel_at[:10]}" if cancel_at else "by admin",
         )
     return {"email": body.email, "canceled": len(flagged), "cancel_at": cancel_at}
 
@@ -404,8 +403,9 @@ def reset_expiry(body: ResetExpiryBody) -> dict:
     if body.expires_at is not None:
         try:
             parsed = datetime.fromisoformat(body.expires_at.replace("Z", "+00:00"))
-        except ValueError:
-            raise HTTPException(status_code=400, detail="expires_at is not an ISO datetime")
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400, detail="expires_at is not an ISO datetime") from exc
         expires = parsed.isoformat()
         detail = f"to {expires}"
     elif body.days is not None:
@@ -423,7 +423,7 @@ def reset_expiry(body: ResetExpiryBody) -> dict:
 
 @router.post("/admin/reset-tier", dependencies=[Depends(require_admin)])
 def reset_tier(body: ResetTierBody) -> dict:
-    """Hard-set the member's recorded tier in place — no re-invite, no disable.
+    """Hard-set the member's recorded tier in place; no re-invite, no disable.
 
     Only rewrites the bridge's record (which drives the displayed tier,
     downloads, and library derivation); the member's actual Plex shares are
@@ -444,7 +444,7 @@ def reissue_invite(body: ReissueInviteBody) -> dict:
     the invite covers (Wizarr updates the sections for an already-shared
     account), so nothing is disabled up front and the member keeps their
     current access until they join through the link. The one exception is a
-    tier that leaves a current server uncovered — Wizarr has no per-server
+    tier that leaves a current server uncovered; Wizarr has no per-server
     unshare, so that reissue falls back to disable-first (with the access gap).
     Scope comes from tiers.resolve_tier_access (fail-closed on 9X. privates).
     Returns the public re-join URL.
@@ -483,7 +483,7 @@ def reissue_invite(body: ReissueInviteBody) -> dict:
         emailed = False
     store.record_event(
         MAP_DB_PATH, body.email, "Invite issued",
-        f"{tier} tier — " + ("link emailed" if emailed else "email failed, link sent manually"),
+        f"{tier} tier: " + ("link emailed" if emailed else "email failed, link sent manually"),
     )
     members_snapshot.refresh_async()
     return {

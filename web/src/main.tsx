@@ -13,7 +13,7 @@ import { AppRoutes } from '@/AppRoutes'
 import '@/styles/globals.scss'
 
 // The members call is ~15s (Wizarr fan-out), so never refetch it just for
-// window focus and don't retry — failures here are auth or config, not blips.
+// window focus and don't retry, failures here are auth or config, not blips.
 // gcTime must cover the persister's maxAge or restored data gets collected.
 const CACHE_MINUTES = 30
 
@@ -28,7 +28,7 @@ const queryClient = new QueryClient({
 })
 
 // React Query's cache is in-memory and dies with the page, so a refresh
-// would refetch the ~15s members call. Persist it to sessionStorage — the
+// would refetch the ~15s members call. Persist it to sessionStorage; the
 // same lifetime as the admin gate's stored password.
 const persister = createSyncStoragePersister({ storage: window.sessionStorage })
 

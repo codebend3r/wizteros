@@ -9,9 +9,7 @@ import stripe
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from stripe_bridge import admin
-from stripe_bridge import store
-from stripe_bridge import tiers
+from stripe_bridge import admin, store, tiers
 from stripe_bridge.mailer import send_invite_email
 from stripe_bridge.wizarr import WizarrClient
 
@@ -41,7 +39,7 @@ def reconcile_pending_expiries() -> int:
     """Stamp the paid expiry on records that joined without one; returns records stamped.
 
     Wizarr does not translate an invite's duration into record expiry, so a
-    brand-new member redeems into records with no expiry at all — and no
+    brand-new member redeems into records with no expiry at all, and no
     webhook fires at redemption to correct it. Sweep every subscribed, non-VIP
     member and stamp invited_at + ACCESS_DURATION (the signup date anchors the
     window) on any of their records still unlimited. Records that already
@@ -75,7 +73,7 @@ def reconcile_pending_expiries() -> int:
         log.info("reconcile: stamped expiry %s on %d record(s) for %s",
                  expiry.isoformat(), len(records), email)
         store.record_event(MAP_DB_PATH, email, "Expiry stamped",
-                           f"joined with no expiry — set to {expiry.isoformat()[:10]}")
+                           f"joined with no expiry; set to {expiry.isoformat()[:10]}")
     return stamped
 
 
@@ -105,7 +103,7 @@ async def _snapshot_loop() -> None:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    """Keep the reconcile sweep and members-snapshot refresher running for the life of the server."""
+    """Keep the reconcile sweep and snapshot refresher running for the server's life."""
     tasks = [asyncio.create_task(_reconcile_loop()), asyncio.create_task(_snapshot_loop())]
     yield
     for task in tasks:
@@ -192,7 +190,8 @@ def _dispatch(etype: str, obj: dict) -> None:
         if not access["library_ids"]:
             log.error("no libraries resolved for %s tier checkout %s; aborting for retry",
                       tier, obj.get("id"))
-            raise RuntimeError(f"no libraries resolved for tier {tier!r} on session {obj.get('id')!r}")
+            raise RuntimeError(
+                f"no libraries resolved for tier {tier!r} on session {obj.get('id')!r}")
         invite = client.create_invite(
             access["server_ids"], INVITE_DAYS, ACCESS_DURATION,
             library_ids=access["library_ids"],
@@ -206,18 +205,18 @@ def _dispatch(etype: str, obj: dict) -> None:
         send_invite_email(email, invite_url)
         log.info("sent invite to %s", email)
         store.record_event(MAP_DB_PATH, email, "Signed up",
-                           f"{tier} tier — invite emailed")
-        # VIP access is never time-boxed or reshuffled — a VIP's checkout is
+                           f"{tier} tier, invite emailed")
+        # VIP access is never time-boxed or reshuffled; a VIP's checkout is
         # just a contribution, so their records stay exactly as they are (no
         # disable, no expiry stamp).
         if store.get_member_tag(MAP_DB_PATH, email) == "vip":
-            log.info("%s is VIP — existing records left untouched", email)
+            log.info("%s is VIP, existing records left untouched", email)
             return
         # Existing access survives the invite window: redeeming re-scopes the
         # share in place on every covered server. Disable-first only when the
         # new tier leaves a current server uncovered (no per-server unshare),
         # or when the member is only findable via the invite-code fallback
-        # (Plex email differs, so coverage can't be evaluated — fail closed).
+        # (Plex email differs, so coverage can't be evaluated, fail closed).
         records = client.find_users_by_email(email)
         if records:
             existing = tiers.stale_record_ids(
@@ -230,7 +229,7 @@ def _dispatch(etype: str, obj: dict) -> None:
             log.info("reset %d existing record(s) for %s pending re-join",
                      len(existing), email)
         # Covered records keep access without ever redeeming the new invite,
-        # so the purchase itself must stamp the paid expiry — otherwise a
+        # so the purchase itself must stamp the paid expiry; otherwise a
         # shorter pre-signup window (e.g. the 14-day Invited backfill) would
         # survive the checkout.
         disabled = set(existing)
@@ -250,11 +249,11 @@ def _dispatch(etype: str, obj: dict) -> None:
         email = obj.get("customer_email") or customer_email(customer_id)
         if email:
             store.set_subscribed(MAP_DB_PATH, email, True)
-        # VIP access is never time-boxed — acknowledge the payment, leave expiry alone.
+        # VIP access is never time-boxed, acknowledge the payment, leave expiry alone.
         if email and store.get_member_tag(MAP_DB_PATH, email) == "vip":
-            log.info("renewal: %s is VIP — expiry untouched", email)
+            log.info("renewal: %s is VIP, expiry untouched", email)
             store.record_event(MAP_DB_PATH, email, "Payment received",
-                               "VIP — expiry untouched")
+                               "VIP, expiry untouched")
             return
         ids = resolve_user_ids(client, MAP_DB_PATH, customer_id, email)
         expires = access_expiry_iso()
@@ -282,7 +281,7 @@ def _dispatch(etype: str, obj: dict) -> None:
             log.info("cancel: no wizarr user for %s / %s", customer_id, email)
         if email:
             store.record_event(MAP_DB_PATH, email, "Canceled",
-                               f"subscription ended — {len(ids)} server record(s) disabled")
+                               f"subscription ended, {len(ids)} server record(s) disabled")
 
 
 # Public URL is /stripe/webhook. Tailscale Funnel mounts the bridge with
@@ -297,7 +296,8 @@ async def stripe_webhook(request: Request, stripe_signature: str = Header(None))
     try:
         stripe.Webhook.construct_event(payload, stripe_signature, STRIPE_WEBHOOK_SECRET)
     except (ValueError, stripe.error.SignatureVerificationError):
-        raise HTTPException(400, "invalid signature")
+        # `from None`: an unverified caller learns nothing beyond "invalid".
+        raise HTTPException(400, "invalid signature") from None
     # construct_event returns a StripeObject (no dict .get); the verified raw
     # payload is the same bytes, so decode it into a plain dict for handling.
     handle_event(json.loads(payload))

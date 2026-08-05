@@ -1,6 +1,4 @@
 import os
-import sys
-import types
 from unittest.mock import MagicMock
 
 import pytest
@@ -28,6 +26,7 @@ FIXTURE_LIBRARIES = [
 def bridge(tmp_path, monkeypatch):
     """Fresh bridge module per test: temp SQLite db, mocked Wizarr client and email."""
     import importlib
+
     from stripe_bridge import stripe_wizarr_bridge as b
     importlib.reload(b)
     dbp = str(tmp_path / "bridge.db")
@@ -88,7 +87,7 @@ def test_checkout_existing_member_keeps_access_when_servers_covered(bridge):
 def test_checkout_existing_covered_member_expiry_resets_to_access_duration(bridge):
     # A covered member keeps access without ever redeeming the new invite, so
     # the checkout itself must stamp the paid expiry (now + ACCESS_DURATION)
-    # on every surviving record — otherwise a short pre-signup window (e.g. the
+    # on every surviving record; otherwise a short pre-signup window (e.g. the
     # 14-day Invited backfill) survives the purchase.
     from datetime import datetime, timedelta, timezone
     bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
@@ -155,7 +154,7 @@ def test_checkout_existing_member_resets_all_records_when_a_server_drops(bridge)
     # every record is disabled (account-wide reset), none merely time-boxed
     assert sorted(c.args[0] for c in bridge.client.disable_user.call_args_list) == [57, 106, 147, 155, 204]
     bridge.client.set_expiry.assert_not_called()
-    # the invite email still goes out — it is the re-join path
+    # the invite email still goes out; it is the re-join path
     bridge.send_invite_email.assert_called_once_with("a@x.com", "http://inv.test/j/abc")
 
 
@@ -227,7 +226,8 @@ def test_reconcile_stamps_new_member_records_that_joined_without_expiry(bridge):
     # Wizarr never applies an invite's duration to the records it creates, so a
     # brand-new member redeems into expires=None. The sweep must stamp
     # invited_at + ACCESS_DURATION on exactly those records.
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
+
     from stripe_bridge import store
     store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "new@x.com", "abc", tier="gold")
     bridge.client.list_users.return_value = [
@@ -276,6 +276,7 @@ def test_reconcile_never_stamps_a_date_already_in_the_past(bridge, monkeypatch):
     # A stale subscribed row (e.g. expiry manually cleared long after signup)
     # must not let a background sweep revoke access with a past-dated expiry.
     import sqlite3
+
     from stripe_bridge import store
     store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "old@x.com", "abc")
     with sqlite3.connect(bridge.MAP_DB_PATH) as c:
@@ -323,7 +324,7 @@ def test_subscription_deleted_disables_all_records(bridge):
 
 def test_webhook_route_handles_stripe_object_event(bridge, monkeypatch):
     # Real Stripe webhooks arrive as a StripeObject (no dict .get), not a plain
-    # dict — construct_event returns one. Drive the actual route to prove the
+    # dict: construct_event returns one. Drive the actual route to prove the
     # handler tolerates it and doesn't 500.
     import asyncio
     import json
@@ -576,6 +577,7 @@ def test_checkout_records_tier_for_the_customer(bridge):
 
 def test_send_invite_email_sends_via_smtp_starttls(monkeypatch):
     import importlib
+
     from stripe_bridge import mailer as b
     importlib.reload(b)
 

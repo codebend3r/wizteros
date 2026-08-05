@@ -8,7 +8,7 @@ PY="$PWD/venv/bin/python"
 [ -x "$PY" ] || PY="$(command -v python3)"
 
 if ! "$PY" -m pytest --version >/dev/null 2>&1; then
-  echo "pytest not available — bootstrap the venv with: npm run setup:py" >&2
+  echo "pytest not available: bootstrap the venv with: npm run setup:py" >&2
   exit 1
 fi
 

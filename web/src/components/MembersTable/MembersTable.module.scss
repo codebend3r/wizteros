@@ -42,7 +42,7 @@
     text-transform: uppercase;
   }
 
-  // The Action column stays pinned on the right when the table overflows —
+  // The Action column stays pinned on the right when the table overflows;
   // the Invite button must never scroll out of view.
   th:last-child,
   td:last-child {

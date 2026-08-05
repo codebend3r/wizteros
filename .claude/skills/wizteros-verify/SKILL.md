@@ -7,7 +7,7 @@ description: Use when running checks, tests, linting, formatting, or typecheckin
 
 ## Overview
 
-Two languages, two test runners, four linters, and a Python venv that must be bootstrapped before the bridge suite runs at all. Running the wrong gate wastes a minute; skipping the bootstrap produces an error that looks like a broken test suite but is not.
+Two languages, two test runners, a six-step lint and format gate, and a Python venv that must be bootstrapped before the bridge suite runs at all. Running the wrong gate wastes a minute; skipping the bootstrap produces an error that looks like a broken test suite but is not.
 
 **Never claim work passes without running the gate and reading its output.**
 
@@ -16,16 +16,16 @@ Two languages, two test runners, four linters, and a Python venv that must be bo
 | Change touches | Run |
 |---|---|
 | `web/` only | `bun run system-check` |
-| `stripe-bridge/` only | `bun run test:bridge` |
+| `stripe-bridge/` only | `bun run lint:py` then `bun run test:bridge` |
 | Both, or anything at the repo root | `bun run verify` |
 | Before pushing, always | `bun run verify` |
 
 ```
-system-check = lint + lint:css + format:check + typecheck + test:web
+system-check = lint + lint:css + lint:py + lint:dashes + format:check + typecheck + test:web
 verify       = system-check + test:bridge
 ```
 
-`.husky/pre-commit` runs `system-check`. `.husky/pre-push` runs `verify`. CI (`.github/workflows/ci.yml`) runs the web steps individually plus `pytest`, on every branch push.
+`.husky/pre-commit` runs `system-check`. `.husky/pre-push` runs `verify`. CI (`.github/workflows/ci.yml`) runs the web steps individually plus `ruff check` and `pytest`, on every branch push.
 
 ## First run in a fresh clone
 
@@ -47,9 +47,11 @@ The repo is bun-only. `scripts/only-bun.mjs` runs as a `preinstall`, `predev`, `
 | oxfmt | `bun run format:check` | formatting across `web/` | `bun run format` |
 | tsgo | `bun run typecheck` | types (native preview compiler) | none |
 | bun test | `bun run test` | web suite, happy-dom | none |
+| ruff | `bun run lint:py` | Python in `stripe-bridge/` | `bun run lint:py:fix` |
 | pytest | `bun run test:bridge` | bridge suite | none |
+| check-dashes | `bun run lint:dashes` | en and em dashes in tracked files | none |
 
-Neither linter is configured with a rc file, so both run on defaults.
+All three linters are configured: `web/.oxlintrc.json` (typescript, unicorn, oxc, react, jsx-a11y, import, and promise plugins, with `correctness` and `suspicious` as errors), `web/gale.json` (extends `gale:recommended`), and `stripe-bridge/ruff.toml` (F, E, W, I, UP, B, C4, SIM, DTZ, TID, PIE, RUF at line length 100, targeting py312). Formatting options live in `web/.oxfmtrc.json`; there is deliberately no Python formatter, see the note at the top of `ruff.toml`. Read the config before assuming a rule is or is not active.
 
 **tsgo vs tsc.** `typecheck` uses `tsgo` (`@typescript/native-preview`), which is also what `build` runs. If tsgo reports something that looks wrong or unsupported, cross-check with `bun run typecheck:tsc` before assuming the code is at fault.
 
@@ -57,9 +59,21 @@ Neither linter is configured with a rc file, so both run on defaults.
 
 **Bridge tests.** `pytest -q` from `stripe-bridge/`, using `responses` to stub Wizarr and plex.tv HTTP calls. A test hanging rather than failing usually means a request escaped the `responses` mock and is hitting a real 45-second-timeout endpoint.
 
-## What the linters do not catch
+## What the linters enforce, and what they do not
 
-The repo's CLAUDE.md house rules are convention, not tooling. oxlint will not flag `interface`, `any`, `as` casts, default exports, `../` imports, `display: flex`, hardcoded hex values, or en and em dashes. Passing `bun run verify` is necessary, not sufficient. Use the `wizteros-house-style-review` agent for that layer.
+`web/.oxlintrc.json` already enforces a large slice of the CLAUDE.md house rules. Do not hand-review these; the linter fails the commit on them:
+
+`interface` (`consistent-type-definitions` set to `type`), `any` (`no-explicit-any`), type assertions (`consistent-type-assertions` set to `never`, which still permits `as const`), non-null assertions, default exports (`import/no-default-export`), parent-relative `../` imports (`no-restricted-imports`), `var`, non-`const` bindings, loose equality, plus the react, jsx-a11y, import, and promise plugin rule sets. `ruff` covers the Python side, and `bun run lint:dashes` fails the commit on any en or em dash outside the allowlist in `scripts/check-dashes.sh`.
+
+**Still convention only**, because no rule covers them:
+
+- CSS: `display: grid` over flex, avoiding margins for spacing, using only tokens from `globals.scss`, no plain `div`s
+- `for/of` and `for/in` (oxlint has no `no-restricted-syntax`, so this cannot be expressed today)
+- `!!` for boolean conversion (`no-extra-boolean-cast` is deliberately off to permit it)
+- `&&` over a ternary returning null, `?.` always paired with `??`, single object parameter
+- Immutability, the 320px responsive requirement, and the a11y rules beyond what jsx-a11y catches
+
+Passing `bun run verify` is necessary, not sufficient. Use the `wizteros-house-style-review` agent for the residual layer.
 
 ## Red Flags
 

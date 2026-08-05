@@ -1,10 +1,10 @@
-# Stripe-Bridge Two-Tier Subscription — Implementation Plan
+# Stripe-Bridge Two-Tier Subscription, Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Extend the `stripe-bridge` service so paying subscribers get their Plex access auto-renewed each billing cycle and disabled (not deleted) on cancellation, backed by a durable Stripe↔Wizarr identity mapping — while the free family/VIP tier stays entirely manual in Wizarr.
+**Goal:** Extend the `stripe-bridge` service so paying subscribers get their Plex access auto-renewed each billing cycle and disabled (not deleted) on cancellation, backed by a durable Stripe↔Wizarr identity mapping, while the free family/VIP tier stays entirely manual in Wizarr.
 
-**Architecture:** The bridge is a small FastAPI app that receives Stripe webhooks and calls Wizarr's REST API. This plan splits the current single file into three focused modules — `store.py` (SQLite identity mapping), `wizarr.py` (Wizarr API client), and `stripe_wizarr_bridge.py` (FastAPI app + webhook routing + email) — and adds an `invoice.paid` renewal path. Identity is resolved by a cached `stripe_customer_id → wizarr_user_id` map, with email and invite-code fallbacks.
+**Architecture:** The bridge is a small FastAPI app that receives Stripe webhooks and calls Wizarr's REST API. This plan splits the current single file into three focused modules, `store.py` (SQLite identity mapping), `wizarr.py` (Wizarr API client), and `stripe_wizarr_bridge.py` (FastAPI app + webhook routing + email), and adds an `invoice.paid` renewal path. Identity is resolved by a cached `stripe_customer_id → wizarr_user_id` map, with email and invite-code fallbacks.
 
 **Tech Stack:** Python 3.12, FastAPI, `stripe` SDK, `requests`, stdlib `sqlite3`, `smtplib`. Tests: `pytest` + `responses` (HTTP mocking).
 
@@ -12,9 +12,9 @@
 
 - Repo: `codebend3r/wizteros`. Bridge code lives under `stripe-bridge/`.
 - All commits: short subject, optional bullet body. **No `Co-Authored-By` or agent-attribution trailers** (per repo `CLAUDE.md`).
-- **User-facing copy (product names, emails, confirmation text) must use infrastructure/hosting language only — never reference Plex, libraries, or media titles** (Plex + Stripe TOS).
+- **User-facing copy (product names, emails, confirmation text) must use infrastructure/hosting language only, never reference Plex, libraries, or media titles** (Plex + Stripe TOS).
 - The bridge is intentionally small: no ORM, no framework beyond FastAPI, no queue. SQLite via stdlib only.
-- The bridge runs standalone and points at the operator's **existing** Wizarr at `http://192.168.50.141:5690` (3 Plex servers already configured). The local `/Users/snowball/Docker/docker-compose.yml` is out of scope — do not touch it.
+- The bridge runs standalone and points at the operator's **existing** Wizarr at `http://192.168.50.141:5690` (3 Plex servers already configured). The local `/Users/snowball/Docker/docker-compose.yml` is out of scope, do not touch it.
 - `ACCESS_DURATION` (default `35`) is the per-cycle grant length in days, reused as the renewal extend increment. `INVITE_EXPIRES_DAYS` (default `7`) is how long the invite link stays valid.
 - Wizarr auth header: `X-API-Key: <key>`.
 - Test email for the end-to-end flow: `codebenderinc@gmail.com` (operator's second inbox).
@@ -41,9 +41,9 @@
 - Consumes: nothing.
 - Produces:
   - `init_db(path: str) -> None`
-  - `upsert_pending(path: str, stripe_customer_id: str, email: str, invite_code: str) -> None` — inserts a row with `wizarr_user_id = NULL`; on conflict updates `email`/`invite_code`.
+  - `upsert_pending(path: str, stripe_customer_id: str, email: str, invite_code: str) -> None`: inserts a row with `wizarr_user_id = NULL`; on conflict updates `email`/`invite_code`.
   - `set_user_id(path: str, stripe_customer_id: str, wizarr_user_id: int) -> None`
-  - `get_mapping(path: str, stripe_customer_id: str) -> dict | None` — returns `{"stripe_customer_id","email","invite_code","wizarr_user_id"}` or `None`.
+  - `get_mapping(path: str, stripe_customer_id: str) -> dict | None`: returns `{"stripe_customer_id","email","invite_code","wizarr_user_id"}` or `None`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -79,7 +79,7 @@ def test_upsert_get_and_backfill(tmp_path):
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `cd stripe-bridge && python -m pytest tests/test_store.py -v`
-Expected: FAIL — `ModuleNotFoundError: No module named 'store'`
+Expected: FAIL: `ModuleNotFoundError: No module named 'store'`
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -167,9 +167,9 @@ git commit -m "Add SQLite identity store for stripe-bridge
 - Consumes: nothing.
 - Produces a `WizarrClient` class:
   - `__init__(self, base_url: str, api_key: str, server_id: int)`
-  - `create_invite(self, expires_in_days: int, duration, unlimited: bool = False) -> dict` — returns `{"code": str, "url": str}`
+  - `create_invite(self, expires_in_days: int, duration, unlimited: bool = False) -> dict`: returns `{"code": str, "url": str}`
   - `find_user_id_by_email(self, email: str) -> int | None`
-  - `find_user_id_by_invite(self, code: str) -> int | None` — resolves via `GET /api/invitations` → `used_by` → `GET /api/users?username=`
+  - `find_user_id_by_invite(self, code: str) -> int | None`: resolves via `GET /api/invitations` → `used_by` → `GET /api/users?username=`
   - `extend_user(self, user_id: int, days: int) -> None`
   - `disable_user(self, user_id: int) -> None`
 
@@ -233,7 +233,7 @@ def test_extend_and_disable_call_correct_paths():
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `cd stripe-bridge && python -m pytest tests/test_wizarr.py -v`
-Expected: FAIL — `ModuleNotFoundError: No module named 'wizarr'`
+Expected: FAIL: `ModuleNotFoundError: No module named 'wizarr'`
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -346,9 +346,9 @@ git commit -m "Add Wizarr API client with email + invite-code user resolution
 
 - Consumes: `store` (Task 1), `WizarrClient` (Task 2).
 - Produces:
-  - `resolve_user_id(client, store_path, customer_id, email) -> int | None` — cache → email → invite fallback, backfills cache on hit.
+  - `resolve_user_id(client, store_path, customer_id, email) -> int | None`: cache → email → invite fallback, backfills cache on hit.
   - FastAPI `app` with `POST /stripe/webhook` handling `checkout.session.completed`, `invoice.paid` (skip `billing_reason == "subscription_create"`), `customer.subscription.deleted`.
-  - `handle_event(event: dict) -> None` — pure routing over the parsed event, so tests bypass signature verification.
+  - `handle_event(event: dict) -> None`: pure routing over the parsed event, so tests bypass signature verification.
 
 **Behavior:**
 
@@ -452,7 +452,7 @@ def test_resolve_prefers_cache_then_email_then_invite(bridge):
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `cd stripe-bridge && python -m pytest tests/test_bridge.py -v`
-Expected: FAIL — `AttributeError`/`ImportError` (no `handle_event`, `resolve_user_id`, `customer_email`, or `MAP_DB_PATH`).
+Expected: FAIL: `AttributeError`/`ImportError` (no `handle_event`, `resolve_user_id`, `customer_email`, or `MAP_DB_PATH`).
 
 - [ ] **Step 3: Write minimal implementation (full file)**
 
@@ -595,7 +595,7 @@ Expected: PASS (5 passed)
 - [ ] **Step 5: Run the whole suite**
 
 Run: `cd stripe-bridge && python -m pytest -v`
-Expected: PASS (all tests from Tasks 1–3)
+Expected: PASS (all tests from Tasks 1, 3)
 
 - [ ] **Step 6: Commit**
 
@@ -752,11 +752,11 @@ Expected: `customer.subscription.deleted` forwarded → bridge logs `disabled us
 
 - [ ] **Step 7: Record the result**
 
-No commit needed. Note pass/fail of Steps 3–6 in the plan checklist. If any step fails, debug before Phase 2. Do **not** proceed to live keys until Steps 3, 4, and 6 all pass.
+No commit needed. Note pass/fail of Steps 3, 6 in the plan checklist. If any step fails, debug before Phase 2. Do **not** proceed to live keys until Steps 3, 4, and 6 all pass.
 
 ---
 
-### Task 6 (DEFERRED — Phase 2 go-live): Cloudflare Tunnel + live keys
+### Task 6 (DEFERRED: Phase 2 go-live): Cloudflare Tunnel + live keys
 
 Do **not** start until Task 5 passes. Tracked here so it isn't lost; expand into its own plan when ready.
 

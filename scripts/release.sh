@@ -16,7 +16,7 @@ case "$LEVEL" in
 esac
 
 if [ -n "$(git status --porcelain)" ]; then
-  echo "working tree not clean — commit or stash first" >&2
+  echo "working tree not clean, commit or stash first" >&2
   exit 1
 fi
 
@@ -27,4 +27,4 @@ git add package.json web/package.json
 git commit -m "WZ: Bump version to $VERSION"
 git tag "v$VERSION"
 
-echo "tagged v$VERSION — publish with: git push origin main v$VERSION"
+echo "tagged v$VERSION: publish with: git push origin main v$VERSION"

@@ -158,7 +158,7 @@ const EmailInner = () => {
 }
 
 export const Email = () => (
-  <AdminGate title="Westeroz — Email">
+  <AdminGate title="Westeroz: Email">
     <EmailInner />
   </AdminGate>
 )

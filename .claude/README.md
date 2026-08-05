@@ -27,7 +27,7 @@ Separate context windows for review work. Dispatch with the Agent tool.
 | Agent | Reviews |
 |---|---|
 | `plex-access-safety-review` | Access-path invariants in the bridge. The highest-consequence review: private-library leaks and lockouts. |
-| `wizteros-house-style-review` | The `CLAUDE.md` house rules that no linter enforces. |
+| `wizteros-house-style-review` | The residual `CLAUDE.md` rules oxlint cannot express (CSS layout, `for/of`, dashes, prose-level style). |
 | `wizteros-responsive-a11y-audit` | The 320px no-horizontal-scroll requirement and the a11y checklist. |
 | `wizteros-payment-copy-compliance` | Plex and Stripe terms-of-service framing on payment surfaces. |
 | `wizteros-secret-hygiene` | Leaked credentials, weakened deploy exclusions, secrets in `VITE_*` vars. |
@@ -41,7 +41,7 @@ Separate context windows for review work. Dispatch with the Agent tool.
 
 ## settings.json
 
-- **allow**: read-only inspection plus the local test, lint, and typecheck gates, so routine verification does not prompt.
+- **allow**: read-only inspection plus the local test, lint, and typecheck gates (including `lint:py` and `lint:dashes`), so routine verification does not prompt.
 - **ask**: anything that leaves the machine or mutates live state. Deploy, release, push, PR create and merge, the e2e loop (it mutates a real Wizarr member), and `rsync`.
 - **deny**: `.env` and the three live data directories, so credentials and member state are never read into context.
 - **hooks**: `PostToolUse` runs `oxfmt` on edited TS, JS, and JSON files so formatting never fails the pre-commit gate.

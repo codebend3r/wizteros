@@ -431,7 +431,7 @@ test('cancels the Stripe subscription through the confirm modal', async () => {
   await user.click(within(dialog).getByRole('button', { name: 'Cancel subscription' }))
 
   expect(cancelSubscription).toHaveBeenCalledWith({ email: 'max@y.com' })
-  expect(await screen.findByText(/Cancellation scheduled — access ends/)).toBeInTheDocument()
+  expect(await screen.findByText(/Cancellation scheduled, access ends/)).toBeInTheDocument()
 })
 
 test('shows an error when the subscription cancellation fails', async () => {
@@ -661,22 +661,22 @@ test('shows the member action history newest first', async () => {
       at: '2026-07-01T10:00:00+00:00',
       email: 'max@y.com',
       action: 'Invite issued',
-      detail: 'gold tier — link emailed',
+      detail: 'gold tier: link emailed',
     },
     {
       id: 1,
       at: '2026-06-01T09:00:00+00:00',
       email: 'max@y.com',
       action: 'Signed up',
-      detail: 'silver tier — invite emailed',
+      detail: 'silver tier: invite emailed',
     },
   ])
   renderUser({ email: 'max@y.com' })
 
   expect(await screen.findByText('Invite issued')).toBeInTheDocument()
-  expect(screen.getByText('gold tier — link emailed')).toBeInTheDocument()
+  expect(screen.getByText('gold tier: link emailed')).toBeInTheDocument()
   expect(screen.getByText('Signed up')).toBeInTheDocument()
-  expect(screen.getByText('silver tier — invite emailed')).toBeInTheDocument()
+  expect(screen.getByText('silver tier: invite emailed')).toBeInTheDocument()
 })
 
 test('derives a Membership expired row when the expiry has passed', async () => {

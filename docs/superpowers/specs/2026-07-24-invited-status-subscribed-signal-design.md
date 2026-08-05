@@ -6,7 +6,7 @@
 ## Problem
 
 The admin panel must be able to show a member as **"Invited"** while that member
-also carries a **14-day Wizarr access expiry** — so that manually-invited legacy
+also carries a **14-day Wizarr access expiry**: so that manually-invited legacy
 members get a real 14-day countdown to sign up, yet are not mislabeled as paying
 subscribers.
 
@@ -18,7 +18,7 @@ logic.
 
 The fix replaces the inferred `subscribed` signal (derived from the expiry) with
 a **real payment signal** maintained by the Stripe webhooks. "Subscribed Monthly"
-then means "an actual payment was confirmed", independent of any expiry — so a
+then means "an actual payment was confirmed", independent of any expiry, so a
 member can be "Invited" and have an expiry at the same time.
 
 ### Low-risk context
@@ -36,20 +36,20 @@ essentially zero regression risk.
   flips on the moment the payment webhook fires.
 - The 44 non-VIP members are stamped "Invited" and given a real 14-day expiry
   (access is actually removed by Wizarr at +14d if they don't sign up).
-- **VIP members are never touched** — no stamp, no expiry, status stays "VIP".
+- **VIP members are never touched**: no stamp, no expiry, status stays "VIP".
 - **HVU becomes a pure administrative label**, not a status.
 
 ## Non-goals
 
 - No change to Plex library scoping, tiers, downloads, renewals, or the
   invite-redemption flow.
-- No change to how access loss is enforced — that stays entirely Wizarr's job,
+- No change to how access loss is enforced; that stays entirely Wizarr's job,
   via the expiry date, exactly as today.
 - No new admin UI controls (the backfill is a one-time script, not a button).
 
 ## Design
 
-### Part 1 — Bridge: a durable `subscribed` flag
+### Part 1: Bridge: a durable `subscribed` flag
 
 **Schema (`stripe-bridge/store.py`)**
 
@@ -62,7 +62,7 @@ essentially zero regression risk.
 
 - `upsert_pending(...)` (the real-payment path) sets `subscribed = 1` on the row
   it writes.
-- New `set_subscribed(path, email, value: bool) -> None` — updates every row for
+- New `set_subscribed(path, email, value: bool) -> None`: updates every row for
   the email (case-insensitive), used by the renewal and cancel handlers.
 - `all_customer_rows(...)` returns `subscribed` alongside `tier` and
   `invited_at`: `{email: {"tier", "invited_at", "subscribed"}}`.
@@ -84,7 +84,7 @@ essentially zero regression risk.
 The `Member.subscribed` field in `web/src/lib/adminApi.ts` is already a boolean;
 no payload-shape change is needed.
 
-### Part 2 — Frontend: reorder `deriveStatus`
+### Part 2: Frontend: reorder `deriveStatus`
 
 `web/src/lib/memberStatus.ts`. `subscribed` now means "confirmed active payment".
 
@@ -92,7 +92,7 @@ New precedence:
 
 | Condition                                            | Status                                            |
 | ---------------------------------------------------- | ------------------------------------------------- |
-| tag `vip`                                            | **VIP** (overrides everything — access protected) |
+| tag `vip`                                            | **VIP** (overrides everything, access protected) |
 | `subscribed` **and** expiry in the past              | Expired Member                                    |
 | `subscribed`                                         | Subscribed Monthly                                |
 | not subscribed, `invited_at` within the 14-day grace | **Invited**                                       |
@@ -115,32 +115,32 @@ Changes from today:
   for a stampless member is dropped; a not-subscribed member with no invite stamp
   is "Uninvited".
 
-### Part 3 — UI: ✉️ on "Invited"
+### Part 3: UI: ✉️ on "Invited"
 
 - Add `Invited: '✉️'` to the status-emoji map(s) and render it next to the word,
   the same decorative pattern as `💎` for VIP (`aria-hidden="true"`, so screen
   readers still announce the text "Invited").
-- `web/src/components/MembersTable/MembersTable.tsx` — render ✉️ in the Status
+- `web/src/components/MembersTable/MembersTable.tsx`: render ✉️ in the Status
   cell for `status === 'Invited'`.
-- `web/src/pages/User/User.tsx` — add `Invited: '✉️'` to `STATUS_EMOJI`; drop the
+- `web/src/pages/User/User.tsx`: add `Invited: '✉️'` to `STATUS_EMOJI`; drop the
   `HVU` status handling (the `hvu` **tag** display is unchanged).
 
-### Part 4 — One-time backfill of the 44 (runs after deploy)
+### Part 4: One-time backfill of the 44 (runs after deploy)
 
 An **idempotent** script (`stripe-bridge/scripts/backfill_invited_expiry.py`) run
-inside the bridge container — it has the DB path, the Wizarr client, and env.
+inside the bridge container: it has the DB path, the Wizarr client, and env.
 
 For each of the 44 emails (listed below), in order:
 
-1. **Guard — skip if:** the member's tag is `vip`, **or** the member is already
-   `subscribed`. (HVU is _not_ skipped — treated as a normal member.)
+1. **Guard: skip if:** the member's tag is `vip`, **or** the member is already
+   `subscribed`. (HVU is _not_ skipped, treated as a normal member.)
 2. Stamp the bridge: `invited_at = now`, `subscribed = 0`, `tier = null`
-   (Unknown), no invite code — inserting an `admin:<email>` row if none exists,
+   (Unknown), no invite code: inserting an `admin:<email>` row if none exists,
    or refreshing `invited_at` on the existing row. Result: status → **Invited**.
 3. Set the Wizarr expiry to **now + 14 days** on every server record for the
    email (the same `WizarrClient.set_expiry` call `reset-expiry` uses). Result:
    Expires column shows the date; Wizarr enforces access removal at +14d.
-4. Record a member event: `"Invited — manual, access ends <YYYY-MM-DD>"`.
+4. Record a member event: `"Invited, manual, access ends <YYYY-MM-DD>"`.
 
 **Ordering:** the new bridge code (Part 1) **must be deployed first**. If the
 expiry were set while the old `subscribed = expires != null` logic is live, the
@@ -150,7 +150,7 @@ expiry were set while the old `subscribed = expires != null` logic is live, the
 lives in `customer_map`; the Wizarr-side representation of the 14-day window is
 the expiry date. There is no separate Wizarr "invited" timestamp to set.
 
-**The 44 emails** (roster minus the 5 VIP emails; auditable — strike any before
+**The 44 emails** (roster minus the 5 VIP emails; auditable, strike any before
 running):
 
 ```
@@ -183,12 +183,12 @@ The 5 excluded VIPs: `cindy.rivas@gmail.com`, `freenow82@gmail.com`,
 - **14 days pass with no payment.** `invited_at` ages past the grace →
   "Declined Invite"; Wizarr removes access as the expiry passes. Consistent.
 - **A member later cancels.** `customer.subscription.deleted` clears the flag
-  (`subscribed = 0`) and disables the Wizarr records — no longer "Subscribed
+  (`subscribed = 0`) and disables the Wizarr records; no longer "Subscribed
   Monthly". (Correctly handled by the durable flag; the old id-prefix approach
   could not do this.)
 - **VIP with a customer_map row** (e.g. a VIP who also has a Stripe record):
   `tag === 'vip'` short-circuits `deriveStatus`, so status stays "VIP"
-  regardless of the flag; and the backfill guard never touches them.
+  regardless of the flag, and the backfill guard never touches them.
 - **`codebenderinc@gmail.com`** already has a stale `invited_at`; the backfill
   refreshes it to now and sets the expiry (it is not `subscribed`). If this is a
   personal test account, strike it from the list before running.

@@ -1,4 +1,4 @@
-# Stripe customer link on the User page — design
+# Stripe customer link on the User page, design
 
 Date: 2026-07-31
 Status: approved (placement and visibility confirmed in session)
@@ -7,7 +7,7 @@ Status: approved (placement and visibility confirmed in session)
 
 From a member's `/user` page, jump straight to their Stripe customer record in
 the dashboard (e.g. `https://dashboard.stripe.com/acct_…/customers/cus_…`).
-Driven entirely by data — any member whose checkout produced a real Stripe
+Driven entirely by data: any member whose checkout produced a real Stripe
 customer id gets the link (Jimmy Vo, canexan@gmail.com, and every future
 subscriber), with no per-person work.
 
@@ -16,7 +16,7 @@ subscriber), with no per-person work.
 - **Placement:** User page only, a `Stripe` row in the details list after
   `Tag`. The Manage table is untouched.
 - **Visibility:** the link shows whenever a real `cus_` id exists, not only
-  while `subscribed` is true — lapsed/canceled members are exactly the ones
+  while `subscribed` is true: lapsed/canceled members are exactly the ones
   whose billing needs investigating.
 - **URL construction:** the bridge exposes the raw `customer_id`; the web app
   builds the URL from a `VITE_STRIPE_DASHBOARD_URL` env var. This keeps the
@@ -39,7 +39,7 @@ in `site.config.ts` (breaks the deployment-URLs-live-in-env convention).
 ## Web (`web/`)
 
 - `Member` gains `customer_id: string | null`. `MemberPayload` keeps it
-  optional with a field check, and `toMember` defaults it to `null` — a
+  optional with a field check, and `toMember` defaults it to `null`: a
   bridge deployed before this field must not fail validation (same pattern as
   `libraries`/`tag`).
 - `site.config.ts`: `RawEnv` gains `VITE_STRIPE_DASHBOARD_URL`, `SiteConfig`
@@ -48,7 +48,7 @@ in `site.config.ts` (breaks the deployment-URLs-live-in-env convention).
   `member.customer_id` and `stripeDashboardUrl` present it renders an
   external link to `${base}/customers/${id}` (new tab, `rel="noreferrer"`)
   whose text is the `cus_…` id, so it can be eyeball-matched against Stripe.
-  Otherwise the row shows `—`.
+  Otherwise the row shows `: `.
 - `src/test/env.ts`: `VITE_STRIPE_DASHBOARD_URL` joins `DORMANT_VARS`.
 
 ## Config
@@ -61,9 +61,9 @@ in Netlify and local `web/.env`.
 - Bridge: placeholder rows resolve to `customer_id=None`; real ids surface in
   both `/admin/members` and `/admin/member` payload shapes.
 - Web: payload parsing tolerates a missing `customer_id`; the User page shows
-  the link when id + env are present, `—` when either is absent.
+  the link when id + env are present, `: ` when either is absent.
 
 ## Rollout
 
 The NAS bridge container must be rebuilt before the field appears in live
-payloads; until then the web app degrades to `—`.
+payloads; until then the web app degrades to `: `.

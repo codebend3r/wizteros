@@ -192,11 +192,11 @@ def test_event_history_roundtrip_newest_first_lowercased(tmp_path):
     db = str(tmp_path / "bridge.db")
     store.init_db(db)
     assert store.events_for_email(db, "a@x.com") == []
-    store.record_event(db, "A@X.com", "Signed up", "gold tier — invite emailed")
+    store.record_event(db, "A@X.com", "Signed up", "gold tier, invite emailed")
     store.record_event(db, "a@x.com", "Canceled")
     events = store.events_for_email(db, "A@X.com")
     assert [e["action"] for e in events] == ["Canceled", "Signed up"]
-    assert events[1]["detail"] == "gold tier — invite emailed"
+    assert events[1]["detail"] == "gold tier, invite emailed"
     assert events[0]["email"] == "a@x.com"
     assert all(e["at"] for e in events)
 

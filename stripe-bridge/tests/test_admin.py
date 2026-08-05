@@ -15,10 +15,13 @@ os.environ.update({
     "SMTP_HOST": "smtp.test", "SMTP_USER": "u", "SMTP_PASS": "p",
 })
 
-from stripe_bridge import admin  # noqa: E402
-from stripe_bridge import store  # noqa: E402
-from fastapi import HTTPException  # noqa: E402
-from stripe_bridge.wizarr import WizarrClient  # noqa: E402
+from fastapi import HTTPException
+
+from stripe_bridge import (
+    admin,
+    store,
+)
+from stripe_bridge.wizarr import WizarrClient
 
 USERS = [
     {"id": 1, "username": "cj", "email": "A@X.com", "server": "Meleys", "expires": "2026-09-01T00:00:00+00:00"},
@@ -184,7 +187,7 @@ def test_list_members_survives_a_plex_tv_failure(admin_db, monkeypatch):
 def test_subscribed_is_the_flag_not_the_expiry(admin_db):
     # a@x.com carries a future Wizarr expiry in USERS, but only an admin-issued
     # invite (no confirmed payment). subscribed must be False despite the expiry
-    # — this is what lets a member read "Invited" while a 14-day clock counts down.
+    #: this is what lets a member read "Invited" while a 14-day clock counts down.
     a, dbp = admin_db
     store.upsert_pending_by_email(dbp, "a@x.com", "INV1", tier="gold")
     by_email = {m["email"].lower(): m for m in a.list_members()}
@@ -298,7 +301,7 @@ def test_reset_expiry_never_expire_reaches_wizarr_as_an_empty_body(admin_db):
     """Route through the REAL WizarrClient down to the wire.
 
     The unit tests above mock the client, which is exactly how a
-    serialization bug (a literal null Wizarr 400s) once slipped through —
+    serialization bug (a literal null Wizarr 400s) once slipped through;
     this pins the actual HTTP body a never-expire produces.
     """
     a, _ = admin_db
@@ -434,7 +437,7 @@ def test_reissue_invite_survives_email_failure(admin_db):
 
 
 def test_reissue_invite_keeps_member_visible_as_pending(admin_db):
-    a, dbp = admin_db
+    a, _dbp = admin_db
     a.client.list_libraries.return_value = FIXTURE_LIBRARIES
     a.client.find_users_by_email.return_value = [{"id": 9, "server": "Vermithor"}]
     a.client.create_invite.return_value = {"code": "NEW1", "url": "http://wizarr-lan/j/NEW1"}
