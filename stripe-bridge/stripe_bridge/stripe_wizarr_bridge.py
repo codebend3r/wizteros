@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from stripe_bridge import admin
 from stripe_bridge import store
 from stripe_bridge import tiers
+from stripe_bridge.mailer import send_alert_email
 from stripe_bridge.mailer import send_invite_email
 from stripe_bridge.wizarr import WizarrClient
 
@@ -36,6 +37,49 @@ logging.basicConfig(level=logging.INFO)
 
 client = WizarrClient(WIZARR_BASE_URL, WIZARR_API_KEY)
 store.init_db(MAP_DB_PATH)
+
+# Last set of tier problems alerted on, so a standing breakage mails once
+# rather than every sweep. A change in the problem set (or a recovery followed
+# by a relapse) alerts again.
+_last_tier_problems: dict = {}
+
+
+def check_tier_scopes() -> dict:
+    """Verify every tier still resolves against the live library list; alert on drift.
+
+    The tier rules match Plex library names, so a rename on the server silently
+    empties a tier with no code change and no failing test — that is exactly how
+    the youth tier died unnoticed. Returns the problems found (empty when
+    healthy). Never raises: it runs inside the reconcile loop, and neither a
+    down Wizarr nor a down SMTP may take that loop out. A Wizarr that cannot be
+    reached is reported as healthy — unreachable is not misconfigured, and the
+    next sweep will try again.
+    """
+    global _last_tier_problems
+    try:
+        libraries = client.list_libraries()
+    except Exception:
+        log.exception("tier scope check: could not read libraries from Wizarr")
+        return {}
+    problems = tiers.tier_scope_problems(libraries=libraries)
+    if not problems:
+        _last_tier_problems = {}
+        return {}
+    for tier, reason in problems.items():
+        log.error("tier scope check: %s -> %s", tier, reason)
+    if problems != _last_tier_problems:
+        _last_tier_problems = problems
+        body = "\n".join(f"- {tier}: {reason}" for tier, reason in sorted(problems.items()))
+        try:
+            send_alert_email(
+                f"{len(problems)} tier(s) not resolving",
+                f"The live Wizarr library list no longer satisfies these tiers:\n\n{body}\n\n"
+                f"Members cannot sign up for them until the names line up again.\n",
+            )
+        except Exception:
+            log.exception("tier scope alert email failed")
+    return problems
+
 
 def reconcile_pending_expiries() -> int:
     """Stamp the paid expiry on records that joined without one; returns records stamped.
@@ -80,8 +124,16 @@ def reconcile_pending_expiries() -> int:
 
 
 async def _reconcile_loop() -> None:
-    """Run the expiry sweep now and every RECONCILE_INTERVAL_SECONDS thereafter."""
+    """Run the expiry sweep and the tier scope check now, then every interval.
+
+    The scope check runs first and independently: it is the drift alarm, so it
+    must still fire on a sweep where the expiry pass throws.
+    """
     while True:
+        try:
+            await asyncio.to_thread(check_tier_scopes)
+        except Exception:
+            log.exception("tier scope check failed")
         try:
             await asyncio.to_thread(reconcile_pending_expiries)
         except Exception:
@@ -187,26 +239,40 @@ def _dispatch(etype: str, obj: dict) -> None:
         if not email:
             log.warning("no email on session %s", obj.get("id"))
             return
+        session_id = obj.get("id")
         tier = tiers.normalize_tier((obj.get("metadata") or {}).get("tier"))
         access = tiers.resolve_tier_access(tier=tier, libraries=client.list_libraries())
         if not access["library_ids"]:
             log.error("no libraries resolved for %s tier checkout %s; aborting for retry",
-                      tier, obj.get("id"))
-            raise RuntimeError(f"no libraries resolved for tier {tier!r} on session {obj.get('id')!r}")
-        invite = client.create_invite(
-            access["server_ids"], INVITE_DAYS, ACCESS_DURATION,
-            library_ids=access["library_ids"],
-            allow_downloads=access["allow_downloads"],
-        )
-        log.info("created %s invite (%d libraries, servers %s)",
-                 tier, len(access["library_ids"]), access["server_ids"])
+                      tier, session_id)
+            raise RuntimeError(f"no libraries resolved for tier {tier!r} on session {session_id!r}")
+        # Everything below the invite can raise (a slow Wizarr write, SMTP), and
+        # a raise leaves the event unmarked so Stripe retries the whole handler.
+        # The session -> invite binding is what stops that retry from minting a
+        # second invite and mailing the member a second link.
+        issued = store.get_session_invite(MAP_DB_PATH, session_id) if session_id else None
+        if issued:
+            code = issued["invite_code"]
+            log.info("checkout %s already has invite %s; reusing it", session_id, code)
+        else:
+            code = client.create_invite(
+                access["server_ids"], INVITE_DAYS, ACCESS_DURATION,
+                library_ids=access["library_ids"],
+                allow_downloads=access["allow_downloads"],
+            )["code"]
+            log.info("created %s invite (%d libraries, servers %s)",
+                     tier, len(access["library_ids"]), access["server_ids"])
+            if session_id:
+                store.record_session_invite(MAP_DB_PATH, session_id, code)
         if customer_id:
-            store.upsert_pending(MAP_DB_PATH, customer_id, email, invite["code"], tier=tier)
-        invite_url = f"{PUBLIC_INVITE_BASE}/j/{invite['code']}"
-        send_invite_email(email, invite_url)
-        log.info("sent invite to %s", email)
-        store.record_event(MAP_DB_PATH, email, "Signed up",
-                           f"{tier} tier — invite emailed")
+            store.upsert_pending(MAP_DB_PATH, customer_id, email, code, tier=tier)
+        if not (issued and issued["emailed"]):
+            send_invite_email(email, f"{PUBLIC_INVITE_BASE}/j/{code}")
+            log.info("sent invite to %s", email)
+            if session_id:
+                store.mark_session_invite_emailed(MAP_DB_PATH, session_id)
+            store.record_event(MAP_DB_PATH, email, "Signed up",
+                               f"{tier} tier — invite emailed")
         # VIP access is never time-boxed or reshuffled — a VIP's checkout is
         # just a contribution, so their records stay exactly as they are (no
         # disable, no expiry stamp).

@@ -17,6 +17,9 @@ const member: Member = {
     Meleys: ['01. Movies', '03. 4K TV Shows'],
     Vermithor: ['01. TV Shows'],
   },
+  entitled: {
+    Meleys: ['01. Movies', '03. 4K TV Shows'],
+  },
   subscribed: true,
   invited_at: null,
   tag: null,
@@ -112,18 +115,20 @@ test('loads the member from the email query param and shows every detail', async
   expect(screen.getByText(/\(\d+ days left\)/)).toBeInTheDocument()
 })
 
-test('shows each server with its libraries as pills, with counts', async () => {
+test('shows entitled libraries as not-shared pills while plex reports no share', async () => {
+  // The mid-invite case: the tier says what they get, plex.tv says nothing is
+  // shared yet. The page must say both instead of rendering them as access.
   vi.mocked(fetchMember).mockResolvedValue(member)
   renderUser({ email: 'max@y.com' })
 
   expect(await screen.findByText('Meleys')).toBeInTheDocument()
   expect(screen.getByText('01. Movies')).toBeInTheDocument()
   expect(screen.getByText('03. 4K TV Shows')).toBeInTheDocument()
-  expect(screen.getByText('Vermithor')).toBeInTheDocument()
-  expect(screen.getByText('01. TV Shows')).toBeInTheDocument()
-  expect(screen.getByText('2 servers · 3 libraries')).toBeInTheDocument()
-  expect(screen.getByText('2 libraries')).toBeInTheDocument()
-  expect(screen.getByText('1 library')).toBeInTheDocument()
+  // servers/libraries the member merely holds records on no longer render;
+  // entitlement is the baseline and Vermithor is not entitled or shared
+  expect(screen.queryByText('Vermithor')).not.toBeInTheDocument()
+  expect(screen.getByText('1 server · 2 libraries · 0 shared on plex.tv')).toBeInTheDocument()
+  expect(screen.getAllByText('not shared')).toHaveLength(2)
 })
 
 test('shows ❌ downloads and no days-left bracket for a lapsed member', async () => {
@@ -713,7 +718,7 @@ test('links back to the members table', async () => {
   )
 })
 
-test('merges the live plex.tv share into the servers row', async () => {
+test('marks each library entitled vs shared instead of merging the two', async () => {
   vi.mocked(fetchMember).mockResolvedValue(member)
   vi.mocked(fetchPlexAccess).mockResolvedValue({
     email: 'max@y.com',
@@ -723,19 +728,21 @@ test('merges the live plex.tv share into the servers row', async () => {
   })
   renderUser({ email: 'max@y.com' })
 
-  // Meleys shows the real share, not the tier-derived list.
+  // A share beyond the tier stays visible, labelled for what it is.
   expect(await screen.findByText('90. Private')).toBeInTheDocument()
   expect(fetchPlexAccess).toHaveBeenCalledWith({ email: 'max@y.com' })
-  expect(screen.getByText('all libraries (2)')).toBeInTheDocument()
-  expect(screen.queryByText('03. 4K TV Shows')).not.toBeInTheDocument()
-  // Vermithor has no plex.tv data and falls back to the tier-derived list.
-  expect(screen.getByText('01. TV Shows')).toBeInTheDocument()
-  expect(screen.getByText('2 servers · 3 libraries')).toBeInTheDocument()
+  expect(screen.getByText('not entitled')).toBeInTheDocument()
+  // all_libraries counts an entitled library as shared even when unenumerated.
+  expect(screen.getByText('03. 4K TV Shows')).toBeInTheDocument()
+  expect(screen.getAllByText('shared')).toHaveLength(2)
+  expect(
+    screen.getByText('1 server · 3 libraries · 3 shared on plex.tv · 1 not entitled'),
+  ).toBeInTheDocument()
   // No separate section.
   expect(screen.queryByRole('heading', { name: 'Plex access' })).not.toBeInTheDocument()
 })
 
-test('lists a plex.tv-shared server even when the member record lacks it', async () => {
+test('flags a plex.tv-shared server no tier grants anything on', async () => {
   vi.mocked(fetchMember).mockResolvedValue(member)
   vi.mocked(fetchPlexAccess).mockResolvedValue({
     email: 'max@y.com',
@@ -747,7 +754,10 @@ test('lists a plex.tv-shared server even when the member record lacks it', async
 
   expect(await screen.findByText('07. Podcasts')).toBeInTheDocument()
   expect(screen.getByText('Syrax')).toBeInTheDocument()
-  expect(screen.getByText('3 servers · 4 libraries')).toBeInTheDocument()
+  expect(screen.getByText('no tier grants this')).toBeInTheDocument()
+  expect(
+    screen.getByText('2 servers · 3 libraries · 1 shared on plex.tv · 1 not entitled'),
+  ).toBeInTheDocument()
 })
 
 test('shows in-flight indicators for plex, notes, and history lookups', async () => {

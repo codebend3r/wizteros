@@ -16,6 +16,32 @@ SMTP_USER = os.environ["SMTP_USER"]
 SMTP_PASS = os.environ["SMTP_PASS"]
 FROM_ADDR = os.environ.get("FROM_ADDR", SMTP_USER)
 INVITE_DAYS = int(os.environ.get("INVITE_EXPIRES_DAYS", "14"))
+# Where operational alerts go. Falls back to the admin allowlist so a fresh
+# deploy still reaches someone without another env var to remember.
+ALERT_ADDRS = [
+    a.strip() for a in
+    (os.environ.get("ALERT_EMAILS") or os.environ.get("ADMIN_ALLOWED_EMAILS", "")).split(",")
+    if a.strip()
+]
+
+
+def send_alert_email(subject: str, body: str) -> None:
+    """Mail an operational alert to the admins; no-op when no address is configured.
+
+    Plain text on purpose — these are for the operator, not members, and must
+    stay readable in any client and quotable into an incident note.
+    """
+    if not ALERT_ADDRS:
+        return
+    msg = EmailMessage()
+    msg["Subject"] = f"[westeroz] {subject}"
+    msg["From"] = FROM_ADDR
+    msg["To"] = ", ".join(ALERT_ADDRS)
+    msg.set_content(body)
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as s:
+        s.starttls()
+        s.login(SMTP_USER, SMTP_PASS)
+        s.send_message(msg)
 
 
 def send_invite_email(to_addr: str, invite_url: str) -> None:

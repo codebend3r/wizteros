@@ -31,6 +31,8 @@ LIBRARIES = [
     {"id": 2, "name": "03. 4K Movies", "server_id": 3, "server_name": "Vhagar", "enabled": True},
     {"id": 3, "name": "90. Private", "server_id": 2, "server_name": "Meleys", "enabled": True},
     {"id": 4, "name": "02. Anime", "server_id": 5, "server_name": "Syrax", "enabled": False},
+    {"id": 5, "name": "03. Family Movies", "server_id": 2, "server_name": "Meleys", "enabled": True},
+    {"id": 6, "name": "14. Kid Shows", "server_id": 2, "server_name": "Meleys", "enabled": True},
 ]
 
 
@@ -101,8 +103,9 @@ def test_list_members_dedupes_and_joins_tier(admin_db):
     assert cj["subscribed"] is True
     assert cj["tier"] == "gold"
     assert cj["downloads"] is True                         # derived from tier
-    # per-server access derives from tier rules; 90. private never shown
-    assert cj["libraries"] == {"Meleys": ["01. Movies"], "Vhagar": ["03. 4K Movies"]}
+    # per-server access derives from tier rules: only the share server
+    # grants anything, and 90. private is never shown
+    assert cj["libraries"] == {"Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"], "Vhagar": []}
 
     nora = by_email["nora@x.com"]
     assert nora["subscribed"] is False
@@ -137,8 +140,8 @@ def test_list_members_unions_the_live_plex_share(admin_db, monkeypatch):
     # plex is ground truth where it has an answer...
     assert cj["libraries"]["Meleys"] == ["01. Movies", "05. TV Shows"]
     assert cj["libraries"]["Caraxes"] == ["09. Basketball"]
-    # ...and the tier-derived list stands for a server plex didn't report
-    assert cj["libraries"]["Vhagar"] == ["03. 4K Movies"]
+    # ...and Vhagar is retired, so the tier derives nothing there
+    assert cj["libraries"]["Vhagar"] == []
 
     # unknown tier derives no libraries, so plex is the only real answer here
     assert by_email["nora@x.com"]["libraries"] == {"Syrax": ["02. Anime"]}
@@ -163,7 +166,7 @@ def test_list_members_falls_back_to_tier_access_without_a_plex_token(admin_db):
     store.upsert_pending(dbp, "cus_1", "a@x.com", "abc", tier="gold")
     cj = {m["email"].lower(): m for m in a.list_members()}["a@x.com"]
     assert cj["servers"] == ["Meleys", "Vhagar"]
-    assert cj["libraries"] == {"Meleys": ["01. Movies"], "Vhagar": ["03. 4K Movies"]}
+    assert cj["libraries"] == {"Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"], "Vhagar": []}
 
 
 def test_list_members_survives_a_plex_tv_failure(admin_db, monkeypatch):
@@ -178,7 +181,7 @@ def test_list_members_survives_a_plex_tv_failure(admin_db, monkeypatch):
     monkeypatch.setattr(a.plex, "shared_access_all", boom)
     cj = {m["email"].lower(): m for m in a.list_members()}["a@x.com"]
     assert cj["servers"] == ["Meleys", "Vhagar"]
-    assert cj["libraries"] == {"Meleys": ["01. Movies"], "Vhagar": ["03. 4K Movies"]}
+    assert cj["libraries"] == {"Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"], "Vhagar": []}
 
 
 def test_subscribed_is_the_flag_not_the_expiry(admin_db):
@@ -199,7 +202,7 @@ def test_get_member_found_and_missing(admin_db):
     store.upsert_pending(dbp, "cus_1", "a@x.com", "abc", tier="gold")
     found = a.get_member("a@x.com")
     assert found["member"] == "cj"
-    assert found["libraries"] == {"Meleys": ["01. Movies"], "Vhagar": ["03. 4K Movies"]}
+    assert found["libraries"] == {"Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"], "Vhagar": []}
     with pytest.raises(HTTPException) as missing:
         a.get_member("ghost@x.com")
     assert missing.value.status_code == 404
@@ -215,9 +218,49 @@ def test_list_members_includes_subscribers_not_yet_joined(admin_db):
     assert mx["tier"] == "youth"
     assert mx["downloads"] is True    # derived from youth
     assert mx["subscribed"] is True   # checkout completed -> confirmed payment
-    assert mx["servers"] == []
-    assert mx["libraries"] == {}      # not on any server yet
+    # They have not joined yet, but their tier is known — so the libraries it
+    # grants are too. Showing them is what the member gets on redeeming, and
+    # without it the member page renders no servers and no libraries at all.
+    assert mx["servers"] == ["Meleys"]
+    assert mx["libraries"] == {"Meleys": ["03. Family Movies", "14. Kid Shows"]}
     assert mx["invited_at"] is not None  # upsert stamped the grace clock
+
+
+def test_pending_subscriber_libraries_follow_their_tier(admin_db):
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_g", "gold@x.com", "INV1", tier="gold")
+    store.upsert_pending(dbp, "cus_y", "youth@x.com", "INV2", tier="youth")
+    by_email = {m["email"].lower(): m for m in a.list_members()}
+    assert by_email["gold@x.com"]["libraries"] == {
+        "Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"]}
+    assert by_email["youth@x.com"]["libraries"] == {
+        "Meleys": ["03. Family Movies", "14. Kid Shows"]}
+
+
+def test_pending_subscriber_with_an_unknown_tier_shows_nothing(admin_db):
+    # No tier recorded means no basis to claim any access.
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_n", "notier@x.com", "INV1", tier=None)
+    mx = {m["email"].lower(): m for m in a.list_members()}["notier@x.com"]
+    assert mx["tier"] == "unknown"
+    assert mx["servers"] == []
+    assert mx["libraries"] == {}
+
+
+def test_pending_subscriber_never_shows_a_private_library(admin_db):
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_g", "gold@x.com", "INV1", tier="gold")
+    mx = {m["email"].lower(): m for m in a.list_members()}["gold@x.com"]
+    names = [n for grouped in mx["libraries"].values() for n in grouped]
+    assert "90. Private" not in names
+
+
+def test_get_member_pending_subscriber_shows_tier_libraries(admin_db):
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_g", "gold@x.com", "INV1", tier="gold")
+    m = a.get_member("gold@x.com")
+    assert m["servers"] == ["Meleys"]
+    assert m["libraries"] == {"Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"]}
 
 
 def test_get_member_falls_back_to_subscriber(admin_db):
@@ -247,10 +290,14 @@ def test_member_payloads_carry_the_stripe_customer_id(admin_db):
     assert a.get_member("max@x.com")["customer_id"] is None        # pending subscriber
 
 
+# Reissue scope comes from the share server alone; the Vermithor row is a
+# retired mirror that must never widen an invite.
 FIXTURE_LIBRARIES = [
-    {"id": 17, "name": "01. TV Shows", "server_id": 1, "server_name": "Vermithor", "enabled": True},
-    {"id": 20, "name": "04. 4K Family Movies", "server_id": 1, "server_name": "Vermithor", "enabled": True},
-    {"id": 37, "name": "99. Tutorials", "server_id": 4, "server_name": "Caraxes", "enabled": True},
+    {"id": 17, "name": "05. TV Shows", "server_id": 2, "server_name": "Meleys", "enabled": True},
+    {"id": 20, "name": "04. 4K Family Movies", "server_id": 2, "server_name": "Meleys", "enabled": True},
+    {"id": 37, "name": "99. Tutorials", "server_id": 2, "server_name": "Meleys", "enabled": True},
+    {"id": 41, "name": "01. TV Shows (switch to Meleys)", "server_id": 1,
+     "server_name": "Vermithor", "enabled": True},
 ]
 
 
@@ -376,14 +423,14 @@ def test_reissue_invite_keeps_covered_records_enabled(admin_db):
     a, _ = admin_db
     a.client.list_libraries.return_value = FIXTURE_LIBRARIES
     # every record sits on a server the new scope covers -> access survives
-    a.client.find_users_by_email.return_value = [{"id": 9, "server": "Vermithor"}]
+    a.client.find_users_by_email.return_value = [{"id": 9, "server": "Meleys"}]
     a.client.create_invite.return_value = {"code": "xyz", "url": "http://wizarr-lan/j/xyz"}
     out = a.reissue_invite(a.ReissueInviteBody(email="a@x.com", tier="silver"))
 
     a.client.disable_user.assert_not_called()  # redeeming re-scopes in place
-    # private 99. library excluded, non-4k allowed for silver -> ids 17 + 20
+    # private 99. and the retired Vermithor mirror excluded -> ids 17 + 20
     a.client.create_invite.assert_called_once_with(
-        [1], 14, "35", library_ids=[17, 20], allow_downloads=False)
+        [2], 14, "35", library_ids=[17, 20], allow_downloads=False)
     assert out["disabled"] == 0
     assert out["code"] == "xyz"
     assert out["url"] == "http://inv.test/j/xyz"  # public URL, not the LAN one
@@ -393,16 +440,16 @@ def test_reissue_invite_keeps_covered_records_enabled(admin_db):
 def test_reissue_invite_disables_all_records_when_a_server_is_uncovered(admin_db):
     a, _ = admin_db
     a.client.list_libraries.return_value = FIXTURE_LIBRARIES
-    # Caraxes isn't in silver's scope (99. private only) and there's no
-    # per-server unshare, so the reissue falls back to disable-first
+    # the retired servers are in no tier's scope and there is no per-server
+    # unshare, so the reissue falls back to disable-first
     a.client.find_users_by_email.return_value = [
-        {"id": 9, "server": "Vermithor"},
+        {"id": 9, "server": "Meleys"},
         {"id": 12, "server": "Caraxes"},
     ]
     a.client.create_invite.return_value = {"code": "xyz", "url": "http://wizarr-lan/j/xyz"}
     out = a.reissue_invite(a.ReissueInviteBody(email="a@x.com", tier="silver"))
 
-    assert a.client.disable_user.call_count == 2  # all records dropped, not just Caraxes
+    assert a.client.disable_user.call_count == 2  # all records dropped, not just Caraxes's
     # invite must be created BEFORE any disable, so a create failure can't lock
     # the member out with no link to re-redeem
     order = [c[0] for c in a.client.method_calls]
@@ -428,7 +475,7 @@ def test_reissue_invite_survives_email_failure(admin_db):
     a.send_invite_email.side_effect = OSError("smtp down")
     out = a.reissue_invite(a.ReissueInviteBody(email="a@x.com", tier="silver"))
     # the reissue itself completed; the admin still gets the link to send manually
-    a.client.disable_user.assert_called_once()  # Caraxes uncovered -> disable path
+    a.client.disable_user.assert_called_once()  # Caraxes retired -> disable path
     assert out["emailed"] is False
     assert out["url"] == "http://inv.test/j/xyz"
 
@@ -436,7 +483,7 @@ def test_reissue_invite_survives_email_failure(admin_db):
 def test_reissue_invite_keeps_member_visible_as_pending(admin_db):
     a, dbp = admin_db
     a.client.list_libraries.return_value = FIXTURE_LIBRARIES
-    a.client.find_users_by_email.return_value = [{"id": 9, "server": "Vermithor"}]
+    a.client.find_users_by_email.return_value = [{"id": 9, "server": "Meleys"}]
     a.client.create_invite.return_value = {"code": "NEW1", "url": "http://wizarr-lan/j/NEW1"}
     a.reissue_invite(a.ReissueInviteBody(email="Code@X.com", tier="gold"))
 
@@ -689,3 +736,58 @@ def test_reset_expiry_kicks_a_snapshot_refresh(admin_db, monkeypatch):
     monkeypatch.setattr(a.members_snapshot, "refresh_async", refreshed)
     a.reset_expiry(a.ResetExpiryBody(email="a@x.com", days=30))
     refreshed.assert_called_once()
+
+
+def test_members_carry_a_pure_tier_entitlement_map(admin_db):
+    # `libraries` is keyed by the servers a member actually holds records on, so
+    # it cannot answer "what does this tier grant". `entitled` is the tier rules
+    # alone — the baseline the member page compares the live plex.tv share to.
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_1", "a@x.com", "abc", tier="gold")
+    cj = {m["email"].lower(): m for m in a.list_members()}["a@x.com"]
+    assert cj["entitled"] == {
+        "Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"]}
+    # the member holds a Vhagar record, but no tier entitles anything there
+    assert "Vhagar" in cj["servers"]
+    assert "Vhagar" not in cj["entitled"]
+
+
+def test_entitlement_follows_the_tier_not_the_records(admin_db):
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_1", "a@x.com", "abc", tier="youth")
+    cj = {m["email"].lower(): m for m in a.list_members()}["a@x.com"]
+    assert cj["entitled"] == {"Meleys": ["03. Family Movies", "14. Kid Shows"]}
+
+
+def test_unknown_tier_entitles_nothing(admin_db):
+    a, _ = admin_db
+    nora = {m["email"].lower(): m for m in a.list_members()}["nora@x.com"]
+    assert nora["tier"] == "unknown"
+    assert nora["entitled"] == {}
+
+
+def test_entitlement_survives_the_plex_union(admin_db, monkeypatch):
+    # _with_plex_access rewrites `libraries` with what plex.tv reports; the
+    # entitlement baseline must NOT be overwritten or the comparison collapses.
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_1", "a@x.com", "abc", tier="gold")
+    monkeypatch.setattr(a.plex, "PLEX_TOKEN", "tok")
+    monkeypatch.setattr(a.plex, "shared_access_all", lambda: PLEX_SHARES)
+    cj = {m["email"].lower(): m for m in a.list_members()}["a@x.com"]
+    assert cj["libraries"]["Meleys"] == ["01. Movies", "05. TV Shows"]  # plex wins here
+    assert cj["entitled"] == {
+        "Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"]}  # tier stands
+
+
+def test_get_member_carries_entitlement_too(admin_db):
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_1", "a@x.com", "abc", tier="bronze")
+    m = a.get_member("a@x.com")
+    assert m["entitled"] == {"Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"]}
+
+
+def test_pending_subscriber_entitlement_matches_its_libraries(admin_db):
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_g", "gold@x.com", "INV1", tier="gold")
+    mx = {m["email"].lower(): m for m in a.list_members()}["gold@x.com"]
+    assert mx["entitled"] == mx["libraries"]
