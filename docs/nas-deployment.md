@@ -5,6 +5,16 @@ stripe-bridge) onto a Synology NAS. Public ingress (so Stripe and members can
 reach it) is handled separately by Tailscale Funnel — see
 [`tailscale-funnel.md`](./tailscale-funnel.md).
 
+> **Layout update (2026-08-02):** the NAS now runs two Container Manager
+> projects instead of one compose stack. This repo syncs to
+> `/volume1/docker/stripe-bridge/` and defines only the `stripe-bridge`
+> project; wizarr, tautulli, sabnzbd, radarr, and sonarr live in the
+> `westeroz` project (`/volume1/docker/westeroz/`, compose file and data dirs
+> NAS-side only). The bridge reaches Wizarr via its host-published port
+> (`WIZARR_BASE_URL=http://<NAS_IP>:5690`), not compose-network DNS. The
+> phases below are the original migration as executed; paths have been
+> updated to the current layout where a reader might follow them today.
+
 ## What moves and what doesn't
 
 - **Moves to the NAS:** `wizarr`, `tautulli`, `stripe-bridge`
@@ -41,8 +51,8 @@ public ingress and Stripe cancellations stop reaching Wizarr. Note its LAN IP.
    create one. DSM → _Control Panel_ → _Shared Folder_ → **Create** → name it
    `docker` on the Meleys volume (defaults are fine; give your admin user
    Read/Write). Full path becomes `/volume1/docker` (adjust `volume1` if your
-   volume differs). You don't need to create the `wizteros` sub-folder by hand —
-   the `rsync` in Phase 2 creates it.
+   volume differs). You don't need to create the `stripe-bridge` sub-folder by
+   hand — the `rsync` in Phase 2 creates it.
 4. **Find your UID/GID.** SSH in and run `id`:
    ```sh
    ssh <NAS_USER>@<NAS_IP>
@@ -66,19 +76,19 @@ Run these **from the Mac Studio**.
    ```sh
    rsync -av --exclude '.git' --exclude 'venv' --exclude 'node_modules' \
      /Users/snowball/Developer/git/wizteros/ \
-     <NAS_USER>@<NAS_IP>:/volume1/docker/wizteros/
+     <NAS_USER>@<NAS_IP>:/volume1/docker/stripe-bridge/
    ```
 3. **Copy the live Wizarr data** into the stack's expected location:
    ```sh
    rsync -av /Users/snowball/Docker/wizarr-data/ \
-     <NAS_USER>@<NAS_IP>:/volume1/docker/wizteros/wizarr-data/
+     <NAS_USER>@<NAS_IP>:/volume1/docker/westeroz/wizarr-data/
    ```
 4. **Fix ownership** so the containers can write (use the uid/gid from Phase 1.4):
    ```sh
    ssh <NAS_USER>@<NAS_IP>
-   sudo chown -R <uid>:<gid> /volume1/docker/wizteros/wizarr-data \
-                              /volume1/docker/wizteros/tautulli-config \
-                              /volume1/docker/wizteros/stripe-bridge-data
+   sudo chown -R <uid>:<gid> /volume1/docker/westeroz/wizarr-data \
+                              /volume1/docker/westeroz/tautulli-config \
+                              /volume1/docker/stripe-bridge/stripe-bridge-data
    ```
 
 ---
@@ -86,12 +96,12 @@ Run these **from the Mac Studio**.
 ## Phase 3 — Configure `.env` on the NAS
 
 The `.env` you copied already has your Stripe keys, Wizarr API key, and Payment
-Link. Edit it on the NAS (`/volume1/docker/wizteros/.env`) and change these:
+Link. Edit it on the NAS (`/volume1/docker/stripe-bridge/.env`) and change these:
 
 ```sh
 PUID=<uid>                              # from Phase 1.4
 PGID=<gid>                              # from Phase 1.4
-WIZARR_BASE_URL=http://wizarr:5690      # bridge reaches Wizarr by service name now
+WIZARR_BASE_URL=http://<NAS_IP>:5690    # Wizarr's host-published port (westeroz project)
 # PUBLIC_INVITE_BASE stays on the LAN until Tailscale Funnel is up (tailscale-funnel.md)
 ```
 
@@ -105,17 +115,17 @@ WIZARR_BASE_URL=http://wizarr:5690      # bridge reaches Wizarr by service name 
 
 ## Phase 4 — Bring the stack up
 
-SSH into the NAS and start the three services. Synology puts docker at
-`/usr/local/bin`; commands need `sudo`.
+SSH into the NAS and start the bridge (wizarr/tautulli belong to the separate
+`westeroz` project now). Synology puts docker at `/usr/local/bin`; commands
+need `sudo`.
 
 ```sh
 ssh <NAS_USER>@<NAS_IP>
-cd /volume1/docker/wizteros
+cd /volume1/docker/stripe-bridge
 # Synology's Docker won't auto-create bind-mount dirs (Docker Desktop does).
-# Pre-create the ones that don't come from the data copy:
-mkdir -p tautulli-config stripe-bridge-data
-sudo docker compose up -d --build wizarr tautulli stripe-bridge   # --build compiles the bridge image
-sudo docker compose ps                                            # all three should be running/healthy
+mkdir -p stripe-bridge-data
+sudo docker compose up -d --build   # --build compiles the bridge image
+sudo docker compose ps              # stripe-bridge should be running
 ```
 
 If `docker compose` (v2) isn't found, use `sudo docker-compose` instead. Then

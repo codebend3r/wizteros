@@ -1,36 +1,9 @@
+name: stripe-bridge
+
 services:
-  wizarr:
-    image: ghcr.io/wizarrrr/wizarr:latest
-    container_name: wizarr
-    restart: unless-stopped
-    ports:
-      - '5690:5690'
-    volumes:
-      - ./wizarr-data:/data
-    environment:
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
-      - TZ=${TZ:-America/New_York}
-      - DISABLE_BUILTIN_AUTH=false
-      # A join shares to all five Plex servers in one request; slow plex.tv
-      # calls blew the 120s default and got workers killed mid-share.
-      - GUNICORN_TIMEOUT=600
-
-  tautulli:
-    image: ghcr.io/tautulli/tautulli:latest
-    container_name: tautulli
-    restart: unless-stopped
-    ports:
-      - '8181:8181'
-    volumes:
-      - ./tautulli-config:/config
-    environment:
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
-      - TZ=${TZ:-America/New_York}
-
   stripe-bridge:
     build: ./stripe-bridge
+    image: wizteros-stripe-bridge
     container_name: stripe-bridge
     restart: unless-stopped
     ports:
@@ -39,9 +12,10 @@ services:
       - .env
     volumes:
       - ./stripe-bridge-data:/data
-    depends_on:
-      - wizarr
 
+  # Wizarr and Tautulli live in the NAS-side "westeroz" project
+  # (/volume1/docker/westeroz/docker-compose.yml), so the bridge reaches Wizarr
+  # through its host-published port (WIZARR_BASE_URL in .env), not container DNS.
   # Public ingress is handled by Tailscale Funnel running on the NAS host
   # (Synology package), not a container. It serves the host-published ports
   # 5690 (wizarr) and 8000 (stripe-bridge) at https://<node>.<tailnet>.ts.net.
