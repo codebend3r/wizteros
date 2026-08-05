@@ -23,6 +23,7 @@ const makeMember = (email: string): Member => ({
   expires: null,
   servers: [],
   libraries: {},
+  entitled: {},
   subscribed: false,
   invited_at: null,
   tag: null,

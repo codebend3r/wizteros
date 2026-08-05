@@ -15,12 +15,16 @@ os.environ.update({
     "MAP_DB_PATH": "/tmp/does-not-matter.db",
 })
 
+# Every tier shares from Meleys alone; the trailing Vermithor entry is a
+# retired server's "(switch to Meleys)" mirror and must never reach an invite.
 FIXTURE_LIBRARIES = [
-    {"id": 17, "name": "01. TV Shows", "server_id": 1, "server_name": "Vermithor", "enabled": True},
-    {"id": 20, "name": "04. 4K Family Movies", "server_id": 1, "server_name": "Vermithor", "enabled": True},
-    {"id": 22, "name": "06. Kid Shows", "server_id": 1, "server_name": "Vermithor", "enabled": True},
-    {"id": 24, "name": "02. Family Movies", "server_id": 2, "server_name": "Meleys", "enabled": True},
-    {"id": 37, "name": "99. Tutorials", "server_id": 4, "server_name": "Caraxes", "enabled": True},
+    {"id": 17, "name": "05. TV Shows", "server_id": 2, "server_name": "Meleys", "enabled": True},
+    {"id": 20, "name": "04. 4K Family Movies", "server_id": 2, "server_name": "Meleys", "enabled": True},
+    {"id": 22, "name": "14. Kid Shows", "server_id": 2, "server_name": "Meleys", "enabled": True},
+    {"id": 24, "name": "03. Family Movies", "server_id": 2, "server_name": "Meleys", "enabled": True},
+    {"id": 37, "name": "99. Tutorials", "server_id": 2, "server_name": "Meleys", "enabled": True},
+    {"id": 41, "name": "01. TV Shows (switch to Meleys)", "server_id": 1,
+     "server_name": "Vermithor", "enabled": True},
 ]
 
 
@@ -52,7 +56,7 @@ def test_checkout_brand_new_member_invites_for_its_tier(bridge):
                             "metadata": {"tier": "silver"}}},
     })
     bridge.client.create_invite.assert_called_once_with(
-        [1, 2], 14, "35", library_ids=[17, 20, 22, 24], allow_downloads=False)
+        [2], 14, "35", library_ids=[17, 20, 22, 24], allow_downloads=False)
     bridge.send_invite_email.assert_called_once_with("a@x.com", "http://inv.test/j/abc")
     # brand-new member has no records to time-box; invite redemption sets expiry
     bridge.client.set_expiry.assert_not_called()
@@ -66,12 +70,12 @@ def test_checkout_brand_new_member_invites_for_its_tier(bridge):
 
 
 def test_checkout_existing_member_keeps_access_when_servers_covered(bridge):
-    # Redeeming re-scopes the share in place on covered servers, so a member
-    # whose servers all stay in scope keeps access through the invite window.
+    # Redeeming re-scopes the share in place on the share server, so a member
+    # already on Meleys alone keeps access through the invite window.
     bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
     bridge.client.create_invite.return_value = {"code": "abc", "url": "http://x/j/abc"}
     bridge.client.find_users_by_email.return_value = [
-        {"id": 147, "server": "Vermithor"},
+        {"id": 147, "server": "Meleys"},
         {"id": 57, "server": "Meleys"},
     ]
     bridge.handle_event({
@@ -94,7 +98,7 @@ def test_checkout_existing_covered_member_expiry_resets_to_access_duration(bridg
     bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
     bridge.client.create_invite.return_value = {"code": "abc", "url": "http://x/j/abc"}
     bridge.client.find_users_by_email.return_value = [
-        {"id": 147, "server": "Vermithor"},
+        {"id": 147, "server": "Meleys"},
         {"id": 57, "server": "Meleys"},
     ]
     bridge.handle_event({
@@ -118,7 +122,7 @@ def test_checkout_vip_member_is_never_time_boxed(bridge):
     bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
     bridge.client.create_invite.return_value = {"code": "abc", "url": "http://x/j/abc"}
     bridge.client.find_users_by_email.return_value = [
-        {"id": 147, "server": "Vermithor"},
+        {"id": 147, "server": "Meleys"},
         {"id": 57, "server": "Meleys"},
     ]
     bridge.handle_event({
@@ -134,16 +138,16 @@ def test_checkout_vip_member_is_never_time_boxed(bridge):
 
 def test_checkout_existing_member_resets_all_records_when_a_server_drops(bridge):
     # Wizarr has no per-server unshare (disable severs the whole plex.tv
-    # friendship), so when the new tier leaves a current server uncovered the
-    # member is fully reset; redeeming the emailed invite re-grants the tier.
+    # friendship), so a legacy member still on the retired servers is fully
+    # reset; redeeming the emailed invite re-grants the tier on Meleys alone.
     bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
     bridge.client.create_invite.return_value = {"code": "abc", "url": "http://x/j/abc"}
     bridge.client.find_users_by_email.return_value = [
-        {"id": 147, "server": "Vermithor"},
+        {"id": 147, "server": "Vermithor"},  # retired
         {"id": 57, "server": "Meleys"},
-        {"id": 106, "server": "Vhagar"},   # not covered by bronze scope
-        {"id": 155, "server": "Syrax"},    # not covered by bronze scope
-        {"id": 204, "server": "Caraxes"},  # 99. private only -> not covered
+        {"id": 106, "server": "Vhagar"},     # retired
+        {"id": 155, "server": "Syrax"},      # retired
+        {"id": 204, "server": "Caraxes"},    # retired
     ]
     bridge.handle_event({
         "type": "checkout.session.completed",
@@ -487,7 +491,7 @@ def test_checkout_without_tier_metadata_defaults_to_bronze(bridge):
     })
     # bronze: no 4K library, downloads off (kid shows is not 4K, so it's included)
     bridge.client.create_invite.assert_called_once_with(
-        [1, 2], 14, "35", library_ids=[17, 22, 24], allow_downloads=False)
+        [2], 14, "35", library_ids=[17, 22, 24], allow_downloads=False)
 
 
 def test_checkout_gold_enables_downloads(bridge):
@@ -502,7 +506,7 @@ def test_checkout_gold_enables_downloads(bridge):
                             "metadata": {"tier": "gold"}}},
     })
     bridge.client.create_invite.assert_called_once_with(
-        [1, 2], 14, "35", library_ids=[17, 20, 22, 24], allow_downloads=True)
+        [2], 14, "35", library_ids=[17, 20, 22, 24], allow_downloads=True)
 
 
 def test_checkout_youth_scopes_to_youth_libraries_only(bridge):
@@ -517,7 +521,7 @@ def test_checkout_youth_scopes_to_youth_libraries_only(bridge):
                             "metadata": {"tier": "youth"}}},
     })
     bridge.client.create_invite.assert_called_once_with(
-        [1, 2], 14, "35", library_ids=[20, 22, 24], allow_downloads=True)
+        [2], 14, "35", library_ids=[20, 22, 24], allow_downloads=True)
 
 
 def test_checkout_with_no_libraries_raises_so_stripe_retries(bridge):
@@ -619,3 +623,60 @@ def test_send_invite_email_sends_via_smtp_starttls(monkeypatch):
     assert "http://inv.test/j/abc" in plain
     assert 'href="http://inv.test/j/abc"' in html
     assert "Set up your account" in html
+
+
+def test_retry_after_a_mid_handler_failure_reuses_the_invite(bridge):
+    # The real incident: create_invite and the email both succeeded, then
+    # disable_user timed out against a slow Wizarr. The event was never marked
+    # processed, so Stripe retried and the handler issued a SECOND invite and
+    # a SECOND email for one checkout. The retry must reuse the invite already
+    # recorded for the session id and not re-send the email.
+    import requests
+    event = {
+        "type": "checkout.session.completed",
+        "id": "evt_slow_disable",
+        "data": {"object": {"id": "cs_slow", "customer": "cus_1",
+                            "customer_details": {"email": "a@x.com"},
+                            "metadata": {"tier": "bronze"}}},
+    }
+    bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
+    bridge.client.create_invite.return_value = {"code": "abc", "url": "http://x/j/abc"}
+    # a record on a server bronze does not cover -> disable-first path
+    bridge.client.find_users_by_email.return_value = [{"id": 7, "server": "Vhagar"}]
+    bridge.client.disable_user.side_effect = requests.ReadTimeout("wizarr slow")
+    with pytest.raises(requests.ReadTimeout):
+        bridge.handle_event(event)
+    bridge.client.create_invite.assert_called_once()
+    bridge.send_invite_email.assert_called_once()
+
+    bridge.client.disable_user.side_effect = None
+    bridge.handle_event(event)
+    bridge.client.create_invite.assert_called_once()
+    bridge.send_invite_email.assert_called_once()
+    bridge.client.disable_user.assert_called_with(7)
+
+
+def test_retry_resends_an_invite_email_that_never_went_out(bridge):
+    # Mirror image of the above: the invite exists but the SMTP send failed,
+    # so the member has a link they never received. The retry must reuse the
+    # same code and actually deliver it.
+    event = {
+        "type": "checkout.session.completed",
+        "id": "evt_smtp_down",
+        "data": {"object": {"id": "cs_smtp", "customer": "cus_1",
+                            "customer_details": {"email": "a@x.com"},
+                            "metadata": {"tier": "bronze"}}},
+    }
+    bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
+    bridge.client.create_invite.return_value = {"code": "abc", "url": "http://x/j/abc"}
+    bridge.client.find_users_by_email.return_value = []
+    bridge.client.find_user_ids_by_email.return_value = []
+    bridge.send_invite_email.side_effect = RuntimeError("smtp down")
+    with pytest.raises(RuntimeError):
+        bridge.handle_event(event)
+
+    bridge.send_invite_email.side_effect = None
+    bridge.handle_event(event)
+    bridge.client.create_invite.assert_called_once()
+    assert bridge.send_invite_email.call_count == 2
+    bridge.send_invite_email.assert_called_with("a@x.com", "http://inv.test/j/abc")

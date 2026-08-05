@@ -15,6 +15,7 @@ const member: Member = {
   expires: null,
   servers: ['Meleys'],
   libraries: {},
+  entitled: {},
   subscribed: false,
   invited_at: null,
   tag: null,

@@ -173,6 +173,7 @@ const existing: Member = {
   expires: null,
   servers: ['Vermithor'],
   libraries: {},
+  entitled: {},
   subscribed: false,
   invited_at: null,
   tag: null,

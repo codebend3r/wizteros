@@ -12,6 +12,7 @@ const makeMember = (overrides: Partial<Member>): Member => ({
   expires: null,
   servers: ['Meleys'],
   libraries: {},
+  entitled: {},
   subscribed: false,
   invited_at: null,
   tag: null,

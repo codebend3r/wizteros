@@ -35,6 +35,7 @@ const member: Member = {
   expires: '2026-09-01T00:00:00+00:00',
   servers: ['Meleys'],
   libraries: { Meleys: ['01. Movies'] },
+  entitled: { Meleys: ['01. Movies'] },
   subscribed: true,
   invited_at: '2026-07-01T00:00:00+00:00',
   tag: null,

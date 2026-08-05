@@ -1,0 +1,340 @@
+{
+  "libraries": [
+    {
+      "id": 17,
+      "name": "01. TV Shows",
+      "server_id": 1,
+      "server_name": "Vermithor",
+      "enabled": true
+    },
+    {
+      "id": 18,
+      "name": "02. Anime Shows",
+      "server_id": 1,
+      "server_name": "Vermithor",
+      "enabled": true
+    },
+    {
+      "id": 19,
+      "name": "03. Mini-Series",
+      "server_id": 1,
+      "server_name": "Vermithor",
+      "enabled": true
+    },
+    {
+      "id": 20,
+      "name": "04. 4K Family Movies",
+      "server_id": 1,
+      "server_name": "Vermithor",
+      "enabled": true
+    },
+    {
+      "id": 21,
+      "name": "05. Documentaries (switch to Meleys)",
+      "server_id": 1,
+      "server_name": "Vermithor",
+      "enabled": false
+    },
+    {
+      "id": 22,
+      "name": "06. Kid Shows (switch to Meleys)",
+      "server_id": 1,
+      "server_name": "Vermithor",
+      "enabled": false
+    },
+    {
+      "id": 23,
+      "name": "01. Movies",
+      "server_id": 2,
+      "server_name": "Meleys",
+      "enabled": true
+    },
+    {
+      "id": 41,
+      "name": "02. 4K Movies",
+      "server_id": 2,
+      "server_name": "Meleys",
+      "enabled": true
+    },
+    {
+      "id": 24,
+      "name": "03. Family Movies",
+      "server_id": 2,
+      "server_name": "Meleys",
+      "enabled": true
+    },
+    {
+      "id": 42,
+      "name": "04. 4K Family Movies",
+      "server_id": 2,
+      "server_name": "Meleys",
+      "enabled": true
+    },
+    {
+      "id": 43,
+      "name": "05. TV Shows",
+      "server_id": 2,
+      "server_name": "Meleys",
+      "enabled": true
+    },
+    {
+      "id": 25,
+      "name": "06. 4K TV Shows",
+      "server_id": 2,
+      "server_name": "Meleys",
+      "enabled": true
+    },
+    {
+      "id": 44,
+      "name": "07. Mini-Series",
+      "server_id": 2,
+      "server_name": "Meleys",
+      "enabled": true
+    },
+    {
+      "id": 45,
+      "name": "08. Classic TV Shows",
+      "server_id": 2,
+      "server_name": "Meleys",
+      "enabled": true
+    },
+    {
+      "id": 46,
+      "name": "09. Sitcoms",
+      "server_id": 2,
+      "server_name": "Meleys",
+      "enabled": true
+    },
+    {
+      "id": 47,
+      "name": "10. Animation Shows",
+      "server_id": 2,
+      "server_name": "Meleys",
+      "enabled": true
+    },
+    {
+      "id": 26,
+      "name": "11. Documentary Shows",
+      "server_id": 2,
+      "server_name": "Meleys",
+      "enabled": true
+    },
+    {
+      "id": 48,
+      "name": "12. Reality TV Shows",
+      "server_id": 2,
+      "server_name": "Meleys",
+      "enabled": true
+    },
+    {
+      "id": 49,
+      "name": "13. Anime Shows",
+      "server_id": 2,
+      "server_name": "Meleys",
+      "enabled": true
+    },
+    {
+      "id": 50,
+      "name": "14. Kid Shows",
+      "server_id": 2,
+      "server_name": "Meleys",
+      "enabled": true
+    },
+    {
+      "id": 51,
+      "name": "15. Late Night/Comedy Shows",
+      "server_id": 2,
+      "server_name": "Meleys",
+      "enabled": true
+    },
+    {
+      "id": 56,
+      "name": "16. Documentaries",
+      "server_id": 2,
+      "server_name": "Meleys",
+      "enabled": true
+    },
+    {
+      "id": 27,
+      "name": "17. Anime/Superhero Movies",
+      "server_id": 2,
+      "server_name": "Meleys",
+      "enabled": true
+    },
+    {
+      "id": 52,
+      "name": "18. Stand Up Comedy",
+      "server_id": 2,
+      "server_name": "Meleys",
+      "enabled": true
+    },
+    {
+      "id": 57,
+      "name": "19. UFC",
+      "server_id": 2,
+      "server_name": "Meleys",
+      "enabled": true
+    },
+    {
+      "id": 53,
+      "name": "20. Music Lossless",
+      "server_id": 2,
+      "server_name": "Meleys",
+      "enabled": true
+    },
+    {
+      "id": 55,
+      "name": "21. Comedy Albums",
+      "server_id": 2,
+      "server_name": "Meleys",
+      "enabled": true
+    },
+    {
+      "id": 58,
+      "name": "33. Formula 1",
+      "server_id": 2,
+      "server_name": "Meleys",
+      "enabled": true
+    },
+    {
+      "id": 28,
+      "name": "01. 4K Movies",
+      "server_id": 3,
+      "server_name": "Vhagar",
+      "enabled": true
+    },
+    {
+      "id": 29,
+      "name": "02. Audiobooks",
+      "server_id": 3,
+      "server_name": "Vhagar",
+      "enabled": false
+    },
+    {
+      "id": 30,
+      "name": "01. UFC",
+      "server_id": 4,
+      "server_name": "Caraxes",
+      "enabled": true
+    },
+    {
+      "id": 31,
+      "name": "02. Stand Up Comedy",
+      "server_id": 4,
+      "server_name": "Caraxes",
+      "enabled": true
+    },
+    {
+      "id": 32,
+      "name": "03. Reality TV Shows",
+      "server_id": 4,
+      "server_name": "Caraxes",
+      "enabled": true
+    },
+    {
+      "id": 33,
+      "name": "04. Music Lossless",
+      "server_id": 4,
+      "server_name": "Caraxes",
+      "enabled": true
+    },
+    {
+      "id": 34,
+      "name": "05. Music MP3",
+      "server_id": 4,
+      "server_name": "Caraxes",
+      "enabled": false
+    },
+    {
+      "id": 35,
+      "name": "08. Podcasts",
+      "server_id": 4,
+      "server_name": "Caraxes",
+      "enabled": false
+    },
+    {
+      "id": 36,
+      "name": "09. Basketball",
+      "server_id": 4,
+      "server_name": "Caraxes",
+      "enabled": true
+    },
+    {
+      "id": 40,
+      "name": "96. Assignments",
+      "server_id": 4,
+      "server_name": "Caraxes",
+      "enabled": true
+    },
+    {
+      "id": 38,
+      "name": "97. Home Videos",
+      "server_id": 4,
+      "server_name": "Caraxes",
+      "enabled": true
+    },
+    {
+      "id": 39,
+      "name": "98. Documents",
+      "server_id": 4,
+      "server_name": "Caraxes",
+      "enabled": true
+    },
+    {
+      "id": 37,
+      "name": "99. Tutorials",
+      "server_id": 4,
+      "server_name": "Caraxes",
+      "enabled": true
+    },
+    {
+      "id": 9,
+      "name": "01. Classic TV Shows",
+      "server_id": 5,
+      "server_name": "Syrax",
+      "enabled": true
+    },
+    {
+      "id": 10,
+      "name": "02. Sitcoms",
+      "server_id": 5,
+      "server_name": "Syrax",
+      "enabled": true
+    },
+    {
+      "id": 12,
+      "name": "03. Animation Shows",
+      "server_id": 5,
+      "server_name": "Syrax",
+      "enabled": true
+    },
+    {
+      "id": 13,
+      "name": "04. Light Night/Comedy Shows",
+      "server_id": 5,
+      "server_name": "Syrax",
+      "enabled": true
+    },
+    {
+      "id": 14,
+      "name": "05. Formula 1",
+      "server_id": 5,
+      "server_name": "Syrax",
+      "enabled": false
+    },
+    {
+      "id": 15,
+      "name": "06. Comedy Albums",
+      "server_id": 5,
+      "server_name": "Syrax",
+      "enabled": false
+    },
+    {
+      "id": 16,
+      "name": "07. Podcasts",
+      "server_id": 5,
+      "server_name": "Syrax",
+      "enabled": false
+    }
+  ]
+}

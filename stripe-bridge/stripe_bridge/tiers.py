@@ -7,12 +7,20 @@ log = logging.getLogger("bridge")
 # server. Name-only and deliberately server-agnostic (see _is_private).
 PRIVATE_NAME_RE = re.compile(r"^9\d\.")
 
-# Youth allowlist, matched on (server_name, library name). The names are the
-# actual Plex library names — they do not follow the tier's branding.
+# The one Plex server every tier shares from. Meleys now carries a copy of
+# every library worth sharing, so the other servers (Vermithor, Vhagar,
+# Caraxes, Syrax) are retired from signups — their libraries survive only as
+# "(switch to Meleys)" mirrors and must never be granted again.
+SHARE_SERVER = "Meleys"
+
+# Youth allowlist, matched on library name alone — every shareable library is
+# on SHARE_SERVER, so the server half of the key added nothing but a second
+# way to drift out of date. The names are the actual Plex library names; they
+# do not follow the tier's branding.
 YOUTH_LIBRARIES = frozenset({
-    ("Vermithor", "06. Kid Shows"),
-    ("Meleys", "02. Family Movies"),
-    ("Vermithor", "04. 4K Family Movies"),
+    "03. Family Movies",
+    "04. 4K Family Movies",
+    "14. Kid Shows",
 })
 
 TIER_DOWNLOADS = {
@@ -56,34 +64,46 @@ def _is_4k(library: dict) -> bool:
     return "4k" in (library.get("name") or "").lower()
 
 
+def _is_on_share_server(library: dict) -> bool:
+    """Whether a library lives on the one server every tier shares from.
+
+    Exact match on server_name, so a library with a null or renamed server
+    fails closed rather than leaking a retired server's copy into a tier.
+    """
+    return library.get("server_name") == SHARE_SERVER
+
+
 def _tier_wants(tier: str, library: dict) -> bool:
-    """Whether a tier's rules include a library (before the private filter)."""
+    """Whether a tier's rules include a library (before the server/private filters)."""
     if tier == "youth":
-        return (library.get("server_name"), library.get("name")) in YOUTH_LIBRARIES
+        return (library.get("name") or "") in YOUTH_LIBRARIES
     if tier == "bronze":
         return not _is_4k(library)
     return True  # silver / gold: everything
 
 
 def _shareable_libraries(*, tier: str, libraries: list) -> list:
-    """Enabled libraries a tier's rules include.
+    """Enabled libraries on the share server that a tier's rules include.
 
-    The private filter runs last, independent of the tier rules, so no rule
-    change can ever share a private library.
+    The share-server and private filters run last, independent of the tier
+    rules, so no rule change can ever share a private library or resurrect a
+    retired server.
     """
     selected = [
         lib for lib in libraries
         if lib.get("enabled") and _tier_wants(tier, lib)
     ]
-    return [lib for lib in selected if not _is_private(lib)]
+    return [lib for lib in selected
+            if _is_on_share_server(lib) and not _is_private(lib)]
 
 
 def tier_server_libraries(*, tier: str, libraries: list) -> dict:
     """Shareable library names a tier grants, grouped by server name.
 
-    Derived from the tier rules (what invites are scoped to), not read back
-    from Plex — Wizarr's users API doesn't expose per-user libraries. Unknown
-    tiers grant nothing.
+    Keyed by server for the admin UI's per-server breakdown, though every tier
+    now resolves to the single SHARE_SERVER entry. Derived from the tier rules
+    (what invites are scoped to), not read back from Plex — Wizarr's users API
+    doesn't expose per-user libraries. Unknown tiers grant nothing.
     """
     if tier not in TIER_DOWNLOADS:
         return {}
@@ -99,8 +119,9 @@ def resolve_tier_access(*, tier: str, libraries: list) -> dict:
     """Compute an invite's scope for a tier from the live Wizarr library list."""
     shareable = _shareable_libraries(tier=tier, libraries=libraries)
     if tier == "youth" and len(shareable) < len(YOUTH_LIBRARIES):
-        found = {(lib.get("server_name"), lib.get("name")) for lib in shareable}
-        log.error("youth allowlist mismatch; missing %s", sorted(YOUTH_LIBRARIES - found))
+        found = {lib.get("name") for lib in shareable}
+        log.error("youth allowlist mismatch on %s; missing %s",
+                  SHARE_SERVER, sorted(YOUTH_LIBRARIES - found))
     return {
         "library_ids": [lib["id"] for lib in shareable],
         "server_ids": sorted({lib["server_id"] for lib in shareable}),
@@ -108,6 +129,32 @@ def resolve_tier_access(*, tier: str, libraries: list) -> dict:
                                 if lib.get("server_name")}),
         "allow_downloads": TIER_DOWNLOADS[tier],
     }
+
+
+def tier_scope_problems(*, libraries: list) -> dict:
+    """Tiers whose live scope is broken, mapped to a human-readable reason.
+
+    Empty when every tier resolves. The tier rules match on library names, so
+    a rename on the Plex side silently narrows or empties a tier without any
+    code change — a tier that resolves to nothing cannot issue an invite at
+    all, and its checkouts raise and retry forever. Callers run this against
+    the live library list to turn that silent drift into an alert.
+    """
+    problems: dict[str, str] = {}
+    for tier in TIER_DOWNLOADS:
+        shareable = _shareable_libraries(tier=tier, libraries=libraries)
+        if not shareable:
+            problems[tier] = (
+                f"no libraries resolved on {SHARE_SERVER} — checkouts for this "
+                f"tier will fail and retry forever"
+            )
+        elif tier == "youth":
+            missing = sorted(YOUTH_LIBRARIES - {lib.get("name") for lib in shareable})
+            if missing:
+                problems[tier] = (
+                    f"allowlist entries missing from {SHARE_SERVER}: {', '.join(missing)}"
+                )
+    return problems
 
 
 def stale_record_ids(*, records: list, covered_servers) -> list:
@@ -120,6 +167,11 @@ def stale_record_ids(*, records: list, covered_servers) -> list:
     severs the whole plex.tv friendship — so if any record sits on a server the
     new scope does NOT cover (or has no server name), every record is returned
     and the caller falls back to disable-first (fail closed on stale access).
+
+    Since every tier resolves to SHARE_SERVER alone, this returns the full set
+    for any legacy member still holding a record on a retired server: that
+    disable-and-re-join IS the migration onto the single server, at the cost of
+    an access gap between the disable and the member redeeming their invite.
     """
     covered = set(covered_servers)
     if all(record.get("server") in covered for record in records):

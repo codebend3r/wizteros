@@ -12,6 +12,8 @@ export type Member = {
   expires: string | null
   servers: string[]
   libraries: Record<string, string[]>
+  /** What the member's tier grants, independent of what Plex is actually sharing. */
+  entitled: Record<string, string[]>
   subscribed: boolean
   invited_at: string | null
   tag: MemberTag | null
@@ -111,8 +113,12 @@ const isMemberTag = (value: unknown): value is MemberTag => value === 'vip' || v
 // customer_id may still omit them; tolerate that and normalize with toMember
 // so the page degrades to bare server names, a grace clock that never
 // expires, an untagged member, and no Stripe link.
-type MemberPayload = Omit<Member, 'libraries' | 'invited_at' | 'tag' | 'customer_id'> & {
+type MemberPayload = Omit<
+  Member,
+  'libraries' | 'entitled' | 'invited_at' | 'tag' | 'customer_id'
+> & {
   libraries?: Record<string, string[]>
+  entitled?: Record<string, string[]>
   invited_at?: string | null
   tag?: MemberTag | null
   customer_id?: string | null
@@ -142,6 +148,10 @@ const MEMBER_FIELD_CHECKS: ReadonlyArray<MemberFieldCheck> = [
   {
     field: 'libraries',
     valid: (value) => value.libraries === undefined || isLibrariesMap(value.libraries),
+  },
+  {
+    field: 'entitled',
+    valid: (value) => value.entitled === undefined || isLibrariesMap(value.entitled),
   },
   { field: 'subscribed', valid: (value) => typeof value.subscribed === 'boolean' },
   {
@@ -195,6 +205,7 @@ const describeMembersMismatch = (data: unknown): string => {
 const toMember = (payload: MemberPayload): Member => ({
   ...payload,
   libraries: payload.libraries ?? {},
+  entitled: payload.entitled ?? {},
   invited_at: payload.invited_at ?? null,
   tag: payload.tag ?? null,
   customer_id: payload.customer_id ?? null,
