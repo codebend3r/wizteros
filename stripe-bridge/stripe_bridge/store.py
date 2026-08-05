@@ -51,6 +51,16 @@ CREATE TABLE IF NOT EXISTS event_log (
 )
 """
 
+# One row per checkout session, written the moment its invite exists. A Stripe
+# retry of the same session reads this instead of minting a second invite.
+_SESSION_INVITES_SCHEMA = """
+CREATE TABLE IF NOT EXISTS session_invites (
+    session_id  TEXT PRIMARY KEY,
+    invite_code TEXT NOT NULL,
+    emailed     INTEGER NOT NULL DEFAULT 0
+)
+"""
+
 
 def _conn(path: str) -> sqlite3.Connection:
     """Open the SQLite file; the Row factory makes rows dict-like (row["email"])."""
@@ -94,6 +104,7 @@ def init_db(path: str) -> None:
         c.execute(_TAGS_SCHEMA)
         c.execute(_DOWNLOADS_SCHEMA)
         c.execute(_EVENT_LOG_SCHEMA)
+        c.execute(_SESSION_INVITES_SCHEMA)
         _ensure_tier_column(c)
         _ensure_invited_at_column(c)
         _ensure_subscribed_column(c)
@@ -233,6 +244,45 @@ def mark_event_processed(path: str, event_id: str) -> bool:
             (event_id,),
         )
         return cur.rowcount > 0
+
+
+def get_session_invite(path: str, session_id: str) -> dict | None:
+    """The invite already issued for a checkout session, or None if there is none.
+
+    Returns {"invite_code", "emailed"} so a retry can tell "invite exists and
+    the member has the link" from "invite exists but the email never went out".
+    """
+    with _conn(path) as c:
+        row = c.execute(
+            "SELECT invite_code, emailed FROM session_invites WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()
+    return {"invite_code": row["invite_code"], "emailed": bool(row["emailed"])} if row else None
+
+
+def record_session_invite(path: str, session_id: str, invite_code: str) -> None:
+    """Bind a checkout session to the invite just created for it (not yet emailed).
+
+    Written immediately after create_invite so that a crash anywhere later in
+    the handler can never cost the member a second invite on Stripe's retry.
+    """
+    with _conn(path) as c:
+        c.execute(
+            """
+            INSERT INTO session_invites (session_id, invite_code, emailed) VALUES (?, ?, 0)
+            ON CONFLICT(session_id) DO UPDATE SET invite_code = excluded.invite_code
+            """,
+            (session_id, invite_code),
+        )
+
+
+def mark_session_invite_emailed(path: str, session_id: str) -> None:
+    """Record that the session's invite link actually reached the member."""
+    with _conn(path) as c:
+        c.execute(
+            "UPDATE session_invites SET emailed = 1 WHERE session_id = ?",
+            (session_id,),
+        )
 
 
 def customer_ids_for_email(path: str, email: str) -> list[str]:

@@ -187,26 +187,40 @@ def _dispatch(etype: str, obj: dict) -> None:
         if not email:
             log.warning("no email on session %s", obj.get("id"))
             return
+        session_id = obj.get("id")
         tier = tiers.normalize_tier((obj.get("metadata") or {}).get("tier"))
         access = tiers.resolve_tier_access(tier=tier, libraries=client.list_libraries())
         if not access["library_ids"]:
             log.error("no libraries resolved for %s tier checkout %s; aborting for retry",
-                      tier, obj.get("id"))
-            raise RuntimeError(f"no libraries resolved for tier {tier!r} on session {obj.get('id')!r}")
-        invite = client.create_invite(
-            access["server_ids"], INVITE_DAYS, ACCESS_DURATION,
-            library_ids=access["library_ids"],
-            allow_downloads=access["allow_downloads"],
-        )
-        log.info("created %s invite (%d libraries, servers %s)",
-                 tier, len(access["library_ids"]), access["server_ids"])
+                      tier, session_id)
+            raise RuntimeError(f"no libraries resolved for tier {tier!r} on session {session_id!r}")
+        # Everything below the invite can raise (a slow Wizarr write, SMTP), and
+        # a raise leaves the event unmarked so Stripe retries the whole handler.
+        # The session -> invite binding is what stops that retry from minting a
+        # second invite and mailing the member a second link.
+        issued = store.get_session_invite(MAP_DB_PATH, session_id) if session_id else None
+        if issued:
+            code = issued["invite_code"]
+            log.info("checkout %s already has invite %s; reusing it", session_id, code)
+        else:
+            code = client.create_invite(
+                access["server_ids"], INVITE_DAYS, ACCESS_DURATION,
+                library_ids=access["library_ids"],
+                allow_downloads=access["allow_downloads"],
+            )["code"]
+            log.info("created %s invite (%d libraries, servers %s)",
+                     tier, len(access["library_ids"]), access["server_ids"])
+            if session_id:
+                store.record_session_invite(MAP_DB_PATH, session_id, code)
         if customer_id:
-            store.upsert_pending(MAP_DB_PATH, customer_id, email, invite["code"], tier=tier)
-        invite_url = f"{PUBLIC_INVITE_BASE}/j/{invite['code']}"
-        send_invite_email(email, invite_url)
-        log.info("sent invite to %s", email)
-        store.record_event(MAP_DB_PATH, email, "Signed up",
-                           f"{tier} tier — invite emailed")
+            store.upsert_pending(MAP_DB_PATH, customer_id, email, code, tier=tier)
+        if not (issued and issued["emailed"]):
+            send_invite_email(email, f"{PUBLIC_INVITE_BASE}/j/{code}")
+            log.info("sent invite to %s", email)
+            if session_id:
+                store.mark_session_invite_emailed(MAP_DB_PATH, session_id)
+            store.record_event(MAP_DB_PATH, email, "Signed up",
+                               f"{tier} tier — invite emailed")
         # VIP access is never time-boxed or reshuffled — a VIP's checkout is
         # just a contribution, so their records stay exactly as they are (no
         # disable, no expiry stamp).

@@ -145,3 +145,17 @@ def test_list_users_returns_all_records():
     ]})
     out = client().list_users()
     assert [u["id"] for u in out] == [9, 12]
+
+
+@responses.activate
+def test_user_writes_allow_for_a_slow_wizarr():
+    # /api/users/<id>/disable and update-expiry go through the same slow Plex
+    # reconcile as /api/users; a 10s ceiling timed out mid-disable in prod and
+    # left a checkout half-applied.
+    responses.post(f"{BASE}/api/users/7/disable", json={})
+    responses.put(f"{BASE}/api/users/7/update-expiry", json={})
+    c = client()
+    c.disable_user(7)
+    c.set_expiry(7, "2026-09-09T00:00:00+00:00")
+    assert responses.calls[0].request.req_kwargs["timeout"] >= 45
+    assert responses.calls[1].request.req_kwargs["timeout"] >= 45

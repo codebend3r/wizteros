@@ -1,6 +1,12 @@
 import requests
 
 
+# Per-user writes reconcile with the Plex server the record lives on, so they
+# are as slow as /api/users itself. A 10s ceiling used to time out mid-loop and
+# leave a checkout half-applied while the write still landed server-side.
+USER_WRITE_TIMEOUT = 45
+
+
 class WizarrClient:
     """Thin wrapper around the Wizarr REST API used by the bridge."""
 
@@ -107,7 +113,7 @@ class WizarrClient:
             f"{self.base_url}/api/users/{user_id}/update-expiry",
             headers=self._headers(),
             json={} if expires_iso is None else {"expires": expires_iso},
-            timeout=10,
+            timeout=USER_WRITE_TIMEOUT,
         )
         r.raise_for_status()
 
@@ -116,6 +122,6 @@ class WizarrClient:
         r = requests.post(
             f"{self.base_url}/api/users/{user_id}/disable",
             headers=self._headers(),
-            timeout=10,
+            timeout=USER_WRITE_TIMEOUT,
         )
         r.raise_for_status()

@@ -623,3 +623,60 @@ def test_send_invite_email_sends_via_smtp_starttls(monkeypatch):
     assert "http://inv.test/j/abc" in plain
     assert 'href="http://inv.test/j/abc"' in html
     assert "Set up your account" in html
+
+
+def test_retry_after_a_mid_handler_failure_reuses_the_invite(bridge):
+    # The real incident: create_invite and the email both succeeded, then
+    # disable_user timed out against a slow Wizarr. The event was never marked
+    # processed, so Stripe retried and the handler issued a SECOND invite and
+    # a SECOND email for one checkout. The retry must reuse the invite already
+    # recorded for the session id and not re-send the email.
+    import requests
+    event = {
+        "type": "checkout.session.completed",
+        "id": "evt_slow_disable",
+        "data": {"object": {"id": "cs_slow", "customer": "cus_1",
+                            "customer_details": {"email": "a@x.com"},
+                            "metadata": {"tier": "bronze"}}},
+    }
+    bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
+    bridge.client.create_invite.return_value = {"code": "abc", "url": "http://x/j/abc"}
+    # a record on a server bronze does not cover -> disable-first path
+    bridge.client.find_users_by_email.return_value = [{"id": 7, "server": "Vhagar"}]
+    bridge.client.disable_user.side_effect = requests.ReadTimeout("wizarr slow")
+    with pytest.raises(requests.ReadTimeout):
+        bridge.handle_event(event)
+    bridge.client.create_invite.assert_called_once()
+    bridge.send_invite_email.assert_called_once()
+
+    bridge.client.disable_user.side_effect = None
+    bridge.handle_event(event)
+    bridge.client.create_invite.assert_called_once()
+    bridge.send_invite_email.assert_called_once()
+    bridge.client.disable_user.assert_called_with(7)
+
+
+def test_retry_resends_an_invite_email_that_never_went_out(bridge):
+    # Mirror image of the above: the invite exists but the SMTP send failed,
+    # so the member has a link they never received. The retry must reuse the
+    # same code and actually deliver it.
+    event = {
+        "type": "checkout.session.completed",
+        "id": "evt_smtp_down",
+        "data": {"object": {"id": "cs_smtp", "customer": "cus_1",
+                            "customer_details": {"email": "a@x.com"},
+                            "metadata": {"tier": "bronze"}}},
+    }
+    bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
+    bridge.client.create_invite.return_value = {"code": "abc", "url": "http://x/j/abc"}
+    bridge.client.find_users_by_email.return_value = []
+    bridge.client.find_user_ids_by_email.return_value = []
+    bridge.send_invite_email.side_effect = RuntimeError("smtp down")
+    with pytest.raises(RuntimeError):
+        bridge.handle_event(event)
+
+    bridge.send_invite_email.side_effect = None
+    bridge.handle_event(event)
+    bridge.client.create_invite.assert_called_once()
+    assert bridge.send_invite_email.call_count == 2
+    bridge.send_invite_email.assert_called_with("a@x.com", "http://inv.test/j/abc")
