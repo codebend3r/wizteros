@@ -31,6 +31,8 @@ LIBRARIES = [
     {"id": 2, "name": "03. 4K Movies", "server_id": 3, "server_name": "Vhagar", "enabled": True},
     {"id": 3, "name": "90. Private", "server_id": 2, "server_name": "Meleys", "enabled": True},
     {"id": 4, "name": "02. Anime", "server_id": 5, "server_name": "Syrax", "enabled": False},
+    {"id": 5, "name": "03. Family Movies", "server_id": 2, "server_name": "Meleys", "enabled": True},
+    {"id": 6, "name": "14. Kid Shows", "server_id": 2, "server_name": "Meleys", "enabled": True},
 ]
 
 
@@ -103,7 +105,7 @@ def test_list_members_dedupes_and_joins_tier(admin_db):
     assert cj["downloads"] is True                         # derived from tier
     # per-server access derives from tier rules: only the share server
     # grants anything, and 90. private is never shown
-    assert cj["libraries"] == {"Meleys": ["01. Movies"], "Vhagar": []}
+    assert cj["libraries"] == {"Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"], "Vhagar": []}
 
     nora = by_email["nora@x.com"]
     assert nora["subscribed"] is False
@@ -164,7 +166,7 @@ def test_list_members_falls_back_to_tier_access_without_a_plex_token(admin_db):
     store.upsert_pending(dbp, "cus_1", "a@x.com", "abc", tier="gold")
     cj = {m["email"].lower(): m for m in a.list_members()}["a@x.com"]
     assert cj["servers"] == ["Meleys", "Vhagar"]
-    assert cj["libraries"] == {"Meleys": ["01. Movies"], "Vhagar": []}
+    assert cj["libraries"] == {"Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"], "Vhagar": []}
 
 
 def test_list_members_survives_a_plex_tv_failure(admin_db, monkeypatch):
@@ -179,7 +181,7 @@ def test_list_members_survives_a_plex_tv_failure(admin_db, monkeypatch):
     monkeypatch.setattr(a.plex, "shared_access_all", boom)
     cj = {m["email"].lower(): m for m in a.list_members()}["a@x.com"]
     assert cj["servers"] == ["Meleys", "Vhagar"]
-    assert cj["libraries"] == {"Meleys": ["01. Movies"], "Vhagar": []}
+    assert cj["libraries"] == {"Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"], "Vhagar": []}
 
 
 def test_subscribed_is_the_flag_not_the_expiry(admin_db):
@@ -200,7 +202,7 @@ def test_get_member_found_and_missing(admin_db):
     store.upsert_pending(dbp, "cus_1", "a@x.com", "abc", tier="gold")
     found = a.get_member("a@x.com")
     assert found["member"] == "cj"
-    assert found["libraries"] == {"Meleys": ["01. Movies"], "Vhagar": []}
+    assert found["libraries"] == {"Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"], "Vhagar": []}
     with pytest.raises(HTTPException) as missing:
         a.get_member("ghost@x.com")
     assert missing.value.status_code == 404
@@ -216,9 +218,49 @@ def test_list_members_includes_subscribers_not_yet_joined(admin_db):
     assert mx["tier"] == "youth"
     assert mx["downloads"] is True    # derived from youth
     assert mx["subscribed"] is True   # checkout completed -> confirmed payment
-    assert mx["servers"] == []
-    assert mx["libraries"] == {}      # not on any server yet
+    # They have not joined yet, but their tier is known — so the libraries it
+    # grants are too. Showing them is what the member gets on redeeming, and
+    # without it the member page renders no servers and no libraries at all.
+    assert mx["servers"] == ["Meleys"]
+    assert mx["libraries"] == {"Meleys": ["03. Family Movies", "14. Kid Shows"]}
     assert mx["invited_at"] is not None  # upsert stamped the grace clock
+
+
+def test_pending_subscriber_libraries_follow_their_tier(admin_db):
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_g", "gold@x.com", "INV1", tier="gold")
+    store.upsert_pending(dbp, "cus_y", "youth@x.com", "INV2", tier="youth")
+    by_email = {m["email"].lower(): m for m in a.list_members()}
+    assert by_email["gold@x.com"]["libraries"] == {
+        "Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"]}
+    assert by_email["youth@x.com"]["libraries"] == {
+        "Meleys": ["03. Family Movies", "14. Kid Shows"]}
+
+
+def test_pending_subscriber_with_an_unknown_tier_shows_nothing(admin_db):
+    # No tier recorded means no basis to claim any access.
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_n", "notier@x.com", "INV1", tier=None)
+    mx = {m["email"].lower(): m for m in a.list_members()}["notier@x.com"]
+    assert mx["tier"] == "unknown"
+    assert mx["servers"] == []
+    assert mx["libraries"] == {}
+
+
+def test_pending_subscriber_never_shows_a_private_library(admin_db):
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_g", "gold@x.com", "INV1", tier="gold")
+    mx = {m["email"].lower(): m for m in a.list_members()}["gold@x.com"]
+    names = [n for grouped in mx["libraries"].values() for n in grouped]
+    assert "90. Private" not in names
+
+
+def test_get_member_pending_subscriber_shows_tier_libraries(admin_db):
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_g", "gold@x.com", "INV1", tier="gold")
+    m = a.get_member("gold@x.com")
+    assert m["servers"] == ["Meleys"]
+    assert m["libraries"] == {"Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"]}
 
 
 def test_get_member_falls_back_to_subscriber(admin_db):

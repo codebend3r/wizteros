@@ -144,17 +144,25 @@ def _dedupe_members(users: list, customers: dict, libraries: list) -> list[dict]
     return members
 
 
-def _member_from_customer(email: str, row: dict) -> dict:
-    """A table row for a subscriber the bridge knows who hasn't joined Wizarr yet."""
+def _member_from_customer(email: str, row: dict, libraries: list) -> dict:
+    """A table row for a subscriber the bridge knows who hasn't joined Wizarr yet.
+
+    They hold no Wizarr record and no plex.tv share, but their tier is known —
+    so the libraries it grants are known too, and that is what they get the
+    moment they redeem. Deriving them here is what stops the member page
+    rendering an empty Servers section for anyone mid-invite. An unrecorded
+    tier derives nothing: with no tier there is no basis to claim any access.
+    """
     resolved = tiers.canonical_tier(row.get("tier")) or "unknown"
+    tier_libraries = tiers.tier_server_libraries(tier=resolved, libraries=libraries)
     return {
         "member": email.split("@")[0],
         "email": email,
         "tier": resolved,
         "downloads": tiers.TIER_DOWNLOADS.get(resolved) if resolved != "unknown" else None,
         "expires": None,
-        "servers": [],
-        "libraries": {},
+        "servers": sorted(tier_libraries),
+        "libraries": tier_libraries,
         "subscribed": bool(row.get("subscribed")),
         "invited_at": row.get("invited_at"),
         "customer_id": row.get("customer_id"),
@@ -224,7 +232,7 @@ def list_members() -> list[dict]:
     members = _dedupe_members(snap["users"], customers, snap["libraries"])
     joined = {m["email"].lower() for m in members if m["email"]}
     pending = [
-        _member_from_customer(email, row)
+        _member_from_customer(email, row, snap["libraries"])
         for email, row in customers.items()
         if email not in joined
     ]
@@ -237,15 +245,17 @@ def list_members() -> list[dict]:
 def get_member(email: str) -> dict:
     """A member by email: a Wizarr user, or a Stripe subscriber not yet joined; else 404."""
     customers = store.all_customer_rows(MAP_DB_PATH)
+    libraries = client.list_libraries()
     matches = _dedupe_members(
         [u for u in client.list_users() if (u.get("email") or "").lower() == email.lower()],
         customers,
-        client.list_libraries(),
+        libraries,
     )
     if matches:
         return _with_overrides(matches)[0]
     if email.lower() in customers:
-        return _with_overrides([_member_from_customer(email, customers[email.lower()])])[0]
+        return _with_overrides(
+            [_member_from_customer(email, customers[email.lower()], libraries)])[0]
     raise HTTPException(status_code=404, detail="no member for that email")
 
 
