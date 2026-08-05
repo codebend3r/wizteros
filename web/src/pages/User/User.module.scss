@@ -227,12 +227,55 @@
 }
 
 .pill {
+  display: inline-flex;
+  align-items: baseline;
+  gap: calc(var(--space-1) / 2);
   padding: calc(var(--space-1) / 2) var(--space-1);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--color-bg);
   font-size: var(--font-size-xs);
   white-space: nowrap;
+}
+
+.pillName {
+  color: var(--color-text);
+}
+
+.pillState {
+  color: var(--color-muted);
+  font-size: var(--font-size-xs);
+
+  // The label carries the meaning; the colour only reinforces it.
+  .shared > & {
+    color: var(--color-state-shared);
+  }
+
+  .notShared > & {
+    color: var(--color-state-not-shared);
+  }
+
+  .notEntitled > & {
+    color: var(--color-state-not-entitled);
+  }
+}
+
+.shared {
+  border-color: var(--color-state-shared);
+}
+
+.notShared {
+  border-color: var(--color-state-not-shared);
+}
+
+.notEntitled {
+  border-color: var(--color-state-not-entitled);
+  opacity: 0.85;
+}
+
+.serverWarning {
+  color: var(--color-state-not-entitled);
+  font-size: var(--font-size-sm);
 }
 
 .actions {

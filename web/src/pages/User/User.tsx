@@ -34,6 +34,7 @@ import {
   TIER_DOWNLOADS,
   TIER_LABELS,
 } from '@/lib/inviteRules'
+import { buildServerAccess, stateLabel, type LibraryAccessState } from '@/lib/libraryAccess'
 import { deriveStatus, type MemberStatus } from '@/lib/memberStatus'
 import { MEMBERS_QUERY_KEY } from '@/pages/Manage/Manage'
 import { siteConfig } from '@/site.config'
@@ -48,6 +49,13 @@ const STATUS_EMOJI: Record<MemberStatus, string> = {
   'Declined Invite': '🚫',
   Uninvited: '⚪',
   VIP: '💎',
+}
+
+const STATE_CLASS: Record<LibraryAccessState, string | undefined> = {
+  shared: styles.shared,
+  'not-shared': styles.notShared,
+  'not-entitled': styles.notEntitled,
+  unknown: undefined,
 }
 
 const TAG_LABELS: Record<MemberTag, string> = {
@@ -133,20 +141,22 @@ const MemberDetails = ({
       .then(() => setCopied(true))
       .catch(() => undefined)
   }
-  // The live plex.tv share is ground truth when we have it — it covers legacy
-  // shares whose unknown tier derives zero libraries. Servers only plex.tv
-  // knows about are unioned in; the rest fall back to the tier-derived list.
-  const plexServers = plexAccess?.servers ?? {}
-  const serverEntries = [...new Set([...member.servers, ...Object.keys(plexServers)])]
-    .sort((a, b) => a.localeCompare(b))
-    .map((server) => ({
-      server,
-      allLibraries: !!plexServers[server]?.all_libraries,
-      // ?. survives old-shape members restored from the persisted query cache
-      // (written before the bridge sent libraries).
-      libraries: plexServers[server]?.libraries ?? member.libraries?.[server] ?? [],
-    }))
+  // Entitlement (what the tier grants) and the live plex.tv share (what is
+  // actually shared) are kept apart and merged per library, so a member
+  // mid-invite no longer renders identically to one with real access.
+  // ?. survives old-shape members restored from the persisted query cache
+  // (written before the bridge sent entitled).
+  const serverEntries = buildServerAccess({
+    entitled: member.entitled ?? member.libraries ?? {},
+    sharing: plexChecking ? null : (plexAccess?.servers ?? null),
+  })
   const totalLibraries = serverEntries.reduce((sum, entry) => sum + entry.libraries.length, 0)
+  const totalShared = serverEntries.reduce((sum, entry) => sum + entry.sharedCount, 0)
+  const notEntitled = serverEntries.reduce(
+    (sum, entry) =>
+      sum + entry.libraries.filter((library) => library.state === 'not-entitled').length,
+    0,
+  )
   return (
     <dl className={styles.details}>
       <dt>Member</dt>
@@ -232,26 +242,32 @@ const MemberDetails = ({
             <p className={styles.serversSummary}>
               {serverEntries.length} {serverEntries.length === 1 ? 'server' : 'servers'} ·{' '}
               {formatLibraryCount(totalLibraries)}
+              {!plexChecking && ` · ${totalShared} shared on plex.tv`}
+              {!!notEntitled && ` · ${notEntitled} not entitled`}
               {plexChecking && (
                 <span className={styles.spinner} role="status" aria-label="Checking plex.tv" />
               )}
             </p>
             <ul className={styles.serverList}>
-              {serverEntries.map(({ server, allLibraries, libraries }) => (
+              {serverEntries.map(({ server, entitled, libraries, sharedCount }) => (
                 <li key={server} className={styles.server}>
                   <span className={styles.serverHeading}>
                     <span className={styles.serverName}>{server}</span>
                     <span className={styles.serverCount}>
-                      {allLibraries
-                        ? `all libraries (${libraries.length})`
-                        : formatLibraryCount(libraries.length)}
+                      {formatLibraryCount(libraries.length)}
+                      {!plexChecking && ` · ${sharedCount} shared`}
                     </span>
+                    {!entitled && <span className={styles.serverWarning}>no tier grants this</span>}
                   </span>
                   {!!libraries.length && (
                     <ul className={styles.pillList}>
-                      {libraries.map((library) => (
-                        <li key={library} className={styles.pill}>
-                          {library}
+                      {libraries.map(({ library, state }) => (
+                        <li
+                          key={library}
+                          className={`${styles.pill} ${STATE_CLASS[state] ?? ''}`.trim()}
+                        >
+                          <span className={styles.pillName}>{library}</span>
+                          <span className={styles.pillState}>{stateLabel(state)}</span>
                         </li>
                       ))}
                     </ul>

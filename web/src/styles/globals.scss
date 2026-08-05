@@ -11,6 +11,12 @@
   --color-gold: #ffcf5c;
   --color-youth: #f0a3a3;
 
+  /* Library access states: entitled+shared, entitled but not shared, shared
+     but not entitled. Paired with text labels — never meaning by colour alone. */
+  --color-state-shared: #9ed4a4;
+  --color-state-not-shared: #f7b32b;
+  --color-state-not-entitled: #e69a9a;
+
   --space-1: 0.5rem;
   --space-2: 1rem;
   --space-3: 1.5rem;

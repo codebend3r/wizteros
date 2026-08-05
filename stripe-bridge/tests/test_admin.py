@@ -736,3 +736,58 @@ def test_reset_expiry_kicks_a_snapshot_refresh(admin_db, monkeypatch):
     monkeypatch.setattr(a.members_snapshot, "refresh_async", refreshed)
     a.reset_expiry(a.ResetExpiryBody(email="a@x.com", days=30))
     refreshed.assert_called_once()
+
+
+def test_members_carry_a_pure_tier_entitlement_map(admin_db):
+    # `libraries` is keyed by the servers a member actually holds records on, so
+    # it cannot answer "what does this tier grant". `entitled` is the tier rules
+    # alone — the baseline the member page compares the live plex.tv share to.
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_1", "a@x.com", "abc", tier="gold")
+    cj = {m["email"].lower(): m for m in a.list_members()}["a@x.com"]
+    assert cj["entitled"] == {
+        "Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"]}
+    # the member holds a Vhagar record, but no tier entitles anything there
+    assert "Vhagar" in cj["servers"]
+    assert "Vhagar" not in cj["entitled"]
+
+
+def test_entitlement_follows_the_tier_not_the_records(admin_db):
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_1", "a@x.com", "abc", tier="youth")
+    cj = {m["email"].lower(): m for m in a.list_members()}["a@x.com"]
+    assert cj["entitled"] == {"Meleys": ["03. Family Movies", "14. Kid Shows"]}
+
+
+def test_unknown_tier_entitles_nothing(admin_db):
+    a, _ = admin_db
+    nora = {m["email"].lower(): m for m in a.list_members()}["nora@x.com"]
+    assert nora["tier"] == "unknown"
+    assert nora["entitled"] == {}
+
+
+def test_entitlement_survives_the_plex_union(admin_db, monkeypatch):
+    # _with_plex_access rewrites `libraries` with what plex.tv reports; the
+    # entitlement baseline must NOT be overwritten or the comparison collapses.
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_1", "a@x.com", "abc", tier="gold")
+    monkeypatch.setattr(a.plex, "PLEX_TOKEN", "tok")
+    monkeypatch.setattr(a.plex, "shared_access_all", lambda: PLEX_SHARES)
+    cj = {m["email"].lower(): m for m in a.list_members()}["a@x.com"]
+    assert cj["libraries"]["Meleys"] == ["01. Movies", "05. TV Shows"]  # plex wins here
+    assert cj["entitled"] == {
+        "Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"]}  # tier stands
+
+
+def test_get_member_carries_entitlement_too(admin_db):
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_1", "a@x.com", "abc", tier="bronze")
+    m = a.get_member("a@x.com")
+    assert m["entitled"] == {"Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"]}
+
+
+def test_pending_subscriber_entitlement_matches_its_libraries(admin_db):
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_g", "gold@x.com", "INV1", tier="gold")
+    mx = {m["email"].lower(): m for m in a.list_members()}["gold@x.com"]
+    assert mx["entitled"] == mx["libraries"]

@@ -82,6 +82,7 @@ const InviteInner = () => {
         expires: null,
         servers: [],
         libraries: {},
+        entitled: {},
         subscribed: false,
         invited_at: new Date().toISOString(),
         tag: null,

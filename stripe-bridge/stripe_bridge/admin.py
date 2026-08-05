@@ -136,6 +136,11 @@ def _dedupe_members(users: list, customers: dict, libraries: list) -> list[dict]
             "expires": person["expires"],
             "servers": servers,
             "libraries": {server: tier_libraries.get(server, []) for server in servers},
+            # The tier rules alone, NOT narrowed to the servers this member
+            # happens to hold records on — that is what makes it comparable to
+            # the live plex.tv share, which is how the member page tells
+            # "entitled to" apart from "actually sharing".
+            "entitled": tier_libraries,
             "subscribed": bool(row.get("subscribed")),
             "invited_at": row.get("invited_at"),
             "customer_id": row.get("customer_id"),
@@ -163,6 +168,7 @@ def _member_from_customer(email: str, row: dict, libraries: list) -> dict:
         "expires": None,
         "servers": sorted(tier_libraries),
         "libraries": tier_libraries,
+        "entitled": tier_libraries,
         "subscribed": bool(row.get("subscribed")),
         "invited_at": row.get("invited_at"),
         "customer_id": row.get("customer_id"),
