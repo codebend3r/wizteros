@@ -131,6 +131,32 @@ def resolve_tier_access(*, tier: str, libraries: list) -> dict:
     }
 
 
+def tier_scope_problems(*, libraries: list) -> dict:
+    """Tiers whose live scope is broken, mapped to a human-readable reason.
+
+    Empty when every tier resolves. The tier rules match on library names, so
+    a rename on the Plex side silently narrows or empties a tier without any
+    code change — a tier that resolves to nothing cannot issue an invite at
+    all, and its checkouts raise and retry forever. Callers run this against
+    the live library list to turn that silent drift into an alert.
+    """
+    problems: dict[str, str] = {}
+    for tier in TIER_DOWNLOADS:
+        shareable = _shareable_libraries(tier=tier, libraries=libraries)
+        if not shareable:
+            problems[tier] = (
+                f"no libraries resolved on {SHARE_SERVER} — checkouts for this "
+                f"tier will fail and retry forever"
+            )
+        elif tier == "youth":
+            missing = sorted(YOUTH_LIBRARIES - {lib.get("name") for lib in shareable})
+            if missing:
+                problems[tier] = (
+                    f"allowlist entries missing from {SHARE_SERVER}: {', '.join(missing)}"
+                )
+    return problems
+
+
 def stale_record_ids(*, records: list, covered_servers) -> list:
     """Record ids that must be disabled before an invite can safely re-scope.
 

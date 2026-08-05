@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from stripe_bridge import admin
 from stripe_bridge import store
 from stripe_bridge import tiers
+from stripe_bridge.mailer import send_alert_email
 from stripe_bridge.mailer import send_invite_email
 from stripe_bridge.wizarr import WizarrClient
 
@@ -36,6 +37,49 @@ logging.basicConfig(level=logging.INFO)
 
 client = WizarrClient(WIZARR_BASE_URL, WIZARR_API_KEY)
 store.init_db(MAP_DB_PATH)
+
+# Last set of tier problems alerted on, so a standing breakage mails once
+# rather than every sweep. A change in the problem set (or a recovery followed
+# by a relapse) alerts again.
+_last_tier_problems: dict = {}
+
+
+def check_tier_scopes() -> dict:
+    """Verify every tier still resolves against the live library list; alert on drift.
+
+    The tier rules match Plex library names, so a rename on the server silently
+    empties a tier with no code change and no failing test — that is exactly how
+    the youth tier died unnoticed. Returns the problems found (empty when
+    healthy). Never raises: it runs inside the reconcile loop, and neither a
+    down Wizarr nor a down SMTP may take that loop out. A Wizarr that cannot be
+    reached is reported as healthy — unreachable is not misconfigured, and the
+    next sweep will try again.
+    """
+    global _last_tier_problems
+    try:
+        libraries = client.list_libraries()
+    except Exception:
+        log.exception("tier scope check: could not read libraries from Wizarr")
+        return {}
+    problems = tiers.tier_scope_problems(libraries=libraries)
+    if not problems:
+        _last_tier_problems = {}
+        return {}
+    for tier, reason in problems.items():
+        log.error("tier scope check: %s -> %s", tier, reason)
+    if problems != _last_tier_problems:
+        _last_tier_problems = problems
+        body = "\n".join(f"- {tier}: {reason}" for tier, reason in sorted(problems.items()))
+        try:
+            send_alert_email(
+                f"{len(problems)} tier(s) not resolving",
+                f"The live Wizarr library list no longer satisfies these tiers:\n\n{body}\n\n"
+                f"Members cannot sign up for them until the names line up again.\n",
+            )
+        except Exception:
+            log.exception("tier scope alert email failed")
+    return problems
+
 
 def reconcile_pending_expiries() -> int:
     """Stamp the paid expiry on records that joined without one; returns records stamped.
@@ -80,8 +124,16 @@ def reconcile_pending_expiries() -> int:
 
 
 async def _reconcile_loop() -> None:
-    """Run the expiry sweep now and every RECONCILE_INTERVAL_SECONDS thereafter."""
+    """Run the expiry sweep and the tier scope check now, then every interval.
+
+    The scope check runs first and independently: it is the drift alarm, so it
+    must still fire on a sweep where the expiry pass throws.
+    """
     while True:
+        try:
+            await asyncio.to_thread(check_tier_scopes)
+        except Exception:
+            log.exception("tier scope check failed")
         try:
             await asyncio.to_thread(reconcile_pending_expiries)
         except Exception:
