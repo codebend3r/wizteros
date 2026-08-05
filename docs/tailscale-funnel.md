@@ -82,7 +82,7 @@ tailscale funnel --set-path=/stripe off` (and `/`).
 
 - **Wizarr** → Settings → set the external/public URL to
   `https://meleys.<tailnet>.ts.net`.
-- **`.env`** (`/volume1/docker/wizteros/.env`) →
+- **`.env`** (`/volume1/docker/stripe-bridge/.env`) →
   `PUBLIC_INVITE_BASE=https://meleys.<tailnet>.ts.net`, then
   `sudo docker compose up -d stripe-bridge`.
 - **Netlify** (Westeroz site) → env var

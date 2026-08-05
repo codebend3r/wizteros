@@ -9,10 +9,10 @@
 #   stripe-bridge-data/  - the bridge's SQLite mapping
 #
 # Prereq: mount the share first — Finder > Cmd+K > smb://192.168.50.2 > "docker".
-# Override the destination with:  NAS_MOUNT=/Volumes/docker/wizteros npm run deploy:nas
+# Override the destination with:  NAS_MOUNT=/Volumes/docker/stripe-bridge npm run deploy:nas
 set -euo pipefail
 
-DEST="${NAS_MOUNT:-/Volumes/docker/wizteros}"
+DEST="${NAS_MOUNT:-/Volumes/docker/stripe-bridge}"
 MOUNT_ROOT="$(dirname "$DEST")"
 
 if [ ! -d "$MOUNT_ROOT" ]; then
@@ -35,4 +35,4 @@ rsync -av \
   "$DEST/"
 
 echo "✓ Code synced. On the NAS, apply it with:"
-echo "    cd /volume1/docker/wizteros && sudo docker compose up -d --build"
+echo "    cd /volume1/docker/stripe-bridge && sudo docker compose up -d --build"
