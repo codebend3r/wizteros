@@ -2,28 +2,28 @@
   "libraries": [
     {
       "id": 17,
-      "name": "01. TV Shows (switch to Meleys)",
+      "name": "01. TV Shows",
       "server_id": 1,
       "server_name": "Vermithor",
       "enabled": true
     },
     {
       "id": 18,
-      "name": "02. Anime Shows (switch to Meleys)",
+      "name": "02. Anime Shows",
       "server_id": 1,
       "server_name": "Vermithor",
       "enabled": true
     },
     {
       "id": 19,
-      "name": "03. Mini-Series (switch to Meleys)",
+      "name": "03. Mini-Series",
       "server_id": 1,
       "server_name": "Vermithor",
       "enabled": true
     },
     {
       "id": 20,
-      "name": "04. 4K Family Movies (switch to Meleys)",
+      "name": "04. 4K Family Movies",
       "server_id": 1,
       "server_name": "Vermithor",
       "enabled": true
@@ -40,7 +40,7 @@
       "name": "06. Kid Shows (switch to Meleys)",
       "server_id": 1,
       "server_name": "Vermithor",
-      "enabled": true
+      "enabled": false
     },
     {
       "id": 23,
@@ -148,50 +148,43 @@
       "enabled": true
     },
     {
-      "id": 52,
-      "name": "16. Stand Up Comedy",
-      "server_id": 2,
-      "server_name": "Meleys",
-      "enabled": true
-    },
-    {
-      "id": 53,
-      "name": "17. Music Lossless",
-      "server_id": 2,
-      "server_name": "Meleys",
-      "enabled": true
-    },
-    {
-      "id": 54,
-      "name": "18. Music MP3",
-      "server_id": 2,
-      "server_name": "Meleys",
-      "enabled": true
-    },
-    {
-      "id": 55,
-      "name": "19. Comedy Albums",
+      "id": 56,
+      "name": "16. Documentaries",
       "server_id": 2,
       "server_name": "Meleys",
       "enabled": true
     },
     {
       "id": 27,
-      "name": "21. Anime/Superhero Movies",
+      "name": "17. Anime/Superhero Movies",
       "server_id": 2,
       "server_name": "Meleys",
       "enabled": true
     },
     {
-      "id": 56,
-      "name": "23. Documentaries",
+      "id": 52,
+      "name": "18. Stand Up Comedy",
       "server_id": 2,
       "server_name": "Meleys",
       "enabled": true
     },
     {
       "id": 57,
-      "name": "30. UFC",
+      "name": "19. UFC",
+      "server_id": 2,
+      "server_name": "Meleys",
+      "enabled": true
+    },
+    {
+      "id": 53,
+      "name": "20. Music Lossless",
+      "server_id": 2,
+      "server_name": "Meleys",
+      "enabled": true
+    },
+    {
+      "id": 55,
+      "name": "21. Comedy Albums",
       "server_id": 2,
       "server_name": "Meleys",
       "enabled": true
@@ -205,7 +198,7 @@
     },
     {
       "id": 28,
-      "name": "01. 4K Movies (switch to Meleys)",
+      "name": "01. 4K Movies",
       "server_id": 3,
       "server_name": "Vhagar",
       "enabled": true
@@ -219,28 +212,28 @@
     },
     {
       "id": 30,
-      "name": "01. UFC (switch to Meleys)",
+      "name": "01. UFC",
       "server_id": 4,
       "server_name": "Caraxes",
       "enabled": true
     },
     {
       "id": 31,
-      "name": "02. Stand Up Comedy (switch to Meleys)",
+      "name": "02. Stand Up Comedy",
       "server_id": 4,
       "server_name": "Caraxes",
       "enabled": true
     },
     {
       "id": 32,
-      "name": "03. Reality TV Shows (switch to Meleys)",
+      "name": "03. Reality TV Shows",
       "server_id": 4,
       "server_name": "Caraxes",
       "enabled": true
     },
     {
       "id": 33,
-      "name": "04. Music Lossless (switch to Meleys)",
+      "name": "04. Music Lossless",
       "server_id": 4,
       "server_name": "Caraxes",
       "enabled": true
@@ -296,28 +289,28 @@
     },
     {
       "id": 9,
-      "name": "01. Classic TV Shows (switch to Meleys)",
+      "name": "01. Classic TV Shows",
       "server_id": 5,
       "server_name": "Syrax",
       "enabled": true
     },
     {
       "id": 10,
-      "name": "02. Sitcoms (switch to Meleys)",
+      "name": "02. Sitcoms",
       "server_id": 5,
       "server_name": "Syrax",
       "enabled": true
     },
     {
       "id": 12,
-      "name": "03. Animation Shows (switch to Meleys)",
+      "name": "03. Animation Shows",
       "server_id": 5,
       "server_name": "Syrax",
       "enabled": true
     },
     {
       "id": 13,
-      "name": "04. Light Night/Comedy Shows (switch to Meleys)",
+      "name": "04. Light Night/Comedy Shows",
       "server_id": 5,
       "server_name": "Syrax",
       "enabled": true
