@@ -26,6 +26,7 @@ if (!WIZARR_BASE_URL || !WIZARR_API_KEY) {
 const OUT = join(
   dirname(fileURLToPath(import.meta.url)),
   '..',
+  'apps',
   'stripe-bridge',
   'tests',
   'fixtures',

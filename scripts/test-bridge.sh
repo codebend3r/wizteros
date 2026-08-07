@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Run the stripe-bridge pytest suite with the repo venv, falling back to the
-# system python3. Used by `npm run test:bridge` and the pre-push hook.
+# system python3. Backs the `stripe-bridge:test` Nx target, which `bun run
+# test:bridge`, `bun run verify` and the pre-push hook all go through.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -8,9 +9,9 @@ PY="$PWD/venv/bin/python"
 [ -x "$PY" ] || PY="$(command -v python3)"
 
 if ! "$PY" -m pytest --version >/dev/null 2>&1; then
-  echo "pytest not available — bootstrap the venv with: npm run setup:py" >&2
+  echo "pytest not available - bootstrap the venv with: bun run setup:py" >&2
   exit 1
 fi
 
-cd stripe-bridge
+cd apps/stripe-bridge
 exec "$PY" -m pytest -q

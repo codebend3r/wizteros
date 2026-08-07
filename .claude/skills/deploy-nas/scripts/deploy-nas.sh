@@ -40,8 +40,8 @@ step() { printf '\n▸ %s\n' "$*"; }
 die()  { printf '\n✗ %s\n' "$*" >&2; exit 1; }
 
 # Everything the NAS container is actually built from. A main that only moved
-# web/ or docs/ needs no rebuild — Netlify owns the SPA.
-NAS_PATHS=(stripe-bridge docker-compose.yml scripts package.json)
+# apps/admin-portal/ or docs/ needs no rebuild, Netlify owns the SPA.
+NAS_PATHS=(apps/stripe-bridge docker-compose.yml scripts package.json)
 
 say "═══════════════════════════════════════════"
 say "deploy-nas — wizteros stripe-bridge"
@@ -99,11 +99,11 @@ else
     say "  · NAS is $COUNT commit(s) behind (deployed ${DEPLOYED:0:7}, local $(git rev-parse --short HEAD))"
     CHANGED="$(git diff --name-only "$DEPLOYED" "$LOCAL" -- "${NAS_PATHS[@]}" 2>/dev/null || true)"
     if [ -z "$CHANGED" ]; then
-      say "  · none of those commits touch NAS-built paths (stripe-bridge/, compose, scripts)"
+      say "  · none of those commits touch NAS-built paths (apps/stripe-bridge/, compose, scripts)"
       if [ "$FORCE" = 0 ]; then
         say ""
         say "✓ Nothing the NAS builds from has changed — skipping rebuild."
-        say "  (web/ ships via Netlify.) Use --force to rebuild anyway."
+        say "  (apps/admin-portal ships via Netlify.) Use --force to rebuild anyway."
         exit 0
       fi
     else
@@ -143,7 +143,7 @@ step "Syncing code to the NAS"
 
 EXCLUDES=(
   --exclude '.git' --exclude 'venv' --exclude 'node_modules' --exclude '.netlify'
-  --exclude '.env' --exclude 'wizarr-data' --exclude 'tautulli-config'
+  --exclude '.nx' --exclude '.env' --exclude 'wizarr-data' --exclude 'tautulli-config'
   --exclude 'stripe-bridge-data' --exclude '__pycache__' --exclude '.DS_Store'
   --exclude '._*' --exclude '.pytest_cache' --exclude 'dist'
 )
@@ -164,8 +164,8 @@ fi
 say "  · code synced"
 
 # Prove the bytes landed rather than trusting the transport's exit code.
-REMOTE_SUM="$($SSH "$NAS_HOST" "cd $NAS_PATH && md5sum stripe-bridge/stripe_bridge/tiers.py 2>/dev/null | cut -d' ' -f1" | tr -d '[:space:]')"
-LOCAL_SUM="$(md5 -q "$REPO/stripe-bridge/stripe_bridge/tiers.py" 2>/dev/null || md5sum "$REPO/stripe-bridge/stripe_bridge/tiers.py" | cut -d' ' -f1)"
+REMOTE_SUM="$($SSH "$NAS_HOST" "cd $NAS_PATH && md5sum apps/stripe-bridge/stripe_bridge/tiers.py 2>/dev/null | cut -d' ' -f1" | tr -d '[:space:]')"
+LOCAL_SUM="$(md5 -q "$REPO/apps/stripe-bridge/stripe_bridge/tiers.py" 2>/dev/null || md5sum "$REPO/apps/stripe-bridge/stripe_bridge/tiers.py" | cut -d' ' -f1)"
 [ -n "$REMOTE_SUM" ] && [ "$REMOTE_SUM" = "$LOCAL_SUM" ] \
   || die "sync verification failed: tiers.py on the NAS does not match local. NOT rebuilding."
 say "  · verified: tiers.py checksum matches"

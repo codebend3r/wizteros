@@ -1,5 +1,6 @@
 // Aborts any package-manager script run by a tool other than Bun.
-// Wired as preinstall (root + web) and pre<script> guards in web so that
+// Wired as preinstall (workspace root + apps/admin-portal) and pre<script>
+// guards in apps/admin-portal so that
 // `npm run dev`, `pnpm run dev`, `npm install`, etc. fail fast while bun passes.
 const agent = process.env.npm_config_user_agent ?? ''
 const runner = agent.split('/')[0] || 'unknown'

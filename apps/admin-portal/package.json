@@ -1,15 +1,15 @@
 {
-  "name": "westeroz-web",
+  "name": "admin-portal",
   "version": "0.1.5",
   "private": true,
   "type": "module",
   "scripts": {
-    "preinstall": "node ../scripts/only-bun.mjs",
-    "predev": "node ../scripts/only-bun.mjs",
+    "preinstall": "node ../../scripts/only-bun.mjs",
+    "predev": "node ../../scripts/only-bun.mjs",
     "dev": "vite",
-    "prebuild": "node ../scripts/only-bun.mjs",
+    "prebuild": "node ../../scripts/only-bun.mjs",
     "build": "tsgo && vite build",
-    "prepreview": "node ../scripts/only-bun.mjs",
+    "prepreview": "node ../../scripts/only-bun.mjs",
     "preview": "vite preview",
     "typecheck": "tsgo",
     "typecheck:tsc": "tsc",
@@ -19,7 +19,7 @@
     "lint:css:fix": "gale --fix \"src/**/*.scss\"",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
-    "pretest": "node ../scripts/only-bun.mjs",
+    "pretest": "node ../../scripts/only-bun.mjs",
     "test": "bun test --dots",
     "test:watch": "bun test --dots --watch"
   },
@@ -56,6 +56,28 @@
     "sass": "1.101.0",
     "typescript": "5.9.3",
     "vite": "5.4.21"
+  },
+  "nx": {
+    "projectType": "application",
+    "tags": [
+      "scope:portal",
+      "lang:ts"
+    ],
+    "includedScripts": [
+      "dev",
+      "build",
+      "preview",
+      "typecheck",
+      "typecheck:tsc",
+      "lint",
+      "lint:fix",
+      "lint:css",
+      "lint:css:fix",
+      "format",
+      "format:check",
+      "test",
+      "test:watch"
+    ]
   },
   "trustedDependencies": [
     "@lyricalstring/gale"

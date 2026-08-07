@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Bump the root and web package versions in lockstep, commit as
-# `WZ: Bump version to X.Y.Z`, and tag `vX.Y.Z`. npm skips its own git
-# commit/tag for web/ because .git lives at the repo root, so this script
-# owns the whole release flow. Used by `npm run release:{patch,minor,major}`.
+# Bump the workspace root and apps/admin-portal package versions in lockstep,
+# commit as `WZ: Bump version to X.Y.Z`, and tag `vX.Y.Z`. npm skips its own git
+# commit/tag for the app because .git lives at the repo root, so this script
+# owns the whole release flow. Used by `bun run release:{patch,minor,major}`.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -21,9 +21,9 @@ if [ -n "$(git status --porcelain)" ]; then
 fi
 
 VERSION="$(npm version "$LEVEL" --no-git-tag-version | tr -d v)"
-npm --prefix web version "$VERSION" --no-git-tag-version >/dev/null
+npm --prefix apps/admin-portal version "$VERSION" --no-git-tag-version >/dev/null
 
-git add package.json web/package.json
+git add package.json apps/admin-portal/package.json
 git commit -m "WZ: Bump version to $VERSION"
 git tag "v$VERSION"
 

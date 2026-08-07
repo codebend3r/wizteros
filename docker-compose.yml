@@ -2,7 +2,7 @@ name: stripe-bridge
 
 services:
   stripe-bridge:
-    build: ./stripe-bridge
+    build: ./apps/stripe-bridge
     image: wizteros-stripe-bridge
     container_name: stripe-bridge
     restart: unless-stopped

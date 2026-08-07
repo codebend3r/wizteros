@@ -3,7 +3,7 @@
 // the store instead of a live client. Backs import.meta.env via process.env.
 //
 // Clearing the whole set (not just Supabase) keeps the suite hermetic for
-// anyone who fills in web/.env for local dev: several tests assert the
+// anyone who fills in apps/admin-portal/.env for local dev: several tests assert the
 // unset-by-default behavior, e.g. the member link stays hidden without
 // VITE_MEMBER_URL.
 const DORMANT_VARS: ReadonlyArray<string> = [

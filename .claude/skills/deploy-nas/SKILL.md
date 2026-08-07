@@ -1,6 +1,6 @@
 ---
 name: deploy-nas
-description: Use when shipping wizteros main to the Synology NAS — deploying the stripe-bridge, rebuilding its container after a merge to main, or checking whether the NAS is behind. Triggers include "deploy to the NAS", "rebuild the bridge", "push this to the NAS", "is the NAS running the latest code", "ship main", or any follow-up to a merged PR that touched stripe-bridge/. Only applies to the wizteros repo.
+description: Use when shipping wizteros main to the Synology NAS — deploying the stripe-bridge, rebuilding its container after a merge to main, or checking whether the NAS is behind. Triggers include "deploy to the NAS", "rebuild the bridge", "push this to the NAS", "is the NAS running the latest code", "ship main", or any follow-up to a merged PR that touched apps/stripe-bridge/. Only applies to the wizteros repo.
 ---
 
 # Deploy wizteros to the NAS
@@ -13,7 +13,8 @@ Ships the current `main` of the wizteros repo to the Synology NAS and rebuilds t
 This is a **production deploy** — the bridge is what converts live Stripe webhooks into
 Wizarr invites. Run it deliberately, not reflexively.
 
-**Scope: the bridge only.** `web/` ships via Netlify from `main` and needs nothing here.
+**Scope: the bridge only.** `apps/admin-portal/` ships via Netlify from `main` and needs
+nothing here.
 The `westeroz` compose project (wizarr, tautulli, sab, radarr, sonarr) is a separate NAS
 stack and is never touched.
 
@@ -43,7 +44,7 @@ Run it as a single Bash invocation so the user sees the whole transcript. Defaul
    Any failure aborts before touching the NAS.
 2. **Staleness check** — reads `.deployed-sha` from the NAS and diffs it against `HEAD`.
    Exits early ("nothing to do") when the NAS is current, or when the intervening commits
-   touched only `web/`/`docs/`.
+   touched only `apps/admin-portal/`/`docs/`.
 3. **Records a rollback point** — the image ID the running container was built from.
 4. **Syncs code** — rsync over the SMB mount if `/Volumes/docker` is mounted, otherwise
    tar over SSH. Then verifies a checksum matches before rebuilding.
@@ -67,6 +68,13 @@ Run it as a single Bash invocation so the user sees the whole transcript. Defaul
   local `cd /volume1/...` hits the Mac's zoxide alias and fails.
 - **`401` is the liveness probe, not `200`.** There is no `/health` route; `/admin/members`
   returning `401` proves the router mounted and auth is wired.
+- **The sync never deletes.** Both transports add and overwrite, so paths that moved in the
+  repo leave a stale copy on the NAS. After the Nx move the bridge lives at
+  `apps/stripe-bridge/`, and the old `/volume1/docker/stripe-bridge/stripe-bridge/` is dead
+  weight that compose no longer builds from. Remove it once, by hand, after the first
+  post-migration deploy verifies healthy:
+  `ssh <nas> 'rm -rf /volume1/docker/stripe-bridge/stripe-bridge'`. Never touch the
+  sibling `stripe-bridge-data/`, which is live state.
 
 ## Reporting Back
 

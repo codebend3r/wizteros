@@ -1,7 +1,8 @@
 [build]
-  base = "web"
+  # Build from the monorepo root so bun installs the whole workspace and Nx can
+  # resolve the project graph; the SPA itself is apps/admin-portal.
   command = "bun run build"
-  publish = "dist"
+  publish = "apps/admin-portal/dist"
 
 [build.environment]
   NODE_VERSION = "24"

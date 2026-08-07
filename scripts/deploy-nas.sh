@@ -26,6 +26,8 @@ rsync -av \
   --exclude '.git' \
   --exclude 'venv' \
   --exclude 'node_modules' \
+  --exclude '.nx' \
+  --exclude 'dist' \
   --exclude '.netlify' \
   --exclude '.env' \
   --exclude 'wizarr-data' \
