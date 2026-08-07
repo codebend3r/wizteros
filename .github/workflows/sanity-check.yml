@@ -1,0 +1,112 @@
+name: Sanity check
+
+on:
+  push:
+    branches: [main]
+
+# Only the newest commit on main matters; an older in-flight run is cancelled.
+concurrency:
+  group: sanity-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # CI already lints/typechecks/tests. This job covers the one thing it doesn't:
+  # the production bundle Netlify actually ships.
+  web-build:
+    name: 🏗️ Web production build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v7
+      - name: 🥟 Set up Bun
+        uses: oven-sh/setup-bun@v2
+      - name: 📦 Install dependencies
+        run: bun install --frozen-lockfile
+      - name: 🏗️ Build (tsgo + vite)
+        run: bun run build
+      - name: 🕵️ Verify build output
+        run: |
+          test -s dist/index.html || { echo "::error::💥 dist/index.html is missing or empty"; exit 1; }
+          echo "✅ Bundle looks sane — $(du -sh dist | cut -f1) across $(find dist -type f | wc -l | tr -d ' ') files"
+
+  # Proves the image still builds and the FastAPI app imports cleanly — a broken
+  # import only shows up at container start, long after the merge.
+  bridge-image:
+    name: 🐳 Bridge image + boot smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v7
+      - name: 🐳 Build image
+        run: docker build -t stripe-bridge:sanity ./stripe-bridge
+      - name: 🚦 Smoke test the app
+        run: |
+          docker run --rm -i \
+            -e STRIPE_API_KEY=sk_test_sanity \
+            -e STRIPE_WEBHOOK_SECRET=whsec_sanity \
+            -e WIZARR_BASE_URL=http://wizarr.invalid \
+            -e WIZARR_API_KEY=sanity \
+            -e PUBLIC_INVITE_BASE=http://invite.invalid \
+            -e SMTP_HOST=smtp.invalid \
+            -e SMTP_PORT=587 \
+            -e SMTP_USER=sanity \
+            -e SMTP_PASS=sanity \
+            -e FROM_ADDR=sanity@invalid \
+            -e MAP_DB_PATH=/tmp/sanity.db \
+            stripe-bridge:sanity python - <<'PY'
+          from stripe_bridge.stripe_wizarr_bridge import app
+
+          paths = sorted(filter(None, (getattr(r, "path", None) for r in app.routes)))
+          print(f"🛣️  Routes registered: {paths}")
+          missing = [p for p in ("/stripe/webhook", "/webhook") if p not in paths]
+          assert not missing, f"💥 Missing Stripe webhook route(s): {missing}"
+          print("✅ App imports and both Stripe webhook routes are wired up")
+          PY
+
+  # The Netlify build and the release tag both read these; drift means a shipped
+  # bundle reporting the wrong version.
+  versions:
+    name: 🔢 Version parity
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v7
+      - name: 🧮 Compare root and web versions
+        run: |
+          root=$(node -p "require('./package.json').version")
+          web=$(node -p "require('./web/package.json').version")
+          echo "📦 root=$root  🌐 web=$web"
+          if [ "$root" != "$web" ]; then
+            echo "::error::💥 Version drift — root is $root but web/ is $web"
+            exit 1
+          fi
+          echo "✅ Both apps agree on v$root"
+
+  summary:
+    name: 🎉 Sanity verdict
+    runs-on: ubuntu-latest
+    needs: [web-build, bridge-image, versions]
+    # Runs even when a check fails so the summary reports the failure too.
+    if: always()
+    steps:
+      - name: 📝 Write summary
+        run: |
+          {
+            echo "## 🩺 Sanity check"
+            echo ""
+            echo "| Check | Result |"
+            echo "| --- | --- |"
+            echo "| 🏗️ Web production build | ${{ needs.web-build.result == 'success' && '✅ passed' || '❌ failed' }} |"
+            echo "| 🐳 Bridge image + boot smoke | ${{ needs.bridge-image.result == 'success' && '✅ passed' || '❌ failed' }} |"
+            echo "| 🔢 Version parity | ${{ needs.versions.result == 'success' && '✅ passed' || '❌ failed' }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: 🚨 Fail if anything broke
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: |
+          echo "::error::🔥 Something broke on main — check the failed job above"
+          exit 1
+      - name: 🎊 All clear
+        run: echo "🚀 main is healthy — ship it!"
