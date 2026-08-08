@@ -1,10 +1,12 @@
 {
   "name": "wizteros",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Nx monorepo for the wizteros paid-access stack: the admin-portal SPA and the stripe-bridge API",
   "type": "module",
-  "workspaces": ["apps/*"],
+  "workspaces": [
+    "apps/*"
+  ],
   "nx": {
     "includedScripts": []
   },

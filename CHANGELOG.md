@@ -12,6 +12,14 @@ the version recorded in the tree at that commit. That was not always true; the
 history was rewritten on 2026-08-08 to make it so. See
 [The 2026-08-08 history rewrite](#the-2026-08-08-history-rewrite).
 
+## v0.2.1 (2026-08-08)
+
+- Keep tier card copy on infrastructure language (#40): feature rows and tier
+  summaries now describe playback capability (resolution, audio, downloads,
+  request queue) instead of naming libraries or catalog scope
+- Track the release version in the bridge and expose it at `GET /version`, so
+  the deployed container can report which release it is running
+
 ## v0.2.0 (2026-08-08)
 
 Minor: the repository layout changed underneath both apps.
