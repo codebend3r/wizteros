@@ -56,11 +56,19 @@ Hooks run automatically: pre-commit runs `bun run system-check` (lint, SCSS lint
 
 ## Claude skills
 
-The repo ships two Claude Code skills under `.claude/skills/`:
+The repo ships these Claude Code skills under `.claude/skills/`:
 
 | Skill | What it does | How it's triggered |
 | --- | --- | --- |
 | `deploy-nas` | Ships `main` to the Synology NAS: syncs the repo, rebuilds the `stripe-bridge` container, verifies health, and rolls back a bad build. The web app is untouched (it deploys via Netlify). | "deploy to the NAS", "rebuild the bridge", "ship main", "is the NAS running the latest code", or any follow-up to a merged PR that touched `stripe-bridge/` |
+| `commiter` | Enforces the `CLAUDE.md` naming and body conventions for commits and pull requests, while keeping unrelated changes in separate commits. | Preparing, writing, validating, or creating a commit or PR; for example, "commit this", "write a commit message", "open a PR", or "check this PR title" |
+| `link-workspace-packages` | Links sibling packages with the workspace package manager instead of using path aliases or manual dependency workarounds. | Creating packages, importing from a sibling package, or diagnosing workspace-package resolution errors such as `TS2307` or "cannot find module" |
+| `monitor-ci` | Watches Nx Cloud CI, evaluates failures, and coordinates supported self-healing fixes. | "monitor CI", "watch CI", "track CI", "check CI status", or requests to handle self-healing CI failures |
+| `nx-generate` | Discovers and runs the appropriate Nx generator, then verifies the generated code against repository conventions. | Scaffolding or generating an app, library, feature, project, or other workspace structure |
+| `nx-import` | Imports another repository or project into the Nx workspace while preserving history and respecting the destination layout. | Requests to adopt Nx across repositories, merge repositories, or move existing code and history into this monorepo |
+| `nx-plugins` | Finds and installs Nx plugins for frameworks and other technologies. | Requests to discover Nx plugins, install one, or add framework/technology support to the workspace |
+| `nx-run-tasks` | Discovers and runs Nx targets for one, many, or only affected projects. | Requests to build, test, lint, serve, or run another task defined in the Nx workspace |
+| `nx-workspace` | Explores Nx projects, targets, dependencies, and configuration without changing the workspace. | Questions about workspace structure or available tasks, and investigation of failed Nx commands or missing target configuration |
 | `version-bumper` | Checks whether `origin/main` is ahead of the last `WZ: Bump version to X.Y.Z` commit, recommends a bump level (patch, minor, major), and on approval runs `scripts/release.sh` to bump, commit, and tag. | "should we cut a release", "bump the version", "what version should this be", "is main ahead of the last release", or after PRs merge to main and a release feels due |
 
 ## Docs
