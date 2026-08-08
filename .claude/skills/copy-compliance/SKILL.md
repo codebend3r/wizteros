@@ -36,6 +36,12 @@ when it runs, whatever it finds. Hits are candidates, not build failures.
 | (none) | Print only lines matching a risk term, grouped payment surfaces first |
 | `--all` | Dump every extracted string, unfiltered. Use it when auditing new copy the term list has never seen |
 
+If a configured path no longer resolves, the script prints an `INCOMPLETE RUN` warning
+naming each missing entry and still exits 0. Treat that as a broken tool, not a clean
+audit: fix the path lists at the top of the script before reading any result. This is the
+one failure mode that matters, because a restructure silently turns the extractor into a
+no-op that reports zero hits.
+
 Each row reads `line  origin  [terms]  source`. `origin` is how the text was found:
 `string` (a quoted literal), `text` (a JSX or HTML text node, or a Python triple-quoted
 block), `comment` (a code comment, always exempt, shown so nothing is dropped silently).
@@ -47,15 +53,20 @@ right after paying. No content nouns, no titles, no catalog language, at all.
 
 | Surface | Path |
 |---|---|
-| Landing page composition | `web/src/App.tsx` |
-| Tier cards, tier names, summaries, feature rows, tagline, support items | `web/src/site.config.ts` |
-| Pricing section chrome | `web/src/components/Pricing/Pricing.tsx` |
-| Hero | `web/src/components/Hero/Hero.tsx` |
-| What the contribution funds | `web/src/components/Support/Support.tsx` |
-| Member links and the disclaimer | `web/src/components/Footer/Footer.tsx` |
-| Document title (search results, browser tab) | `web/index.html` |
-| Invite email, HTML body | `stripe-bridge/stripe_bridge/email_template.py` |
-| Invite email, subject and plain-text body | `stripe-bridge/stripe_bridge/mailer.py` |
+| Landing page composition | `apps/admin-portal/src/App.tsx` |
+| Tier cards, tier names, summaries, feature rows, tagline, support items | `apps/admin-portal/src/site.config.ts` |
+| Pricing section chrome | `apps/admin-portal/src/components/Pricing/Pricing.tsx` |
+| Hero | `apps/admin-portal/src/components/Hero/Hero.tsx` |
+| What the contribution funds | `apps/admin-portal/src/components/Support/Support.tsx` |
+| Member links and the disclaimer | `apps/admin-portal/src/components/Footer/Footer.tsx` |
+| Document title (search results, browser tab) | `apps/admin-portal/index.html` |
+| Invite email, HTML body | `apps/stripe-bridge/stripe_bridge/email_template.py` |
+| Invite email, subject and plain-text body | `apps/stripe-bridge/stripe_bridge/mailer.py` |
+
+`App.tsx` and `Support.tsx` are surfaces without copy of their own: both render text
+passed down from `site.config.ts`, so the extractor correctly reports no rows for them.
+Audit their wording in `site.config.ts`, and read the components only to confirm they
+have not started hard-coding strings.
 
 Two payment surfaces the extractor cannot reach:
 
@@ -68,11 +79,11 @@ Two payment surfaces the extractor cannot reach:
 
 ## Surfaces that are exempt
 
-Admin-only pages behind `AdminGate`: `web/src/pages/Manage`, `User`, `Invite`, `Email`,
-`ResetUser`, `Login`, and the components only they render (`MembersTable`, `SideMenu`,
-`AdminLayout`, `ConfirmInviteModal`, `ConfirmActionModal`, `CopyEmailsButton`). One
-person signs in there. Nobody is being sold anything, so `'Everything except 4K'` on the
-invite form is operator shorthand, not a promise.
+Admin-only pages behind `AdminGate`, all under `apps/admin-portal/src/pages/`: `Manage`,
+`User`, `Invite`, `Email`, `ResetUser`, `Login`, and the components only they render
+(`MembersTable`, `SideMenu`, `AdminLayout`, `ConfirmInviteModal`, `ConfirmActionModal`,
+`CopyEmailsButton`). One person signs in there. Nobody is being sold anything, so
+`'Everything except 4K'` on the invite form is operator shorthand, not a promise.
 
 Also exempt: code comments, tests, `docs/`, `README.md`, `CLAUDE.md`, commit messages,
 and the operator alert emails in `mailer.py` (`send_alert_email`, addressed to the admin).
@@ -97,7 +108,7 @@ content sale.
 | `'Thanks for contributing to server costs.'` (`email_template.py:23`, `mailer.py:54`) | First line a paying member reads, and it names costs, not content |
 | `'If you cancel your contribution, access will be removed at the end of the current billing cycle.'` (`email_template.py:45`) | Access is a consequence of contributing, never the thing purchased |
 | `'Already contributing? Access your account'` (`Footer.tsx:3`) | Identifies members by what they contribute, not what they watch |
-| The `<title>` ending in `media server hosting` (`web/index.html:7`) | The title tag is copy too, and it says hosting |
+| The `<title>` ending in `media server hosting` (`apps/admin-portal/index.html:7`) | The title tag is copy too, and it says hosting |
 
 ### Risky, with the rewrite that keeps the page reading well
 
@@ -153,9 +164,10 @@ Three traps specific to `site.config.ts`, all of them silent:
 - **The four cards align row by row.** `FEATURE_LABELS` and `YOUTH_FEATURE_LABELS` are
   index-aligned on purpose (the comment at `site.config.ts:64-65` says so). Removing a
   row from one list breaks the visual alignment of all four cards.
-- **Tests hard-code the labels.** `web/src/site.config.test.ts` asserts both label lists
-  verbatim; `stripe-bridge/tests/test_email_template.py:19` asserts `"server costs"` is in
-  the invite HTML; `stripe-bridge/tests/test_bridge.py:617` asserts the invite subject.
+- **Tests hard-code the labels.** `apps/admin-portal/src/site.config.test.ts` asserts both
+  label lists verbatim; `apps/stripe-bridge/tests/test_email_template.py:19` asserts
+  `"server costs"` is in the invite HTML;
+  `apps/stripe-bridge/tests/test_bridge.py:619` asserts the invite subject.
   Tests are exempt from the framing rule but they are not exempt from being updated.
 
 ## Current findings
@@ -163,7 +175,7 @@ Three traps specific to `site.config.ts`, all of them silent:
 Found by reading the surfaces while writing this skill. **Reported only. Not fixed.**
 The framing decision on each is the repo owner's.
 
-Violations, all on the landing page, all in `web/src/site.config.ts`:
+Violations, all on the landing page, all in `apps/admin-portal/src/site.config.ts`:
 
 | Line(s) | Copy | Call |
 |---|---|---|
@@ -184,8 +196,8 @@ Borderline, same file, worth a decision rather than a reflex:
 
 Clean, no action: the invite email (`email_template.py`, `mailer.py`) is entirely
 contribution-framed and mentions nothing a member can watch. `Footer.tsx`,
-`Pricing.tsx`, `Hero.tsx`, `Support.tsx`, and `web/index.html` are clean. Admin pages
-carry content nouns (`'Everything except 4K'`, library counts) and are exempt.
+`Pricing.tsx`, `Hero.tsx`, `Support.tsx`, and `apps/admin-portal/index.html` are clean.
+Admin pages carry content nouns (`'Everything except 4K'`, library counts) and are exempt.
 
 Not verified: Stripe product and Payment Link copy, and Wizarr's onboarding screens.
 Neither is in this repo.

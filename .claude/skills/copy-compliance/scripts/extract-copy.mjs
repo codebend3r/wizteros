@@ -43,31 +43,31 @@ const REPO_ROOT = process.env.WZ_REPO ?? resolve(SCRIPT_DIR, '..', '..', '..', '
 
 // Directories walked in full. Test files are skipped: assertions quote copy,
 // they do not ship it.
-const SCAN_DIRS = ['web/src/pages', 'web/src/components']
+const SCAN_DIRS = ['apps/admin-portal/src/pages', 'apps/admin-portal/src/components']
 
 // Files scanned individually. site.config.ts is not under pages/ or components/
 // but holds every tier name, price, summary, and feature label, so leaving it
 // out would make this whole script decorative.
 const SCAN_FILES = [
-  'web/index.html',
-  'web/src/App.tsx',
-  'web/src/site.config.ts',
-  'stripe-bridge/stripe_bridge/email_template.py',
-  'stripe-bridge/stripe_bridge/mailer.py',
+  'apps/admin-portal/index.html',
+  'apps/admin-portal/src/App.tsx',
+  'apps/admin-portal/src/site.config.ts',
+  'apps/stripe-bridge/stripe_bridge/email_template.py',
+  'apps/stripe-bridge/stripe_bridge/mailer.py',
 ]
 
 // Where the framing rule is absolute. Everything else scanned is admin-only,
 // reported separately so a hit there reads as low priority, not as a pass.
 const PAYMENT_SURFACES = [
-  'web/index.html',
-  'web/src/App.tsx',
-  'web/src/site.config.ts',
-  'web/src/components/Hero/',
-  'web/src/components/Pricing/',
-  'web/src/components/Support/',
-  'web/src/components/Footer/',
-  'stripe-bridge/stripe_bridge/email_template.py',
-  'stripe-bridge/stripe_bridge/mailer.py',
+  'apps/admin-portal/index.html',
+  'apps/admin-portal/src/App.tsx',
+  'apps/admin-portal/src/site.config.ts',
+  'apps/admin-portal/src/components/Hero/',
+  'apps/admin-portal/src/components/Pricing/',
+  'apps/admin-portal/src/components/Support/',
+  'apps/admin-portal/src/components/Footer/',
+  'apps/stripe-bridge/stripe_bridge/email_template.py',
+  'apps/stripe-bridge/stripe_bridge/mailer.py',
 ]
 
 const SCANNED_EXTENSIONS = ['.tsx', '.ts', '.html', '.py']
@@ -280,23 +280,37 @@ const byLine = ({ entries, lines }) => {
   return [...grouped.values()].sort((a, b) => a.line - b.line)
 }
 
+const exists = (relativePath) => {
+  try {
+    statSync(join(REPO_ROOT, relativePath))
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Configured paths that no longer resolve. A restructure that moves a surface
+ * turns this script into a no-op that still exits 0, which reads as a clean
+ * audit: the single worst way for it to fail. Every configured entry is checked
+ * so staleness is reported loudly instead of being scanned over. Payment-surface
+ * prefixes are checked too, because a stale prefix there is subtler and worse:
+ * the file still gets scanned, but it lands under the "exempt" heading.
+ */
+const findMissingSurfaces = () =>
+  [
+    ...SCAN_DIRS.map((path) => ({ path, kind: 'SCAN_DIRS' })),
+    ...SCAN_FILES.map((path) => ({ path, kind: 'SCAN_FILES' })),
+    ...PAYMENT_SURFACES.map((path) => ({ path, kind: 'PAYMENT_SURFACES' })),
+  ].filter(({ path }) => !exists(path.endsWith('/') ? path.slice(0, -1) : path))
+
 const collect = () => {
-  const fromDirs = SCAN_DIRS.flatMap((relativeDir) => {
-    const absolute = join(REPO_ROOT, relativeDir)
-    try {
-      statSync(absolute)
-    } catch {
-      return []
-    }
-    return walk(absolute).map((path) => path.slice(REPO_ROOT.length + 1))
-  })
-  const fromFiles = SCAN_FILES.filter((relativePath) => {
-    try {
-      return statSync(join(REPO_ROOT, relativePath)).isFile()
-    } catch {
-      return false
-    }
-  })
+  const fromDirs = SCAN_DIRS.filter(exists).flatMap((relativeDir) =>
+    walk(join(REPO_ROOT, relativeDir)).map((path) => path.slice(REPO_ROOT.length + 1)),
+  )
+  const fromFiles = SCAN_FILES.filter(
+    (relativePath) => exists(relativePath) && statSync(join(REPO_ROOT, relativePath)).isFile(),
+  )
   return [...new Set([...fromDirs, ...fromFiles])].filter(isScannable).sort()
 }
 
@@ -350,6 +364,20 @@ const main = () => {
     return
   }
 
+  const missing = findMissingSurfaces()
+  if (missing.length) {
+    console.error(
+      [
+        '',
+        `WARNING: ${missing.length} configured path${missing.length === 1 ? ' does' : 's do'} not exist under ${REPO_ROOT}.`,
+        'This run is INCOMPLETE. Do not read its result as a clean audit.',
+        ...missing.map(({ path, kind }) => `  ${kind}: ${path}`),
+        'Fix the path lists at the top of this script, then re-run.',
+        '',
+      ].join('\n'),
+    )
+  }
+
   const files = readFileRecords(collect())
   const withRows = files.map((file) => ({
     ...file,
@@ -393,6 +421,11 @@ const main = () => {
   )
   if (!showAll) {
     console.log('Stripe product and Payment Link copy lives in the Stripe dashboard. Not scanned.')
+  }
+  if (missing.length) {
+    console.log(
+      `INCOMPLETE RUN: ${missing.length} configured path${missing.length === 1 ? '' : 's'} missing (see the warning above).`,
+    )
   }
 }
 
