@@ -10,29 +10,40 @@ description: Use when the wizteros live end-to-end suites are in play, either ru
 Two Node scripts drive **synthetic, locally signed Stripe webhooks** through a **locally
 running bridge container** against the **live Wizarr instance**:
 
-| Script | npm/bun script | Proves |
+| Script | Nx target (root alias) | Proves |
 |---|---|---|
-| `scripts/e2e-retest.mjs` | `test:e2e` | The paid-access flow time-boxes a real member's records |
-| `scripts/e2e-tiers.mjs` | `test:e2e:tiers` | Each tier's signup produces a correctly scoped invite |
+| `apps/stripe-bridge/scripts/e2e-retest.mjs` | `stripe-bridge:test:e2e` (`bun run test:e2e`) | The paid-access flow time-boxes a real member's records |
+| `apps/stripe-bridge/scripts/e2e-tiers.mjs` | `stripe-bridge:test:e2e:tiers` (`bun run test:e2e:tiers`) | Each tier's signup produces a correctly scoped invite |
+
+Both targets are **inferred** from the `scripts` in `apps/stripe-bridge/package.json`
+(whitelisted by its `nx.includedScripts`), not declared in `apps/stripe-bridge/project.json`,
+which holds only the Docker targets (`docker-build`, `serve`, `stop`, `logs`, `test-docker`).
+Reading `project.json` alone makes these look missing; they are not.
 
 Nothing touches Stripe. Both scripts build the event JSON themselves and sign it with
 `HMAC-SHA256(STRIPE_WEBHOOK_SECRET, "<ts>.<payload>")`, exactly the way Stripe does, then
 POST it to `http://localhost:8000/stripe/webhook`. The webhook never leaves the machine.
-Neither event carries a customer id the bridge has to look up, so `stripe.Customer.retrieve`
-is never called either.
+Both events carry a synthetic `cus_e2e...` id, but each also carries the member's email inline
+(`customer_details.email` on the checkout, `customer_email` on the invoice), so the bridge never
+falls back to `customer_email()` and `stripe.Customer.retrieve` is never called either.
 
 Wizarr, on the other hand, is the real one. Every read and every write in these runs lands
 on the production instance at `WIZARR_BASE_URL`, on the same records live members hold.
 Treat these as production-touching, not as tests.
 
-The container is `stripe-bridge-e2e` on port 8000, started from the local `.env` with
-`stripe-bridge/data` bind-mounted at `/data`. That bind mount is why the bridge SQLite used
-by an e2e run is a **local** file (`stripe-bridge/data/bridge.db`), not the NAS one.
+The container is `stripe-bridge-e2e` on port 8000, started from the repo-root `.env` with
+`apps/stripe-bridge/data` bind-mounted at `/data`. That bind mount is why the bridge SQLite used
+by an e2e run is a **local** file (`apps/stripe-bridge/data/bridge.db`, via `MAP_DB_PATH`'s
+`/data/bridge.db` default), not the NAS one. The `serve` target pins `cwd: {workspaceRoot}`, so
+the mount and the `--env-file .env` are always the repo's own, whichever directory you launch
+from.
 
 ## What `test:e2e` actually does
 
-`node --env-file=.env scripts/e2e-retest.mjs [email]`. Default member
-`codebenderinc@gmail.com`, overridable as `process.argv[2]`.
+`node --env-file=../../.env scripts/e2e-retest.mjs [email]`, run by Nx with the cwd set to
+`apps/stripe-bridge`, so `../../.env` resolves to the repo-root file. Default member
+`codebenderinc@gmail.com`, overridable as `process.argv[2]`, though the `bun run test:e2e` alias
+cannot pass that argument (see Procedure).
 
 1. Exits `2` unless `WIZARR_BASE_URL`, `WIZARR_API_KEY`, and `STRIPE_WEBHOOK_SECRET` are set.
 2. Waits for the bridge: `GET /stripe/webhook` until it answers **405** (20 tries, 1s apart),
@@ -45,8 +56,8 @@ by an e2e run is a **local** file (`stripe-bridge/data/bridge.db`), not the NAS 
    body. An explicit `null` is rejected by Wizarr's schema, hence the empty object.
 5. **Checkout extension**: posts a signed `checkout.session.completed` with a fixed session id
    `cs_e2e`, a unique customer `cus_e2e_<ms>`, a unique event id, `customer_details.email` set
-   to the member, and **no `metadata.tier`**. The bridge therefore logs "unknown tier" and
-   normalizes to **bronze**. A non-2xx response aborts with the status and body.
+   to the member, and **no `metadata.tier`**. The bridge therefore logs an `unknown tier` error
+   and normalizes to **bronze**. A non-2xx response aborts with the status and body.
 6. **Renewal extension**: posts a signed `invoice.paid` with
    `billing_reason: "subscription_cycle"` and `customer_email` set to the member. Same abort rule.
 7. **The expiry math assertion**, the only true assertion in the file. It re-reads the records
@@ -58,24 +69,31 @@ by an e2e run is a **local** file (`stripe-bridge/data/bridge.db`), not the NAS 
 Because event ids are unique per run, the `processed_events` idempotency table never skips a
 run. Because the customer id is unique per run, no stored mapping is reused.
 
-Bridge surface this covers: signature verification, the checkout handler (tier normalize,
-live library resolution, invite create or reuse, invite email, `upsert_pending`, the VIP short
-circuit, `stale_record_ids` coverage check with its disable-first fallback, expiry stamp on
-surviving records), and the `invoice.paid` handler (`subscription_create` skip, `set_subscribed`,
-VIP short circuit, id resolution by email then by invite code, absolute expiry).
+Bridge surface this covers: signature verification, the checkout handler (tier normalize, live
+library resolution, invite create *or* reuse depending on whether `cs_e2e` is already bound,
+invite email, `upsert_pending`, the `stale_record_ids` coverage check, expiry stamp on surviving
+records), and the `invoice.paid` handler (`set_subscribed`, id resolution by email, absolute
+expiry).
 
 Surface it does **not** cover: invite scoping (it never sends a tier), whether records end up
-**enabled** (only `expires` is asserted), and `customer.subscription.deleted` entirely.
+**enabled** (only `expires` is asserted), and `customer.subscription.deleted` entirely. It also
+never reaches the branches a non-VIP member on the share server cannot trigger: both VIP short
+circuits, the `billing_reason: "subscription_create"` skip, the invite-code fallback in
+`resolve_user_ids` (the per-run customer id is unique, so there is no stored mapping to fall back
+to), and the disable-first half of `stale_record_ids`, which fires only when a record sits on a
+retired server.
 
-> The comment block at the top of the file claims the flow ends at `now + 2*ACCESS_DURATION`.
-> That is stale. `set_expiry` is absolute, not additive, so both events land on the same
-> window and the code asserts `now + ACCESS_DURATION`. Trust the code.
+> The two paid events do not stack. `set_expiry` writes an absolute date, so the checkout and the
+> renewal both land on `now + ACCESS_DURATION` instead of adding up to `2*ACCESS_DURATION`, and
+> that is what the assertion checks.
 
 ## What `test:e2e:tiers` actually does
 
-`node --env-file=.env scripts/e2e-tiers.mjs`. Same env guard and exit `2`. Uses a synthetic
-address `e2e-tiers-<ms>@invalid.test` that matches no Plex account, so `find_users_by_email`
-returns nothing and the disable-first path can never reach a real member.
+`node --env-file=../../.env scripts/e2e-tiers.mjs`, same cwd. Same env guard and exit `2`, but
+**no bridge readiness wait**: it reads `GET /api/libraries` and then posts straight at
+`BRIDGE_URL`, so a container that is not up surfaces as a bare `ERROR: fetch failed`. Uses a
+synthetic address `e2e-tiers-<ms>@invalid.test` that matches no Plex account, so
+`find_users_by_email` returns nothing and the disable-first path can never reach a real member.
 
 Per tier, in order `bronze, silver, gold, youth`:
 
@@ -115,21 +133,24 @@ friendship until they redeem an invite. The script never re-enables at the end a
 asserts enabled state, so a green run can leave a member disabled.
 
 **It creates a real invite and can send a real email.** The session id `cs_e2e` is fixed, so the
-first run against a fresh local `stripe-bridge/data/bridge.db` creates a bronze invite for that
-member and mails the link, then records the binding. Later runs reuse the bound code and send
+first run against a fresh local `apps/stripe-bridge/data/bridge.db` creates a bronze invite for
+that member and mails the link, then records the binding. Later runs reuse the bound code and send
 nothing. **That first invite is never deleted by the script.** It stays redeemable in live
 Wizarr until `INVITE_EXPIRES_DAYS` passes.
 
 **`test:e2e:tiers` mutates no member.** It creates four invites and deletes them, and it mails
 four invite links to the synthetic `@invalid.test` address through the real SMTP relay. Bounces
-land in the `FROM_ADDR` mailbox.
+land in the `FROM_ADDR` mailbox. It does leave four synthetic subscribers behind in the local
+bridge DB (`upsert_pending` marks every checkout subscribed), which is local-only noise.
 
 **The container itself is live.** It boots with a live Stripe key, the live Wizarr key, and SMTP
-credentials, published on `0.0.0.0:8000`. On boot and every `RECONCILE_INTERVAL_SECONDS` it runs
-the tier scope check (which can **send an alert email** if a tier is not resolving) and the
-expiry reconcile sweep, which stamps expiries on live records for any subscribed, non-VIP row in
-the local bridge DB. Every e2e checkout writes such a row. That is the real reason to always
-bring it down.
+credentials, published on `0.0.0.0:8000`. On boot and every `RECONCILE_INTERVAL_SECONDS`
+(default 3600) it runs the tier scope check (which can **send an alert email** if a tier is not
+resolving) and the expiry reconcile sweep, which stamps `invited_at + ACCESS_DURATION` on the
+live records of any subscribed, non-VIP row in the local bridge DB whose records still carry no
+expiry. Every e2e checkout writes such a row, `subscribed` included. A second loop reads live
+Wizarr and plex.tv every `MEMBERS_SNAPSHOT_INTERVAL_SECONDS` (default 300) to refresh the members
+snapshot. That is the real reason to always bring it down.
 
 ### Running retest against the default member
 
@@ -146,10 +167,10 @@ routine smoke test against someone else's account.
 
 | Left behind | How to tell | How to clean up |
 |---|---|---|
-| Member reset but not extended | Records enabled with `expires` null (unlimited access, no paid window) | Re-run `test:e2e` for that email, or `PUT /api/users/<id>/update-expiry` with a real ISO date |
+| Member reset but not extended | Records enabled with `expires` null (unlimited access, no paid window) | Re-run the retest for that email (direct `node` invocation, see Procedure), or `PUT /api/users/<id>/update-expiry` with a real ISO date |
 | Member disabled by the checkout path | Records disabled, invite created and mailed | `POST /api/users/<id>/enable` per record, then stamp expiry as above |
 | Stranded retest invite | The `cs_e2e` bronze invite for the member's email, never deleted by design | Find it in `GET /api/invitations` and `DELETE /api/invitations/<id>`, or delete it in the Wizarr UI |
-| Stranded tier invites | Up to three, when a throw escaped `main()` before the cleanup loop; codes are in the run output | `DELETE /api/invitations/<id>` for each |
+| Stranded tier invites | Up to four, when a throw escaped `main()` before or during the cleanup loop (the deletes run under a 60s timeout that can itself throw); codes are in the run output | `DELETE /api/invitations/<id>` for each |
 | Silently stranded tier invite | A `WARN could not delete invite` line in an otherwise green run | Same delete, by the code in the WARN line |
 | Stranded container | `docker ps --filter name=stripe-bridge-e2e` | `bun run bridge:down` (or `docker rm -f stripe-bridge-e2e`) |
 
@@ -168,13 +189,16 @@ curl -s -X PUT -H "X-API-Key: $WIZARR_API_KEY" -H 'Content-Type: application/jso
 
 The local bridge DB also keeps rows from every run (`customer_map` marked subscribed,
 `session_invites` for `cs_e2e`, `processed_events`). It is local state, not the NAS database, so
-it is safe to leave. Deleting `stripe-bridge/data/bridge.db` resets it, at the cost of the next
-retest minting and mailing a fresh `cs_e2e` invite.
+it is safe to leave. Deleting `apps/stripe-bridge/data/bridge.db` resets it, at the cost of the
+next retest minting and mailing a fresh `cs_e2e` invite.
 
 ## Prerequisites
 
-- **A complete `.env` at the repo root** (gitignored, never commit it).
-  - Both scripts check exactly three and exit `2` otherwise: `WIZARR_BASE_URL`,
+- **A complete `.env` at the repo root** (gitignored, never commit it). A fresh clone or a git
+  worktree has only `.env.example`, so nothing runs until you put one there.
+  - When the file is **missing entirely**, Node never gets as far as the guard: the target dies
+    with `node: ../../.env: not found` and exit code **9** (Nx reports the task as failed).
+  - Both scripts check exactly three vars and exit `2` otherwise: `WIZARR_BASE_URL`,
     `WIZARR_API_KEY`, `STRIPE_WEBHOOK_SECRET`.
   - The container hard-requires more at import time, via `os.environ[...]`:
     `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, `WIZARR_BASE_URL`, `WIZARR_API_KEY`,
@@ -182,10 +206,15 @@ retest minting and mailing a fresh `cs_e2e` invite.
     (`mailer.py`). A missing one is a `KeyError` at import, so the container exits instantly and
     the script reports "bridge not reachable" rather than the real cause. Check `docker logs`.
   - Optional, with defaults: `ACCESS_DURATION` (35, read by both the script and the bridge),
-    `INVITE_EXPIRES_DAYS` (14 in code), `BRIDGE_URL` (`http://localhost:8000`), `SHARE_SERVER`
-    (`Meleys`, tiers script only).
-- **Docker running**, port 8000 free, and the commands run **from the repo root** (`bridge:up`
-  bind-mounts `$PWD/stripe-bridge/data`).
+    `INVITE_EXPIRES_DAYS` (14 in code, 7 in `.env.example`), `BRIDGE_URL`
+    (`http://localhost:8000`), `SHARE_SERVER` (`Meleys`, tiers script only; `tiers.py` hardcodes
+    its own `SHARE_SERVER` and ignores the env).
+- **Docker running** and port 8000 free. Every `bun run ...` alias works from any directory in the
+  repo: the Docker targets pin `cwd: {workspaceRoot}` (`bridge:up` bind-mounts
+  `$PWD/apps/stripe-bridge/data`) and the inferred script targets always run from
+  `apps/stripe-bridge`, which is what makes `--env-file=../../.env` land on the root `.env`. Only
+  the hand-rolled `node --env-file=.env apps/...` form below is cwd-sensitive, and has to be run
+  from the repo root.
 - **LAN access to the live Wizarr**, from the host *and* from inside the container. The
   `.env` value is the NAS LAN address, so a full-tunnel VPN or a different network breaks both
   halves.
@@ -200,12 +229,25 @@ bun run test:e2e:tiers    # tier scoping; needs the container already up
 bun run bridge:down       # ALWAYS, pass or fail
 ```
 
-- `retest` is `run-s bridge:build bridge:up test:e2e`, so it is the only entry point that
-  rebuilds the image. **`test:e2e:tiers` builds and starts nothing**: run it right after a
-  `retest` while the container is still up, or do
+- `retest` is `bun run bridge:build && bun run bridge:up && bun run test:e2e`, so it is the only
+  entry point that rebuilds the image. **`test:e2e:tiers` builds and starts nothing**: run it right
+  after a `retest` while the container is still up, or do
   `bun run bridge:build && bun run bridge:up && bun run test:e2e:tiers`.
-- Different member: `node --env-file=.env scripts/e2e-retest.mjs someone@example.com` with the
-  bridge already up (`bun run test:e2e someone@example.com` forwards the argument the same way).
+- **Different member: the root alias cannot carry the email.** `bun run test:e2e someone@example.com`
+  runs `nx run-many -t test:e2e -p stripe-bridge someone@example.com`, and `run-many` **silently
+  drops** the positional: the script gets no `argv[2]` and retests `codebenderinc@gmail.com`
+  instead of the address you typed. Use one of the two forms that do pass it, with the bridge
+  already up:
+
+  ```bash
+  # from the repo root
+  node --env-file=.env apps/stripe-bridge/scripts/e2e-retest.mjs someone@example.com
+  # or through Nx (the second colon parses fine here; args after -- are forwarded)
+  bunx nx run stripe-bridge:test:e2e -- someone@example.com
+  ```
+
+  Confirm the header line it prints (`E2E retest: someone@example.com`) names the member you
+  meant before it gets past the bridge wait.
 - `bridge:up` always `docker rm -f`s the old container first, so it is safe to re-run, but it
   runs whatever image `stripe-bridge` currently points at. After editing bridge code, rebuild.
 - When something fails, read the bridge side: `bun run bridge:logs` is `docker logs -f` and
@@ -217,8 +259,11 @@ bun run bridge:down       # ALWAYS, pass or fail
 
 | Symptom | What broke, in product terms | Where to look |
 |---|---|---|
-| exit `2`, "Missing WIZARR_BASE_URL / ..." | The run never started | `.env` at the repo root, and that `--env-file=.env` is in the invocation |
-| "bridge not reachable at http://localhost:8000" | The container is not serving | `docker logs --tail 100 stripe-bridge-e2e`. Usually a `KeyError` at import from a missing env var, or port 8000 already taken |
+| exit `9`, `node: ../../.env: not found` | There is no `.env` at all, so the run never started | Create the repo-root `.env` from `.env.example`; a fresh clone or worktree never has one |
+| exit `2`, "Missing WIZARR_BASE_URL / ..." | The `.env` exists but is incomplete, so the run never started | Those three keys in the repo-root `.env` |
+| "bridge not reachable at http://localhost:8000" (after ~20s) | The container is not serving; retest only, tiers has no such wait | `docker logs --tail 100 stripe-bridge-e2e`. Usually a `KeyError` at import from a missing env var, or port 8000 already taken |
+| `ERROR: fetch failed` in tiers | Same cause, no friendly message: the container is down, or `WIZARR_BASE_URL` is unreachable from the host | `docker ps --filter name=stripe-bridge-e2e`, then the logs; then LAN access to Wizarr |
+| `GET /api/libraries -> N` in tiers | Wizarr cannot list libraries, so no tier can be scoped or verified | `WIZARR_API_KEY`, then `WizarrClient.list_libraries` against the live API |
 | `GET /api/users -> 401/403` | Wizarr rejects the key; nobody's access changed | `WIZARR_API_KEY` in `.env`, rotated by a Wizarr upgrade or reinstall |
 | `GET /api/users -> 404`, or a read returns an unexpected shape | Wizarr's API surface moved under us | `stripe_bridge/wizarr.py`, then the scripts' direct `fetch` calls |
 | "no Wizarr records for `<email>`" | That member has no records at all: deleted, or their Plex email differs | Confirm the member in Wizarr; pass the right email |
@@ -241,10 +286,10 @@ bun run bridge:down       # ALWAYS, pass or fail
   (`wizarr.py`). Run both suites, then hand off to the **deploy-nas** skill. `bun run verify`
   (unit tests) is not a substitute: it proves the rules are self-consistent, not that they still
   match the real server.
-- **After a Wizarr upgrade**, as the acceptance check for the **wizarr-upgrade** skill. The
-  suites exercise the exact endpoints the bridge depends on (`/api/users`,
-  `/api/users/<id>/enable`, `/api/users/<id>/update-expiry`, `/api/invitations`), which is where
-  an upgrade breaks things.
+- **After a Wizarr upgrade**, as the acceptance check for it. The suites exercise the exact
+  endpoints the bridge depends on (`/api/users`, `/api/users/<id>/enable`,
+  `/api/users/<id>/update-expiry`, `/api/invitations`, `/api/libraries`), which is where an
+  upgrade breaks things.
 - **After a Plex library rename**, alongside `bun run refresh:libraries` and `bun run test:bridge`.
 - Not on a schedule, and not as a habit. Every retest run mutates a real member.
 
@@ -252,6 +297,9 @@ bun run bridge:down       # ALWAYS, pass or fail
 
 - **Pointing retest at a real member who is not the designated test member.** It resets and
   re-grants 35 days of access, and can disable every record they hold. Confirm the email first.
+- **Assuming `bun run test:e2e <email>` retests that email.** The argument is dropped, so the run
+  silently hits `codebenderinc@gmail.com` instead. Read the printed header, and use the direct
+  `node` form for anyone else.
 - **Leaving `stripe-bridge-e2e` up.** It holds live Stripe, Wizarr, and SMTP credentials on
   port 8000, and its reconcile loop keeps writing to live Wizarr on a timer. `bun run bridge:down`
   is part of the run, not an optional tidy-up.
@@ -262,8 +310,8 @@ bun run bridge:down       # ALWAYS, pass or fail
   and never touches a real record. Equally, a green retest says nothing about tier scoping: it
   sends no tier and falls back to bronze.
 - **Reading the tiers `downloads=` output as an assertion.** It is a printed constant.
-- **Trusting the retest header comment's `2*ACCESS_DURATION`.** The assertion is
-  `now + ACCESS_DURATION`, plus or minus 2 days.
+- **Expecting the checkout and the renewal to stack.** `set_expiry` is absolute, so the assertion
+  is `now + ACCESS_DURATION`, plus or minus 2 days, not `2*ACCESS_DURATION`.
 - **A green retest on a member left disabled.** The suite asserts expiry only. Check enabled
   state before calling the flow healthy.
 - **Editing a script to make a suite pass.** These two are the only checks that compare the code

@@ -5,13 +5,15 @@
 // The unit tests prove the tier rules are self-consistent; this proves the
 // rules still match the real server. For each tier it drives a synthetic
 // (signed) checkout.session.completed through the bridge, reads back the
-// invite the bridge created, and asserts the exact library set and downloads
-// flag — then deletes the invite so nothing is left redeemable.
+// invite the bridge created, and asserts its server and library scope, then
+// deletes the invite so nothing is left redeemable. The expected downloads
+// flag is printed for reference only: the invite's real allow_downloads is
+// never read back, so it is not asserted.
 //
 //   for each of bronze / silver / gold / youth:
 //     POST checkout.session.completed {metadata:{tier}}
 //     -> find the invite the bridge just created
-//     -> assert scope: share server only, expected library names, downloads
+//     -> assert scope: share server only, expected library names
 //     -> DELETE the invite
 //
 // Uses a synthetic email that matches no Plex account, so the bridge finds no
