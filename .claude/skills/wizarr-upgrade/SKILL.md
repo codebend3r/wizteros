@@ -47,9 +47,15 @@ ssh crivas@192.168.50.2 'cat /volume1/docker/westeroz/docker-compose.yml'
 From the `wizarr:` block, write down:
 
 - the exact `image:` reference,
-- whether it is **pinned** (`...:2.4.1`) or **floating** (`...:latest`),
+- whether it is **pinned** (`...:2026.7.1`) or **floating** (`...:latest`),
 - every `volumes:` line (confirm `wizarr-data` is the state directory),
 - the published port (expected `5690`).
+
+Note that `wizarr-data` is a **host bind mount**
+(`/volume1/docker/westeroz/wizarr-data:/data`), not a named Docker volume. That is what
+makes the step 3 backup and the step 6 restore ordinary filesystem operations on a path
+you can `ls`. It also means `docker volume` commands will not find it, so do not go
+looking for it there.
 
 Then record the rollback coordinates from the *running container*, which is the only
 place the currently-deployed bytes are identified:
@@ -69,6 +75,48 @@ you want to go back.
 
 Paste both into your notes now. If you skip this and the upgrade goes wrong, there is no
 way to name the old image.
+
+### Which version is running, and is a newer one actually out?
+
+A digest identifies bytes, not a version, and with a floating tag the tag tells you
+nothing either. Wizarr uses CalVer (`2026.7.1`), and the only reliable in-image source is
+`pyproject.toml`:
+
+```bash
+ssh crivas@192.168.50.2 'sudo -n /usr/local/bin/docker exec wizarr grep -m1 "^version" /app/pyproject.toml'
+```
+
+Two traps here, both of which will hand you a confidently wrong version:
+
+- **The OCI image labels lie.** `docker image inspect --format "{{json .Config.Labels}}"`
+  reports `org.opencontainers.image.version` as a `uv` release (something like
+  `0.11.26-python3.13-alpine3.23`, described as "An extremely fast Python package and
+  project manager"). Those labels are inherited from the Astral `uv` base image and
+  describe `uv`, not Wizarr. Never quote them as the Wizarr version.
+- **The in-image `CHANGELOG.md` is stale.** It can be many releases behind
+  `pyproject.toml`. Use it for reading notes, never for identifying the running version.
+
+Then find out whether there is anything to take, **without pulling**. Compare the digest
+the registry currently serves for the tag against the digest you recorded above:
+
+```bash
+TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:wizarrrr/wizarr:pull&service=ghcr.io" | python3 -c "import sys,json;print(json.load(sys.stdin)['token'])")
+curl -sI -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json" "https://ghcr.io/v2/wizarrrr/wizarr/manifests/latest" | grep -i docker-content-digest
+```
+
+This runs fine from the Mac; it is an anonymous read of a public registry and touches
+neither the NAS nor the local image store.
+
+- **Digest matches the running one**: there is no upgrade to take. Say so and stop. Do not
+  run step 4 to "confirm", and do not take a backup you do not need.
+- **Digest differs**: there is a new build. Now go read the release notes between the
+  running version and the latest tag (github.com/wizarrrr/wizarr/releases) and judge it
+  with step 6's migration test *before* you upgrade, not after. Any release naming a
+  migration, a schema change, or alembic makes the step 3 backup the difference between an
+  inconvenience and a rebuild.
+
+Wizarr ships alembic migrations in `/app/migrations/versions`, so "does this release
+migrate" is always a real question, never a theoretical one.
 
 ## 2. Preflight: prove the stack is healthy first
 
@@ -115,17 +163,41 @@ only road back, and it has to exist *before* the new image starts.
 
 If nas-state-backup is unavailable, this is the minimum acceptable substitute. It stops
 Wizarr so SQLite is not copied mid-write, and it tars through a throwaway container
-because `docker` is the only binary available under non-interactive `sudo`:
+because `docker` is the only binary available under non-interactive `sudo`.
+
+**`alpine` is not present on the NAS**, so this pulls it from Docker Hub on first use. That
+is the one part of the backup needing outbound network, and the part most likely to fail.
+Pull it as its own command, so a registry problem surfaces while Wizarr is still up:
 
 ```bash
-ssh crivas@192.168.50.2 'cd /volume1/docker/westeroz && sudo -n /usr/local/bin/docker compose stop wizarr && sudo -n /usr/local/bin/docker run --rm -v /volume1/docker/westeroz/wizarr-data:/src:ro -v /volume1/docker/westeroz:/out alpine tar -czf /out/wizarr-data-$(date +%Y%m%d-%H%M%S).tar.gz -C /src . && sudo -n /usr/local/bin/docker compose start wizarr'
+ssh crivas@192.168.50.2 'sudo -n /usr/local/bin/docker pull alpine'
 ```
 
-Then prove the archive exists and is not zero bytes:
+Then stop, tar, and restart. Note the `;` before the final `start`, not `&&`:
 
 ```bash
-ssh crivas@192.168.50.2 'ls -lh /volume1/docker/westeroz/wizarr-data-*.tar.gz | tail -3'
+ssh crivas@192.168.50.2 'cd /volume1/docker/westeroz && sudo -n /usr/local/bin/docker compose stop wizarr; sudo -n /usr/local/bin/docker run --rm -v /volume1/docker/westeroz/wizarr-data:/src:ro -v /volume1/docker/westeroz:/out alpine tar -czf /out/wizarr-data-$(date +%Y%m%d-%H%M%S).tar.gz -C /src .; sudo -n /usr/local/bin/docker compose start wizarr'
 ```
+
+That separator is load-bearing. Chained with `&&`, a failing `tar` (no `alpine`, full
+volume, bad path) skips the `start` and **leaves Wizarr stopped** while you read the error,
+turning a backup into an outage. With `;` the service always comes back, and you judge the
+archive on its own evidence instead of on the exit code.
+
+`sudo` is needed for the `docker` calls but not for the paths: `crivas` is uid 1026 and
+owns both `/volume1/docker/westeroz` and `wizarr-data`, so the archive lands with no
+ownership fight.
+
+Then prove the archive is real. Existence is not enough, precisely because the `;` means
+the `tar` may have failed:
+
+```bash
+ssh crivas@192.168.50.2 'ls -lht /volume1/docker/westeroz/wizarr-data-*.tar.gz | head -3; A=$(ls -t /volume1/docker/westeroz/wizarr-data-*.tar.gz | head -1); sudo -n /usr/local/bin/docker run --rm -v /volume1/docker/westeroz:/b:ro alpine sh -c "gzip -t /b/$(basename $A) && echo ARCHIVE_OK"'
+```
+
+Want `ARCHIVE_OK`, a plausible size (not zero, not a few hundred bytes), and a timestamp
+from the last few minutes. Confirm Wizarr came back too (re-run the step 2 probe) before
+continuing.
 
 Record the archive path. You will name it in the report, and you will need it in step 6.
 
@@ -175,7 +247,7 @@ still migrating or crash-looping will time out or return `502`.
 **5c. The bridge's API key still works.** An upgrade can invalidate keys or change auth
 handling, and nothing in the UI would tell you. Probe the exact endpoint
 `WizarrClient.list_libraries()` calls (`GET /api/libraries` with an `X-API-Key` header,
-see `stripe-bridge/stripe_bridge/wizarr.py`), using the key the bridge itself holds:
+see `apps/stripe-bridge/stripe_bridge/wizarr.py`), using the key the bridge itself holds:
 
 ```bash
 ssh crivas@192.168.50.2 'KEY=$(sudo -n /usr/local/bin/docker exec stripe-bridge printenv WIZARR_API_KEY); curl -s -o /dev/null -m 20 -w "%{http_code}\n" -H "X-API-Key: $KEY" http://192.168.50.2:5690/api/libraries'
@@ -197,11 +269,15 @@ bronze/silver/gold/youth, reads back the invite Wizarr created, asserts the exac
 scope, and deletes the invite afterwards. It uses an `@invalid.test` email that matches
 no Plex account, so no real member is ever touched.
 
-Two things to get right: the run must point at whichever bridge you mean
-(`BRIDGE_URL=http://192.168.50.2:8000` for the NAS one; it defaults to `localhost:8000`),
-and the local `STRIPE_WEBHOOK_SECRET` must be the one that bridge verifies against, or
-every webhook is rejected before it reaches Wizarr. Running this in step 2 as well gives
-a clean before/after comparison and is worth the extra minute.
+Three things to get right. The run must point at whichever bridge you mean
+(`BRIDGE_URL=http://192.168.50.2:8000` for the NAS one; it defaults to `localhost:8000`).
+The `STRIPE_WEBHOOK_SECRET` in the environment must be the one that bridge verifies
+against, or every webhook is rejected before it reaches Wizarr. And the script also needs
+`WIZARR_BASE_URL` and `WIZARR_API_KEY` to read the invite back, so it exits immediately if
+either is missing. There is **no `.env` at the repo root** (only `.env.example`), so supply
+those four yourself, pointing `WIZARR_BASE_URL` at `http://192.168.50.2:5690` and reusing
+the key the NAS bridge holds (the 5c one-liner reads it). Running this in step 2 as well
+gives a clean before/after comparison and is worth the extra minute.
 
 A pass here is the real green light. Anything else, go to step 6.
 
@@ -230,12 +306,30 @@ First decide which rollback you need. They are not the same size.
 
 **Did the new version migrate the database?**
 
+Scope the log read to the **current boot**, and only the current boot. A bare
+`docker logs wizarr` replays every boot the container has ever had, and Wizarr prints
+`Applying alembic migrations` plus `Database library migration` on *every* start whether
+or not anything actually moved. Grepping the full history therefore always "finds"
+migrations, including from boots months ago:
+
 ```bash
-ssh crivas@192.168.50.2 'sudo -n /usr/local/bin/docker logs wizarr 2>&1 | grep -iE "alembic|running upgrade|migrat|schema" | head -30'
+ssh crivas@192.168.50.2 'S=$(sudo -n /usr/local/bin/docker inspect --format "{{.State.StartedAt}}" wizarr); sudo -n /usr/local/bin/docker logs --since "$S" wizarr 2>&1 | grep -iE "running upgrade|alembic.runtime.migration|will assume|batch_alter" | head -30'
 ```
 
+The pattern is narrow on purpose. Do not widen it back to `migrat|schema`: that also
+matches Wizarr's own boot banners and, worse, matches unrelated **Plex** log lines like
+`503 Maintenance: Plex Media Server is currently running database migrations`, which say
+nothing about Wizarr's schema.
+
+The line that actually proves a schema change is `Running upgrade <rev> -> <rev>`. Alembic
+context lines (`Context impl SQLiteImpl`, `Will assume non-transactional DDL`) print on
+every boot and mean only that alembic ran, not that it changed anything.
+
 Cross-check the release notes for every version between the old tag and the new one
-(github.com/wizarrrr/wizarr releases) for the words migration, schema, or breaking.
+(github.com/wizarrrr/wizarr/releases) for the words migration, schema, or breaking. Recent
+history shows this is not hypothetical: `2026.4.0` fixed CASCADE data loss in an LDAP
+migration, `2026.3.0` changed column addition to `batch_alter_table` for SQLite, and
+`2025.12.0` merged migrations.
 
 - **No migration lines and no migration in the release notes**: the database on disk is
   untouched, so a **plain image rollback is enough**. The old image opens the same file
@@ -247,14 +341,26 @@ Cross-check the release notes for every version between the old tag and the new 
 - **Cannot tell**: treat it as migrated. Restoring a good backup over an unmigrated
   database costs you nothing; skipping a needed restore costs you the invite system.
 
-**Plain image rollback** (re-point the service at the digest recorded in step 1):
+**Plain image rollback** (re-point the service at the digest recorded in step 1).
+
+First confirm the old image is still on the box. If it was pruned, no amount of compose
+editing will bring it back by digest without a network pull:
+
+```bash
+ssh crivas@192.168.50.2 'sudo -n /usr/local/bin/docker image inspect --format "rollback target present: {{.Id}}" ghcr.io/wizarrrr/wizarr@sha256:<recorded-digest>'
+```
+
+Then back up the compose file:
 
 ```bash
 ssh crivas@192.168.50.2 'cd /volume1/docker/westeroz && cp docker-compose.yml docker-compose.yml.pre-rollback'
 ```
 
-Edit the single `image:` line in the `wizarr:` block to the recorded digest, then confirm
-you changed the right line and only that line:
+Editing the compose file needs **no `sudo`**: it is owned by `crivas` and mode `rwxrwxrwx`,
+so the "only `docker` under non-interactive `sudo`" constraint does not apply to it. Change
+the single `image:` line in the `wizarr:` block to `ghcr.io/wizarrrr/wizarr@sha256:<digest>`
+(a digest reference replaces the whole `repo:tag`; do not append it to `:latest`), then
+confirm you changed the right line and only that line:
 
 ```bash
 ssh crivas@192.168.50.2 'cd /volume1/docker/westeroz && grep -n "image:" docker-compose.yml'
@@ -275,8 +381,23 @@ aside rather than deleting it, so a bad restore is still recoverable:
 ssh crivas@192.168.50.2 'cd /volume1/docker/westeroz && sudo -n /usr/local/bin/docker compose stop wizarr && mv wizarr-data wizarr-data.migrated-$(date +%Y%m%d-%H%M%S)'
 ```
 
-Restore `wizarr-data` from the step 3 archive (nas-state-backup owns the restore
-mechanics; use them rather than improvising), re-point the image line as above, then:
+Restore `wizarr-data` from the step 3 archive. If nas-state-backup took the backup, use its
+restore path rather than improvising. If you used the step 3 fallback tarball, this is its
+matching restore, unpacking through a container for the same reason the backup did:
+
+```bash
+ssh crivas@192.168.50.2 'cd /volume1/docker/westeroz && mkdir -p wizarr-data && sudo -n /usr/local/bin/docker run --rm -v /volume1/docker/westeroz/wizarr-data:/dst -v /volume1/docker/westeroz:/b:ro alpine tar -xzf /b/<archive-name>.tar.gz -C /dst'
+```
+
+Name the archive explicitly. Do not glob it: the newest `wizarr-data-*.tar.gz` may be one
+you took *after* the bad upgrade. Then confirm the database file is actually back before
+starting anything:
+
+```bash
+ssh crivas@192.168.50.2 'ls -lh /volume1/docker/westeroz/wizarr-data/'
+```
+
+Re-point the image line as above, then:
 
 ```bash
 ssh crivas@192.168.50.2 'cd /volume1/docker/westeroz && sudo -n /usr/local/bin/docker compose up -d wizarr'
@@ -309,8 +430,18 @@ Skip steps 5c through 5e entirely.
   which is why the fallback backup in step 3 looks the way it does.
 - **One-shot SSH only**: `ssh host 'cd ... && ...'`, never an interactive two-step. A bare
   local `cd /volume1/...` hits the Mac's zoxide alias and fails.
-- **Name the service on every compose command.** `westeroz` is a multi-service project;
-  an unscoped `pull` or `up -d` upgrades or recreates everything in it.
+- **Name the service on every compose command.** `westeroz` currently holds five services:
+  `wizarr`, `tautulli`, `sabnzbd`, `radarr`, `sonarr`. An unscoped `pull` or `up -d`
+  upgrades or recreates all of them, so a Wizarr upgrade becomes an unannounced *arr and
+  SABnzbd upgrade that also interrupts in-flight downloads. Confirm the current list with
+  `docker compose ps --services` rather than trusting this line.
+- **Compose on this NAS is v2.20.1 and rejects Go-template `--format`.**
+  `docker compose ps --format "{{.Service}}"` fails with `could not be parsed`. Use
+  `--services`, or plain `docker compose ps`, or `docker inspect --format` on the container
+  (which does support templates).
+- **The image's OCI labels describe `uv`, not Wizarr.** Read the running version from
+  `/app/pyproject.toml`, never from `.Config.Labels` and never from the in-image
+  `CHANGELOG.md`, which lags by many releases. See step 1.
 - **The `westeroz` compose file is NAS-side only.** It is not in this repo and there is no
   copy to diff against. Read it, back it up before editing (`docker-compose.yml.pre-*`),
   and never regenerate it from this repo's root compose file, which defines the bridge
@@ -328,9 +459,10 @@ Skip steps 5c through 5e entirely.
 
 State plainly:
 
-- **From and to**: the old image reference and digest (step 1) and the new one (step 5a),
+- **From and to**: the old CalVer version and digest (step 1) and the new one (step 5a),
   plus whether the tag is pinned or floating. If it is floating, say so and recommend
-  pinning.
+  pinning. If the registry digest already matched, report "already current" and that no
+  upgrade was performed.
 - **Backup**: the archive path from step 3, or an explicit statement that nas-state-backup
   ran and where it put things. If there is no backup, there was no upgrade.
 - **Verification results, one line each** for 5a through 5e: container state, web UI code,
