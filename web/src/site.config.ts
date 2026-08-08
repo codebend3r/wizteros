@@ -53,22 +53,25 @@ const SUPPORT_ITEMS: ReadonlyArray<SupportItem> = [
   },
 ]
 
+// Payment-surface copy stays on capability and infrastructure language
+// (resolution, audio quality, downloads, profile scope). Never name content,
+// titles, or libraries on a priced card.
 const FEATURE_LABELS = [
-  'Access to all 1080p libraries',
-  'Access to all 4K libraries',
-  'Access to Lossless Music Library',
+  '1080p HD streaming',
+  '4K UHD streaming',
+  'Lossless audio streaming',
   'Offline downloads for travel',
-  'Request any show or movie',
+  'Access to the request queue',
 ] as const
 
-// Youth swaps the two library rows for youth-scoped wording; the remaining
+// Youth swaps the two playback rows for youth-profile wording; the remaining
 // rows stay identical so the four cards keep their row-by-row alignment.
 const YOUTH_FEATURE_LABELS = [
-  'Access to all youth 1080p tv shows and movies',
-  'Access to all 4K youth movies',
-  'Access to Lossless Music Library',
+  '1080p HD streaming (youth profile)',
+  '4K UHD streaming (youth profile)',
+  'Lossless audio streaming',
   'Offline downloads for travel',
-  'Request any show or movie',
+  'Access to the request queue',
 ] as const
 
 const toChecklist = ({
@@ -93,14 +96,10 @@ export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
       name: 'Bronze',
       price: '$8',
       cadence: 'CAD / month',
-      summary: 'The essentials to get streaming.',
+      summary: 'Everyday playback in 1080p.',
       features: toChecklist({
         labels: FEATURE_LABELS,
-        included: [
-          'Access to all 1080p libraries',
-          'Access to Lossless Music Library',
-          'Request any show or movie',
-        ],
+        included: ['1080p HD streaming', 'Lossless audio streaming', 'Access to the request queue'],
       }),
       paymentLinkUrl: env.VITE_PAYMENT_LINK_BRONZE_URL ?? '',
     },
@@ -109,14 +108,14 @@ export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
       name: 'Silver',
       price: '$14',
       cadence: 'CAD / month',
-      summary: 'The full catalog in 4K.',
+      summary: 'Full 4K playback quality.',
       features: toChecklist({
         labels: FEATURE_LABELS,
         included: [
-          'Access to all 1080p libraries',
-          'Access to all 4K libraries',
-          'Access to Lossless Music Library',
-          'Request any show or movie',
+          '1080p HD streaming',
+          '4K UHD streaming',
+          'Lossless audio streaming',
+          'Access to the request queue',
         ],
       }),
       paymentLinkUrl: env.VITE_PAYMENT_LINK_SILVER_URL ?? '',
@@ -130,11 +129,11 @@ export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
       features: toChecklist({
         labels: FEATURE_LABELS,
         included: [
-          'Access to all 1080p libraries',
-          'Access to all 4K libraries',
-          'Access to Lossless Music Library',
+          '1080p HD streaming',
+          '4K UHD streaming',
+          'Lossless audio streaming',
           'Offline downloads for travel',
-          'Request any show or movie',
+          'Access to the request queue',
         ],
       }),
       paymentLinkUrl: env.VITE_PAYMENT_LINK_GOLD_URL ?? '',
@@ -144,14 +143,14 @@ export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
       name: 'Youth',
       price: '$10',
       cadence: 'CAD / month',
-      summary: 'A family plan curated for youth.',
+      summary: 'A youth profile with restricted defaults.',
       features: toChecklist({
         labels: YOUTH_FEATURE_LABELS,
         included: [
-          'Access to all youth 1080p tv shows and movies',
-          'Access to all 4K youth movies',
+          '1080p HD streaming (youth profile)',
+          '4K UHD streaming (youth profile)',
           'Offline downloads for travel',
-          'Request any show or movie',
+          'Access to the request queue',
         ],
       }),
       paymentLinkUrl: env.VITE_PAYMENT_LINK_YOUTH_URL ?? '',

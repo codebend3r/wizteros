@@ -9,10 +9,10 @@ const TIERS: ReadonlyArray<Tier> = [
     name: 'Bronze',
     price: '$8',
     cadence: 'CAD / month',
-    summary: 'The essentials to get streaming.',
+    summary: 'Everyday playback in 1080p.',
     features: [
-      { label: 'Access to all 1080p libraries', included: true },
-      { label: 'Access to all 4K libraries', included: false },
+      { label: '1080p HD streaming', included: true },
+      { label: '4K UHD streaming', included: false },
     ],
     paymentLinkUrl: 'https://buy.stripe.com/test_bronze',
   },
@@ -43,14 +43,14 @@ test('renders a card per tier with price, cadence, summary, and features', () =>
   expect(screen.getByRole('heading', { name: 'Bronze' })).toBeInTheDocument()
   expect(screen.getByText('$8')).toBeInTheDocument()
   expect(screen.getAllByText('CAD / month')).toHaveLength(2)
-  expect(screen.getByText('The essentials to get streaming.')).toBeInTheDocument()
-  expect(screen.getByText('Access to all 1080p libraries')).toBeInTheDocument()
+  expect(screen.getByText('Everyday playback in 1080p.')).toBeInTheDocument()
+  expect(screen.getByText('1080p HD streaming')).toBeInTheDocument()
 })
 
 test('marks features as included or excluded', () => {
   render(<Pricing tiers={TIERS} />)
-  const included = getFeatureRow({ label: 'Access to all 1080p libraries' })
-  const excluded = getFeatureRow({ label: 'Access to all 4K libraries' })
+  const included = getFeatureRow({ label: '1080p HD streaming' })
+  const excluded = getFeatureRow({ label: '4K UHD streaming' })
   expect(within(included).getByText('Included:')).toBeInTheDocument()
   expect(within(excluded).getByText('Not included:')).toBeInTheDocument()
 })
