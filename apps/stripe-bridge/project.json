@@ -1,0 +1,53 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "stripe-bridge",
+  "projectType": "application",
+  "sourceRoot": "apps/stripe-bridge/stripe_bridge",
+  "tags": ["scope:bridge", "lang:python"],
+  "targets": {
+    "test-docker": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["docker-build"],
+      "options": {
+        "command": "docker run --rm -v \"$PWD/apps/stripe-bridge:/app\" -w /app stripe-bridge sh -c 'pip install -q pytest responses >/dev/null 2>&1 && python -m pytest -q'",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "docker-build": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "docker build -t stripe-bridge apps/stripe-bridge",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "commands": [
+          "docker rm -f stripe-bridge-e2e >/dev/null 2>&1; docker run -d --name stripe-bridge-e2e -p 8000:8000 --env-file .env -v \"$PWD/apps/stripe-bridge/data:/data\" stripe-bridge"
+        ],
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "stop": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "docker rm -f stripe-bridge-e2e",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "logs": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "continuous": true,
+      "options": {
+        "command": "docker logs -f stripe-bridge-e2e",
+        "cwd": "{workspaceRoot}"
+      }
+    }
+  }
+}

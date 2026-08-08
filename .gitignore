@@ -11,6 +11,10 @@ stripe-bridge-data/
 # node
 node_modules/
 
+# nx
+.nx/cache
+.nx/workspace-data
+
 # python
 __pycache__/
 *.pyc
@@ -29,7 +33,7 @@ venv/
 .netlify
 
 # supabase cli
-web/supabase/.temp/
+apps/admin-portal/supabase/.temp/
 
 # supabase cli (root)
 supabase/.temp/

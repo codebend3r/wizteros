@@ -1,0 +1,83 @@
+{
+  "name": "admin-portal",
+  "version": "0.1.5",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "preinstall": "node ../../scripts/only-bun.mjs",
+    "predev": "node ../../scripts/only-bun.mjs",
+    "dev": "vite",
+    "prebuild": "node ../../scripts/only-bun.mjs",
+    "build": "vite build",
+    "prepreview": "node ../../scripts/only-bun.mjs",
+    "preview": "vite preview",
+    "typecheck": "tsgo --noEmit",
+    "lint:ts": "oxlint",
+    "lint:ts:fix": "oxlint --fix",
+    "lint:css": "gale \"src/**/*.scss\"",
+    "lint:css:fix": "gale --fix \"src/**/*.scss\"",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "pretest": "node ../../scripts/only-bun.mjs",
+    "test": "bun test --dots --parallel",
+    "test:watch": "bun test --dots --parallel --watch"
+  },
+  "dependencies": {
+    "@fontsource-variable/bricolage-grotesque": "5.2.10",
+    "@fontsource-variable/instrument-sans": "5.2.8",
+    "@fontsource-variable/jetbrains-mono": "5.2.8",
+    "@fontsource/lily-script-one": "5.2.8",
+    "@fontsource/silkscreen": "5.2.8",
+    "@supabase/supabase-js": "2.110.8",
+    "@tanstack/query-sync-storage-persister": "5.101.2",
+    "@tanstack/react-query": "5.101.2",
+    "@tanstack/react-query-persist-client": "5.101.2",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-router-dom": "7.18.1",
+    "zustand": "5.0.14"
+  },
+  "devDependencies": {
+    "@happy-dom/global-registrator": "20.11.1",
+    "@lyricalstring/gale": "0.1.5",
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "16.3.2",
+    "@testing-library/user-event": "14.6.1",
+    "@types/bun": "1.3.14",
+    "@types/node": "26.1.1",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "@typescript/native-preview": "7.0.0-dev.20260707.2",
+    "@vitejs/plugin-react": "4.7.0",
+    "happy-dom": "20.11.1",
+    "oxfmt": "0.61.0",
+    "oxlint": "1.76.0",
+    "sass": "1.101.0",
+    "typescript": "5.9.3",
+    "vite": "5.4.21"
+  },
+  "nx": {
+    "projectType": "application",
+    "tags": [
+      "scope:portal",
+      "lang:ts"
+    ],
+    "includedScripts": [
+      "dev",
+      "build",
+      "preview",
+      "typecheck",
+      "lint:ts",
+      "lint:ts:fix",
+      "lint:css",
+      "lint:css:fix",
+      "format",
+      "format:check",
+      "test",
+      "test:watch"
+    ]
+  },
+  "trustedDependencies": [
+    "@lyricalstring/gale"
+  ]
+}

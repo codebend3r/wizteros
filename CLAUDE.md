@@ -8,18 +8,21 @@ A self-hosted stack that gates Plex access behind a recurring Stripe "server-cos
 
 - **Wizarr** — invite-based onboarding for Plex users
 - **Tautulli** — usage analytics
-- **stripe-bridge** (`stripe-bridge/`) — small FastAPI service that converts Stripe webhooks (`checkout.session.completed`, `customer.subscription.deleted`) into Wizarr API calls
+- **stripe-bridge** (`apps/stripe-bridge/`) — small FastAPI service that converts Stripe webhooks (`checkout.session.completed`, `customer.subscription.deleted`) into Wizarr API calls
 
 The contribution framing is deliberate (Plex TOS prohibits selling access, Stripe TOS prohibits selling rights you don't own). When suggesting copy, product descriptions, or UX text, lean toward infrastructure/hosting language. Never reference content, libraries, or titles in user-facing payment surfaces.
 
 ## Structure
 
-- Two apps sit side by side at the repo root:
-  - `web/` — Vite + React SPA (TypeScript, bun). Source under `web/src/` (`components/`, `pages/`, `lib/`, `stores/`, `styles/`, `test/`); `web/public/`, `index.html`, `vite.config.ts`, and `tsconfig.json` live at the app root.
-  - `stripe-bridge/` — FastAPI service (Python 3.12). All runtime code lives in the `stripe_bridge/` package (`stripe_wizarr_bridge.py` is the app entrypoint, plus `wizarr.py`, `plex.py`, `store.py`, `tiers.py`, `mailer.py`, `email_template.py`, `admin.py`); `tests/`, `scripts/`, `Dockerfile`, `pytest.ini`, and `requirements*.txt` sit at the app root, outside the package.
+This is an **Nx monorepo** over **bun workspaces** (`workspaces: ["apps/*"]`), with two apps and no shared libs yet.
+
+- `apps/admin-portal/` — Vite + React SPA (TypeScript, bun), Nx project **`admin-portal`**. Source under `apps/admin-portal/src/` (`components/`, `pages/`, `lib/`, `stores/`, `styles/`, `test/`); `public/`, `index.html`, `vite.config.ts`, `tsconfig.json`, `bunfig.toml`, and the oxlint/oxfmt/gale configs live at the app root. It has no `project.json`: Nx infers its targets from the `scripts` in `apps/admin-portal/package.json`, whitelisted by the `nx.includedScripts` field there. Adding a script that should be runnable as a target means adding it to that list too.
+- `apps/stripe-bridge/` — FastAPI service (Python 3.12), Nx project **`stripe-bridge`**. All runtime code lives in the `stripe_bridge/` package (`stripe_wizarr_bridge.py` is the app entrypoint, plus `wizarr.py`, `plex.py`, `store.py`, `tiers.py`, `mailer.py`, `email_template.py`, `admin.py`); `tests/`, `scripts/`, `Dockerfile`, `pytest.ini`, and `requirements*.txt` sit at the app root, outside the package. Being Python, it has no `package.json`, so its targets (`test`, `test-docker`, `docker-build`, `serve`, `stop`, `logs`) are declared explicitly in `apps/stripe-bridge/project.json` as `nx:run-commands`, each with `cwd: {workspaceRoot}`.
 - Import bridge modules package-absolute — `from stripe_bridge import store`, `from stripe_bridge.wizarr import WizarrClient`. New modules go inside `stripe_bridge/` and need no Dockerfile change; the image copies the whole package.
-- The repo root orchestrates both: `package.json` (verify/release/deploy scripts), `scripts/`, `docs/` (all specs, plans, and PRDs for both apps), `netlify.toml` (builds `web/` only), `.github/`, `.husky/`.
-- Path references below (e.g. `styles/globals.scss`, `lib/foo.ts`) are under `web/src/`, and the `@/*` import alias maps to `web/src/*` — declared in both `web/tsconfig.json` and `web/vite.config.ts`, so new aliases must be added in both.
+- The workspace root orchestrates both: `nx.json` (target defaults, cacheable targets, named inputs), `package.json` (bun workspaces plus thin aliases that all delegate to `nx`), `scripts/`, `docs/` (all specs, plans, and PRDs for both apps), `docker-compose.yml` (builds `./apps/stripe-bridge`), `netlify.toml` (builds `admin-portal` only, publishes `apps/admin-portal/dist`), `.github/`, `.husky/`.
+- Run tasks through Nx, not by cd-ing into an app: `bunx nx run admin-portal:test`, `bunx nx run-many -t lint test`, `bunx nx affected -t test`. The root `bun run <script>` aliases (`dev`, `build`, `verify`, `system-check`, `lint`, `test:web`, `test:bridge`, `bridge:*`) are kept for muscle memory and all delegate to Nx. Targets whose name contains a colon (`lint:css`, `format:check`, `typecheck:tsc`) must be invoked via `nx run-many -t <target> -p <project>` — `nx run proj:lint:css` parses the second colon as a configuration name.
+- Anything cacheable is declared in `nx.json` `targetDefaults`. A new target that is safe to cache belongs there; anything that touches Docker or the network must stay `cache: false`.
+- Path references below (e.g. `styles/globals.scss`, `lib/foo.ts`) are under `apps/admin-portal/src/`, and the `@/*` import alias maps to `apps/admin-portal/src/*` — declared in both `apps/admin-portal/tsconfig.json` and `apps/admin-portal/vite.config.ts`, so new aliases must be added in both.
 - Import via the `@/` alias, never parent-relative paths (`../`). Same-directory `./` imports (co-located styles, tests) are fine. There is no linter in this repo, so this is convention rather than something tooling catches.
 
 ## Workflow

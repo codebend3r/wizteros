@@ -1,0 +1,95 @@
+{
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "defaultBase": "main",
+  "workspaceLayout": {
+    "appsDir": "apps",
+    "libsDir": "libs"
+  },
+  "namedInputs": {
+    "sharedGlobals": [],
+    "default": [
+      "{projectRoot}/**/*",
+      "sharedGlobals"
+    ],
+    "production": [
+      "default",
+      "!{projectRoot}/**/*.test.{ts,tsx}",
+      "!{projectRoot}/src/test/**/*",
+      "!{projectRoot}/src/test-setup.ts",
+      "!{projectRoot}/tests/**/*",
+      "!{projectRoot}/scripts/**/*",
+      "!{projectRoot}/bunfig.toml",
+      "!{projectRoot}/requirements-dev.txt",
+      "!{projectRoot}/pytest.ini"
+    ]
+  },
+  "targetDefaults": {
+    "build": {
+      "dependsOn": [
+        "^build"
+      ],
+      "inputs": [
+        "production",
+        "^production"
+      ],
+      "outputs": [
+        "{projectRoot}/dist"
+      ],
+      "cache": true
+    },
+    "typecheck": {
+      "inputs": [
+        "default",
+        "^production"
+      ],
+      "cache": true
+    },
+    "test": {
+      "inputs": [
+        "default",
+        "^production"
+      ],
+      "cache": true
+    },
+    "lint:ts": {
+      "inputs": [
+        "default"
+      ],
+      "cache": true
+    },
+    "lint:css": {
+      "inputs": [
+        "default"
+      ],
+      "cache": true
+    },
+    "lint:py": {
+      "inputs": [
+        "default"
+      ],
+      "cache": true
+    },
+    "format:check": {
+      "inputs": [
+        "default"
+      ],
+      "cache": true
+    },
+    "dev": {
+      "cache": false
+    },
+    "preview": {
+      "cache": false
+    },
+    "test:e2e": {
+      "cache": false
+    },
+    "test:e2e:tiers": {
+      "cache": false
+    },
+    "refresh:libraries": {
+      "cache": false
+    }
+  },
+  "analytics": true
+}

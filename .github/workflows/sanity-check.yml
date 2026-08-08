@@ -4,20 +4,12 @@ on:
   push:
     branches: [main]
 
-# Only the newest commit on main matters; an older in-flight run is cancelled.
-concurrency:
-  group: sanity-check-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   # CI already lints/typechecks/tests. This job covers the one thing it doesn't:
   # the production bundle Netlify actually ships.
   web-build:
     name: 🏗️ Web production build
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: web
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v7
@@ -25,12 +17,12 @@ jobs:
         uses: oven-sh/setup-bun@v2
       - name: 📦 Install dependencies
         run: bun install --frozen-lockfile
-      - name: 🏗️ Build (tsgo + vite)
+      - name: 🏗️ Build (Nx + Vite)
         run: bun run build
       - name: 🕵️ Verify build output
         run: |
-          test -s dist/index.html || { echo "::error::💥 dist/index.html is missing or empty"; exit 1; }
-          echo "✅ Bundle looks sane — $(du -sh dist | cut -f1) across $(find dist -type f | wc -l | tr -d ' ') files"
+          test -s apps/admin-portal/dist/index.html || { echo "::error::💥 apps/admin-portal/dist/index.html is missing or empty"; exit 1; }
+          echo "✅ Bundle looks sane — $(du -sh apps/admin-portal/dist | cut -f1) across $(find apps/admin-portal/dist -type f | wc -l | tr -d ' ') files"
 
   # Proves the image still builds and the FastAPI app imports cleanly — a broken
   # import only shows up at container start, long after the merge.
@@ -41,7 +33,7 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v7
       - name: 🐳 Build image
-        run: docker build -t stripe-bridge:sanity ./stripe-bridge
+        run: docker build -t stripe-bridge:sanity ./apps/stripe-bridge
       - name: 🚦 Smoke test the app
         run: |
           docker run --rm -i \
@@ -74,13 +66,13 @@ jobs:
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v7
-      - name: 🧮 Compare root and web versions
+      - name: 🧮 Compare root and admin portal versions
         run: |
           root=$(node -p "require('./package.json').version")
-          web=$(node -p "require('./web/package.json').version")
-          echo "📦 root=$root  🌐 web=$web"
-          if [ "$root" != "$web" ]; then
-            echo "::error::💥 Version drift — root is $root but web/ is $web"
+          portal=$(node -p "require('./apps/admin-portal/package.json').version")
+          echo "📦 root=$root  🌐 admin-portal=$portal"
+          if [ "$root" != "$portal" ]; then
+            echo "::error::💥 Version drift — root is $root but apps/admin-portal/ is $portal"
             exit 1
           fi
           echo "✅ Both apps agree on v$root"
