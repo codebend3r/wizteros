@@ -11,9 +11,12 @@ Reads `origin/main`, decides whether the unreleased commits warrant a version bu
 recommends a level (patch, minor, or major), and stops for a plain yes or no. On yes it
 runs the repo's existing release flow.
 
-`scripts/release.sh` owns the mechanics (lockstep bump of root and `web/` package.json,
-the `WZ: Bump version to X.Y.Z` commit, the `vX.Y.Z` tag). This skill owns the judgment
-and never hand-edits a version field.
+`scripts/release.sh` owns the mechanics (lockstep bump of the workspace root and
+`apps/admin-portal/package.json`, the `WZ: Bump version to X.Y.Z` commit, the `vX.Y.Z`
+tag). This skill owns the judgment and never hand-edits a version field.
+
+`apps/stripe-bridge/` is Python and has no `package.json`, so it carries no version of
+its own; the root version covers the whole workspace.
 
 Versions here are release bookkeeping for a private package with no downstream semver
 consumers. That changes the calibration; see Picking the level.
@@ -36,9 +39,9 @@ commit landed on main but `v0.1.5` was never pushed, so the tag series stopped a
 
 Cross-checks before judging anything:
 
-- `package.json` and `web/package.json` on `origin/main` must both read the baseline
-  version (they move in lockstep). Disagreement means a broken release; stop and report
-  it instead of recommending.
+- `package.json` and `apps/admin-portal/package.json` on `origin/main` must both read the
+  baseline version (they move in lockstep). Disagreement means a broken release; stop and
+  report it instead of recommending.
 - If the baseline version's tag is missing from `git ls-remote --tags origin`, keep
   going, but fold the backfill into the recommendation:
   `git tag vX.Y.Z <bump-sha> && git push origin vX.Y.Z`.
@@ -54,11 +57,26 @@ git log <baseline-sha>..origin/main --format='== %h %s' --stat
 
 Split the commits into two piles:
 
-- **Shipped surface**: anything that changes what runs in production. `web/` (ships via
-  Netlify from main), `stripe-bridge/`, compose files or deploy config that alter the
-  running stack.
-- **Housekeeping**: `docs/`, `.github/`, `.claude/`, `scripts/` tooling, root
-  `package.json` script wiring, CI, test-only changes.
+- **Shipped surface**: anything that changes what runs in production.
+  `apps/admin-portal/` (ships via Netlify from main), `apps/stripe-bridge/`, and the
+  deploy config that alters the running stack (`docker-compose.yml`, `netlify.toml`,
+  `apps/stripe-bridge/Dockerfile`).
+- **Housekeeping**: `docs/`, `.github/`, `.claude/`, `scripts/` tooling, CI, test-only
+  changes, and the monorepo wiring itself (`nx.json`, root `package.json` aliases,
+  `apps/stripe-bridge/project.json` target definitions, `nx.includedScripts` in
+  `apps/admin-portal/package.json`). Task plumbing changes how the repo is built, not
+  what runs in production.
+
+Living under an app root does not by itself make a file shipped surface. Three cases to
+get right:
+
+- `apps/admin-portal/package.json`: moves on every release by definition, so a diff
+  touching only its `version` field is the bump commit, not shipped surface.
+- `apps/stripe-bridge/tests/` and `apps/admin-portal/src/test/`: test-only, housekeeping.
+  The runtime code is `apps/stripe-bridge/stripe_bridge/` and `apps/admin-portal/src/`.
+- App-root config (`vite.config.ts`, `tsconfig.json`, `pytest.ini`, lint or format
+  config): shipped surface only when it changes the built output. A lint-rule tweak is
+  housekeeping; a Vite build or alias change is not.
 
 Commits are the unit, and commits mix file classes: a commit with at least one
 shipped-surface file goes in the shipped pile, whatever else it touches.
@@ -110,8 +128,9 @@ the global autonomy rules forbid.
    consented plan, not a separate favor to ask about later.
 5. Verify: `git ls-remote --tags origin` shows the new tag, and both package.json files
    read the new version.
-6. If the released range touched `stripe-bridge/`, point at the deploy-nas skill as the
-   follow-up. `web/` needs nothing; Netlify redeploys from main on its own.
+6. If the released range touched `apps/stripe-bridge/`, point at the deploy-nas skill as
+   the follow-up. `apps/admin-portal/` needs nothing; Netlify redeploys from main on its
+   own.
 7. Return to the branch the session started on if it was not main.
 
 ## Red flags
@@ -126,3 +145,7 @@ the global autonomy rules forbid.
 - Re-asking for permission mid-flow after the yes: the stated plan was already consented
   to.
 - Recommending a bump for a docs/CI-only pile: nothing shipped, nothing to version.
+- Counting an Nx retarget (`nx.json`, `project.json`, root script aliases) as shipped
+  surface: it changes how the repo builds, not what production runs.
+- Looking for `web/` or a top-level `stripe-bridge/`: both live under `apps/` since the
+  monorepo conversion.
