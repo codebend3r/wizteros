@@ -32,20 +32,30 @@ healed itself.
 ## Running It
 
 ```bash
-node --env-file=.env .claude/skills/stripe-reconcile/scripts/reconcile.mjs
+node --env-file-if-exists=.env .claude/skills/stripe-reconcile/scripts/reconcile.mjs
 ```
 
 Run it from the repo root as a single Bash invocation so the user sees the whole
 transcript. Needs the LAN (Wizarr on `192.168.50.2:5690`, the NAS over SSH) and a live
 `STRIPE_API_KEY`. The Wizarr sweep alone takes ~15s, so expect the run to sit for a while.
 
+Use `--env-file-if-exists`, not `--env-file`. With plain `--env-file` a clone that has no
+`.env` (a fresh worktree, say) dies as `node: .env: not found` with exit **9**, before the
+script can run and report the real problem. The `if-exists` form lets the script's own
+guard fire and exit `2` with the list of variables it actually wants.
+
 | Flag | Meaning |
 |---|---|
 | `--no-store` | Skip the NAS copy and compare Stripe against Wizarr only. Use it off-LAN |
 | `--all` | Print every note line instead of the first 12 |
 
-Exit codes: `0` clean, `1` drift found, `2` misconfigured or a source failed. `WZ_NAS_HOST`
-and `WZ_NAS_PATH` override the NAS target, same names `deploy-nas` uses.
+Exit codes: `0` clean, `1` drift found, `2` misconfigured, or Stripe/Wizarr unreadable.
+An unreadable **store** is deliberately not `2`: the run degrades to a two-way comparison
+and still exits `0`/`1`, so read the `sources` block, never just the exit code.
+
+`WZ_NAS_HOST` and `WZ_NAS_PATH` override the NAS target, the same names the `deploy-nas`
+**skill** script uses. (The older `scripts/deploy-nas.sh` at the repo root is a different
+thing and keys off `NAS_MOUNT`.)
 
 ## What It Reads
 
@@ -53,18 +63,28 @@ and `WZ_NAS_PATH` override the NAS target, same names `deploy-nas` uses.
    `active` and `trialing` count as paying; every other status (canceled, past_due,
    unpaid, incomplete, paused) counts as lapsed. Customer ids the store knows but the
    sweep never saw get an individual `GET /v1/customers/<id>` to prove they still exist.
-2. **Wizarr** `GET /api/users`, collapsed to one entry per person the way `/admin/members`
-   does, plus `GET /api/invitations` so a member whose Plex email differs from their
-   Stripe email is matched through their invite code instead of being reported twice.
+2. **Wizarr** `GET /api/users`, collapsed to one entry per person keyed on lowercased
+   email falling back to username, the way `admin._dedupe_members` does for
+   `/admin/members`, plus `GET /api/invitations` so a member whose Plex email differs
+   from their Stripe email is matched through their invite code instead of being reported
+   twice. That hop needs the store, which is where the invite code lives; `/api/invitations`
+   only maps a code to the Plex username that redeemed it.
+   One deliberate divergence from `_dedupe_members`: on expiry this keeps `null`
+   (unlimited) as the winner, where the admin table keeps the latest non-null date. The
+   admin table is displaying a date; this is deciding whether the person can watch, and
+   one unlimited record means they can.
 3. **The store** `bridge.db` tarred out of `/volume1/docker/stripe-bridge/stripe-bridge-data`
-   over one-shot SSH and read with `sqlite3 -readonly`. Columns come from
-   `PRAGMA table_info`, because `tier`, `invited_at` and `subscribed` were all added by
-   migrations and an older prod DB legitimately lacks them.
+   over one-shot SSH and read with `sqlite3 -readonly`, into a temp copy deleted in a
+   `finally` before the process exits. Columns come from `PRAGMA table_info`, because
+   `tier`, `invited_at` and `subscribed` were all added by migrations (`store._ensure_*`)
+   and an older prod DB legitimately lacks them.
 
 No store (NAS off the LAN, no `sqlite3` locally, `--no-store`) degrades to a two-way
 Stripe vs Wizarr comparison. The run says so in its header and again in the summary, and
 the checks that need the store (VIP tags, ghost customers, store flags) are skipped, not
-silently passed.
+silently passed. **Degraded runs also lose the invite-code hop**, so any member whose Plex
+email differs from their Stripe email is reported twice: once as `PAYING-NO-ACCESS` and
+once as `legacy`. Treat a degraded run as a smoke test, not an audit.
 
 ## Reading The Report
 
@@ -79,8 +99,10 @@ One line per person, grouped by kind.
 
 The **notes** section is expected states, never drift, and never counted:
 
-- `pending` a paying member with an invite still inside the 14-day grace window
-- `winding` canceled, but still inside the paid-through window
+- `pending` a paying member with an invite still inside the `INVITE_EXPIRES_DAYS` grace
+  window (14 days unless `.env` says otherwise; the header line prints the value in force)
+- `winding` no longer paying, but still inside the paid-through window: a cancel dated by
+  `ended_at`, or a `past_due`/`unpaid` sub still inside the period it last billed for
 - `vip` tagged VIP, so intentionally has access with no subscription
 - `legacy` enabled in Wizarr with no Stripe presence at all (a manual or pre-Stripe share)
 
@@ -121,7 +143,11 @@ that the script failed.
   those in `pending` while the grace window runs, but a member who took six weeks to click
   the link is still a normal member. Check their history before calling it a failure.
 - **VIPs have no subscription by design.** In degraded mode (no store) the VIP tag is
-  invisible, so every VIP shows up as `legacy` or worse. Do not act on a degraded run.
+  invisible, so every VIP shows up as `legacy` or worse, and the invite-code hop is gone
+  too, so mismatched-email members are double-reported. Do not act on a degraded run.
+- **An unreadable store still exits `0` or `1`.** Read the `sources` block before you
+  trust a clean answer; the exit code alone cannot tell "all three agree" from "two of
+  them agree and the third never answered".
 - **Wizarr may not expose an enabled flag on `/api/users`.** The run prints a caveat line
   when it does not. A canceled member's record is disabled but keeps its old expiry, so
   without that flag they can still read as having access. Confirm in the admin UI.

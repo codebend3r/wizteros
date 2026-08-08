@@ -16,8 +16,11 @@
 //   wizarr   GET /api/users, GET /api/invitations
 //   store    bridge.db copied off the NAS, read with `sqlite3 -readonly`
 //
-// Run: node --env-file=.env .claude/skills/stripe-reconcile/scripts/reconcile.mjs
-// Exit: 0 clean, 1 drift found, 2 misconfigured or a source failed.
+// Run: node --env-file-if-exists=.env .claude/skills/stripe-reconcile/scripts/reconcile.mjs
+// (--env-file-if-exists, not --env-file: a missing .env makes node itself bail
+// with exit 9 before this script can report the misconfiguration as exit 2.)
+// Exit: 0 clean, 1 drift found, 2 misconfigured, or Stripe/Wizarr unreadable.
+// An unreadable store is NOT exit 2; it degrades to a two-way comparison.
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -170,7 +173,9 @@ const wz = (path) =>
   fetch(`${WIZARR}${path}`, {
     headers: { 'X-API-Key': WIZARR_API_KEY, 'Content-Type': 'application/json' },
     // /api/users reconciles with every Plex server per call and routinely takes
-    // ~15s, so give it the same headroom the bridge's client does.
+    // ~15s (see WizarrClient._users and admin.members_snapshot). The bridge caps
+    // it at 45s on the request path; double that here, because this sweep is an
+    // unattended read and a slow answer beats a spurious "source failed".
     signal: AbortSignal.timeout(90_000),
   })
 
@@ -261,9 +266,16 @@ const readStore = () => {
   }
   const dir = mkdtempSync(join(tmpdir(), 'wz-reconcile-'))
   try {
+    // pipefail is load-bearing, not decoration: `tar -xf -` reads empty stdin as
+    // an empty archive and exits 0 (bsdtar on macOS), so without it a total ssh
+    // failure yields a zero-status pipeline and the run misreports "bridge.db not
+    // in <dir>", blaming the NAS for a file that is sitting right there.
     execFileSync(
       'sh',
-      ['-c', `ssh ${SSH_OPTS} ${NAS_HOST} 'cd ${NAS_DATA_DIR} && tar -cf - .' | tar -xf - -C ${dir}`],
+      [
+        '-c',
+        `set -o pipefail; ssh ${SSH_OPTS} ${NAS_HOST} 'cd ${NAS_DATA_DIR} && tar -cf - .' | tar -xf - -C ${dir}`,
+      ],
       { stdio: ['ignore', 'ignore', 'pipe'] },
     )
     const db = join(dir, basename(MAP_DB_PATH))
@@ -300,7 +312,14 @@ const readStore = () => {
       tags: new Map(tags.map((t) => [(t.email ?? '').toLowerCase(), t.tag])),
     }
   } catch (e) {
-    const detail = (e.stderr?.toString() ?? e.message ?? '').trim().split('\n').at(-1)
+    // This NAS greets every session with a multi-line post-quantum warning on
+    // stderr; keep the last line that is not part of it, so the reported reason
+    // is the actual failure and not "See https://openssh.com/pq.html".
+    const detail = (e.stderr?.toString() ?? e.message ?? '')
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith('**'))
+      .at(-1) ?? 'no error output'
     return { ok: false, why: `could not copy ${NAS_DATA_DIR} from ${NAS_HOST} (${detail})` }
   } finally {
     // Never leave a copy of live member data lying around in /tmp.
@@ -358,7 +377,9 @@ async function main() {
   } else {
     console.log(`  · store    UNAVAILABLE: ${store.why}`)
     console.log('             degraded to a two-way Stripe vs Wizarr comparison:')
-    console.log('             VIP tags, ghost customers and store flags are NOT checked.')
+    console.log('             VIP tags, ghost customers and store flags are NOT checked, and')
+    console.log('             invite codes live only in the store, so a member whose Plex email')
+    console.log('             differs from their Stripe email IS reported twice. Expect noise.')
   }
   // A cancel disables the Wizarr record but leaves its expiry alone, so with no
   // enabled flag in the payload a disabled member still reads as having access.
@@ -450,7 +471,14 @@ async function main() {
       notes.push(`  vip      ${email.padEnd(34)}enabled with no Stripe subscription (VIP tag, deliberate)`)
       return
     }
-    const lastEnd = sub?.lapsed.reduce((acc, s) => Math.max(acc, (s.endedAt ?? 0) * 1000), 0) ?? 0
+    // When did their money stop covering them? A canceled sub reports ended_at;
+    // a past_due or unpaid one never does but is still inside the period it last
+    // billed for, so current_period_end is the honest edge there. Without that
+    // fallback a member three days into dunning reads as an outright freeloader.
+    const paidThrough = sub?.lapsed.reduce(
+      (acc, s) => Math.max(acc, (s.endedAt ?? s.periodEnd ?? 0) * 1000),
+      0,
+    ) ?? 0
     const expiry = person.expires === null ? 'no expiry set' : `expires ${date(person.expires)}`
     if (!sub) {
       const row = storeRows.get(email)
@@ -465,15 +493,15 @@ async function main() {
       notes.push(`  legacy   ${email.padEnd(34)}enabled, no Stripe customer at all (manual or legacy share)`)
       return
     }
-    if (lastEnd && NOW - lastEnd <= DURATION * DAY) {
-      notes.push(`  winding  ${email.padEnd(34)}canceled ${ago(lastEnd)} ago, still inside the ${DURATION}d paid window`)
+    if (paidThrough && NOW - paidThrough <= DURATION * DAY) {
+      notes.push(`  winding  ${email.padEnd(34)}stopped paying, still inside the ${DURATION}d window (paid through ${date(paidThrough)})`)
       return
     }
     findings.push({
       kind: 'ACCESS-NO-PAYING',
       who: email,
-      detail: lastEnd
-        ? `canceled ${ago(lastEnd)} ago (past the ${DURATION}d window), still enabled, ${expiry}`
+      detail: paidThrough
+        ? `paid through ${date(paidThrough)}, past the ${DURATION}d window, still enabled, ${expiry}`
         : `no paying subscription (${sub.lapsed.map((s) => s.status).join(', ') || 'none'}), still enabled, ${expiry}`,
     })
   })
@@ -481,7 +509,6 @@ async function main() {
   // (c) + (d) Store rows whose Stripe side is gone, and flags that disagree.
   // One line per person: when someone already has a finding above, the store
   // mismatch is folded into it as the diagnosis rather than repeated.
-  const already = new Set(findings.map((f) => f.who))
   const folded = new Map()
   if (store.ok) {
     const seen = new Set([...stripers.values()].flatMap((s) => s.customerIds))
@@ -509,6 +536,11 @@ async function main() {
         })
       }
     })
+
+    // Recomputed here rather than before the ghost sweep, so a person who picked
+    // up a GHOST-CUSTOMER or STORE-FLAG line just above still gets folded into
+    // one line instead of appearing twice.
+    const already = new Set(findings.map((f) => f.who))
 
     // The classic missed webhook: Stripe took the money, the bridge never heard.
     stripers.forEach((sub, key) => {
@@ -539,9 +571,12 @@ async function main() {
   }
 
   if (notes.length) {
-    const shown = SHOW_ALL ? notes : notes.slice(0, NOTE_CAP)
+    // Sort before capping, so the default view is a stable alphabetical prefix of
+    // what --all prints rather than 12 arbitrary lines in discovery order.
+    const sorted = [...notes].sort()
+    const shown = SHOW_ALL ? sorted : sorted.slice(0, NOTE_CAP)
     console.log('\nnotes (expected, not drift)')
-    console.log(shown.sort().join('\n'))
+    console.log(shown.join('\n'))
     if (notes.length > shown.length) {
       console.log(`  … and ${notes.length - shown.length} more (--all to list them)`)
     }
