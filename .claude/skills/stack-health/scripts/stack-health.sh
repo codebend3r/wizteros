@@ -14,8 +14,8 @@
 # with 400 "invalid signature" and no side effect.
 #
 # Conventions are lifted from deploy-nas.sh on purpose: WZ_* env-overridable
-# constants, say/step/die helpers, one-shot SSH invocations, and the literal
-# sudo docker path that the NOPASSWD sudoers rule matches.
+# constants, say/die helpers, one-shot SSH invocations, and the literal sudo
+# docker path that the NOPASSWD sudoers rule matches.
 set -euo pipefail
 
 # This script lives at <repo>/.claude/skills/stack-health/scripts/, so the repo
@@ -39,10 +39,13 @@ ENV_EXAMPLE="${WZ_ENV_EXAMPLE:-$REPO/.env.example}"
 PUBLIC_BASE="${WZ_PUBLIC_BASE:-}"
 HTTP_TIMEOUT="${WZ_HTTP_TIMEOUT:-8}"
 FUNNEL_TIMEOUT="${WZ_FUNNEL_TIMEOUT:-15}"
-SSH="ssh -o BatchMode=yes -o ConnectTimeout=10"
+# LogLevel=ERROR drops OpenSSH's per-connection post-quantum advisory, which this
+# NAS triggers on every one of the seven SSH calls below and which otherwise lands
+# in the middle of check 3's compose ps block. Real connection failures are logged
+# at ERROR, so they still print; a readable transcript is the whole product here.
+SSH="ssh -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR"
 
 say()  { printf '%s\n' "$*"; }
-step() { printf '\n▸ %s\n' "$*"; }
 die()  { printf '\n✗ %s\n' "$*" >&2; exit 1; }
 note() { printf '  · %s\n' "$*"; }
 
@@ -50,8 +53,14 @@ note() { printf '  · %s\n' "$*"; }
 # FAILED drives the exit code. WARNED never does: a warning means "working, but
 # worth knowing" (the NAS is behind, the volume is filling up), and a health
 # probe that exits nonzero for those cannot be trusted to mean anything.
+#
+# SKIPPED does not change the exit code either, but it must change the wording:
+# a skipped check was never probed, so a run that skipped the ingress check has
+# not established that Stripe can reach us and may not be summarised as
+# "everything passed".
 FAILED=0
 WARNED=0
+SKIPPED=0
 RESULTS=""
 CHECK_N=""
 CHECK_LABEL=""
@@ -61,7 +70,7 @@ verdict() { RESULTS="${RESULTS}  ${1} ${CHECK_N}. ${CHECK_LABEL}: ${2}"$'\n'; }
 pass()    { printf '  ✓ %s\n' "$*"; verdict "✓" "$*"; }
 warn()    { printf '  ⚠ %s\n' "$*"; WARNED=$((WARNED + 1)); verdict "⚠" "$*"; }
 fail()    { printf '  ✗ %s\n' "$*"; FAILED=$((FAILED + 1)); verdict "✗" "$*"; }
-skipped() { printf '  · skipped (%s)\n' "$*"; verdict "·" "skipped ($*)"; }
+skipped() { printf '  · skipped (%s)\n' "$*"; SKIPPED=$((SKIPPED + 1)); verdict "·" "NOT PROBED, skipped ($*)"; }
 
 # HTTP status from this machine. curl still writes the code on failure, so a
 # refused connection or a timeout reports 000 rather than an empty string.
@@ -84,13 +93,15 @@ for arg in "$@"; do
   case "$arg" in
     --quick) QUICK=1 ;;
     -h|--help)
-      say "stack-health.sh [--quick]"
+      say "stack-health.sh [--quick] [-h|--help]"
       say ""
       say "Read-only health probe of the wizteros production stack. Changes nothing."
       say ""
-      say "  --quick   skip check 4 (public ingress) and check 8 (env drift)"
+      say "  --quick     skip check 4 (public ingress) and check 8 (env drift)"
+      say "  -h, --help  print this and exit 0"
       say ""
       say "Exit 0 when every check passed (warnings allowed), 1 when any check failed."
+      say "A skipped check is not a pass; the summary says so and the exit stays 0."
       exit 0
       ;;
     *) echo "unknown flag: $arg (this probe is read-only; there are no mutating flags)" >&2; exit 2 ;;
@@ -213,20 +224,29 @@ else
     note "GET  $PUBLIC_BASE/ -> ${ROOT_PROBE:-no response}"
 
     # Funnel mounts the bridge under /stripe and strips the prefix, so the
-    # bridge sees /webhook. A 4xx proves the route is mounted end to end; a 404
-    # means the mount is wrong, and 000 means the Funnel is not carrying
-    # traffic at all, which is what silently killed webhooks looks like.
+    # bridge sees /webhook. The healthy answer is exactly 400: the handler
+    # verifies the Stripe signature before anything else and raises
+    # HTTPException(400, "invalid signature"), so only the bridge itself
+    # produces a 400 here.
     HOOK_PROBE="$(http_code "$FUNNEL_TIMEOUT" "$PUBLIC_BASE/stripe/webhook" \
       -X POST -H 'Content-Type: application/json' -d '{"stack-health":"probe"}')"
-    note "POST $PUBLIC_BASE/stripe/webhook (garbage body) -> ${HOOK_PROBE:-no response} (expect 4xx)"
+    note "POST $PUBLIC_BASE/stripe/webhook (garbage body) -> ${HOOK_PROBE:-no response} (expect 400)"
 
     case "$ROOT_PROBE" in
       ""|000) fail "Funnel unreachable from this machine. Stripe webhooks are silently dying." ;;
       *)
+        # Match on the exact code, never on a 4?? glob. Wizarr sits at the
+        # Funnel root, so a broken /stripe mount does not time out: the request
+        # falls through to Wizarr, which answers 404. That 404 is precisely the
+        # failure docs/tailscale-funnel.md warns about, and a 4?? glob would
+        # report it as a healthy mount.
         case "$HOOK_PROBE" in
-          4??) pass "Funnel up and the webhook route is mounted (rejected the unsigned body)" ;;
+          400) pass "Funnel up and the bridge owns the webhook route (rejected the unsigned body with 400)" ;;
+          404) fail "404 on the webhook route: the /stripe mount is not reaching the bridge, so the request fell through to Wizarr. Stripe cannot deliver (see docs/tailscale-funnel.md)." ;;
+          405) fail "405 on the webhook route: something other than the bridge's POST handler is answering /stripe/webhook. Stripe cannot deliver (see docs/tailscale-funnel.md)." ;;
           ""|000) fail "webhook route timed out through the Funnel. Stripe deliveries are failing." ;;
-          *) fail "webhook route returned $HOOK_PROBE, not a 4xx. The /stripe mount is wrong; Stripe cannot deliver." ;;
+          4??) warn "webhook route returned $HOOK_PROBE, not the bridge's own 400. Something is answering in front of the bridge; confirm a real delivery in Stripe's webhook attempts." ;;
+          *) fail "webhook route returned $HOOK_PROBE, not the bridge's 400. The /stripe mount is wrong; Stripe cannot deliver." ;;
         esac
         ;;
     esac
@@ -253,9 +273,33 @@ else
     if [ "$DEPLOYED" = "$ORIGIN" ]; then
       pass "NAS is current with origin/main"
     elif git cat-file -e "$DEPLOYED^{commit}" 2>/dev/null; then
+      # `rev-list --count A..B` counts what B has and A lacks, which only means
+      # "how far behind" while the deployed SHA is an ancestor of origin/main.
+      # After a history rewrite both counts are nonzero, and reporting BEHIND on
+      # its own hides the divergence and overstates the pending change by every
+      # rewritten commit. Ask about ancestry explicitly instead of inferring it.
       BEHIND="$(git rev-list --count "$DEPLOYED..$ORIGIN" 2>/dev/null || echo '?')"
       AHEAD="$(git rev-list --count "$ORIGIN..$DEPLOYED" 2>/dev/null || echo '?')"
-      if [ "$BEHIND" != "0" ]; then
+      if [ "$AHEAD" != "0" ] && [ "$BEHIND" != "0" ]; then
+        # Diverged. Say which kind, because they are not equally alarming: a
+        # rebase still shares a base, whereas a rewritten root shares nothing and
+        # both counts then just restate each history's full length.
+        MERGE_BASE="$(git merge-base "$DEPLOYED" "$ORIGIN" 2>/dev/null || true)"
+        # The counts describe SHAs, not work, so report what actually differs in
+        # the paths the NAS builds from. Same list as deploy-nas.sh's NAS_PATHS.
+        DRIFT_FILES="$(git diff --name-only "$DEPLOYED" "$ORIGIN" \
+          -- apps/stripe-bridge docker-compose.yml scripts package.json 2>/dev/null \
+          | grep -c . || true)"
+        if [ -z "$MERGE_BASE" ]; then
+          note "common ancestor:   none, the two histories share no commits"
+          note "NAS-built files differing: ${DRIFT_FILES:-unknown}"
+          warn "NAS marker is on an UNRELATED history, not simply behind: the whole history was rewritten (new root), so its $AHEAD commit(s) and origin/main's $BEHIND are two disjoint graphs and neither number means pending work. ${DRIFT_FILES:-?} NAS-built file(s) actually differ. deploy-nas resyncs the marker."
+        else
+          note "common ancestor:   ${MERGE_BASE:0:7}"
+          note "NAS-built files differing: ${DRIFT_FILES:-unknown}"
+          warn "NAS is on a DIVERGED history, not simply behind: $AHEAD commit(s) origin/main does not contain, $BEHIND commit(s) it has that the NAS lacks, since ${MERGE_BASE:0:7}. ${DRIFT_FILES:-?} NAS-built file(s) actually differ, which is the number that matters. deploy-nas resyncs the marker."
+        fi
+      elif [ "$BEHIND" != "0" ]; then
         warn "NAS is behind origin/main by $BEHIND commit(s). Run the deploy-nas skill to ship."
       else
         warn "NAS is on a SHA that is $AHEAD commit(s) ahead of origin/main (a force push, or a hand deploy)"
@@ -274,15 +318,33 @@ if [ "$SSH_OK" = 0 ]; then
 else
   LOGS="$($SSH "$NAS_HOST" "sudo -n $DOCKER logs --tail $LOG_LINES $SERVICE 2>&1" || true)"
 
-  # deploy-nas.sh greps 'tier scope check:'. The colon is dropped here so the
-  # 'tier scope check failed' line, which has no colon, is caught too.
+  # The bridge logs three different 'tier scope check' lines and they do NOT mean
+  # the same thing (see check_tier_scopes and _reconcile_loop in
+  # apps/stripe-bridge/stripe_bridge/stripe_wizarr_bridge.py):
+  #
+  #   "tier scope check: <tier> -> <reason>"                    real drift alarm
+  #   "tier scope check: could not read libraries from Wizarr"  check could not run
+  #   "tier scope check failed"                                 check could not run
+  #
+  # Only the first means a tier stopped resolving. check_tier_scopes deliberately
+  # returns healthy when Wizarr is unreachable ("unreachable is not
+  # misconfigured"), so failing the probe on the other two would turn a passing
+  # Wizarr blip into "signups create wrongly scoped invites", a different and
+  # wrong diagnosis, on a stack where nothing is actually misconfigured.
   TIER_ALARM=0
-  if printf '%s' "$LOGS" | grep -q 'tier scope check'; then
+  TIER_UNRAN=0
+  if printf '%s' "$LOGS" | grep -qE 'tier scope check: .+ -> '; then
     say ""
     say "  ⚠ TIER SCOPE ALARM: a tier no longer resolves against the live Wizarr libraries."
-    printf '%s' "$LOGS" | grep 'tier scope check' | sed 's/^/      /'
+    printf '%s' "$LOGS" | grep -E 'tier scope check: .+ -> ' | sed 's/^/      /'
     say ""
     TIER_ALARM=1
+  fi
+  if printf '%s' "$LOGS" | grep -qE 'tier scope check: could not read|tier scope check failed'; then
+    say "  ⚠ the tier scope check could not run on at least one sweep:"
+    printf '%s' "$LOGS" | grep -E 'tier scope check: could not read|tier scope check failed' \
+      | tail -5 | sed 's/^/      /'
+    TIER_UNRAN=1
   fi
 
   TRACEBACKS="$(printf '%s' "$LOGS" | grep -c 'Traceback (most recent call last)' || true)"
@@ -296,6 +358,8 @@ else
 
   if [ "$TIER_ALARM" = 1 ]; then
     fail "tier scope alarm firing: signups for the named tier(s) create wrongly scoped invites"
+  elif [ "$TIER_UNRAN" = 1 ]; then
+    warn "the tier scope check could not reach Wizarr on a recent sweep, so drift is currently unverified (the bridge treats this as healthy and retries)"
   elif [ "$TRACEBACKS" != "0" ]; then
     warn "$TRACEBACKS traceback(s) in the logs. Read the excerpt: one bad webhook is not the same as a broken bridge."
   else
@@ -378,13 +442,23 @@ printf '%s' "$RESULTS"
 say ""
 
 if [ "$FAILED" -gt 0 ]; then
-  say "✗ $FAILED check(s) FAILED, $WARNED warning(s). The paid-access path is not fully healthy."
+  say "✗ $FAILED check(s) FAILED, $WARNED warning(s), $SKIPPED skipped. The paid-access path is not fully healthy."
   exit 1
 fi
 
-if [ "$WARNED" -gt 0 ]; then
-  say "✓ All checks passed, with $WARNED warning(s) worth reading above."
+# A skipped check is not a pass. Saying "all checks passed" after skipping the
+# ingress probe is how a run with no local .env, or any --quick run, gets relayed
+# as "Stripe to Plex is healthy" when nothing ever asked whether Stripe can
+# reach us. Nothing failed, so the exit code stays 0 and the wording carries it.
+if [ "$SKIPPED" -gt 0 ]; then
+  say "⚠ Nothing failed, but $SKIPPED check(s) were NOT PROBED ($WARNED warning(s))."
+  say "  This is not an all-clear: the skipped checks above were never run."
   exit 0
 fi
 
-say "✓ All checks passed. Stripe to Plex is healthy."
+if [ "$WARNED" -gt 0 ]; then
+  say "✓ All 8 checks passed, with $WARNED warning(s) worth reading above."
+  exit 0
+fi
+
+say "✓ All 8 checks passed. Stripe to Plex is healthy."
