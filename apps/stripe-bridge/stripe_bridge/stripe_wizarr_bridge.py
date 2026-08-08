@@ -9,11 +9,8 @@ import stripe
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from stripe_bridge import admin
-from stripe_bridge import store
-from stripe_bridge import tiers
-from stripe_bridge.mailer import send_alert_email
-from stripe_bridge.mailer import send_invite_email
+from stripe_bridge import admin, store, tiers
+from stripe_bridge.mailer import send_alert_email, send_invite_email
 from stripe_bridge.wizarr import WizarrClient
 
 STRIPE_API_KEY = os.environ["STRIPE_API_KEY"]

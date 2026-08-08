@@ -16,7 +16,7 @@
 //
 // Uses a synthetic email that matches no Plex account, so the bridge finds no
 // existing records and never disables a real member. Run:
-//   node --env-file=.env scripts/e2e-tiers.mjs     (or: bun run test:e2e:tiers)
+//   bun run test:e2e:tiers   (from the workspace root)
 import crypto from 'node:crypto'
 
 const { WIZARR_BASE_URL, WIZARR_API_KEY, STRIPE_WEBHOOK_SECRET } = process.env

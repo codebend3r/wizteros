@@ -1,6 +1,5 @@
 import requests
 
-
 # Per-user writes reconcile with the Plex server the record lives on, so they
 # are as slow as /api/users itself. A 10s ceiling used to time out mid-loop and
 # leave a checkout half-applied while the write still landed server-side.

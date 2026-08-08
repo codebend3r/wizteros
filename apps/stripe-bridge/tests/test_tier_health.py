@@ -58,8 +58,9 @@ def test_problems_are_keyed_by_tier_with_readable_reasons():
 def _bridge(monkeypatch, tmp_path):
     """The bridge module with a temp db, a mocked Wizarr client and a mocked alert mail."""
     import importlib
-    from stripe_bridge import stripe_wizarr_bridge as b
+
     from stripe_bridge import store
+    from stripe_bridge import stripe_wizarr_bridge as b
     importlib.reload(b)
     dbp = str(tmp_path / "bridge.db")
     store.init_db(dbp)
@@ -76,7 +77,7 @@ def test_health_check_alerts_when_a_tier_breaks(tmp_path, monkeypatch, caplog):
         broken = b.check_tier_scopes()
     assert "youth" in broken
     b.send_alert_email.assert_called_once()
-    subject, body = b.send_alert_email.call_args.args
+    _subject, body = b.send_alert_email.call_args.args
     assert "youth" in body
 
 

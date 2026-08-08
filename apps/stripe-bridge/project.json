@@ -5,15 +5,6 @@
   "sourceRoot": "apps/stripe-bridge/stripe_bridge",
   "tags": ["scope:bridge", "lang:python"],
   "targets": {
-    "test": {
-      "executor": "nx:run-commands",
-      "cache": true,
-      "inputs": ["default"],
-      "options": {
-        "command": "bash scripts/test-bridge.sh",
-        "cwd": "{workspaceRoot}"
-      }
-    },
     "test-docker": {
       "executor": "nx:run-commands",
       "cache": false,

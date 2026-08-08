@@ -34,8 +34,8 @@ from datetime import datetime, timedelta, timezone
 # the image); make both layouts importable.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from stripe_bridge import store  # noqa: E402
-from stripe_bridge.wizarr import WizarrClient  # noqa: E402
+from stripe_bridge import store
+from stripe_bridge.wizarr import WizarrClient
 
 log = logging.getLogger("bridge.backfill")
 

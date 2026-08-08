@@ -15,10 +15,13 @@ os.environ.update({
     "SMTP_HOST": "smtp.test", "SMTP_USER": "u", "SMTP_PASS": "p",
 })
 
-from stripe_bridge import admin  # noqa: E402
-from stripe_bridge import store  # noqa: E402
-from fastapi import HTTPException  # noqa: E402
-from stripe_bridge.wizarr import WizarrClient  # noqa: E402
+from fastapi import HTTPException
+
+from stripe_bridge import (
+    admin,
+    store,
+)
+from stripe_bridge.wizarr import WizarrClient
 
 USERS = [
     {"id": 1, "username": "cj", "email": "A@X.com", "server": "Meleys", "expires": "2026-09-01T00:00:00+00:00"},
@@ -481,7 +484,7 @@ def test_reissue_invite_survives_email_failure(admin_db):
 
 
 def test_reissue_invite_keeps_member_visible_as_pending(admin_db):
-    a, dbp = admin_db
+    a, _dbp = admin_db
     a.client.list_libraries.return_value = FIXTURE_LIBRARIES
     a.client.find_users_by_email.return_value = [{"id": 9, "server": "Meleys"}]
     a.client.create_invite.return_value = {"code": "NEW1", "url": "http://wizarr-lan/j/NEW1"}

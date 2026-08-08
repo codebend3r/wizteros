@@ -11,7 +11,7 @@
     },
     "apps/admin-portal": {
       "name": "admin-portal",
-      "version": "0.1.6",
+      "version": "0.1.5",
       "dependencies": {
         "@fontsource-variable/bricolage-grotesque": "5.2.10",
         "@fontsource-variable/instrument-sans": "5.2.8",
@@ -46,6 +46,9 @@
         "typescript": "5.9.3",
         "vite": "5.4.21",
       },
+    },
+    "apps/stripe-bridge": {
+      "name": "stripe-bridge",
     },
   },
   "trustedDependencies": [
@@ -735,6 +738,8 @@
     "strip-bom": ["strip-bom@3.0.0", "", {}, "sha512-vavAMRXOgBVNF6nyEEmL3DBK19iRpDcoIwW+swQ+CbGiu7lju6t+JklA1MHweoWtadgt4ISVUsXLyDq34ddcwA=="],
 
     "strip-indent": ["strip-indent@3.0.0", "", { "dependencies": { "min-indent": "^1.0.0" } }, "sha512-laJTa3Jb+VQpaC6DseHhF7dXVqHTfJPCRDaEbid/drOhgitgYku/letMUqOXFoWV0zIIUbjpdH2t+tYj4bQMRQ=="],
+
+    "stripe-bridge": ["stripe-bridge@workspace:apps/stripe-bridge"],
 
     "supports-color": ["supports-color@7.2.0", "", { "dependencies": { "has-flag": "^4.0.0" } }, "sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw=="],
 

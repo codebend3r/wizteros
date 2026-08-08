@@ -8,7 +8,7 @@
 // what Wizarr actually returns so the tests compare the rules against reality.
 //
 // Run after any Plex library rename, then review the diff:
-//   bun run refresh:libraries        (or: node --env-file=.env scripts/refresh-library-snapshot.mjs)
+//   bun run refresh:libraries        (from the workspace root)
 //
 // A failing test after a refresh is the point: it means a rename changed what
 // a tier grants. Fix tiers.py to match the new names, never the other way.
@@ -26,8 +26,6 @@ if (!WIZARR_BASE_URL || !WIZARR_API_KEY) {
 const OUT = join(
   dirname(fileURLToPath(import.meta.url)),
   '..',
-  'apps',
-  'stripe-bridge',
   'tests',
   'fixtures',
   'live-libraries.json',

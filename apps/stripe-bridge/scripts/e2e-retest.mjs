@@ -10,7 +10,7 @@
 //   invoice.paid (renewal)      -> bridge extends all N by ACCESS_DURATION
 //   assert: every record expires ~ now + 2*ACCESS_DURATION
 //
-// Run: node --env-file=.env scripts/e2e-retest.mjs   (or: npm run test:e2e)
+// Run: bun run test:e2e   (from the workspace root)
 import crypto from 'node:crypto'
 
 const {

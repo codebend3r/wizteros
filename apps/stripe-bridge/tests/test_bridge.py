@@ -1,6 +1,4 @@
 import os
-import sys
-import types
 from unittest.mock import MagicMock
 
 import pytest
@@ -32,6 +30,7 @@ FIXTURE_LIBRARIES = [
 def bridge(tmp_path, monkeypatch):
     """Fresh bridge module per test: temp SQLite db, mocked Wizarr client and email."""
     import importlib
+
     from stripe_bridge import stripe_wizarr_bridge as b
     importlib.reload(b)
     dbp = str(tmp_path / "bridge.db")
@@ -231,7 +230,8 @@ def test_reconcile_stamps_new_member_records_that_joined_without_expiry(bridge):
     # Wizarr never applies an invite's duration to the records it creates, so a
     # brand-new member redeems into expires=None. The sweep must stamp
     # invited_at + ACCESS_DURATION on exactly those records.
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
+
     from stripe_bridge import store
     store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "new@x.com", "abc", tier="gold")
     bridge.client.list_users.return_value = [
@@ -280,6 +280,7 @@ def test_reconcile_never_stamps_a_date_already_in_the_past(bridge, monkeypatch):
     # A stale subscribed row (e.g. expiry manually cleared long after signup)
     # must not let a background sweep revoke access with a past-dated expiry.
     import sqlite3
+
     from stripe_bridge import store
     store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "old@x.com", "abc")
     with sqlite3.connect(bridge.MAP_DB_PATH) as c:
@@ -580,6 +581,7 @@ def test_checkout_records_tier_for_the_customer(bridge):
 
 def test_send_invite_email_sends_via_smtp_starttls(monkeypatch):
     import importlib
+
     from stripe_bridge import mailer as b
     importlib.reload(b)
 
