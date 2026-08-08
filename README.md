@@ -6,14 +6,69 @@ A self-hosted stack that gates access to a private Plex setup behind a recurring
 Stripe checkout → webhook → stripe-bridge → Wizarr → Plex
 ```
 
+## Contents
+
+- [Structure](#structure)
+- [Tech stack](#tech-stack)
+- [Getting started](#getting-started)
+- [Development](#development)
+- [Nx](#nx)
+- [Releases](#releases)
+- [Claude skills](#claude-skills)
+- [Docs](#docs)
+
+## Structure
+
+An Nx monorepo over bun workspaces (`workspaces: ["apps/*"]`), with two apps and no shared libs.
+
+```
+wizteros/
+├── apps/
+│   ├── admin-portal/           Vite + React SPA, deploys to Netlify
+│   │   ├── public/
+│   │   └── src/                components/ pages/ lib/ stores/ styles/ test/
+│   └── stripe-bridge/          FastAPI service, runs in Docker on the NAS
+│       ├── stripe_bridge/      runtime package (the only code the image copies)
+│       ├── scripts/            lint, test, and e2e entrypoints
+│       └── tests/              pytest suite
+├── docs/                       specs, plans, and PRDs for both apps
+├── scripts/                    release, backfill, and deploy entrypoints
+├── .claude/skills/             repo-scoped Claude Code skills
+├── docker-compose.yml          builds and runs stripe-bridge only
+├── netlify.toml                builds admin-portal only
+├── nx.json                     target defaults, cacheable targets, named inputs
+└── package.json                bun workspaces plus aliases that delegate to Nx
+```
+
+| Path | What lives there |
+| --- | --- |
+| `apps/admin-portal/src/` | Public landing page and the password-gated admin pages. The `@/*` import alias maps here |
+| `apps/stripe-bridge/stripe_bridge/` | Bridge runtime: `stripe_wizarr_bridge.py` (entrypoint), plus `wizarr.py`, `plex.py`, `store.py`, `tiers.py`, `mailer.py`, `email_template.py`, `admin.py`, `snapshot.py` |
+| `apps/*/` roots | Per-app config: `vite.config.ts`, `tsconfig.json`, `bunfig.toml`, `pytest.ini`, `ruff.toml`, `Dockerfile`, lint and format configs |
+
+Two things that are easy to get wrong:
+
+- Bridge modules import package-absolute (`from stripe_bridge import store`), never relative. New modules go inside `stripe_bridge/` and need no Dockerfile change, since the image copies the whole package.
+- Web imports use the `@/` alias, never parent-relative `../`. Same-directory `./` imports are fine.
+
 ## Tech stack
 
-- **[Wizarr](https://github.com/wizarrrr/wizarr)**: invite-based user onboarding
-- **[Tautulli](https://github.com/Tautulli/Tautulli)**: usage monitoring and analytics
-- **`apps/stripe-bridge/`**: FastAPI service (Python 3.12) that turns Stripe webhooks into Wizarr API calls and serves the admin API. Tested with pytest
-- **`apps/admin-portal/`**: Vite + React 19 SPA (TypeScript, SCSS modules, zustand, TanStack Query) with the public landing page and the password-gated admin pages. Tested with bun test
-- **Tooling**: [Nx](https://nx.dev) as the monorepo task runner over bun workspaces, [oxlint](https://oxc.rs) for TS/JS, [gale](https://github.com/LyricalString/gale) for SCSS, [oxfmt](https://oxc.rs) for formatting, [tsgo](https://www.npmjs.com/package/@typescript/native-preview) for type checking, husky for git hooks
-- **Hosting**: Docker Compose on a NAS, Netlify for the SPA, Tailscale Funnel for webhook ingress
+**Services**
+
+| Component | Role |
+| --- | --- |
+| [Wizarr](https://github.com/wizarrrr/wizarr) | Invite-based user onboarding |
+| [Tautulli](https://github.com/Tautulli/Tautulli) | Usage monitoring and analytics |
+| `apps/stripe-bridge/` | FastAPI (Python 3.12): turns Stripe webhooks into Wizarr API calls and serves the admin API. Tested with pytest |
+| `apps/admin-portal/` | Vite + React 19 SPA (TypeScript, SCSS modules, zustand, TanStack Query). Tested with bun test |
+
+**Tooling**
+
+[Nx](https://nx.dev) as the task runner over bun workspaces, [oxlint](https://oxc.rs) for TS/JS, [gale](https://github.com/LyricalString/gale) for SCSS, [ruff](https://docs.astral.sh/ruff/) for Python, [oxfmt](https://oxc.rs) for formatting, [tsgo](https://www.npmjs.com/package/@typescript/native-preview) for type checking, husky for git hooks.
+
+**Hosting**
+
+Docker Compose on a NAS for the bridge, Netlify for the SPA, Tailscale Funnel for webhook ingress.
 
 ## Getting started
 
@@ -26,9 +81,18 @@ cp .env.example .env   # fill in real values; .env.example is the source of trut
 docker compose up -d --build
 ```
 
-On first boot, open Wizarr at `http://<host>:5690` and complete the setup wizard, then generate an API key in Wizarr settings and drop it into `.env` as `WIZARR_API_KEY`. Tautulli runs at `http://<host>:8181`; the bridge listens at `http://<host>:8000/stripe/webhook`.
+> **Wizarr and Tautulli are not in this compose file.** It builds and runs `stripe-bridge` only, on port `8000`. Wizarr and Tautulli run as a separate stack (on the NAS, the `westeroz` compose project), and the bridge reaches Wizarr over its host-published port rather than container DNS.
 
-### Develop
+So bring up Wizarr first, then point the bridge at it:
+
+1. Open Wizarr (default `http://<host>:5690`) and complete the setup wizard.
+2. Generate an API key in Wizarr settings.
+3. Put it in `.env` as `WIZARR_API_KEY`, with `WIZARR_BASE_URL` set to that Wizarr.
+4. Start the bridge with the command above.
+
+Once it is up: the webhook endpoint is `http://<host>:8000/stripe/webhook`, and `http://<host>:8000/version` reports the release the container is running. Tautulli, if you run it, defaults to `http://<host>:8181`.
+
+## Development
 
 ```bash
 bun install        # whole workspace in one shot, also installs the husky git hooks
@@ -36,41 +100,85 @@ bun run setup:py   # local venv for the bridge test suite
 bun run verify     # lint, format check, typecheck and tests across both apps
 ```
 
-- Dev server: `bun run dev` (or `bunx nx run admin-portal:dev`)
-- Fix what is fixable: `bun run lint:fix`, `bun run lint:css:fix`, `bun run format`
-- Deploy the stack to the NAS: `bun run deploy:nas`
+| Task | Command |
+| --- | --- |
+| Dev server | `bun run dev` |
+| Fix what is fixable | `bun run lint:fix`, `bun run format` |
+| Test one app | `bun run test:web`, `bun run test:bridge` |
+| Bridge container | `bun run bridge:up`, `bridge:down`, `bridge:logs` |
+| Only what changed | `bun run affected` |
+| Deploy the bridge to the NAS | `bun run deploy:nas` |
 
-### Nx
+Hooks run automatically: pre-commit runs `bun run system-check` (lint, SCSS lint, format check, typecheck, and tests for `admin-portal`), pre-push runs `bun run verify` across both apps. CI runs the same `bun run verify` on every push.
 
-The two apps are Nx projects, so tasks run through one graph with caching. `admin-portal` gets its targets from its `package.json` scripts; `stripe-bridge` declares its own in `apps/stripe-bridge/project.json`.
+## Nx
+
+Both apps are Nx projects, so tasks run through one graph with caching. Run tasks through Nx rather than by cd-ing into an app.
 
 ```bash
-bunx nx show projects                  # admin-portal, stripe-bridge
+bunx nx show projects                  # admin-portal, stripe-bridge, wizteros (root)
 bunx nx run admin-portal:test          # one target on one project
 bunx nx run-many -t test               # that target everywhere it exists
-bun run affected                       # only what the current branch changed
 bunx nx graph                          # project graph in the browser
 ```
 
-Hooks run automatically: pre-commit runs `bun run system-check` (lint, SCSS lint, format check, typecheck, tests for `admin-portal`); pre-push runs `bun run verify` across both apps. CI runs the same `bun run verify` on every push.
+Where targets come from:
+
+| Project | Source |
+| --- | --- |
+| `admin-portal` | Inferred from its `package.json` scripts, whitelisted by `nx.includedScripts` |
+| `stripe-bridge` | Both: `package.json` scripts (`lint:py`, `test`, e2e) via `nx.includedScripts`, plus `project.json` for the Docker targets (`docker-build`, `serve`, `stop`, `logs`, `test-docker`) |
+
+Use `bunx nx show project <name>` to see a project's real target list rather than guessing from one file.
+
+Caching is declared in `nx.json` under `targetDefaults`. Anything that touches Docker or the network must stay `cache: false`.
+
+## Releases
+
+Three version markers move in lockstep: root `package.json`, `apps/admin-portal/package.json`, and `__version__` in `apps/stripe-bridge/stripe_bridge/__init__.py`. The bridge one is the only marker that reaches the container, and it is what `GET /version` reports.
+
+```bash
+bun run release:patch      # bump all three, commit, and tag
+bun run release:backfill   # publish GitHub Releases from CHANGELOG.md
+```
+
+Never hand-edit a version field: `scripts/release.sh` owns the flow and hard-fails when the three markers disagree. Each release gets a `CHANGELOG.md` section. The SPA redeploys from `main` via Netlify on its own, the NAS does not, so a release touching the bridge needs `bun run deploy:nas` afterwards.
 
 ## Claude skills
 
-The repo ships these Claude Code skills under `.claude/skills/`:
+Skills under `.claude/skills/` are scoped to this repo. Each one's `SKILL.md` carries the trigger phrases that invoke it; you can also call one by name.
 
-| Skill | What it does | How it's triggered |
-| --- | --- | --- |
-| `deploy-nas` | Ships `main` to the Synology NAS: syncs the repo, rebuilds the `stripe-bridge` container, verifies health, and rolls back a bad build. The web app is untouched (it deploys via Netlify). | "deploy to the NAS", "rebuild the bridge", "ship main", "is the NAS running the latest code", or any follow-up to a merged PR that touched `stripe-bridge/` |
-| `commiter` | Enforces the `CLAUDE.md` naming and body conventions for commits and pull requests, while keeping unrelated changes in separate commits. | Preparing, writing, validating, or creating a commit or PR; for example, "commit this", "write a commit message", "open a PR", or "check this PR title" |
-| `link-workspace-packages` | Links sibling packages with the workspace package manager instead of using path aliases or manual dependency workarounds. | Creating packages, importing from a sibling package, or diagnosing workspace-package resolution errors such as `TS2307` or "cannot find module" |
-| `monitor-ci` | Watches Nx Cloud CI, evaluates failures, and coordinates supported self-healing fixes. | "monitor CI", "watch CI", "track CI", "check CI status", or requests to handle self-healing CI failures |
-| `nx-generate` | Discovers and runs the appropriate Nx generator, then verifies the generated code against repository conventions. | Scaffolding or generating an app, library, feature, project, or other workspace structure |
-| `nx-import` | Imports another repository or project into the Nx workspace while preserving history and respecting the destination layout. | Requests to adopt Nx across repositories, merge repositories, or move existing code and history into this monorepo |
-| `nx-plugins` | Finds and installs Nx plugins for frameworks and other technologies. | Requests to discover Nx plugins, install one, or add framework/technology support to the workspace |
-| `nx-run-tasks` | Discovers and runs Nx targets for one, many, or only affected projects. | Requests to build, test, lint, serve, or run another task defined in the Nx workspace |
-| `nx-workspace` | Explores Nx projects, targets, dependencies, and configuration without changing the workspace. | Questions about workspace structure or available tasks, and investigation of failed Nx commands or missing target configuration |
-| `version-bumper` | Checks whether `origin/main` is ahead of the last `WZ: Bump version to X.Y.Z` commit, recommends a bump level (patch, minor, major), and on approval runs `scripts/release.sh` to bump, commit, and tag. | "should we cut a release", "bump the version", "what version should this be", "is main ahead of the last release", or after PRs merge to main and a release feels due |
+**Repo workflow**
+
+| Skill | What it does |
+| --- | --- |
+| `commiter` | Enforces the `CLAUDE.md` commit and PR conventions, keeping unrelated changes in separate commits |
+| `pr-creator` | Creates, drafts, formats, and validates pull requests against those same conventions |
+| `version-bumper` | Decides whether `main` is due for a release, recommends a level, and runs the release flow on approval |
+| `deploy-nas` | Ships `main` to the Synology NAS: syncs, rebuilds `stripe-bridge`, verifies health, rolls back a bad build |
+| `nas-state-backup` | Snapshots live NAS state (bridge DB, `wizarr-data`) before anything can destroy it |
+| `copy-compliance` | Audits user-facing copy against the server-cost contribution framing |
+| `monitor-ci` | Watches Nx Cloud CI, evaluates failures, and coordinates supported self-healing fixes |
+
+**Nx**
+
+| Skill | What it does |
+| --- | --- |
+| `nx-workspace` | Explores projects, targets, and configuration without changing anything |
+| `nx-run-tasks` | Runs targets for one, many, or only affected projects |
+| `nx-generate` | Finds and runs the right generator, then checks the output against repo conventions |
+| `nx-plugins` | Finds and installs Nx plugins for frameworks and other technologies |
+| `nx-import` | Imports another repository into the workspace while preserving history |
+| `link-workspace-packages` | Links sibling packages with the package manager instead of path aliases or manual edits |
 
 ## Docs
 
-Tiers and the invite/renewal/cancel flow in `docs/invite-flow.md`; deployment in `docs/nas-deployment.md` and `docs/tailscale-funnel.md`; working conventions in `CLAUDE.md`.
+| Topic | Where |
+| --- | --- |
+| Tiers and the invite/renewal/cancel flow | `docs/invite-flow.md` |
+| NAS deployment | `docs/nas-deployment.md` |
+| Webhook ingress | `docs/tailscale-funnel.md` |
+| Specs and plans | `docs/superpowers/specs/`, `docs/superpowers/plans/` |
+| Product requirements | `docs/prd/` |
+| Release history | `CHANGELOG.md` |
+| Working conventions | `CLAUDE.md` |

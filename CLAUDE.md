@@ -2,30 +2,9 @@
 
 This file is loaded automatically when Claude Code runs inside this repo. It captures the working context that doesn't belong in the README.
 
-## What this project is
+## Hard rules
 
-A self-hosted stack that gates Plex access behind a recurring Stripe "server-cost contribution":
-
-- **Wizarr** — invite-based onboarding for Plex users
-- **Tautulli** — usage analytics
-- **stripe-bridge** (`apps/stripe-bridge/`) — small FastAPI service that converts Stripe webhooks (`checkout.session.completed`, `customer.subscription.deleted`) into Wizarr API calls
-
-The contribution framing is deliberate (Plex TOS prohibits selling access, Stripe TOS prohibits selling rights you don't own). When suggesting copy, product descriptions, or UX text, lean toward infrastructure/hosting language. Never reference content, libraries, or titles in user-facing payment surfaces.
-
-## Structure
-
-This is an **Nx monorepo** over **bun workspaces** (`workspaces: ["apps/*"]`), with two apps and no shared libs yet.
-
-- `apps/admin-portal/` — Vite + React SPA (TypeScript, bun), Nx project **`admin-portal`**. Source under `apps/admin-portal/src/` (`components/`, `pages/`, `lib/`, `stores/`, `styles/`, `test/`); `public/`, `index.html`, `vite.config.ts`, `tsconfig.json`, `bunfig.toml`, and the oxlint/oxfmt/gale configs live at the app root. It has no `project.json`: Nx infers its targets from the `scripts` in `apps/admin-portal/package.json`, whitelisted by the `nx.includedScripts` field there. Adding a script that should be runnable as a target means adding it to that list too.
-- `apps/stripe-bridge/` — FastAPI service (Python 3.12), Nx project **`stripe-bridge`**. All runtime code lives in the `stripe_bridge/` package (`stripe_wizarr_bridge.py` is the app entrypoint, plus `wizarr.py`, `plex.py`, `store.py`, `tiers.py`, `mailer.py`, `email_template.py`, `admin.py`); `tests/`, `scripts/`, `Dockerfile`, `pytest.ini`, and `requirements*.txt` sit at the app root, outside the package. Being Python, it has no `package.json`, so its targets (`test`, `test-docker`, `docker-build`, `serve`, `stop`, `logs`) are declared explicitly in `apps/stripe-bridge/project.json` as `nx:run-commands`, each with `cwd: {workspaceRoot}`.
-- Import bridge modules package-absolute — `from stripe_bridge import store`, `from stripe_bridge.wizarr import WizarrClient`. New modules go inside `stripe_bridge/` and need no Dockerfile change; the image copies the whole package.
-- The workspace root orchestrates both: `nx.json` (target defaults, cacheable targets, named inputs), `package.json` (bun workspaces plus thin aliases that all delegate to `nx`), `scripts/`, `docs/` (all specs, plans, and PRDs for both apps), `docker-compose.yml` (builds `./apps/stripe-bridge`), `netlify.toml` (builds `admin-portal` only, publishes `apps/admin-portal/dist`), `.github/`, `.husky/`.
-- Run tasks through Nx, not by cd-ing into an app: `bunx nx run admin-portal:test`, `bunx nx run-many -t lint test`, `bunx nx affected -t test`. The root `bun run <script>` aliases (`dev`, `build`, `verify`, `system-check`, `lint`, `test:web`, `test:bridge`, `bridge:*`) are kept for muscle memory and all delegate to Nx. Targets whose name contains a colon (`lint:css`, `format:check`, `typecheck:tsc`) must be invoked via `nx run-many -t <target> -p <project>` — `nx run proj:lint:css` parses the second colon as a configuration name.
-- Anything cacheable is declared in `nx.json` `targetDefaults`. A new target that is safe to cache belongs there; anything that touches Docker or the network must stay `cache: false`.
-- Path references below (e.g. `styles/globals.scss`, `lib/foo.ts`) are under `apps/admin-portal/src/`, and the `@/*` import alias maps to `apps/admin-portal/src/*` — declared in both `apps/admin-portal/tsconfig.json` and `apps/admin-portal/vite.config.ts`, so new aliases must be added in both.
-- Import via the `@/` alias, never parent-relative paths (`../`). Same-directory `./` imports (co-located styles, tests) are fine. There is no linter in this repo, so this is convention rather than something tooling catches.
-
-## Workflow
+These override any inference from the code. Ask first, every time:
 
 - Do not commit anything unless I tell you.
 - Do not switch branches unless I tell you.
@@ -33,6 +12,94 @@ This is an **Nx monorepo** over **bun workspaces** (`workspaces: ["apps/*"]`), w
 - Do not merge anything unless I tell you.
 - Do not create a PR unless I tell you.
 - Do not create a branch unless I tell you.
+
+## What this project is
+
+A self-hosted stack that gates Plex access behind a recurring Stripe "server-cost contribution":
+
+| Piece | Role |
+| --- | --- |
+| **Wizarr** | Invite-based onboarding for Plex users |
+| **Tautulli** | Usage analytics |
+| **stripe-bridge** (`apps/stripe-bridge/`) | Small FastAPI service that converts Stripe webhooks (`checkout.session.completed`, `customer.subscription.deleted`) into Wizarr API calls |
+| **admin-portal** (`apps/admin-portal/`) | Landing page plus the gated admin pages |
+
+The contribution framing is deliberate: Plex TOS prohibits selling access, and Stripe TOS prohibits selling rights you don't own. When suggesting copy, product descriptions, or UX text, lean toward infrastructure/hosting language. Never reference content, libraries, or titles in user-facing payment surfaces. The `copy-compliance` skill audits this.
+
+## Structure
+
+An Nx monorepo over bun workspaces (`workspaces: ["apps/*"]`), with two apps and no shared libs yet.
+
+```
+wizteros/
+├── apps/
+│   ├── admin-portal/           Nx project `admin-portal`
+│   │   ├── public/
+│   │   └── src/                components/ pages/ lib/ stores/ styles/ test/
+│   └── stripe-bridge/          Nx project `stripe-bridge`
+│       ├── stripe_bridge/      all runtime code
+│       ├── scripts/            lint, test, and e2e entrypoints
+│       └── tests/              pytest suite
+├── docs/                       all specs, plans, and PRDs for both apps
+├── scripts/                    release, backfill, and deploy entrypoints
+├── .claude/skills/             repo-scoped skills
+├── .github/                    CI workflows
+├── .husky/                     pre-commit and pre-push hooks
+├── docker-compose.yml          builds ./apps/stripe-bridge, bridge only
+├── netlify.toml                builds admin-portal, publishes apps/admin-portal/dist
+├── nx.json                     target defaults, cacheable targets, named inputs
+└── package.json                bun workspaces plus thin aliases that delegate to nx
+```
+
+**admin-portal**, a Vite + React SPA (TypeScript, bun). `index.html`, `vite.config.ts`, `tsconfig.json`, `bunfig.toml`, and the oxlint/oxfmt/gale configs live at the app root. It has no `project.json`: Nx infers targets from the `scripts` in its `package.json`, whitelisted by the `nx.includedScripts` field there. Adding a script that should be runnable as a target means adding it to that list too.
+
+**stripe-bridge**, a FastAPI service (Python 3.12). All runtime code lives in the `stripe_bridge/` package: `stripe_wizarr_bridge.py` is the app entrypoint, plus `wizarr.py`, `plex.py`, `store.py`, `tiers.py`, `mailer.py`, `email_template.py`, `admin.py`, `snapshot.py`. Everything else (`tests/`, `scripts/`, `Dockerfile`, `pytest.ini`, `ruff.toml`, `requirements*.txt`, `package.json`, `project.json`) sits at the app root, outside the package.
+
+Import rules, which tooling does not catch:
+
+- Bridge modules import package-absolute: `from stripe_bridge import store`, `from stripe_bridge.wizarr import WizarrClient`. New modules go inside `stripe_bridge/` and need no Dockerfile change, since the image copies the whole package.
+- Web modules import via the `@/` alias, never parent-relative `../`. Same-directory `./` imports (co-located styles, tests) are fine. The alias maps to `apps/admin-portal/src/*` and is declared in both `apps/admin-portal/tsconfig.json` and `apps/admin-portal/vite.config.ts`, so a new alias must be added in both.
+- Unqualified paths below (`styles/globals.scss`, `lib/foo.ts`) are relative to `apps/admin-portal/src/`.
+
+## Nx and tasks
+
+Run tasks through Nx, not by cd-ing into an app:
+
+```bash
+bunx nx run admin-portal:test          # one target, one project
+bunx nx run-many -t lint:ts test       # a target everywhere it exists
+bunx nx affected -t test               # only what the branch changed
+bunx nx show project stripe-bridge     # a project's real target list
+```
+
+The root `bun run <script>` aliases (`dev`, `build`, `verify`, `system-check`, `lint`, `test:web`, `test:bridge`, `bridge:*`, `release:*`, `deploy:nas`) are kept for muscle memory and all delegate to Nx.
+
+Both projects source targets from more than one place, so check `nx show project` rather than assuming from a single file:
+
+| Project | Targets come from |
+| --- | --- |
+| `admin-portal` | `package.json` scripts only, gated by `nx.includedScripts` |
+| `stripe-bridge` | `package.json` scripts (`test`, `lint:py`, `test:e2e`, `test:e2e:tiers`, `refresh:libraries`) gated by `nx.includedScripts`, **plus** `project.json` for the Docker targets (`docker-build`, `serve`, `stop`, `logs`, `test-docker`), declared as `nx:run-commands` with `cwd: {workspaceRoot}` |
+
+Anything cacheable is declared in `nx.json` `targetDefaults`. A new target that is safe to cache belongs there; anything that touches Docker or the network must stay `cache: false`.
+
+Gates: pre-commit runs `bun run system-check` (admin-portal only), pre-push runs `bun run verify` (both apps). CI runs the same checks.
+
+## Releases and deploy
+
+Three version markers move in lockstep: root `package.json`, `apps/admin-portal/package.json`, and `__version__` in `apps/stripe-bridge/stripe_bridge/__init__.py`. The bridge marker is the only one that reaches the container, and it is what `GET /version` reports.
+
+- Never hand-edit a version field. `scripts/release.sh` owns the flow and hard-fails when the three disagree. The `version-bumper` skill decides whether a bump is due.
+- Every release gets a `CHANGELOG.md` section.
+- `admin-portal` redeploys from `main` via Netlify on its own. **The NAS does not.** A release touching the bridge needs `bun run deploy:nas` (or the `deploy-nas` skill) afterwards, then confirm with `GET /version`.
+
+## Lint and enforcement
+
+The repo does have linters: oxlint for TS/JS, gale for SCSS, ruff for Python, oxfmt for formatting, tsgo for type checking.
+
+Several conventions below are enforced as lint errors, not just style preferences, in `apps/admin-portal/.oxlintrc.json` under a block marked "Conventions from CLAUDE.md": no default exports, `type` over `interface`, no `any`, no non-null assertions, `eqeqeq`, `prefer-const`, `prefer-array-flat-map`. Turning one of these off to make code pass is not the fix.
+
+Everything else here is convention, and the import-alias rule in particular has no lint rule behind it.
 
 ## React
 
@@ -50,6 +117,12 @@ This is an **Nx monorepo** over **bun workspaces** (`workspaces: ["apps/*"]`), w
 - Never under any circumstance cast types and never double cast: `as any as string`
 - If type can't be inferred and type narrowing is not an option, use `unknown` types
 
+## Python
+
+- Ruff is pinned to `target-version = "py312"` with `select = ["E4", "E7", "E9", "F", "I", "RUF"]`, so import order (`I`) is enforced. Run `bun run lint:py`, fix with `bun run lint:py:fix`
+- Tests live in `apps/stripe-bridge/tests/`, outside the `stripe_bridge/` package, and run under pytest via `bun run test:bridge`
+- `bun run setup:py` creates the local venv the test suite expects
+
 ## CSS
 
 - Use SCSS modules (`*.module.scss`) for component styles
@@ -57,7 +130,7 @@ This is an **Nx monorepo** over **bun workspaces** (`workspaces: ["apps/*"]`), w
 - Use a container driven approach, meaning the container will define the width and height and the children will be positioned within it, this means if/when the children are moved to different containers they may be laid out differently depending on what the container specifies
 - Prefer using CSS display grid for layout with the gap property for spacing between grid items; avoid using margins for spacing
 - Second preferred display value is flex
-- Avoid using plain divs; meaing divs with no class or id defined
+- Avoid using plain divs, meaning divs with no class or id defined
 - Always use token values from `styles/globals.scss` when defining font sizes, colors, and other design tokens like padding, margin, gap, and border radius
 - Responsive design is a must: every page must render without horizontal page scroll down to a 320px viewport, in every state (loaded, loading, error, empty)
 - Wide content (tables, long emails/ids) scrolls inside its own `overflow-x: auto` container or wraps (`overflow-wrap: anywhere`, `flex-wrap: wrap`); the page itself never scrolls sideways. Watch grid/flex min-content traps: single-column page grids use `grid-template-columns: minmax(0, 1fr)`, and note `overflow-wrap: break-word` does not shrink min-content while `anywhere` does
@@ -98,3 +171,7 @@ This is an **Nx monorepo** over **bun workspaces** (`workspaces: ["apps/*"]`), w
 
 - Should follow the same naming convention as commits and every PR title should start with `WZ: a short title`
 - The body of the PR should be minimal and favour bullet points
+
+## Skills
+
+Repo-scoped skills live in `.claude/skills/`. Prefer them over improvising: `commiter` and `pr-creator` for the conventions above, `version-bumper` and `deploy-nas` for shipping, `nas-state-backup` before touching live NAS state, `copy-compliance` for user-facing copy, `monitor-ci` for CI. The README lists all of them.
