@@ -4,11 +4,6 @@ on:
   push:
     branches: [main]
 
-# Only the newest commit on main matters; an older in-flight run is cancelled.
-concurrency:
-  group: sanity-check-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   # CI already lints/typechecks/tests. This job covers the one thing it doesn't:
   # the production bundle Netlify actually ships.
