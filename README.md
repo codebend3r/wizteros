@@ -42,6 +42,15 @@ bun run verify     # lint, format check, typecheck, web and bridge tests
 
 Hooks run automatically: pre-commit runs `bun run system-check` (lint, SCSS lint, format check, typecheck); pre-push runs `bun run verify`. CI runs the same checks on every push.
 
+## Claude skills
+
+The repo ships two Claude Code skills under `.claude/skills/`:
+
+| Skill | What it does | How it's triggered |
+| --- | --- | --- |
+| `deploy-nas` | Ships `main` to the Synology NAS: syncs the repo, rebuilds the `stripe-bridge` container, verifies health, and rolls back a bad build. The web app is untouched (it deploys via Netlify). | "deploy to the NAS", "rebuild the bridge", "ship main", "is the NAS running the latest code", or any follow-up to a merged PR that touched `stripe-bridge/` |
+| `version-bumper` | Checks whether `origin/main` is ahead of the last `WZ: Bump version to X.Y.Z` commit, recommends a bump level (patch, minor, major), and on approval runs `scripts/release.sh` to bump, commit, and tag. | "should we cut a release", "bump the version", "what version should this be", "is main ahead of the last release", or after PRs merge to main and a release feels due |
+
 ## Docs
 
 Tiers and the invite/renewal/cancel flow in `docs/invite-flow.md`; deployment in `docs/nas-deployment.md` and `docs/tailscale-funnel.md`; working conventions in `CLAUDE.md`.
