@@ -8,38 +8,36 @@ test('defines the four tiers in order with CAD prices', () => {
   expect(config.tiers.map((tier) => tier.cadence)).toEqual(config.tiers.map(() => 'CAD / month'))
 })
 
-test('adult tiers list the same five features; youth swaps in youth-scoped library rows', () => {
+test('adult tiers list the same five features; youth swaps in youth-profile playback rows', () => {
   const config = resolveConfig({ env: {} })
   const labelsById = Object.fromEntries(
     config.tiers.map((tier) => [tier.id, tier.features.map((feature) => feature.label)]),
   )
   const adultLabels = [
-    'Access to all 1080p libraries',
-    'Access to all 4K libraries',
-    'Access to Lossless Music Library',
+    '1080p HD streaming',
+    '4K UHD streaming',
+    'Lossless audio streaming',
     'Offline downloads for travel',
-    'Request any show or movie',
+    'Access to the request queue',
   ]
   expect(labelsById.bronze).toEqual(adultLabels)
   expect(labelsById.silver).toEqual(adultLabels)
   expect(labelsById.gold).toEqual(adultLabels)
   expect(labelsById.youth).toEqual([
-    'Access to all youth 1080p tv shows and movies',
-    'Access to all 4K youth movies',
-    'Access to Lossless Music Library',
+    '1080p HD streaming (youth profile)',
+    '4K UHD streaming (youth profile)',
+    'Lossless audio streaming',
     'Offline downloads for travel',
-    'Request any show or movie',
+    'Access to the request queue',
   ])
 })
 
-test('every tier except youth includes the lossless music library', () => {
+test('every tier except youth includes lossless audio streaming', () => {
   const config = resolveConfig({ env: {} })
   const byId = Object.fromEntries(
     config.tiers.map((tier) => [
       tier.id,
-      tier.features.some(
-        ({ label, included }) => label === 'Access to Lossless Music Library' && included,
-      ),
+      tier.features.some(({ label, included }) => label === 'Lossless audio streaming' && included),
     ]),
   )
   expect(byId).toEqual({ bronze: true, silver: true, gold: true, youth: false })
