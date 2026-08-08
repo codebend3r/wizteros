@@ -107,6 +107,13 @@ case "$KEEP" in
 esac
 [ "$KEEP" -ge 1 ] || die "WZ_BACKUP_KEEP must be at least 1, got '$KEEP'"
 
+# The size floor is half of the verification step. A non-numeric value makes the
+# `[ "$BYTES" -lt "$MIN_BYTES" ]` test below a syntax error, which is false, which
+# reports every archive as verified. Fail loudly here instead.
+case "$MIN_BYTES" in
+  ''|*[!0-9]*) die "WZ_MIN_ARCHIVE_BYTES must be a whole number of bytes, got '$MIN_BYTES'" ;;
+esac
+
 nas true 2>/dev/null || die "cannot reach $NAS_HOST over SSH (key auth). Is the NAS up / are you on the LAN?"
 say "  · NAS reachable over SSH"
 
@@ -216,10 +223,12 @@ step "Writing archives to $DEST"
 
 nas_write "mkdir -p '$DEST'" || die "could not create $DEST on the NAS"
 
-# archives / archive_sources / archive_bytes stay index-aligned: a failed tar
-# appends to none of them, so the manifest never claims an archive that is not
-# there.
-archives=(); archive_sources=(); archive_bytes=(); failures=0
+# archives / archive_sources / archive_bytes / archive_status stay index-aligned:
+# a failed tar appends to none of them, so the manifest never claims an archive
+# that is not there. An archive that was written but failed verification does get
+# listed, carrying its failure in archive_status, so the manifest can say so
+# rather than presenting it as restorable.
+archives=(); archive_sources=(); archive_bytes=(); archive_status=(); failures=0
 i=0
 while [ "$i" -lt "$COUNT" ]; do
   name="${found_names[$i]}"
@@ -238,6 +247,7 @@ while [ "$i" -lt "$COUNT" ]; do
   if [ "$DRY_RUN" = 1 ]; then
     say "  · would archive $path -> $DEST/$archive"
     archives+=("$archive"); archive_sources+=("$path"); archive_bytes+=(0)
+    archive_status+=("planned")
     i=$((i + 1)); continue
   fi
 
@@ -248,14 +258,18 @@ while [ "$i" -lt "$COUNT" ]; do
 
   if [ "$BYTES" = "-1" ]; then
     say "  ✗ $archive is unreadable (tar -tzf failed). Treat this backup as bad"
+    status="FAILED VERIFICATION: tar could not read it back"
     failures=$((failures + 1))
   elif [ "$BYTES" -lt "$MIN_BYTES" ]; then
     say "  ✗ $archive is only $(human "$BYTES"), under the $(human "$MIN_BYTES") floor. Treat this backup as bad"
+    status="FAILED VERIFICATION: only $(human "$BYTES"), under the $(human "$MIN_BYTES") floor"
     failures=$((failures + 1))
   else
     say "  · $archive  $(human "$BYTES")  (from $path, verified)"
+    status="ok"
   fi
   archives+=("$archive"); archive_sources+=("$path"); archive_bytes+=("$BYTES")
+  archive_status+=("$status")
   i=$((i + 1))
 done
 
@@ -271,6 +285,10 @@ i=0
 while [ "$i" -lt "${#archives[@]}" ]; do
   MANIFEST="$MANIFEST
 ${archives[$i]} <- ${archive_sources[$i]}"
+  # A restore months from now reads this file, not this run's terminal output, so
+  # a bad archive has to carry its verdict here too.
+  [ "${archive_status[$i]}" = ok ] || MANIFEST="$MANIFEST
+    ** ${archive_status[$i]}. Do not restore from this archive. **"
   i=$((i + 1))
 done
 
@@ -286,31 +304,51 @@ cleanup
 # ─── retention ────────────────────────────────────────────────────────────────
 step "Retention (keep newest $KEEP)"
 
-EXISTING="$(nas "ls -1 '$BACKUP_ROOT' 2>/dev/null || true")"
-# The name filter is the safety rail: only directories this script could have
-# created are ever eligible for deletion.
-SNAPS="$(printf '%s\n' "$EXISTING" | grep -E '^[0-9]{8}T[0-9]{6}Z$' | sort || true)"
-NSNAPS="$(printf '%s\n' "$SNAPS" | grep -c . || true)"
-NSNAPS="${NSNAPS:-0}"
-[ "$DRY_RUN" = 1 ] && NSNAPS=$((NSNAPS + 1))   # the dir this run would have added
-
-if [ "$NSNAPS" -le "$KEEP" ]; then
-  say "  · $NSNAPS snapshot(s) on the NAS, nothing to prune"
+# A run whose archives did not verify must not spend a retention slot. Pruning
+# here would delete a known-good older snapshot to make room for one this script
+# has already declared untrustworthy, deleting the fallback at the exact moment
+# it became the only good copy. So: no verification, no deletions.
+if [ "$failures" -gt 0 ]; then
+  say "  · skipped: $failures archive(s) failed verification, so nothing old is deleted"
+  say "  · $DEST is left in place for inspection; remove it by hand once you have looked"
 else
-  PRUNE="$(printf '%s\n' "$SNAPS" | head -n "$((NSNAPS - KEEP))")"
-  RM_CMD=""
-  while read -r d; do
-    [ -n "$d" ] || continue
-    say "  · pruning $BACKUP_ROOT/$d"
-    RM_CMD="${RM_CMD}rm -rf '$BACKUP_ROOT/$d'; "
-  done <<< "$PRUNE"
-  [ -n "$RM_CMD" ] && { nas_write "$RM_CMD true" || say "  ⚠ prune failed; old snapshots are still on the NAS"; }
+  EXISTING="$(nas "ls -1 '$BACKUP_ROOT' 2>/dev/null || true")"
+  # The name filter is the safety rail: only directories this script could have
+  # created are ever eligible for deletion.
+  SNAPS="$(printf '%s\n' "$EXISTING" | grep -E '^[0-9]{8}T[0-9]{6}Z$' | sort || true)"
+  HAVE="$(printf '%s\n' "$SNAPS" | grep -c . || true)"
+  HAVE="${HAVE:-0}"
+  # A real run already created $DEST, so it is in $SNAPS and HAVE counts it. A dry
+  # run did not, so add it to the arithmetic without claiming it is on disk.
+  TOTAL="$HAVE"
+  [ "$DRY_RUN" = 1 ] && TOTAL=$((HAVE + 1))
+
+  if [ "$TOTAL" -le "$KEEP" ]; then
+    say "  · $HAVE snapshot dir(s) on the NAS, $TOTAL counting this run; under the keep-$KEEP limit, nothing to prune"
+  else
+    PRUNE="$(printf '%s\n' "$SNAPS" | head -n "$((TOTAL - KEEP))")"
+    RM_CMD=""
+    while read -r d; do
+      [ -n "$d" ] || continue
+      if [ "$DRY_RUN" = 1 ]; then
+        say "  · would prune $BACKUP_ROOT/$d"
+      else
+        say "  · pruning $BACKUP_ROOT/$d"
+      fi
+      RM_CMD="${RM_CMD}rm -rf '$BACKUP_ROOT/$d'; "
+    done <<< "$PRUNE"
+    [ -n "$RM_CMD" ] && { nas_write "$RM_CMD true" || say "  ⚠ prune failed; old snapshots are still on the NAS"; }
+  fi
 fi
 
 # ─── optional pull to the Mac ─────────────────────────────────────────────────
 if [ "$PULL" = 1 ]; then
   step "Pulling $TS to $PULL_DEST"
-  if [ "$DRY_RUN" = 1 ]; then
+  if [ "$failures" -gt 0 ]; then
+    # Copying a snapshot that failed verification onto the Mac just makes a second
+    # copy of something that cannot be restored from.
+    say "  · skipped: $failures archive(s) failed verification, nothing worth copying"
+  elif [ "$DRY_RUN" = 1 ]; then
     say "  would run: mkdir -p '$PULL_DEST' && ssh $NAS_HOST \"cd '$BACKUP_ROOT' && tar -cf - '$TS'\" | tar -xf - -C '$PULL_DEST'"
   else
     mkdir -p "$PULL_DEST" || die "could not create $PULL_DEST"
@@ -332,13 +370,15 @@ i=0
 while [ "$i" -lt "${#archives[@]}" ]; do
   if [ "$DRY_RUN" = 1 ]; then
     say "  ${archives[$i]}"
-  else
+  elif [ "${archive_status[$i]}" = ok ]; then
     say "  ${archives[$i]}  $(human "${archive_bytes[$i]}")"
+  else
+    say "  ${archives[$i]}  ✗ ${archive_status[$i]}"
   fi
   i=$((i + 1))
 done
 say "bridge db: $SNAPSHOT_NOTE"
-[ "$PULL" = 1 ] && [ "$DRY_RUN" = 0 ] && say "pulled:    $PULL_DEST/$TS"
+[ "$PULL" = 1 ] && [ "$DRY_RUN" = 0 ] && [ "$failures" = 0 ] && say "pulled:    $PULL_DEST/$TS"
 say ""
 say "This lives on the same volume as the data it protects. If /volume1 dies,"
 say "both die with it. Offsite is a separate problem, out of scope here."

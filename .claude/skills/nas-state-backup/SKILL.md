@@ -64,8 +64,9 @@ Run it as a single Bash invocation so the user sees the whole transcript. Defaul
 4. **Verifies** each archive by reading it back (`tar -tzf`) and checking it clears a size
    floor, then prints per-archive sizes. A failed archive makes the whole run exit 1.
 5. **Writes `MANIFEST.txt`** into the snapshot dir recording which archive came from which
-   path and whether the db snapshot was taken.
-6. **Prunes** to the newest 7 snapshots.
+   path, whether the db snapshot was taken, and, for any archive that failed
+   verification, that it must not be restored from.
+6. **Prunes** to the newest 7 snapshots, but only if every archive verified.
 
 Nothing streams through the Mac unless `--pull` is given, and the only paths it writes to
 are the snapshot dir and one temporary db snapshot inside the bind mount.
@@ -112,6 +113,13 @@ path it pruned. Only directories matching the exact `YYYYMMDDTHHMMSSZ` name patt
 ever eligible for deletion, so anything else parked under the backups root is untouched.
 The script also refuses a backup root shallower than three path segments, because
 retention issues `rm -rf` under it.
+
+**A run that failed verification prunes nothing.** Retention is skipped entirely when any
+archive failed, and `--pull` is skipped with it. Otherwise a bad run would delete a
+known-good older snapshot to make room for the one the script just declared
+untrustworthy, which destroys the fallback at the exact moment it became the only good
+copy. The failed snapshot dir is left on the NAS for inspection and has to be removed by
+hand; that is deliberate, so a silent bad backup cannot quietly age out the good history.
 
 ## Restore
 
@@ -195,8 +203,9 @@ the db snapshot was taken or skipped, and what retention pruned. Call out any st
 that was not found anywhere, since that is either a layout change or missing data, and
 both matter more than the backup itself.
 
-If any archive failed verification, lead with that: the run exits 1 and the snapshot dir
-must not be trusted.
+If any archive failed verification, lead with that: the run exits 1, the snapshot dir must
+not be trusted, no old snapshot was pruned, and the bad dir is still on the NAS waiting to
+be removed by hand.
 
 ## Red Flags
 
