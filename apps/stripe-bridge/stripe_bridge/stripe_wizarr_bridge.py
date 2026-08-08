@@ -9,7 +9,7 @@ import stripe
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from stripe_bridge import admin, store, tiers
+from stripe_bridge import __version__, admin, store, tiers
 from stripe_bridge.mailer import send_alert_email, send_invite_email
 from stripe_bridge.wizarr import WizarrClient
 
@@ -177,6 +177,16 @@ app.add_middleware(
 # dual /webhook + /stripe/webhook handlers below.
 app.include_router(admin.router)
 app.include_router(admin.router, prefix="/stripe")
+
+
+# Unauthenticated on purpose: the release string is not a secret, and the
+# deploy check has to work before anyone holds an admin token. Dual-pathed for
+# the same Funnel reason as the webhook handlers below.
+@app.get("/stripe/version")
+@app.get("/version")
+def version():
+    """Release version of the running bridge, so a deploy can be verified from outside."""
+    return {"version": __version__}
 
 
 def customer_email(customer_id: str) -> str | None:
