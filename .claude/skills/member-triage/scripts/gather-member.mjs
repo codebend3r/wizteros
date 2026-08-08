@@ -13,7 +13,9 @@
 // so mutations happen in the admin web UI. Nothing here writes: the SQLite
 // handle is opened mode=ro and the SSH calls only read.
 //
-// Run: node --env-file=.env .claude/skills/member-triage/scripts/gather-member.mjs member@example.com
+// Run: node --env-file=<env file> .claude/skills/member-triage/scripts/gather-member.mjs member@example.com
+// `.env` is gitignored and not in the repo, so pass whichever file holds the
+// three values locally, or export them for the command.
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 
@@ -33,12 +35,17 @@ const DAY = 86_400_000
 
 if (!EMAIL.includes('@')) {
   console.error(
-    'Usage: node --env-file=.env .claude/skills/member-triage/scripts/gather-member.mjs <email>',
+    'Usage: node --env-file=<env file> .claude/skills/member-triage/scripts/gather-member.mjs <email>',
   )
   process.exit(2)
 }
+// Config is a precondition, not a degradable section: without these three there
+// is no dossier to print, so say so once instead of failing twice downstream.
 if (!STRIPE_API_KEY || !WIZARR || !WIZARR_API_KEY) {
-  console.error('Missing STRIPE_API_KEY / WIZARR_BASE_URL / WIZARR_API_KEY (use --env-file=.env)')
+  console.error(
+    'Missing STRIPE_API_KEY / WIZARR_BASE_URL / WIZARR_API_KEY ' +
+      '(pass --env-file=<env file>, or export them)',
+  )
   process.exit(2)
 }
 
@@ -174,10 +181,10 @@ const wizarrSection = async ({ inviteCode }) => {
       ),
     )
   }
-  // Wizarr's user schema carries no enabled flag, and for Plex a disable falls
-  // back to deleting the record (Plex cannot disable a share, only unshare), so
+  // Wizarr's user schema carries no enabled flag, and for Plex a disable is an
+  // account-wide plex.tv unfriend whose record the next user sync prunes, so
   // "record present" is the enabled signal and a vanished record is the disable.
-  bullet('    (no enabled flag exists: for Plex, disable removes the record entirely)')
+  bullet('    (no enabled flag exists: a Plex disable unfriends, and the next sync drops the row)')
 
   const invitations = (await wz('/api/invitations')).invitations ?? []
   const usernames = new Set(users.map((u) => u.username).filter(Boolean))

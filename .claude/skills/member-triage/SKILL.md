@@ -11,9 +11,10 @@ The support runbook for one person. Gather what Stripe, Wizarr, the bridge store
 the bridge logs each say about a single email, then map the symptom to one cause and one
 remedy.
 
-`admin.py` already has every verb (reissue-invite, reset-expiry, reset-tier, set-tag,
-set-downloads, cancel-subscription). This skill is the judgment layer that decides which
-one applies, and whether any of them should be pressed at all.
+`apps/stripe-bridge/stripe_bridge/admin.py` already has every verb (reissue-invite,
+reset-expiry, reset-tier, set-tag, set-downloads, cancel-subscription). This skill is the
+judgment layer that decides which one applies, and whether any of them should be pressed
+at all.
 
 **Nothing here mutates a member.** The gather script is read-only, and every admin verb
 sits behind a Supabase session JWT plus an email allowlist (`require_admin`), which no
@@ -22,27 +23,40 @@ CLI can mint. Actions happen in the admin web UI, pressed by a human.
 ## Running it
 
 ```bash
-node --env-file=.env .claude/skills/member-triage/scripts/gather-member.mjs member@example.com
+node --env-file=.env.local .claude/skills/member-triage/scripts/gather-member.mjs member@example.com
 ```
 
-Run it from the repo root, where `.env` lives. It needs `STRIPE_API_KEY`,
-`WIZARR_BASE_URL`, `WIZARR_API_KEY`, and SSH key auth to the NAS for the last two
-sections. Each section degrades on its own: a dead upstream prints
-`unavailable: <reason>` and the rest still print, so off the LAN you still get Stripe and
-Wizarr.
+Run it from the repo root. **There is no `.env` in this repo**: it is gitignored and only
+`.env.example` is committed, so `--env-file=.env` dies with `node: .env: not found`
+(exit 9) before a line of the script runs. Point `--env-file` at a file you keep the
+values in locally, or export them for the command instead.
 
-`WZ_LOG_TAIL` (default 2000) widens the log window; `WZ_NAS_HOST` points at another NAS.
+It needs `STRIPE_API_KEY`, `WIZARR_BASE_URL`, and `WIZARR_API_KEY` (the same three the
+bridge runs with), plus SSH key auth to the NAS and `sudo -n docker` there for the store
+and log sections.
+
+Config is a precondition, not a degradable section: any of those three missing or empty
+exits 2 with `Missing STRIPE_API_KEY / WIZARR_BASE_URL / WIZARR_API_KEY` and prints no
+dossier at all. What degrades is a reachable-but-failing upstream: it prints
+`unavailable: <reason>` and every other section still prints. A bad Stripe key leaves you
+the Wizarr, store, and log sections; being off the LAN leaves you Stripe and Wizarr.
+
+`WZ_LOG_TAIL` (default 2000) widens the log window; `WZ_NAS_HOST` (default
+`crivas@192.168.50.2`) points at another NAS.
 
 ## Reading the dossier
 
 - **Stripe** is the payment truth. `status=active` with a `paid` latest invoice means
   they are current. `status=canceled` with `ended` in the past means whatever disabled
   them was legitimate.
-- **Wizarr** is the access truth, one record per server. There is no enabled flag to
-  read: for Plex, Wizarr's disable falls back to deleting the record (Plex cannot disable
-  a share, only unshare, which is why `disable_user` severs the friendship account wide).
-  So no records means no access, and a record with a past `expires` means a lapsed
-  window.
+- **Wizarr** is the access truth, one record per server. `GET /api/users` returns only
+  `id, username, email, server, server_type, expires, created_at`, so there is no enabled
+  flag to read. For Plex a disable is `removeFriend()` on plex.tv, account wide because
+  there is no per-server unshare; the call itself leaves the record alone, but Wizarr's
+  next user sync deletes every row plex.tv no longer reports as shared, so the record
+  goes away on its own. So no records means no access, and a record with a past `expires`
+  means a lapsed window. The user list is cached for ten minutes, so a record disabled
+  seconds ago can still show.
 - **Bridge store** is the bridge's memory. `tier` drives the displayed tier, the
   downloads default, and the scope of the *next* invite. `subscribed` is the
   confirmed-payment flag written by the webhooks, and status keys off it, not off the
@@ -51,10 +65,16 @@ Wizarr.
 - **Bridge logs** are the why. Member lines carry the email; the alarm pass catches the
   ones that do not (tier scope, unresolved tiers, tracebacks).
 
-Status vocabulary (`memberStatus.ts`): **VIP** beats everything; **Subscribed Monthly**
-and **Expired Member** are gated on `subscribed`, never on the presence of an expiry;
-**Invited** and **Declined Invite** are `invited_at` inside or past the 14 day grace;
-**Uninvited** is known to the bridge with no payment and no invite.
+Status vocabulary (`apps/admin-portal/src/lib/memberStatus.ts`): **VIP** beats everything
+(the `hvu` tag changes nothing); **Subscribed Monthly** and **Expired Member** are gated
+on `subscribed`, never on the presence of an expiry, and split on whether that expiry is
+past; **Invited** and **Declined Invite** are `invited_at` inside or past the 14 day grace
+(`INVITE_GRACE_DAYS` in `lib/inviteRules.ts`); **Uninvited** is known to the bridge with
+no payment and no invite.
+
+The grace is 14 days but the deployed bridge runs `INVITE_EXPIRES_DAYS=7`, so a member can
+read **Invited** for a week after their link stopped working. Trust the invitation's
+`status`, not the badge.
 
 ## Case 1: paid but never invited
 
@@ -99,13 +119,14 @@ Wizarr invitations showing that code as `status=pending`.
 - **Link expired** (`status=expired`, or `invited_at` older than the link window). Only
   then issue a fresh one from `/user`, **Invite**.
 
-SMTP itself: `mailer.py` reads `SMTP_HOST/PORT/USER/PASS` at import and does STARTTLS
-plus login on every send. Missing vars would stop the container booting at all, so a
-running bridge with failing mail means bad credentials, a blocked port, or the provider
-rejecting the from address. Fix `.env` on the NAS and rebuild (deploy-nas skill).
+SMTP itself: `apps/stripe-bridge/stripe_bridge/mailer.py` reads `SMTP_HOST`, `SMTP_USER`,
+and `SMTP_PASS` as required env at import (`SMTP_PORT` defaults to 587) and does STARTTLS
+plus login on every send. A missing one stops the container booting at all, so a running
+bridge with failing mail means bad credentials, a blocked port, or the provider rejecting
+the from address. Fix `.env` on the NAS and rebuild (deploy-nas skill).
 
-The link window is `INVITE_EXPIRES_DAYS`: the code default is 14 and `.env.example` ships
-7, so read the live value instead of assuming.
+The link window is `INVITE_EXPIRES_DAYS`: the code default is 14, `.env.example` ships 7,
+and the deployed bridge is running 7, so read the live value instead of assuming.
 
 ## Case 3: disabled but believes they paid
 
@@ -115,10 +136,13 @@ Expect Wizarr `records: none found`. There is no "disabled" record to look at.
   `subscribed=0`, Stripe `status=canceled`. The system did the right thing. If they deny
   cancelling, check the latest invoice: a subscription ended by an unpaid invoice looks
   identical from Wizarr's side.
-- **Re-scoped and never re-joined.** Log `reset N existing record(s) for <email> pending
-  re-join`, an invitation still `pending`, `subscribed=1`. A tier change that dropped one
-  of their servers forces disable-first, because Wizarr has no per-server unshare. They
-  are mid-migration, not disabled. Resend the pending link.
+- **Re-scoped and never re-joined.** A recent store event "Invite issued", an invitation
+  still `pending`, `subscribed=1`. A tier change that dropped one of their servers forces
+  disable-first, because Wizarr has no per-server unshare. They are mid-migration, not
+  disabled. Resend the pending link. Only the checkout path logs this (`reset N existing
+  record(s) for <email> pending re-join`); an admin reissue disables silently and reports
+  the count as `disabled: N` in its own response, so the store event is the evidence, not
+  the log.
 - **Window lapsed.** That shows up as a record with a past `expires`, not as a missing
   record. See case 5.
 
@@ -149,10 +173,11 @@ defaulting to bronze` and the member silently lands on bronze. Legacy `kids` map
 
 **(b) The library set is wrong for the tier.** This is the tier-scope alarm pattern and
 it is never a per-member problem. The dossier's alarm pass shows `tier scope check:
-<tier> -> ...` or `youth allowlist mismatch on Meleys; missing [...]`. `tiers.py` matches
-Plex library **names**: youth is a three-name allowlist, bronze is everything without
-"4k" in the name, silver and gold take everything, and every tier is filtered to
-`SHARE_SERVER` (Meleys) with `9X.` libraries stripped last and independently.
+<tier> -> ...` or `youth allowlist mismatch on Meleys; missing [...]`.
+`apps/stripe-bridge/stripe_bridge/tiers.py` matches Plex library **names**: youth is a
+three-name allowlist, bronze is everything without "4k" in the name, silver and gold take
+everything, only libraries Wizarr reports as `enabled` count, and every tier is filtered
+to `SHARE_SERVER` (Meleys) with `9X.` libraries stripped last and independently.
 
 Point at the tier definitions, not the member. Rename back on Plex or update `tiers.py`,
 then `bun run refresh:libraries`, `bun run test:bridge`, deploy, and only then reissue
@@ -165,9 +190,10 @@ Plex at the next reissued invite, because Wizarr has no per-user downloads endpo
 
 ## Case 5: renewal did not extend the expiry
 
-Expected behaviour: `invoice.paid` with `billing_reason=subscription_cycle` sets every
-record's expiry to now plus `ACCESS_DURATION` (35 days), absolutely, not additively, and
-logs `renewed N record(s) for <email>`.
+Expected behaviour: any `invoice.paid` except the signup one sets every record's expiry to
+now plus `ACCESS_DURATION` (35 days), absolutely, not additively, and logs `renewed N
+record(s) for <email>`. The handler skips exactly `billing_reason=subscription_create`, so
+a `subscription_update` or a one-off invoice renews too.
 
 - `renewal: no wizarr user for <customer> / <email>`: there was nothing to extend. Their
   Plex account email differs from the Stripe email, or their records are gone.
@@ -176,8 +202,12 @@ logs `renewed N record(s) for <email>`.
 - `skipping first (signup) invoice`: by design. The checkout already stamped the window.
 - **No expiry at all** on a subscribed member: the hourly reconcile sweep stamps
   `invited_at` plus 35 days and logs `reconcile: stamped expiry ...`. Wait one
-  `RECONCILE_INTERVAL_SECONDS` (3600) before touching anything. A missing expiry heals
-  itself; a wrong one never does.
+  `RECONCILE_INTERVAL_SECONDS` (3600, unset on the NAS so the default holds) before
+  touching anything. A missing expiry usually heals itself; a wrong one never does. It
+  will not heal for a VIP, for a member with no `invited_at`, or when `invited_at` plus 35
+  days is already past, which logs `reconcile: computed expiry ... is already past;
+  skipping` rather than letting a background job revoke anyone. Those are the ones that
+  need Set expiry.
 
 **Remedy.** `/user`, **Set expiry** to the paid date plus 35 days
 (`POST /admin/reset-expiry` with an absolute `expires_at`). Then fix the cause: correct
@@ -201,8 +231,9 @@ that email".
 
 The Stripe dashboard and the customer portal do the same thing, but only the admin UI
 writes the "Cancellation scheduled" event into the member's history, so prefer the UI.
-Immediate revocation is a different act with a different button, and it is not what
-cancel means here.
+Cancel is never immediate here, and there is no revoke-now button to reach for: the admin
+API has no disable or delete verb at all, so pulling access early means doing it in Wizarr
+by hand, outside the event log.
 
 ## Where each remedy happens
 
