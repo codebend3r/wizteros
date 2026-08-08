@@ -41,7 +41,7 @@ read_bridge_version() { sed -n 's/^__version__ = "\(.*\)"$/\1/p' "$BRIDGE_INIT";
 
 # Preflight: all three markers must already agree. Drift here is what produced
 # the 1.0.x phantom, where the root sat two majors ahead of the app for four
-# consecutive tags before anyone noticed.
+# consecutive tags before anyone noticed. See CHANGELOG.md.
 ROOT_BEFORE="$(read_json_version package.json)"
 WEB_BEFORE="$(read_json_version apps/admin-portal/package.json)"
 BRIDGE_BEFORE="$(read_bridge_version)"
@@ -80,9 +80,9 @@ fi
 
 git add package.json apps/admin-portal/package.json "$BRIDGE_INIT"
 git commit -m "WZ: Bump version to $VERSION"
-# Annotated, not lightweight: v0.1.3 through v0.2.0 are lightweight and carry no
-# tagger or message, which makes the series inconsistent to read and to sort.
-# Everything from here forward is annotated.
+# Annotated, never lightweight. The whole series is annotated as of the
+# 2026-08-08 history rewrite; a lightweight tag would carry no tagger or
+# message and break that.
 git tag -a "v$VERSION" -m "v$VERSION"
 
 echo "tagged v$VERSION (annotated)"

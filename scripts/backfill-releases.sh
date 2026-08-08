@@ -2,8 +2,8 @@
 # Create a GitHub Release for every vX.Y.Z tag that does not have one, using that
 # version's section of CHANGELOG.md as the release notes.
 #
-# The repo has eight tags and zero releases, so the only description of what
-# shipped in each version is a one-line bump commit subject. This closes that.
+# Without this, the only description of what shipped in a version is its
+# one-line bump commit subject. This closes that.
 #
 # Dry run by default; pass --apply to actually create the releases. Existing
 # releases are never touched, so re-running is safe and only fills what is missing.

@@ -54,7 +54,8 @@ Cross-checks before judging anything:
 - All three version markers on `origin/main` must read the baseline version (they move in
   lockstep). Disagreement means a broken release; stop and report it instead of
   recommending. This is the check that the 1.0.x phantom went without: the root sat two
-  majors ahead of the app for four consecutive tags. See `CHANGELOG.md`.
+  majors ahead of the app for four consecutive tags before anyone noticed. That history
+  was corrected by the 2026-08-08 rewrite; see `CHANGELOG.md`.
 - If the baseline version's tag is missing from `git ls-remote --tags origin`, keep
   going, but fold the backfill into the recommendation:
   `git tag vX.Y.Z <bump-sha> && git push origin vX.Y.Z`.
@@ -172,9 +173,9 @@ the global autonomy rules forbid.
   and the only one the running container can report. `release.sh` blocks this, so hitting
   it means someone edited a version by hand.
 - Tagging a release without a `CHANGELOG.md` section: the tag then says nothing about what
-  shipped, which is the state all eight pre-0.2.1 tags were in.
-- Creating a lightweight tag by hand (`git tag vX.Y.Z`): the series is annotated from
-  0.2.1 onward. Let `release.sh` make the tag.
+  shipped, which is the state every tag was in before 2026-08-08.
+- Creating a lightweight tag by hand (`git tag vX.Y.Z`): every tag in the series is
+  annotated. Let `release.sh` make the tag.
 - Assuming the NAS runs the newest release because main does: check `GET /version` on the
   bridge. Netlify auto-deploys, the NAS does not.
 - Looking for `web/` or a top-level `stripe-bridge/`: both live under `apps/` since the

@@ -7,8 +7,10 @@ semver consumers, so features and fixes both land as patch. Minor marks a
 milestone the admin has to notice. See `.claude/skills/version-bumper/SKILL.md`
 for the calibration.
 
-Read [Version history anomalies](#version-history-anomalies) before trusting the
-early tags; four of them disagree with the version recorded in the tree.
+Every tag is annotated, sits on a `WZ: Bump version to X.Y.Z` commit, and matches
+the version recorded in the tree at that commit. That was not always true; the
+history was rewritten on 2026-08-08 to make it so. See
+[The 2026-08-08 history rewrite](#the-2026-08-08-history-rewrite).
 
 ## v0.2.0 (2026-08-08)
 
@@ -42,11 +44,8 @@ Minor: the repository layout changed underneath both apps.
 
 ## v0.1.3 (2026-07-23)
 
-First tag whose name matches the version recorded in the tree.
-
 - Add an allow-downloads toggle to the member page (#6)
 - Rebrand the kids tier to youth (#5)
-- Reset the root package version to the real 0.1.x line, ending the 1.0.x phantom
 - Update deployment docs for the Stripe live switch
 
 ## v0.1.2 (2026-07-21)
@@ -78,19 +77,15 @@ First tag whose name matches the version recorded in the tree.
 - Add ESLint, Prettier, and husky pre-commit and pre-push hooks
 - Use the `@/` alias for all web TypeScript imports
 
-## v0.1.0 (never tagged)
+## v0.1.0 (2026-07-13)
 
-The web app was scaffolded at version `0.1.0` in `08a91ee` and carried that
-version until the `0.1.1` bump. No `v0.1.0` tag was ever created, and none has
-been backfilled: `0.1.0` spanned a window rather than a single release commit,
-and the only candidate commit predates `v0.0.2`, so tagging it would put the
-tag series out of version order. The hole between `v0.0.2` and `v0.1.1` is
-deliberate and permanent. Its contents are listed under v0.0.2 and v0.1.1.
+Opens the 0.1.x line that carried the Westeroz landing page. This tag and its
+bump commit were added by the 2026-08-08 history rewrite; the original history
+jumped from `v0.0.2` straight to `v0.1.1`, leaving the landing-page work
+untagged. The release itself is a version bump only, so its contents are the
+42 commits that follow it, listed under v0.1.1.
 
 ## v0.0.2 (2026-07-13)
-
-Tagged retroactively on 2026-07-22. The tree recorded `1.0.2` at this commit;
-see [Version history anomalies](#version-history-anomalies).
 
 - Scaffold the Westeroz landing page (Vite + React + TS) from a design spec
 - Compose the landing page from Hero, Support, and Footer sections
@@ -101,44 +96,52 @@ see [Version history anomalies](#version-history-anomalies).
 
 ## v0.0.1 (2026-07-13)
 
-Initial release. Tagged retroactively on 2026-07-22. The tree recorded `1.0.1`
-at this commit.
+Initial release.
 
 - Scaffold the Wizarr + Tautulli + Stripe bridge stack
 - Implement the stripe-bridge paid-access service
 - Add the stripe-bridge test suite and e2e harness
 
-## Version history anomalies
+## The 2026-08-08 history rewrite
 
-Recorded here because the tag names, the commit subjects, and the versions in
-the tree disagree for the first four releases, and nothing else in the repo
-explains why.
+Every commit on `main` was rewritten on 2026-08-08 and every tag was recreated.
+**Clones made before that date share no commits with the current `main`**; the
+fix is a fresh clone, or `git fetch origin && git reset --hard origin/main` on a
+branch with nothing worth keeping.
 
-**The 1.0.x phantom.** Two accidental `npm version` runs pushed the root
-`package.json` to `1.0.1` and then `1.0.2`. The commits still carry the subjects
-`WZ: Bump version to 1.0.1` and `WZ: Bump version to 1.0.2`. The tags placed on
-them say `v0.0.1` and `v0.0.2`. The root stayed at `1.0.2` through `v0.1.1` and
-`v0.1.2` as well, so for four consecutive tags the tag name and the recorded
-version disagreed. `563346b` reset the root to `0.1.2`, and `v0.1.3` is the
-first tag where the two agree. The commit subjects were left alone rather than
-rewriting published history.
+What was wrong, and what the rewrite did:
 
-**Root and app were out of lockstep until v0.1.3.** At `v0.1.1` the root read
-`1.0.2` while the web app read `0.1.1`; same shape at `v0.1.2`. They have moved
-together since, and `scripts/release.sh` now refuses to release when the markers
-disagree.
+**The 1.0.x phantom.** Two accidental `npm version` runs had pushed the root
+`package.json` to `1.0.1` and then `1.0.2`, while the tags placed on those
+commits said `v0.0.1` and `v0.0.2`. The root stayed at `1.0.2` through `v0.1.1`
+and `v0.1.2` as well, so for four consecutive tags the tag name and the recorded
+version disagreed, and the bump commits carried subjects naming versions that
+were never released. The rewrite set those trees to `0.0.1` and `0.0.2` and
+corrected the two commit subjects. The commit that had reset the root to `0.1.2`
+became a no-op once the phantom was gone and was dropped.
 
-**Tag creation order is not version order.** `v0.0.1`, `v0.0.2`, `v0.1.1`, and
-`v0.1.2` were all created on 2026-07-22, in the order `v0.1.1`, `v0.1.2`,
-`v0.0.1`, `v0.0.2`. Sorting tags by creation date therefore lists the `0.0.x`
-pair last. Sort by version (`git tag --sort=v:refname`) or by commit date.
+**`v0.1.0` did not exist.** The web app was scaffolded at `0.1.0` and carried
+that version until the `0.1.1` bump, but no tag was ever cut, so the series
+jumped from `v0.0.2` to `v0.1.1`. The rewrite inserts a real
+`WZ: Bump version to 0.1.0` commit after `v0.0.2` and tags it.
 
-**Two tag types.** `v0.0.1` through `v0.1.2` are annotated tag objects;
-`v0.1.3` through `v0.2.0` are lightweight and carry no tagger or message.
-`scripts/release.sh` creates annotated tags, so `v0.2.0` is the last lightweight
-one. The existing tags were left as they are; retagging them would rewrite refs
-that are already published.
+**Root and app were out of lockstep until `v0.1.3`.** At `v0.1.1` the root read
+`1.0.2` while the web app read `0.1.1`; same shape at `v0.1.2`. The rewrite moves
+every version marker together at every bump commit, including `package-lock.json`
+where it still existed, so lockstep now holds from `v0.0.1` onward.
+`scripts/release.sh` refuses to release when the markers disagree.
 
-**Early tagging cadence was uneven.** `v0.0.2..v0.1.1` spans 42 commits and
-`v0.1.1..v0.1.2` spans 30, against 5 to 10 commits per tag from `v0.1.2` onward.
-The early tags are too coarse to be useful rollback points.
+**Tag creation order was not version order.** `v0.0.1`, `v0.0.2`, `v0.1.1`, and
+`v0.1.2` had all been created on 2026-07-22, in the order `v0.1.1`, `v0.1.2`,
+`v0.0.1`, `v0.0.2`, so sorting by creation date put the `0.0.x` pair last. Each
+tag is now stamped with its own commit's date, so creation order, version order,
+and commit order agree.
+
+**Two tag types.** `v0.0.1` through `v0.1.2` were annotated; `v0.1.3` through
+`v0.2.0` were lightweight and carried no tagger or message. All nine are now
+annotated, and `scripts/release.sh` only ever creates annotated tags.
+
+**Early tagging cadence was uneven, and still is.** `v0.1.0..v0.1.1` spans 42
+commits and `v0.1.1..v0.1.2` spans 30, against 4 to 10 commits per tag from
+`v0.1.2` onward. That is real history, not bookkeeping, so the rewrite left it
+alone; those early tags remain too coarse to be useful rollback points.
