@@ -44,6 +44,7 @@
     "release:patch": "bash scripts/release.sh patch",
     "release:minor": "bash scripts/release.sh minor",
     "release:major": "bash scripts/release.sh major",
+    "release:backfill": "bash scripts/backfill-releases.sh",
     "deploy:nas": "bash scripts/deploy-nas.sh"
   },
   "devDependencies": {

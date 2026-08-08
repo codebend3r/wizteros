@@ -11,12 +11,23 @@ Reads `origin/main`, decides whether the unreleased commits warrant a version bu
 recommends a level (patch, minor, or major), and stops for a plain yes or no. On yes it
 runs the repo's existing release flow.
 
-`scripts/release.sh` owns the mechanics (lockstep bump of the workspace root and
-`apps/admin-portal/package.json`, the `WZ: Bump version to X.Y.Z` commit, the `vX.Y.Z`
-tag). This skill owns the judgment and never hand-edits a version field.
+`scripts/release.sh` owns the mechanics (lockstep bump of the three version markers, the
+`WZ: Bump version to X.Y.Z` commit, the annotated `vX.Y.Z` tag). This skill owns the
+judgment and never hand-edits a version field.
 
-`apps/stripe-bridge/` is Python and has no `package.json`, so it carries no version of
-its own; the root version covers the whole workspace.
+The three markers, which must always agree:
+
+| Marker | Why |
+|---|---|
+| `package.json` | Workspace root, the source of truth |
+| `apps/admin-portal/package.json` | The SPA |
+| `apps/stripe-bridge/stripe_bridge/__init__.py` | `__version__`, the only marker that reaches the container |
+
+`release.sh` hard-fails when they disagree, both before and after the bump, so a
+mismatch is a stop-and-report, never something to patch by hand.
+
+The bridge exposes its version at `GET /version` (and `/stripe/version` behind Funnel),
+unauthenticated. That is the way to check which release the NAS is actually running.
 
 Versions here are release bookkeeping for a private package with no downstream semver
 consumers. That changes the calibration; see Picking the level.
@@ -34,14 +45,16 @@ git log origin/main --grep='^WZ: Bump version to' -1 --format='%H %s'
 ```
 
 Do not use the newest `v*` tag as the baseline. Tags can lag the truth: the 0.1.5 bump
-commit landed on main but `v0.1.5` was never pushed, so the tag series stopped at
-`v0.1.4` while main was on 0.1.5.
+commit landed on main while `v0.1.5` sat unpushed, so the tag series read `v0.1.4` when
+main was already on 0.1.5. That particular tag has since been backfilled, but the failure
+mode is one forgotten `git push` away at any time. The bump commit is the truth.
 
 Cross-checks before judging anything:
 
-- `package.json` and `apps/admin-portal/package.json` on `origin/main` must both read the
-  baseline version (they move in lockstep). Disagreement means a broken release; stop and
-  report it instead of recommending.
+- All three version markers on `origin/main` must read the baseline version (they move in
+  lockstep). Disagreement means a broken release; stop and report it instead of
+  recommending. This is the check that the 1.0.x phantom went without: the root sat two
+  majors ahead of the app for four consecutive tags. See `CHANGELOG.md`.
 - If the baseline version's tag is missing from `git ls-remote --tags origin`, keep
   going, but fold the backfill into the recommendation:
   `git tag vX.Y.Z <bump-sha> && git push origin vX.Y.Z`.
@@ -105,8 +118,9 @@ Present, in this order, then stop and wait for yes or no:
 2. The commit list, split shipped vs housekeeping.
 3. One or two lines of reasoning for the level.
 4. Exactly what a yes triggers, spelled out: "Yes means: switch to main, pull, run
-   `scripts/release.sh <level>` (commits and tags `vX.Y.Z`), and push main with the
-   tag." Include the tag backfill here when one is missing.
+   `scripts/release.sh <level>` (commits and tags `vX.Y.Z`), write the `CHANGELOG.md`
+   section and amend it into the bump commit, push main with the tag, and publish the
+   GitHub Release." Include the tag backfill here when one is missing.
 
 One yes covers that whole stated plan. Never re-ask per step (not for the branch
 switch, not for the push); the plan was stated and consented to in one round. A no means
@@ -121,17 +135,24 @@ the global autonomy rules forbid.
 1. Working tree must be clean (`release.sh` hard-fails otherwise). Report a dirty tree;
    never stash it away silently.
 2. `git switch main && git pull --ff-only origin main`.
-3. `bash scripts/release.sh <level>` from the repo root.
-4. `git push origin main vX.Y.Z` (branch and tag in one push; the missing `v0.1.5` is
-   what forgetting the tag looks like). If the recommendation included a tag backfill
-   for an earlier version, create and push that tag here too; it is part of the
-   consented plan, not a separate favor to ask about later.
-5. Verify: `git ls-remote --tags origin` shows the new tag, and both package.json files
-   read the new version.
-6. If the released range touched `apps/stripe-bridge/`, point at the deploy-nas skill as
-   the follow-up. `apps/admin-portal/` needs nothing; Netlify redeploys from main on its
-   own.
-7. Return to the branch the session started on if it was not main.
+3. `bash scripts/release.sh <level>` from the repo root. It bumps all three markers,
+   commits, and creates an annotated tag. It refuses to run off main (override with
+   `RELEASE_ALLOW_BRANCH=1`) and refuses when the markers disagree.
+4. Add the `## vX.Y.Z (YYYY-MM-DD)` section to `CHANGELOG.md`, written from the shipped
+   pile, then `git add CHANGELOG.md && git commit --amend --no-edit` so the changelog
+   travels in the bump commit rather than trailing it.
+5. `git push origin main vX.Y.Z` (branch and tag in one push; a tag that stays local is
+   what the `v0.1.5` lag looked like). If the recommendation included a tag backfill for
+   an earlier version, create and push that tag here too; it is part of the consented
+   plan, not a separate favor to ask about later.
+6. `bash scripts/backfill-releases.sh --apply` to publish the GitHub Release from the
+   changelog section. It skips versions that already have one, so it is safe to re-run.
+7. Verify: `git ls-remote --tags origin` shows the new tag, all three markers read the new
+   version, and `gh release view vX.Y.Z` returns the notes.
+8. If the released range touched `apps/stripe-bridge/`, point at the deploy-nas skill as
+   the follow-up, and confirm the deploy with `curl -s <bridge>/version` once it is done.
+   `apps/admin-portal/` needs nothing; Netlify redeploys from main on its own.
+9. Return to the branch the session started on if it was not main.
 
 ## Red flags
 
@@ -147,5 +168,14 @@ the global autonomy rules forbid.
 - Recommending a bump for a docs/CI-only pile: nothing shipped, nothing to version.
 - Counting an Nx retarget (`nx.json`, `project.json`, root script aliases) as shipped
   surface: it changes how the repo builds, not what production runs.
+- Bumping only the two `package.json` files: the bridge `__version__` is the third marker
+  and the only one the running container can report. `release.sh` blocks this, so hitting
+  it means someone edited a version by hand.
+- Tagging a release without a `CHANGELOG.md` section: the tag then says nothing about what
+  shipped, which is the state all eight pre-0.2.1 tags were in.
+- Creating a lightweight tag by hand (`git tag vX.Y.Z`): the series is annotated from
+  0.2.1 onward. Let `release.sh` make the tag.
+- Assuming the NAS runs the newest release because main does: check `GET /version` on the
+  bridge. Netlify auto-deploys, the NAS does not.
 - Looking for `web/` or a top-level `stripe-bridge/`: both live under `apps/` since the
   monorepo conversion.

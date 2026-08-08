@@ -23,7 +23,7 @@ case "$LEVEL" in
 esac
 
 if [ -n "$(git status --porcelain)" ]; then
-  echo "working tree not clean — commit or stash first" >&2
+  echo "working tree not clean; commit or stash first" >&2
   exit 1
 fi
 
@@ -32,7 +32,7 @@ fi
 # rare deliberate case.
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 if [ "$BRANCH" != "main" ] && [ "${RELEASE_ALLOW_BRANCH:-}" != "1" ]; then
-  echo "on '$BRANCH', not main — release from main, or set RELEASE_ALLOW_BRANCH=1" >&2
+  echo "on '$BRANCH', not main; release from main, or set RELEASE_ALLOW_BRANCH=1" >&2
   exit 1
 fi
 
@@ -48,7 +48,7 @@ BRIDGE_BEFORE="$(read_bridge_version)"
 
 if [ "$ROOT_BEFORE" != "$WEB_BEFORE" ] || [ "$ROOT_BEFORE" != "$BRIDGE_BEFORE" ]; then
   {
-    echo "version markers disagree — fix them to match before releasing:"
+    echo "version markers disagree; fix them to match before releasing:"
     echo "  package.json                 $ROOT_BEFORE"
     echo "  apps/admin-portal            $WEB_BEFORE"
     echo "  stripe_bridge/__init__.py    $BRIDGE_BEFORE"

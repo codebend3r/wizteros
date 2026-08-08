@@ -49,8 +49,10 @@ Run it as a single Bash invocation so the user sees the whole transcript. Defaul
 4. **Syncs code** — rsync over the SMB mount if `/Volumes/docker` is mounted, otherwise
    tar over SSH. Then verifies a checksum matches before rebuilding.
 5. **Rebuilds** — `sudo -n /usr/local/bin/docker compose up -d --build`.
-6. **Verifies** — container `running`; `GET /admin/members` returns `401`; boot logs
-   scanned for the tier-scope alarm and tracebacks.
+6. **Verifies**: container `running`; `GET /admin/members` returns `401`; `GET /version`
+   matches the `__version__` in the synced tree (a 401 proves *a* bridge is up, the
+   version proves it is *this* one); boot logs scanned for the tier-scope alarm and
+   tracebacks.
 7. **Rolls back** on a failed health check, re-tagging the previous image, and restores
    the old `.deployed-sha`.
 

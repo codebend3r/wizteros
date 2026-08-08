@@ -215,6 +215,21 @@ else
   say "  · GET /admin/members (no auth) -> ${PROBE:-no response} (expect 401)"
   [ "$PROBE" = "401" ] || rollback
 
+  # 2b. the running code is the code we just shipped. A 401 proves *a* bridge is
+  #     up; only the version proves it is *this* one. Both sides read the same
+  #     stripe_bridge/__init__.py, so they must match exactly (main sitting ahead
+  #     of the last release does not change this; neither side has bumped).
+  WANT_VERSION="$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' "$REPO/apps/stripe-bridge/stripe_bridge/__init__.py")"
+  GOT_VERSION="$($SSH "$NAS_HOST" "curl -s -m 5 http://localhost:8000/version || true" |
+    sed -n 's/.*"version" *: *"\([^"]*\)".*/\1/p')"
+  say "  · GET /version -> ${GOT_VERSION:-no response} (expect $WANT_VERSION)"
+  if [ -z "$WANT_VERSION" ]; then
+    say "  ⚠ could not read the local __version__; skipping the version assertion"
+  elif [ "$GOT_VERSION" != "$WANT_VERSION" ]; then
+    say "  ✗ the NAS is serving a different build than the one just synced"
+    rollback
+  fi
+
   # 3. the tier drift alarm runs on the first reconcile sweep at boot; give it
   #    room to call Wizarr, then read what it said.
   say "  · waiting 25s for the boot tier-scope check to complete..."
