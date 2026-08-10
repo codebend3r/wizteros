@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -109,4 +109,49 @@ test('optOut sets the flag on a person with no prior contacts', () => {
   const next = optOut({ ledger: {}, email: 'New@Example.com' })
   assert.equal(next['new@example.com'].optedOut, true)
   assert.deepEqual(next['new@example.com'].contacts, [])
+})
+
+test('readLedger throws on malformed JSON, naming the path', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wz-ledger-'))
+  try {
+    writeFileSync(join(dir, 'outreach.json'), 'not valid json {]')
+    assert.throws(
+      () => readLedger({ dir }),
+      (err) => err.message.includes(join(dir, 'outreach.json')),
+    )
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('readLedger still returns empty object for missing file', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wz-ledger-'))
+  try {
+    assert.deepEqual(readLedger({ dir }), {})
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('writeLedger is atomic and round-trips correctly', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wz-ledger-'))
+  try {
+    const ledger = {
+      'alice@example.com': {
+        contacts: [{ at: daysAgo(100), play: 'declined' }],
+        optedOut: false,
+      },
+      'bob@example.com': {
+        contacts: [
+          { at: daysAgo(50), play: 'lapsed' },
+          { at: daysAgo(20), play: 'declined' },
+        ],
+        optedOut: true,
+      },
+    }
+    writeLedger({ dir, ledger })
+    assert.deepEqual(readLedger({ dir }), ledger)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })
