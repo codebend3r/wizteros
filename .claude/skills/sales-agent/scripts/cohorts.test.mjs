@@ -38,8 +38,24 @@ test('record takes an email and a play', () => {
   assert.deepEqual(args.record, { email: 'a@example.com', play: 'declined' })
 })
 
+test('--record requires an email address', () => {
+  assert.throws(() => parseArgs({ argv: ['--record'] }), /--record requires an email address/i)
+})
+
+test('--record requires a play', () => {
+  assert.throws(() => parseArgs({ argv: ['--record', 'a@example.com'] }), /--record requires a play/i)
+})
+
+test('--record rejects an unrecognized play', () => {
+  assert.throws(() => parseArgs({ argv: ['--record', 'a@example.com', 'upsell'] }), /unknown play/i)
+})
+
 test('opt-out takes an email', () => {
   assert.equal(parseArgs({ argv: ['--opt-out', 'a@example.com'] }).optOut, 'a@example.com')
+})
+
+test('--opt-out requires an email address', () => {
+  assert.throws(() => parseArgs({ argv: ['--opt-out'] }), /--opt-out requires an email address/i)
 })
 
 test('a VIP never reaches a play, whatever their other fields say', () => {

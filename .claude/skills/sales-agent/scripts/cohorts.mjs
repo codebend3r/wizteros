@@ -19,6 +19,21 @@ export const parseArgs = ({ argv }) => {
   if (play && !SELECTABLE.includes(play)) {
     throw new Error(`unknown play "${play}", expected one of ${SELECTABLE.join(', ')}`)
   }
+  if (optOutAt >= 0 && !argv[optOutAt + 1]) {
+    throw new Error('--opt-out requires an email address')
+  }
+  if (recordAt >= 0) {
+    if (!argv[recordAt + 1]) {
+      throw new Error('--record requires an email address')
+    }
+    if (!argv[recordAt + 2]) {
+      throw new Error('--record requires a play')
+    }
+    const recordPlay = argv[recordAt + 2]
+    if (!PLAYS.includes(recordPlay)) {
+      throw new Error(`unknown play "${recordPlay}", expected one of ${PLAYS.join(', ')}`)
+    }
+  }
   const consumed = new Set(
     [
       playFlag,
