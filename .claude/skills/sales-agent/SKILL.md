@@ -38,9 +38,10 @@ node --env-file-if-exists=.env .claude/skills/sales-agent/scripts/cohorts.mjs [f
 Run it from the repo root. Use `--env-file-if-exists=.env`, never `--env-file=.env`. This
 repo's `.env` is gitignored, so a fresh clone or worktree has none, and Node's
 `--env-file` treats a missing file as fatal: `node: .env: not found`, exit `9`, before a
-line of the script runs. `--env-file-if-exists` loads the file when it is there and is a
-silent no-op when it is not, so the script's own config check is the thing that reports a
-missing variable, not Node's flag parser.
+line of the script runs. `--env-file-if-exists` loads the file when it is there and, when
+it is not, prints a "not found. Continuing without it." notice to stderr and runs the
+script anyway rather than dying, so the script's own config check is the thing that
+reports a missing variable, not Node's flag parser.
 
 A live report needs `STRIPE_API_KEY`, `WIZARR_BASE_URL`, and `WIZARR_API_KEY` (the same
 three the bridge runs with), plus SSH key auth to the NAS for the bridge-store read. The
@@ -186,7 +187,7 @@ about content, because the only thing that service actually provides, and the on
 it could be "replacing", is a catalog. That is a content sale by another name, and it is
 banned outright regardless of how the sentence is worded around it.
 
-Every draft carries three mandatory elements, checked against `copy-compliance` at draft
+Every draft carries these mandatory elements, checked against `copy-compliance` at draft
 time same as everything else:
 
 - The feedback question, leading. What made them leave, or what would bring them back.
@@ -245,14 +246,25 @@ delivery down with it.
 
 ## Reporting back
 
-The script's own text output, per play, is: the play name, `contactable of cohortSize`,
-the ranked lead lines, then `EXCLUDED` with every excluded email and its reason, then a
-`TRIAGE` line naming everyone routed to `member-triage` and why. When every play's
-contactable count is zero, the output says so explicitly ("Nothing to send") instead of
-printing an empty page. When assembling the report for the operator, add the narrative
-layer on top of that structure per play: why now (what the data actually shows, not a
-guess), the ranked leads, the draft in full, the excluded summary, and a one-line call on
-whether to send.
+The script's own text output is one block per play (the play name, `contactable of
+cohortSize`, the ranked lead lines, then `EXCLUDED` with every excluded email and its
+reason), followed by a single `TRIAGE` line for the whole run naming everyone routed to
+`member-triage` and why, followed by a footer. The `TRIAGE` line is not repeated per
+play; it is computed once and appended once, after every play's block. When assembling
+the report for the operator, add the narrative layer on top of that structure per play:
+why now (what the data actually shows, not a guess), the ranked leads, the draft in
+full, the excluded summary, and a one-line call on whether to send.
+
+**The footer talks about sellable cohorts only, never about triage.** It prints
+"Nothing to send" whenever every play's contactable count is zero, which is a real and
+correct statement about `declined` and `lapsed`, but it says nothing about whether
+`TRIAGE` is empty. Run `--play=uninvited` (or any run where every play is empty but
+triage is not) and the output prints the `TRIAGE` line naming real people who need
+`member-triage`, immediately followed by "Nothing to send. Every cohort is empty or
+fully suppressed." Read literally, that footer is about the plays above it, not about
+the whole run. When assembling the report for the operator, never let "Nothing to send"
+read as "there is nothing to do here": if `TRIAGE` names anyone, say so as work that
+still needs doing, regardless of what the footer says underneath it.
 
 Ranking within a play is warmth first, then recency. `lapsed` outranks `declined` (someone
 who paid before is warmer than someone who only ever received a link and never redeemed
