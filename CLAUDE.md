@@ -42,6 +42,7 @@ wizteros/
 │       └── tests/              pytest suite
 ├── docs/                       all specs, plans, and PRDs for both apps
 ├── scripts/                    release, backfill, and deploy entrypoints
+├── .claude/agents/             repo-scoped subagents
 ├── .claude/skills/             repo-scoped skills
 ├── .github/                    CI workflows
 ├── .husky/                     pre-commit and pre-push hooks
@@ -175,3 +176,5 @@ Everything else here is convention, and the import-alias rule in particular has 
 ## Skills
 
 Repo-scoped skills live in `.claude/skills/`. Prefer them over improvising: `commiter` and `pr-creator` for the conventions above, `version-bumper` and `deploy-nas` for shipping, `nas-state-backup` before touching live NAS state, `copy-compliance` for user-facing copy, `monitor-ci` for CI. The README lists all of them.
+
+Repo-scoped subagents live in `.claude/agents/`: `wizteros-reviewer` reviews a diff, branch, or PR against the conventions here that the toolchain does not enforce.

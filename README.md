@@ -15,6 +15,7 @@ Stripe checkout → webhook → stripe-bridge → Wizarr → Plex
 - [Nx](#nx)
 - [Releases](#releases)
 - [Claude skills](#claude-skills)
+- [Claude agents](#claude-agents)
 - [Docs](#docs)
 
 ## Structure
@@ -33,6 +34,7 @@ wizteros/
 │       └── tests/              pytest suite
 ├── docs/                       specs, plans, and PRDs for both apps
 ├── scripts/                    release, backfill, and deploy entrypoints
+├── .claude/agents/             repo-scoped Claude Code subagents
 ├── .claude/skills/             repo-scoped Claude Code skills
 ├── docker-compose.yml          builds and runs stripe-bridge only
 ├── netlify.toml                builds admin-portal only
@@ -156,7 +158,9 @@ Skills under `.claude/skills/` are scoped to this repo. Each one's `SKILL.md` ca
 | `pr-creator` | Creates, drafts, formats, and validates pull requests against those same conventions |
 | `version-bumper` | Decides whether `main` is due for a release, recommends a level, and runs the release flow on approval |
 | `deploy-nas` | Ships `main` to the Synology NAS: syncs, rebuilds `stripe-bridge`, verifies health, rolls back a bad build |
+| `e2e-runner` | Runs the live e2e suites safely: what each asserts, what it mutates on the live Wizarr, and how to clean up a dead run |
 | `nas-state-backup` | Snapshots live NAS state (bridge DB, `wizarr-data`) before anything can destroy it |
+| `wizarr-upgrade` | Upgrades or rolls back the live Wizarr container, and judges whether a new release is safe to take |
 | `copy-compliance` | Audits user-facing copy against the server-cost contribution framing |
 | `monitor-ci` | Watches Nx Cloud CI, evaluates failures, and coordinates supported self-healing fixes |
 
@@ -170,6 +174,14 @@ Skills under `.claude/skills/` are scoped to this repo. Each one's `SKILL.md` ca
 | `nx-plugins` | Finds and installs Nx plugins for frameworks and other technologies |
 | `nx-import` | Imports another repository into the workspace while preserving history |
 | `link-workspace-packages` | Links sibling packages with the package manager instead of path aliases or manual edits |
+
+## Claude agents
+
+Subagents under `.claude/agents/` are scoped to this repo the same way.
+
+| Agent | What it does |
+| --- | --- |
+| `wizteros-reviewer` | Reviews a diff, branch, or PR against the `CLAUDE.md` conventions the toolchain does not enforce; read-only, reads the rulebook at review time |
 
 ## Docs
 
