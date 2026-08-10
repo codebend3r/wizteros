@@ -81,6 +81,21 @@ test('an unparseable invited_at does not silently become declined', () => {
   assert.equal(assignCohort({ member: m, now: NOW }), 'uninvited')
 })
 
+test('a VIP with a failed card is still VIP, not triage-billing', () => {
+  const m = member({ tag: 'vip', stripeStatus: 'past_due' })
+  assert.equal(assignCohort({ member: m, now: NOW }), 'vip')
+})
+
+test('a VIP with a canceled subscription is still VIP, not lapsed', () => {
+  const m = member({ tag: 'vip', stripeStatus: 'canceled' })
+  assert.equal(assignCohort({ member: m, now: NOW }), 'vip')
+})
+
+test('an unparseable expires does not silently make a subscriber lapsed', () => {
+  const m = member({ subscribed: true, expires: 'not-a-date', stripeStatus: 'active' })
+  assert.equal(assignCohort({ member: m, now: NOW }), 'active')
+})
+
 test('ranking puts a lapsed member above a declined one', () => {
   const leads = [
     { email: 'declined@example.com', cohort: 'declined', lastEventAt: daysAgo(1) },
