@@ -6,9 +6,12 @@
 // time-boxed.
 //
 //   reset all N records -> null/enabled
-//   checkout.session.completed  -> bridge extends all N by ACCESS_DURATION
-//   invoice.paid (renewal)      -> bridge extends all N by ACCESS_DURATION
-//   assert: every record expires ~ now + 2*ACCESS_DURATION
+//   checkout.session.completed  -> bridge sets all N to now + ACCESS_DURATION
+//   invoice.paid (renewal)      -> bridge sets all N to now + ACCESS_DURATION
+//   assert: every record expires ~ now + ACCESS_DURATION
+//
+// set_expiry is absolute, not additive, so the two paid events land on the same
+// window instead of stacking into 2*ACCESS_DURATION.
 //
 // Run: bun run test:e2e   (from the workspace root)
 import crypto from 'node:crypto'
@@ -82,7 +85,7 @@ async function waitForBridge() {
     }
     await new Promise((res) => setTimeout(res, 1000))
   }
-  throw new Error(`bridge not reachable at ${BRIDGE} (is it running? npm run bridge:up)`)
+  throw new Error(`bridge not reachable at ${BRIDGE} (is it running? bun run bridge:up)`)
 }
 
 const fmt = (u) =>
