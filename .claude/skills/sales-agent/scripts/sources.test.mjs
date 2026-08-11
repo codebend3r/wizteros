@@ -256,3 +256,73 @@ test('joinMembers yields no match for a shape that is neither a repr nor a usern
   assert.equal(wrongWord.length, 1)
   assert.equal(wrongWord[0].expires, null)
 })
+
+test('joinMembers collapses four store rows for one email into a single member', () => {
+  const storeRows = [
+    { email: 'codebenderinc@gmail.com', tier: 'gold', invited_at: '2026-07-25T00:00:00Z', subscribed: 0, tag: null, invite_code: null },
+    { email: 'codebenderinc@gmail.com', tier: 'gold', invited_at: '2026-07-25T00:00:00Z', subscribed: 0, tag: null, invite_code: null },
+    { email: 'codebenderinc@gmail.com', tier: 'gold', invited_at: '2026-07-25T00:00:00Z', subscribed: 0, tag: null, invite_code: null },
+    { email: 'codebenderinc@gmail.com', tier: 'gold', invited_at: '2026-07-25T00:00:00Z', subscribed: 0, tag: null, invite_code: null },
+  ]
+  const members = joinMembers({ storeRows, people: [], stripe: {}, invitations: [] })
+  assert.equal(members.length, 1)
+})
+
+test('joinMembers ORs subscribed across duplicate rows, true on any row winning', () => {
+  const storeRows = [
+    { email: 'a@example.com', tier: null, invited_at: '2026-08-01T00:00:00Z', subscribed: 0, tag: null, invite_code: null },
+    { email: 'a@example.com', tier: null, invited_at: null, subscribed: 1, tag: null, invite_code: null },
+  ]
+  const members = joinMembers({ storeRows, people: [], stripe: {}, invitations: [] })
+  assert.equal(members.length, 1)
+  assert.equal(members[0].subscribed, true)
+})
+
+test('joinMembers keeps tier and invite_code from the row with the most recent invited_at', () => {
+  const storeRows = [
+    { email: 'billing@example.com', tier: 'bronze', invited_at: '2026-07-01T00:00:00Z', subscribed: 0, tag: null, invite_code: 'OLD1' },
+    { email: 'billing@example.com', tier: 'gold', invited_at: '2026-07-25T00:00:00Z', subscribed: 0, tag: null, invite_code: 'NEW1' },
+  ]
+  const members = joinMembers({
+    storeRows,
+    people: [{ email: 'plex@example.com', username: 'bob', expires: '2099-01-01T00:00:00Z', ids: [] }],
+    stripe: {},
+    invitations: [{ code: 'NEW1', used_by: 'bob' }],
+  })
+  assert.equal(members.length, 1)
+  assert.equal(members[0].tier, 'gold')
+  assert.equal(members[0].invitedAt, '2026-07-25T00:00:00Z')
+  // invite_code follows the winning row: only NEW1 has a matching invitation, so
+  // the expiry resolves through it. Had OLD1 leaked through instead, this would
+  // stay null because no invitation redeems OLD1.
+  assert.equal(members[0].expires, '2099-01-01T00:00:00Z')
+})
+
+test('joinMembers keeps a vip tag present on only one of several duplicate rows', () => {
+  const storeRows = [
+    { email: 'a@example.com', tier: null, invited_at: null, subscribed: 0, tag: null, invite_code: null },
+    { email: 'a@example.com', tier: null, invited_at: null, subscribed: 0, tag: 'vip', invite_code: null },
+  ]
+  const members = joinMembers({ storeRows, people: [], stripe: {}, invitations: [] })
+  assert.equal(members.length, 1)
+  assert.equal(members[0].tag, 'vip')
+})
+
+test('joinMembers does not merge rows for genuinely different emails', () => {
+  const storeRows = [
+    { email: 'a@example.com', tier: null, invited_at: null, subscribed: 0, tag: null, invite_code: null },
+    { email: 'b@example.com', tier: null, invited_at: null, subscribed: 0, tag: null, invite_code: null },
+  ]
+  const members = joinMembers({ storeRows, people: [], stripe: {}, invitations: [] })
+  assert.equal(members.length, 2)
+})
+
+test('joinMembers collapses rows whose emails differ only by case', () => {
+  const storeRows = [
+    { email: 'A@x.com', tier: null, invited_at: null, subscribed: 0, tag: null, invite_code: null },
+    { email: 'a@x.com', tier: null, invited_at: null, subscribed: 0, tag: null, invite_code: null },
+  ]
+  const members = joinMembers({ storeRows, people: [], stripe: {}, invitations: [] })
+  assert.equal(members.length, 1)
+  assert.equal(members[0].email, 'a@x.com')
+})

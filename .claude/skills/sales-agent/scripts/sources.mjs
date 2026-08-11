@@ -180,9 +180,66 @@ const personForInvite = ({ usedBy, byId, byUsername }) => {
   return idMatch ? byId[idMatch[1]] : byUsername[usedBy.toLowerCase()]
 }
 
+const storeRowSortKey = (row) => `${row.invited_at ?? ''} ${row.invite_code ?? ''} ${row.tier ?? ''}`
+
+const mergeStoreRows = ({ rows }) => {
+  /**
+   * Merge every customer_map row for one email into a single row, following
+   * apps/stripe-bridge/stripe_bridge/admin.py's _dedupe_members merge-by-key
+   * pattern so this tool's cohorts agree with what the operator sees on
+   * /manage. One email can hold several Stripe customer ids (a known, valid
+   * state, not corrupt data), and the ranking below is sorted (by invited_at,
+   * then invite_code, then tier) so the merge is deterministic regardless of
+   * the order SQLite happens to return the rows in.
+   *
+   * subscribed is a logical OR across every row: losing a true here would
+   * misfile a paying member as declined, the worst error this tool can make.
+   * invited_at takes the most recent non-null value, since it starts the
+   * grace clock and the newest invite is the one that matters. tier and
+   * invite_code both follow the row whose invited_at was kept, since the
+   * code and its stamp belong together; tier falls back to any non-null
+   * tier from another row only when the winning row itself has none. tag
+   * takes any non-null value, so a VIP flagged on a single row survives the
+   * merge even when other rows for the same person carry no tag at all.
+   */
+  const ranked = [...rows].sort((a, b) => {
+    const keyA = storeRowSortKey(a)
+    const keyB = storeRowSortKey(b)
+    return keyA > keyB ? -1 : keyA < keyB ? 1 : 0
+  })
+  const winner = ranked[0]
+  const fallbackTier = ranked.reduce((tier, row) => tier ?? row.tier ?? null, null)
+  const tag = ranked.reduce((found, row) => found ?? row.tag ?? null, null)
+  return {
+    email: winner.email.toLowerCase(),
+    tier: winner.tier ?? fallbackTier,
+    invited_at: winner.invited_at ?? null,
+    invite_code: winner.invite_code ?? null,
+    subscribed: rows.some((row) => !!row.subscribed) ? 1 : 0,
+    tag,
+  }
+}
+
+const collapseStoreRows = ({ storeRows }) =>
+  /**
+   * One row per lowercased email. A single email can carry several
+   * customer_map rows, one per Stripe customer id, and without this collapse
+   * each extra row becomes its own member, its own cohort entry, and its own
+   * outreach send to the same person.
+   */
+  Object.values(
+    storeRows.reduce((acc, row) => {
+      const email = row.email.toLowerCase()
+      return { ...acc, [email]: [...(acc[email] ?? []), row] }
+    }, {}),
+  ).map((rows) => mergeStoreRows({ rows }))
+
 export const joinMembers = ({ storeRows, people, stripe, invitations }) => {
   /**
-   * One member per store row, enriched with the Wizarr expiry and Stripe status.
+   * One member per person, enriched with the Wizarr expiry and Stripe status.
+   * storeRows is collapsed to one row per lowercased email first (see
+   * collapseStoreRows), so a person with several Stripe customer ids never
+   * produces duplicate members.
    *
    * The direct email match is tried first. When it misses, the invite code is
    * used to reach the person who redeemed it via personForInvite (by Wizarr
@@ -203,7 +260,7 @@ export const joinMembers = ({ storeRows, people, stripe, invitations }) => {
     (acc, invite) => (invite.code ? { ...acc, [invite.code]: invite.used_by ?? null } : acc),
     {},
   )
-  return storeRows.map((row) => {
+  return collapseStoreRows({ storeRows }).map((row) => {
     const email = row.email.toLowerCase()
     const viaCode = row.invite_code
       ? personForInvite({ usedBy: redeemedBy[row.invite_code], byId, byUsername })
