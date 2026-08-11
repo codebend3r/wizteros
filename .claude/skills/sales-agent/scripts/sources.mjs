@@ -58,8 +58,30 @@ export const stripeByEmail = ({ subs }) =>
     return { ...acc, [email]: { status: winning, customerId: sub.customer?.id ?? null } }
   }, {})
 
-const wizarrGet = async ({ config, path }) => {
-  /** One Wizarr GET with the long timeout /api/users needs. */
+export const wizarrList = ({ body, key, path }) => {
+  /**
+   * Unwrap a Wizarr list envelope such as { users: [...], count: N }. A bare array
+   * passes through unchanged. A missing or unexpected top-level key degrades to an
+   * empty array, so a future Wizarr version that renames or drops the key does not
+   * crash the tool. A key that is present but holds something other than a list
+   * fails loudly, naming the endpoint and what came back, instead of surfacing
+   * later as a bare "reduce is not a function".
+   */
+  if (Array.isArray(body)) {
+    return body
+  }
+  const value = body?.[key]
+  if (value === undefined || value === null) {
+    return []
+  }
+  if (!Array.isArray(value)) {
+    throw new Error(`wizarr GET ${path} -> expected ${key} to be an array, got ${typeof value}`)
+  }
+  return value
+}
+
+const wizarrGet = async ({ config, path, key }) => {
+  /** One Wizarr GET with the long timeout /api/users needs, unwrapped to a plain list. */
   const res = await fetch(`${config.wizarrBase}${path}`, {
     headers: { 'X-API-Key': config.wizarrKey },
     signal: AbortSignal.timeout(WIZARR_TIMEOUT_MS),
@@ -67,7 +89,7 @@ const wizarrGet = async ({ config, path }) => {
   if (!res.ok) {
     throw new Error(`wizarr GET ${path} -> ${res.status}`)
   }
-  return res.json()
+  return wizarrList({ body: await res.json(), key, path })
 }
 
 export const peopleFrom = ({ users }) =>
@@ -75,6 +97,9 @@ export const peopleFrom = ({ users }) =>
    * One entry per person, keyed on lowercased email falling back to username.
    * Unlimited access (a null expiry) always wins over a dated one: this decides
    * whether someone can still watch, and one unlimited record means they can.
+   * Each person also collects every Wizarr record id they hold, since one person
+   * can carry a different id on every server, and the invite-code fallback in
+   * joinMembers needs to reach them by any of those ids.
    */
   Object.values(
     users.reduce((acc, user) => {
@@ -86,12 +111,14 @@ export const peopleFrom = ({ users }) =>
       const expires = current && (current.expires === null || user.expires === null)
         ? null
         : [current?.expires, user.expires].filter(Boolean).sort().at(-1) ?? null
+      const ids = [...(current?.ids ?? []), ...(user.id === undefined || user.id === null ? [] : [user.id])]
       return {
         ...acc,
         [key]: {
           email: (user.email ?? '').toLowerCase() || null,
           username: user.username ?? current?.username ?? null,
           expires,
+          ids,
         },
       }
     }, {}),
@@ -129,12 +156,33 @@ const readStore = () => {
   }
 }
 
+const REPR_ID = /(\d+)/
+
+const personForInvite = ({ usedBy, byId, byUsername }) => {
+  /**
+   * Wizarr's used_by is a Python repr like "<User 277>", not a username, so the
+   * match goes through the numeric id embedded in that repr rather than a
+   * username lookup: extract the first run of digits and look it up by id. A
+   * missing digit run (used_by absent, null, or a genuine plain username from a
+   * future Wizarr version) falls back to the username lookup instead. An id that
+   * parses but matches nobody returns no match rather than guessing at a wrong
+   * person, and once a digit run is found the username path is not retried with
+   * the raw repr string.
+   */
+  if (!usedBy) {
+    return undefined
+  }
+  const idMatch = usedBy.match(REPR_ID)
+  return idMatch ? byId[idMatch[1]] : byUsername[usedBy.toLowerCase()]
+}
+
 export const joinMembers = ({ storeRows, people, stripe, invitations }) => {
   /**
    * One member per store row, enriched with the Wizarr expiry and Stripe status.
    *
    * The direct email match is tried first. When it misses, the invite code is
-   * used to reach the Plex username that redeemed it, which is how a member
+   * used to reach the person who redeemed it via personForInvite (by Wizarr
+   * record id, since used_by is a repr, not a username), which is how a member
    * whose Plex email differs from their Stripe email keeps their real expiry
    * instead of reading as someone who never had access.
    */
@@ -143,13 +191,19 @@ export const joinMembers = ({ storeRows, people, stripe, invitations }) => {
     (acc, person) => (person.username ? { ...acc, [person.username.toLowerCase()]: person } : acc),
     {},
   )
+  const byId = people.reduce(
+    (acc, person) => (person.ids ?? []).reduce((inner, id) => ({ ...inner, [id]: person }), acc),
+    {},
+  )
   const redeemedBy = invitations.reduce(
-    (acc, invite) => (invite.code && invite.used_by ? { ...acc, [invite.code]: invite.used_by.toLowerCase() } : acc),
+    (acc, invite) => (invite.code ? { ...acc, [invite.code]: invite.used_by ?? null } : acc),
     {},
   )
   return storeRows.map((row) => {
     const email = row.email.toLowerCase()
-    const viaCode = row.invite_code ? byUsername[redeemedBy[row.invite_code]] : undefined
+    const viaCode = row.invite_code
+      ? personForInvite({ usedBy: redeemedBy[row.invite_code], byId, byUsername })
+      : undefined
     const person = byEmail[email] ?? viaCode
     return {
       email,
@@ -167,8 +221,8 @@ export const fetchAll = async ({ config, skipStore = false }) => {
   /** Read all three upstreams and return joined members plus per-source status. */
   const [subs, users, invitations] = await Promise.all([
     stripeList({ config }),
-    wizarrGet({ config, path: '/api/users' }),
-    wizarrGet({ config, path: '/api/invitations' }),
+    wizarrGet({ config, path: '/api/users', key: 'users' }),
+    wizarrGet({ config, path: '/api/invitations', key: 'invitations' }),
   ])
   const store = skipStore ? { ok: false, why: 'skipped with --no-store', rows: [] } : readStore()
   return {

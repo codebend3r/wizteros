@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { joinMembers, peopleFrom, requireConfig, stripeByEmail } from './sources.mjs'
+import { joinMembers, peopleFrom, requireConfig, stripeByEmail, wizarrList } from './sources.mjs'
 
 test('requireConfig names every missing variable at once', () => {
   assert.throws(
@@ -113,4 +113,102 @@ test('joinMembers reads the vip tag', () => {
     invitations: [],
   })
   assert.equal(members[0].tag, 'vip')
+})
+
+test('wizarrList unwraps a users envelope', () => {
+  const list = wizarrList({ body: { users: [{ id: 1 }, { id: 2 }], count: 2 }, key: 'users', path: '/api/users' })
+  assert.deepEqual(list, [{ id: 1 }, { id: 2 }])
+})
+
+test('wizarrList unwraps an invitations envelope', () => {
+  const list = wizarrList({
+    body: { invitations: [{ code: 'ABC' }], count: 1 },
+    key: 'invitations',
+    path: '/api/invitations',
+  })
+  assert.deepEqual(list, [{ code: 'ABC' }])
+})
+
+test('wizarrList yields an empty array for a missing or unexpected top-level key', () => {
+  assert.deepEqual(wizarrList({ body: {}, key: 'users', path: '/api/users' }), [])
+  assert.deepEqual(wizarrList({ body: { count: 0 }, key: 'users', path: '/api/users' }), [])
+})
+
+test('wizarrList throws a diagnosable error when the key holds something other than a list', () => {
+  assert.throws(
+    () => wizarrList({ body: { users: 'nope' }, key: 'users', path: '/api/users' }),
+    /\/api\/users.*users.*array/s,
+  )
+})
+
+test('joinMembers matches the invite-code fallback by the id inside a Python repr', () => {
+  const members = joinMembers({
+    storeRows: [{ email: 'billing@example.com', tier: null, invited_at: null, subscribed: 1, tag: null, invite_code: 'ABC123' }],
+    people: [{ email: 'plex@example.com', username: 'amols7', expires: '2026-09-01T00:00:00Z', ids: [277] }],
+    stripe: {},
+    invitations: [{ code: 'ABC123', used_by: '<User 277>' }],
+  })
+  assert.equal(members[0].expires, '2026-09-01T00:00:00Z')
+})
+
+test('joinMembers yields no match, and does not throw, when the repr id has no record', () => {
+  const members = joinMembers({
+    storeRows: [{ email: 'billing@example.com', tier: null, invited_at: null, subscribed: 1, tag: null, invite_code: 'ABC123' }],
+    people: [{ email: 'plex@example.com', username: 'amols7', expires: '2026-09-01T00:00:00Z', ids: [277] }],
+    stripe: {},
+    invitations: [{ code: 'ABC123', used_by: '<User 999>' }],
+  })
+  assert.equal(members.length, 1)
+  assert.equal(members[0].expires, null)
+})
+
+test('joinMembers does not throw when used_by is null, absent, or a plain username, and the username still matches', () => {
+  const base = {
+    people: [{ email: 'plex@example.com', username: 'alex', expires: '2026-09-01T00:00:00Z', ids: [1] }],
+    stripe: {},
+  }
+  const nullUsedBy = joinMembers({
+    storeRows: [{ email: 'a@example.com', tier: null, invited_at: null, subscribed: 1, tag: null, invite_code: 'CODE1' }],
+    invitations: [{ code: 'CODE1', used_by: null }],
+    ...base,
+  })
+  assert.equal(nullUsedBy[0].expires, null)
+
+  const absentUsedBy = joinMembers({
+    storeRows: [{ email: 'a@example.com', tier: null, invited_at: null, subscribed: 1, tag: null, invite_code: 'CODE2' }],
+    invitations: [{ code: 'CODE2' }],
+    ...base,
+  })
+  assert.equal(absentUsedBy[0].expires, null)
+
+  const usernameUsedBy = joinMembers({
+    storeRows: [{ email: 'billing@example.com', tier: null, invited_at: null, subscribed: 1, tag: null, invite_code: 'CODE3' }],
+    invitations: [{ code: 'CODE3', used_by: 'alex' }],
+    ...base,
+  })
+  assert.equal(usernameUsedBy[0].expires, '2026-09-01T00:00:00Z')
+})
+
+test('joinMembers reaches a person on several servers by any of their Wizarr ids', () => {
+  const people = peopleFrom({
+    users: [
+      { id: 10, email: 'sam@example.com', username: 'sam', expires: '2026-09-01T00:00:00Z', server: 'Vermithor' },
+      { id: 20, email: 'sam@example.com', username: 'sam', expires: null, server: 'Caraxes' },
+    ],
+  })
+  const viaFirstId = joinMembers({
+    storeRows: [{ email: 'billing@example.com', tier: null, invited_at: null, subscribed: 1, tag: null, invite_code: 'CODE4' }],
+    people,
+    stripe: {},
+    invitations: [{ code: 'CODE4', used_by: '<User 10>' }],
+  })
+  assert.equal(viaFirstId[0].expires, null)
+
+  const viaSecondId = joinMembers({
+    storeRows: [{ email: 'billing@example.com', tier: null, invited_at: null, subscribed: 1, tag: null, invite_code: 'CODE5' }],
+    people,
+    stripe: {},
+    invitations: [{ code: 'CODE5', used_by: '<User 20>' }],
+  })
+  assert.equal(viaSecondId[0].expires, null)
 })
