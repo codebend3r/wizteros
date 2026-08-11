@@ -19,8 +19,9 @@ reach it) is handled separately by Tailscale Funnel — see
 
 - **Moves to the NAS:** `wizarr`, `tautulli`, `stripe-bridge`
   (this repo's `docker-compose.yml`).
-- **Stays on the Mac Studio, untouched:** `radarr` / `sonarr` / `sabnzbd`
-  (a separate media stack — not part of this repo).
+- **Separate media stack, not part of this repo:** `radarr` / `sonarr` /
+  `sabnzbd` and friends. These have since moved onto the NASes themselves —
+  see [`arr-stack.md`](./arr-stack.md) for where they run and how they update.
 - **Stays on the 5 NASes as-is:** the Plex servers. Wizarr reaches them over
   the LAN (`192.168.50.x`) no matter where Wizarr itself runs.
 - **Carried over:** the live Wizarr data at `/Users/snowball/Docker/wizarr-data`
