@@ -162,6 +162,7 @@ Skills under `.claude/skills/` are scoped to this repo. Each one's `SKILL.md` ca
 | `nas-state-backup` | Snapshots live NAS state (bridge DB, `wizarr-data`) before anything can destroy it |
 | `wizarr-upgrade` | Upgrades or rolls back the live Wizarr container, and judges whether a new release is safe to take |
 | `copy-compliance` | Audits user-facing copy against the server-cost contribution framing |
+| `sales-agent` | Finds win-back opportunities among declined and lapsed members, ranks them, and drafts a compliance-checked email to send by hand |
 | `monitor-ci` | Watches Nx Cloud CI, evaluates failures, and coordinates supported self-healing fixes |
 
 **Nx**
@@ -182,6 +183,7 @@ Subagents under `.claude/agents/` are scoped to this repo the same way.
 | Agent | What it does |
 | --- | --- |
 | `wizteros-reviewer` | Reviews a diff, branch, or PR against the `CLAUDE.md` conventions the toolchain does not enforce; read-only, reads the rulebook at review time |
+| `sales-agent` | Ranks membership growth opportunities and drafts win-back copy; read-only, never sends and never mutates a member |
 
 ## Docs
 
