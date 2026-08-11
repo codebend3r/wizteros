@@ -52,7 +52,7 @@ file does not repeat that mistake for either rulebook.
 For each play the runbook returns leads for, report a block in this order:
 
 ```
-PLAY      <declined | lapsed>
+PLAY      <lapsed | backfill | declined>
 WHY NOW   <what the data actually shows about this cohort, not a guess>
 LEADS     <the ranked lead lines>
 DRAFT     <the full drafted email for this play, compliance-checked>
