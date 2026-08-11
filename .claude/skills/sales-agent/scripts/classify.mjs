@@ -4,7 +4,8 @@ export const INVITE_GRACE_DAYS = 14
 export const BULK_INVITE_THRESHOLD = 10
 
 const BILLING_PROBLEM = new Set(['past_due', 'unpaid', 'incomplete', 'incomplete_expired'])
-const WARMTH = { lapsed: 3, backfill: 2, declined: 1 }
+
+export const WARMTH = { lapsed: 3, backfill: 2, declined: 1 }
 
 const parseTime = (value) => {
   const parsed = value ? Date.parse(value) : Number.NaN
@@ -43,7 +44,10 @@ export const bulkInviteDates = ({ members }) => {
 
 export const assignCohort = ({ member, now, bulkDates = new Set() }) => {
   /**
-   * Assign one lifecycle cohort, mirroring deriveStatus in the admin UI.
+   * Assign one lifecycle cohort, extending deriveStatus in the admin UI rather
+   * than mirroring it: deriveStatus reads no Stripe status at all, so
+   * triage-billing and the canceled-reads-as-lapsed branch below have no
+   * counterpart there. SKILL.md lists the known divergences in full.
    *
    * Order carries the logic. A VIP is excluded before anything else. A billing
    * failure is checked before every sellable cohort, because a member whose
@@ -84,12 +88,8 @@ export const assignCohort = ({ member, now, bulkDates = new Set() }) => {
 
 export const rankLeads = ({ leads }) =>
   /**
-   * Warmth first, then recency. Someone who has paid before outranks someone
-   * who only ever received a link, and a recent lapse outranks an old one.
+   * Recency, most recent first. Warmth is not a factor here: this only ever
+   * receives one play's leads, so every entry already shares a cohort. Warmth
+   * orders the play blocks themselves instead, from WARMTH, in cohorts.mjs.
    */
-  [...leads].sort((a, b) => {
-    const warmth = (WARMTH[b.cohort] ?? 0) - (WARMTH[a.cohort] ?? 0)
-    return warmth !== 0
-      ? warmth
-      : (parseTime(b.lastEventAt) ?? 0) - (parseTime(a.lastEventAt) ?? 0)
-  })
+  [...leads].sort((a, b) => (parseTime(b.lastEventAt) ?? 0) - (parseTime(a.lastEventAt) ?? 0))

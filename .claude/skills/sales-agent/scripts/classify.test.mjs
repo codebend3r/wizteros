@@ -1,6 +1,16 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { BULK_INVITE_THRESHOLD, INVITE_GRACE_DAYS, assignCohort, bulkInviteDates, rankLeads } from './classify.mjs'
+import { readFileSync } from 'node:fs'
+import {
+  BULK_INVITE_THRESHOLD,
+  INVITE_GRACE_DAYS,
+  WARMTH,
+  assignCohort,
+  bulkInviteDates,
+  rankLeads,
+} from './classify.mjs'
+
+const INVITE_RULES = new URL('../../../../apps/admin-portal/src/lib/inviteRules.ts', import.meta.url)
 
 const DAY = 86_400_000
 const NOW = Date.parse('2026-08-10T00:00:00Z')
@@ -18,8 +28,11 @@ const member = (overrides) => ({
   ...overrides,
 })
 
-test('the grace period matches the admin UI', () => {
-  assert.equal(INVITE_GRACE_DAYS, 14)
+test('the grace period matches the admin UI, read from inviteRules.ts', () => {
+  const source = readFileSync(INVITE_RULES, 'utf8')
+  const declared = source.match(/export const INVITE_GRACE_DAYS\s*=\s*(\d+)/)
+  assert.ok(declared, `INVITE_GRACE_DAYS not found in ${INVITE_RULES.pathname}`)
+  assert.equal(INVITE_GRACE_DAYS, Number(declared[1]))
 })
 
 test('a VIP is never in a sellable cohort', () => {
@@ -96,14 +109,10 @@ test('an unparseable expires does not silently make a subscriber lapsed', () => 
   assert.equal(assignCohort({ member: m, now: NOW }), 'active')
 })
 
-test('ranking puts a lapsed member above a declined one', () => {
-  const leads = [
-    { email: 'declined@example.com', cohort: 'declined', lastEventAt: daysAgo(1) },
-    { email: 'lapsed@example.com', cohort: 'lapsed', lastEventAt: daysAgo(200) },
-  ]
+test('WARMTH ranks lapsed above backfill above declined', () => {
   assert.deepEqual(
-    rankLeads({ leads }).map((lead) => lead.email),
-    ['lapsed@example.com', 'declined@example.com'],
+    Object.keys(WARMTH).sort((a, b) => WARMTH[b] - WARMTH[a]),
+    ['lapsed', 'backfill', 'declined'],
   )
 })
 
@@ -121,7 +130,7 @@ test('within one cohort the more recent event ranks first', () => {
 test('ranking does not mutate its input', () => {
   const leads = [
     { email: 'a@example.com', cohort: 'declined', lastEventAt: daysAgo(300) },
-    { email: 'b@example.com', cohort: 'lapsed', lastEventAt: daysAgo(10) },
+    { email: 'b@example.com', cohort: 'declined', lastEventAt: daysAgo(10) },
   ]
   rankLeads({ leads })
   assert.equal(leads[0].email, 'a@example.com')
@@ -183,19 +192,14 @@ test('a subscribed member on a bulk date is still active', () => {
   assert.equal(assignCohort({ member: m, now: NOW, bulkDates }), 'active')
 })
 
-test('assignCohort called without bulkDates behaves exactly as before', () => {
-  const m = member({ invitedAt: daysAgo(15) })
-  assert.equal(assignCohort({ member: m, now: NOW }), 'declined')
-})
-
-test('ranking places backfill below lapsed and above declined', () => {
+test('rankLeads orders one play by recency alone, the only input it is ever given', () => {
   const leads = [
-    { email: 'declined@example.com', cohort: 'declined', lastEventAt: daysAgo(1) },
-    { email: 'backfill@example.com', cohort: 'backfill', lastEventAt: daysAgo(1) },
-    { email: 'lapsed@example.com', cohort: 'lapsed', lastEventAt: daysAgo(1) },
+    { email: 'middle@example.com', cohort: 'backfill', lastEventAt: daysAgo(30) },
+    { email: 'oldest@example.com', cohort: 'backfill', lastEventAt: daysAgo(300) },
+    { email: 'newest@example.com', cohort: 'backfill', lastEventAt: daysAgo(2) },
   ]
   assert.deepEqual(
     rankLeads({ leads }).map((lead) => lead.email),
-    ['lapsed@example.com', 'backfill@example.com', 'declined@example.com'],
+    ['newest@example.com', 'middle@example.com', 'oldest@example.com'],
   )
 })

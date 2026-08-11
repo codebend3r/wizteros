@@ -55,7 +55,7 @@ export const stripeByEmail = ({ subs }) =>
     }
     const current = acc[email]
     const winning = current && PAYING.has(current.status) ? current.status : sub.status
-    return { ...acc, [email]: { status: winning, customerId: sub.customer?.id ?? null } }
+    return { ...acc, [email]: { status: winning } }
   }, {})
 
 export const wizarrList = ({ body, key, path }) => {
@@ -124,20 +124,35 @@ export const peopleFrom = ({ users }) =>
     }, {}),
   )
 
+export const shellQuote = (value) =>
+  /**
+   * Wrap a value in single quotes for a POSIX shell, escaping any single quote
+   * it contains as '\'' so nothing inside it is ever expanded or word split.
+   */
+  `'${String(value).replaceAll("'", "'\\''")}'`
+
 const readStore = () => {
   /**
    * Copy bridge.db off the NAS and read it with sqlite3, deleting the temp copy
    * before returning. Columns come from PRAGMA table_info because tier,
    * invited_at, and subscribed were all added by migrations.
+   *
+   * This is the one call in this file that drops to `sh -c`, because it needs a
+   * redirect, so every interpolation is shell quoted. The host and the redirect
+   * target are quoted for the local shell; the remote command is quoted once
+   * for the local shell and its path quoted again for the remote one. Only
+   * SSH_OPTS goes in bare, since it is a fixed literal that has to word split
+   * into separate ssh arguments.
    */
   const dir = mkdtempSync(join(tmpdir(), 'wz-sales-'))
   try {
+    const db = join(dir, 'bridge.db')
+    const remote = `cat ${shellQuote(`${NAS_PATH}/stripe-bridge-data/bridge.db`)}`
     execFileSync(
       'sh',
-      ['-c', `ssh ${SSH_OPTS} ${NAS_HOST} "cat ${NAS_PATH}/stripe-bridge-data/bridge.db" > ${join(dir, 'bridge.db')}`],
+      ['-c', `ssh ${SSH_OPTS} ${shellQuote(NAS_HOST)} ${shellQuote(remote)} > ${shellQuote(db)}`],
       { stdio: ['ignore', 'ignore', 'pipe'] },
     )
-    const db = join(dir, 'bridge.db')
     const columns = JSON.parse(
       execFileSync('sqlite3', ['-readonly', '-json', db, 'PRAGMA table_info(customer_map)'], { encoding: 'utf8' }) || '[]',
     ).map((row) => row.name)

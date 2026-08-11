@@ -1,11 +1,27 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process'
-import { assignCohort, bulkInviteDates, rankLeads } from './classify.mjs'
+import { WARMTH, assignCohort, bulkInviteDates, rankLeads } from './classify.mjs'
 import { optOut, readLedger, recordContact, stateDir, suppression, writeLedger } from './ledger.mjs'
 import { fetchAll, requireConfig } from './sources.mjs'
 
-const PLAYS = ['declined', 'lapsed', 'backfill']
+const PLAYS = Object.keys(WARMTH).sort((a, b) => WARMTH[b] - WARMTH[a])
 const SELECTABLE = [...PLAYS, 'uninvited']
+
+const requireValue = ({ value, flag, what }) => {
+  /**
+   * Validate one flag argument. A missing value, and a value that is itself
+   * flag shaped, are both rejected: `--opt-out --json` would otherwise swallow
+   * the next flag as its value and write a permanent opt-out keyed "--json",
+   * reporting success while the real opt-out never happened.
+   */
+  if (!value) {
+    throw new Error(`${flag} requires ${what}`)
+  }
+  if (value.startsWith('--')) {
+    throw new Error(`${flag} requires ${what}, got the flag "${value}"`)
+  }
+  return value
+}
 
 export const parseArgs = ({ argv }) => {
   /**
@@ -20,17 +36,12 @@ export const parseArgs = ({ argv }) => {
   if (play && !SELECTABLE.includes(play)) {
     throw new Error(`unknown play "${play}", expected one of ${SELECTABLE.join(', ')}`)
   }
-  if (optOutAt >= 0 && !argv[optOutAt + 1]) {
-    throw new Error('--opt-out requires an email address')
+  if (optOutAt >= 0) {
+    requireValue({ value: argv[optOutAt + 1], flag: '--opt-out', what: 'an email address' })
   }
   if (recordAt >= 0) {
-    if (!argv[recordAt + 1]) {
-      throw new Error('--record requires an email address')
-    }
-    if (!argv[recordAt + 2]) {
-      throw new Error('--record requires a play')
-    }
-    const recordPlay = argv[recordAt + 2]
+    requireValue({ value: argv[recordAt + 1], flag: '--record', what: 'an email address' })
+    const recordPlay = requireValue({ value: argv[recordAt + 2], flag: '--record', what: 'a play' })
     if (!PLAYS.includes(recordPlay)) {
       throw new Error(`unknown play "${recordPlay}", expected one of ${PLAYS.join(', ')}`)
     }
@@ -38,7 +49,6 @@ export const parseArgs = ({ argv }) => {
   const consumed = new Set(
     [
       playFlag,
-      '--all',
       '--json',
       '--no-store',
       recordAt >= 0 ? ['--record', argv[recordAt + 1], argv[recordAt + 2]] : [],
@@ -51,7 +61,6 @@ export const parseArgs = ({ argv }) => {
   }
   return {
     play,
-    all: argv.includes('--all'),
     json: argv.includes('--json'),
     skipStore: argv.includes('--no-store'),
     record: recordAt >= 0 ? { email: argv[recordAt + 1], play: argv[recordAt + 2] } : null,
@@ -114,6 +123,13 @@ export const buildReport = ({ members, ledger, now, play, selfAddresses = [] }) 
    * cohort and split each sellable play into leads and excluded. Excluded
    * people are kept and counted: a thin week has to read as "everyone is in
    * cooldown", never as "there is nobody to contact".
+   *
+   * Plays come back in warmth order, from WARMTH: lapsed, then backfill, then
+   * declined. Leads inside one play are ranked by recency.
+   *
+   * The detected bulk dates are returned alongside the plays. A backfill block
+   * is meaningless without them: the drafting angle depends on which migration
+   * a member was stamped by, and more than one date can qualify.
    */
   const { kept, filtered } = filterSelf({ members, selfAddresses })
   const bulkDates = bulkInviteDates({ members: kept })
@@ -141,6 +157,7 @@ export const buildReport = ({ members, ledger, now, play, selfAddresses = [] }) 
   })
   return {
     plays,
+    bulkDates: [...bulkDates].sort(),
     triage: assigned.filter(
       (member) => member.cohort === 'triage-billing' || member.cohort === 'uninvited',
     ),
@@ -165,6 +182,9 @@ export const renderReport = ({ report }) => {
       '',
     ].join('\n')
   })
+  const bulkDates = report.bulkDates?.length
+    ? `BULK DATES  ${report.bulkDates.length} bulk invite date(s) behind the backfill play: ${report.bulkDates.join(', ')}`
+    : ''
   const triage = report.triage.length
     ? `TRIAGE  ${report.triage.length} routed to member-triage: ${report.triage.map((m) => `${m.email} (${m.cohort})`).join(', ')}`
     : ''
@@ -172,8 +192,10 @@ export const renderReport = ({ report }) => {
     ? `SELF-FILTERED  ${report.selfFiltered.length} operator test address(es) excluded: ${report.selfFiltered.join(', ')}`
     : ''
   const total = report.plays.reduce((acc, entry) => acc + entry.contactable, 0)
-  const footer = total ? '' : 'Nothing to send. Every cohort is empty or fully suppressed.'
-  return [...blocks, triage, selfFiltered, footer].filter(Boolean).join('\n')
+  const footer = total || report.triage.length
+    ? ''
+    : 'Nothing to send. Every cohort is empty or fully suppressed.'
+  return [...blocks, bulkDates, triage, selfFiltered, footer].filter(Boolean).join('\n')
 }
 
 const gitUserEmail = () => {

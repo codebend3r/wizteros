@@ -8,8 +8,28 @@ const LEDGER_FILE = 'outreach.json'
 export const COOLDOWN_DAYS = { declined: 45, lapsed: 60, backfill: 45 }
 export const LIFETIME_CAP = 3
 
-export const stateDir = ({ env = process.env } = {}) =>
-  env.WZ_SALES_STATE ?? join(env.HOME ?? '', '.local', 'state', 'wizteros', 'sales-agent')
+export const stateDir = ({ env = process.env } = {}) => {
+  /**
+   * Resolve the directory the ledger lives in. WZ_SALES_STATE wins; failing
+   * that, a path under HOME.
+   *
+   * With neither set this throws instead of falling back. An empty HOME would
+   * otherwise yield the relative path `.local/state/wizteros/sales-agent`,
+   * which resolves against the working directory: run from the repo root, that
+   * writes real member email addresses into the working tree, where `git add
+   * -A` can stage them and `git clean -xdf` can destroy them. Refusing to
+   * guess is the only safe answer.
+   */
+  if (env.WZ_SALES_STATE) {
+    return env.WZ_SALES_STATE
+  }
+  if (!env.HOME) {
+    throw new Error(
+      'Cannot resolve the ledger directory: set WZ_SALES_STATE or HOME. Refusing to fall back to a relative path, which would write member emails into the working tree.',
+    )
+  }
+  return join(env.HOME, '.local', 'state', 'wizteros', 'sales-agent')
+}
 
 export const readLedger = ({ dir }) => {
   /**

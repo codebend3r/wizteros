@@ -1,6 +1,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { joinMembers, peopleFrom, requireConfig, stripeByEmail, wizarrList } from './sources.mjs'
+import { joinMembers, peopleFrom, requireConfig, shellQuote, stripeByEmail, wizarrList } from './sources.mjs'
+
+test('shellQuote neutralizes spaces and command substitution in an operator supplied value', () => {
+  assert.equal(shellQuote('/volume1/my docker/stripe-bridge'), `'/volume1/my docker/stripe-bridge'`)
+  assert.equal(shellQuote('$(id)'), `'$(id)'`)
+  assert.equal(shellQuote(`it's`), `'it'\\''s'`)
+})
 
 test('requireConfig names every missing variable at once', () => {
   assert.throws(
@@ -56,7 +62,7 @@ test('stripeByEmail keeps the paying status when a customer has two subscription
       { status: 'active', customer: { id: 'cus_1', email: 'A@example.com' } },
     ],
   })
-  assert.equal(byEmail['a@example.com'].status, 'active')
+  assert.deepEqual(byEmail['a@example.com'], { status: 'active' })
 })
 
 test('joinMembers carries store flags onto the member', () => {
@@ -99,7 +105,7 @@ test('joinMembers attaches the Stripe status', () => {
   const members = joinMembers({
     storeRows: [{ email: 'a@example.com', tier: null, invited_at: null, subscribed: 0, tag: null, invite_code: null }],
     people: [],
-    stripe: { 'a@example.com': { status: 'canceled', customerId: 'cus_1' } },
+    stripe: { 'a@example.com': { status: 'canceled' } },
     invitations: [],
   })
   assert.equal(members[0].stripeStatus, 'canceled')

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -26,6 +26,11 @@ test('stateDir prefers WZ_SALES_STATE', () => {
 test('stateDir falls back to a path under HOME and never inside a repo', () => {
   const dir = stateDir({ env: { HOME: '/home/x' } })
   assert.equal(dir, '/home/x/.local/state/wizteros/sales-agent')
+})
+
+test('stateDir throws rather than returning a relative path when neither source resolves', () => {
+  assert.throws(() => stateDir({ env: {} }), /WZ_SALES_STATE or HOME/)
+  assert.throws(() => stateDir({ env: { HOME: '' } }), /WZ_SALES_STATE or HOME/)
 })
 
 test('readLedger returns an empty object when the file is missing', () => {
@@ -132,15 +137,6 @@ test('readLedger throws on malformed JSON, naming the path', () => {
   }
 })
 
-test('readLedger still returns empty object for missing file', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'wz-ledger-'))
-  try {
-    assert.deepEqual(readLedger({ dir }), {})
-  } finally {
-    rmSync(dir, { recursive: true, force: true })
-  }
-})
-
 test('writeLedger is atomic and round-trips correctly', () => {
   const dir = mkdtempSync(join(tmpdir(), 'wz-ledger-'))
   try {
@@ -159,6 +155,9 @@ test('writeLedger is atomic and round-trips correctly', () => {
     }
     writeLedger({ dir, ledger })
     assert.deepEqual(readLedger({ dir }), ledger)
+    assert.deepEqual(readdirSync(dir), ['outreach.json'])
+    writeLedger({ dir, ledger })
+    assert.deepEqual(readdirSync(dir), ['outreach.json'])
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
