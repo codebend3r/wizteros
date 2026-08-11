@@ -156,18 +156,22 @@ const readStore = () => {
   }
 }
 
-const REPR_ID = /(\d+)/
+const REPR_ID = /^\s*<User (\d+)>\s*$/
 
 const personForInvite = ({ usedBy, byId, byUsername }) => {
   /**
    * Wizarr's used_by is a Python repr like "<User 277>", not a username, so the
-   * match goes through the numeric id embedded in that repr rather than a
-   * username lookup: extract the first run of digits and look it up by id. A
-   * missing digit run (used_by absent, null, or a genuine plain username from a
-   * future Wizarr version) falls back to the username lookup instead. An id that
-   * parses but matches nobody returns no match rather than guessing at a wrong
-   * person, and once a digit run is found the username path is not retried with
-   * the raw repr string.
+   * match has to go through the numeric id embedded in that repr rather than a
+   * username lookup. Which path applies is decided by shape, not by whether
+   * digits happen to be present: only a string that matches the repr form
+   * end to end (tolerant of surrounding whitespace) is treated as an id
+   * reference, and only then is the captured id looked up. Anything else,
+   * including a plain username that happens to contain digits such as
+   * "amols7", is treated as a username. A loose digit search would misread
+   * that username as id 7 and silently fail to match; matching the whole
+   * repr shape keeps the two cases unambiguous. An id that parses but
+   * matches nobody, or a shape that matches neither form, returns no match
+   * rather than guessing at a wrong person, and never throws.
    */
   if (!usedBy) {
     return undefined

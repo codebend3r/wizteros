@@ -212,3 +212,47 @@ test('joinMembers reaches a person on several servers by any of their Wizarr ids
   })
   assert.equal(viaSecondId[0].expires, null)
 })
+
+test('joinMembers takes the username path for used_by "amols7", never reading it as id 7', () => {
+  const members = joinMembers({
+    storeRows: [{ email: 'billing@example.com', tier: null, invited_at: null, subscribed: 1, tag: null, invite_code: 'CODE6' }],
+    people: [
+      { email: 'other@example.com', username: 'sevenoseven', expires: '2020-01-01T00:00:00Z', ids: [7] },
+      { email: 'plex@example.com', username: 'amols7', expires: '2026-09-01T00:00:00Z', ids: [277] },
+    ],
+    stripe: {},
+    invitations: [{ code: 'CODE6', used_by: 'amols7' }],
+  })
+  assert.equal(members[0].expires, '2026-09-01T00:00:00Z')
+})
+
+test('joinMembers still matches "<User 277>" by id', () => {
+  const members = joinMembers({
+    storeRows: [{ email: 'billing@example.com', tier: null, invited_at: null, subscribed: 1, tag: null, invite_code: 'CODE7' }],
+    people: [{ email: 'plex@example.com', username: 'amols7', expires: '2026-09-01T00:00:00Z', ids: [277] }],
+    stripe: {},
+    invitations: [{ code: 'CODE7', used_by: '<User 277>' }],
+  })
+  assert.equal(members[0].expires, '2026-09-01T00:00:00Z')
+})
+
+test('joinMembers yields no match for a shape that is neither a repr nor a username hit', () => {
+  const people = [{ email: 'plex@example.com', username: 'amols7', expires: '2026-09-01T00:00:00Z', ids: [277] }]
+  const noBrackets = joinMembers({
+    storeRows: [{ email: 'billing@example.com', tier: null, invited_at: null, subscribed: 1, tag: null, invite_code: 'CODE8' }],
+    people,
+    stripe: {},
+    invitations: [{ code: 'CODE8', used_by: 'User 277' }],
+  })
+  assert.equal(noBrackets.length, 1)
+  assert.equal(noBrackets[0].expires, null)
+
+  const wrongWord = joinMembers({
+    storeRows: [{ email: 'billing@example.com', tier: null, invited_at: null, subscribed: 1, tag: null, invite_code: 'CODE9' }],
+    people,
+    stripe: {},
+    invitations: [{ code: 'CODE9', used_by: '<Account 5>' }],
+  })
+  assert.equal(wrongWord.length, 1)
+  assert.equal(wrongWord[0].expires, null)
+})
