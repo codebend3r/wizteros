@@ -55,6 +55,30 @@ class WizarrClient:
         inv = r.json()["invitation"]
         return {"code": inv["code"], "url": inv["url"]}
 
+    def list_invitations(self) -> list:
+        """Every invitation Wizarr holds, used and unused alike.
+
+        Callers must read scope from server_names, never specific_libraries:
+        the serializer reports specific_libraries as [] even for a correctly
+        scoped invite, so it cannot tell a scoped invite from an unscoped one.
+        """
+        r = requests.get(
+            f"{self.base_url}/api/invitations",
+            headers=self._headers(),
+            timeout=10,
+        )
+        r.raise_for_status()
+        return r.json().get("invitations", [])
+
+    def delete_invitation(self, invitation_id: int) -> None:
+        """Delete one invitation by its numeric id (not its code)."""
+        r = requests.delete(
+            f"{self.base_url}/api/invitations/{invitation_id}",
+            headers=self._headers(),
+            timeout=10,
+        )
+        r.raise_for_status()
+
     def _users(self, params: dict) -> list:
         """Query /api/users with the given filters and return the user list."""
         # /api/users is slow (Wizarr reconciles with each Plex server per call),
