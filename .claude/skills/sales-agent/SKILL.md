@@ -13,8 +13,9 @@ hand.
 
 `cohorts.mjs` reads Stripe, Wizarr, and the bridge store, joins them per person, and
 assigns one lifecycle cohort each: `vip`, `active`, `invited-pending`, `declined`,
-`lapsed`, `uninvited`, or `triage-billing`. Two of those, `declined` and `lapsed`, are
-sellable plays. The rest are excluded, or routed to a different runbook, or both.
+`backfill`, `lapsed`, `uninvited`, or `triage-billing`. Three of those, `declined`,
+`backfill`, and `lapsed`, are sellable plays. The rest are excluded, or routed to a
+different runbook, or both.
 
 Two outcomes count as success here, not one. A conversion is the obvious one. A reply
 explaining why someone left is the other, and outreach is the only channel in this stack
@@ -61,10 +62,10 @@ destroyable by `git clean -xdf`.
 
 | Flag | Meaning |
 |---|---|
-| `--play=declined\|lapsed\|uninvited` | Restrict to one play. No flag runs both sellable plays, `declined` and `lapsed`. `uninvited` is a valid selection that produces no play block at all, only a triage listing: uninvited members are never pitched, so there is nothing to draft |
-| `--json` | Machine-readable output, `{ plays, triage, sources }`, for the agent to parse |
+| `--play=declined\|backfill\|lapsed\|uninvited` | Restrict to one play. No flag runs all three sellable plays: `declined`, `backfill`, `lapsed`. `uninvited` is a valid selection that produces no play block at all, only a triage listing: uninvited members are never pitched, so there is nothing to draft |
+| `--json` | Machine-readable output, `{ plays, triage, selfFiltered, sources }`, for the agent to parse |
 | `--no-store` | Skip the NAS bridge-store read. The member list itself is built by iterating the store's rows, so this does not just drop a field, it drops every member: expect an empty report, not a degraded one. Useful only for checking that Stripe and Wizarr answer, never for a real run |
-| `--record <email> <play>` | Append one contact to the ledger. `<play>` must be `declined` or `lapsed`. Anything else, including `uninvited`, is rejected before any write happens: uninvited members are never pitched, so recording a contact against that play would itself be corrupt state |
+| `--record <email> <play>` | Append one contact to the ledger. `<play>` must be `declined`, `backfill`, or `lapsed`. Anything else, including `uninvited`, is rejected before any write happens: uninvited members are never pitched, so recording a contact against that play would itself be corrupt state |
 | `--opt-out <email>` | Set the permanent exclusion flag for an email. Missing the email argument is rejected the same way, before any write |
 | `--all` | Currently a functional no-op. It is parsed and accepted, but nothing in `buildReport` or `renderReport` reads it. Excluded people are already listed in every run whether or not `--all` is passed. Do not rely on it to change output, and do not describe it to the operator as a filter toggle: as written, it isn't one |
 
@@ -95,16 +96,47 @@ means the read failed, not that the week was quiet.
 
 | Play | Membership | Cooldown |
 |---|---|---|
-| `declined` | `subscribed=0`, an `invited_at` is present, and it is past the 14-day invite grace | 45 days |
+| `declined` | `subscribed=0`, an `invited_at` is present, past the 14-day invite grace, and `invited_at`'s calendar date is not a bulk invite date | 45 days |
+| `backfill` | Same as `declined`, except `invited_at`'s calendar date is a bulk invite date | 45 days |
 | `lapsed` | `subscribed=1` with a past `expires`, or a Stripe status of `canceled` | 60 days |
 | `uninvited` | known to the bridge, no confirmed payment, no invite stamp | not pitched, triage only |
+
+### Bulk invite detection
+
+A live run once listed 45 "declined" leads that had never actually declined anything:
+they were existing members stamped `invited_at` during a one-time migration backfill, all
+on the same day. A win-back email telling them they declined an invitation would have been
+false. `bulkInviteDates` in `classify.mjs` catches this without hardcoding a date: any
+calendar date (UTC) on which `BULK_INVITE_THRESHOLD` (10) or more *distinct* members were
+invited is a bulk stamp, counted by member, never by row, so one person with several store
+rows cannot manufacture a bulk date on their own. Organic invites run at one or two a day,
+comfortably below the threshold; a genuine day of ten or more organic signups would be
+visible in the report and is a good problem, not a bug. A member whose invite date lands on
+a bulk date gets `backfill` instead of `declined`; every other cohort boundary (VIP, billing
+trouble, a Stripe cancel, the subscribed branch, the invite grace itself) is unaffected, a
+bulk stamp only reinterprets what an already-expired, unredeemed invite means.
+
+### Self address filter
+
+The operator's own plus-addressed test accounts (`name+anything@domain`) are not members
+and must never inflate a cohort count or receive a draft. `cohorts.mjs` resolves the
+operator's address in this order: `WZ_SALES_SELF` (comma separated, for more than one
+address), then `git config user.email`, then no filter at all if neither resolves. The
+source in effect is always printed on the `sources:` line (as `self: <source> (<n>
+filtered)` or `self: none (no filter)`), so the filter is never silent. A match compares
+the local part before any `+`, lowercased, plus the domain, so `me@example.com` and
+`me+gold@example.com` are the same address for filtering purposes but `me@otherdomain.com`
+is not. Filtered addresses are counted in `report.selfFiltered`, never just dropped.
 
 Cohort assignment mirrors `deriveStatus` in `apps/admin-portal/src/lib/memberStatus.ts`,
 including its 14-day grace constant. That grace decides which *status badge* a pending
 invite shows; it is a different number from `INVITE_EXPIRES_DAYS` (7, deployed), which is
 how long the invite link itself stays redeemable. If this cohort logic and the admin UI's
 badges ever disagree for the same member, that is a bug worth stopping for: it means the
-report is telling the operator something the admin UI contradicts.
+report is telling the operator something the admin UI contradicts. `backfill` is not such
+a disagreement: it is a sales-agent-only subdivision of whatever the admin UI shows for an
+expired, unredeemed invite, used purely to pick the right outreach angle, and it never
+changes what badge the admin UI itself displays.
 
 Order matters in cohort assignment, and it is checked in this sequence:
 
@@ -115,7 +147,9 @@ Order matters in cohort assignment, and it is checked in this sequence:
 3. **A deliberate Stripe cancel reads as `lapsed`.** Checked before the invite-grace logic,
    because the `customer.subscription.deleted` webhook clears `subscribed`, and without
    this ordering a genuine cancel would misread as a declined invite instead.
-4. Everything else falls out of `subscribed`, `expires`, and `invited_at`.
+4. Everything else falls out of `subscribed`, `expires`, and `invited_at`. Inside the
+   invite branch, past the grace splits one more time: a bulk invite date reads as
+   `backfill`, anything else reads as `declined` (see Bulk invite detection above).
 
 Three filters apply on top of cohort assignment, in this order, before anyone reaches the
 operator:
@@ -124,9 +158,9 @@ operator:
 2. **Lifetime cap of three contacts, across all plays.** Checked before the cooldown on
    purpose: an expired cooldown must not revive someone who has already ignored three
    emails, regardless of which plays those three contacts were under.
-3. **Cooldown**, per the table above, counted from the most recent contact of *either*
-   play. A `lapsed` contact three days ago still blocks a `declined` pitch today; the two
-   plays cannot double up on one person by using different clocks.
+3. **Cooldown**, per the table above, counted from the most recent contact of *any*
+   play. A `lapsed` contact three days ago still blocks a `declined` or `backfill` pitch
+   today; no play can double up on one person by using its own clock.
 
 Excluded people are never dropped from the count. Every person in a cohort is either a
 lead or an excluded entry with a reason (`opted-out`, `lifetime-cap`, or `cooldown`), and
@@ -210,6 +244,18 @@ The skeleton, in order:
 4. **The contribution disclaimer**, verbatim in register with `Footer.tsx`.
 5. **The opt-out instruction**, plain, in the last line.
 
+### The `backfill` angle
+
+A `backfill` member never declined an invitation. They were already members; the
+migration that stamped `invited_at` on them also asked them to start contributing toward
+server costs by 2026-08-08, and that date has passed. The draft must never say or imply
+they declined, ignored, or turned down an invite. It leads with the same feedback question
+every other play leads with, then states plainly that the contribution deadline has passed
+and explains how to keep access by contributing now: no framing of a missed choice, no
+guilt, no urgency language beyond stating the deadline already happened. Everything under
+The compliance gate below applies to this play exactly as it does to every other one; it
+is still a payment surface.
+
 Every factual claim in a draft (when they were invited, what tier they were on, when they
 lapsed) has to trace to a real field on that member: `invitedAt`, `expires`, `tier`,
 `cohort`. Never invent enthusiasm, urgency, or history the upstream data does not support.
@@ -249,16 +295,18 @@ delivery down with it.
 The script's own text output is one block per play (the play name, `contactable of
 cohortSize`, the ranked lead lines, then `EXCLUDED` with every excluded email and its
 reason), followed by a single `TRIAGE` line for the whole run naming everyone routed to
-`member-triage` and why, followed by a footer. The `TRIAGE` line is not repeated per
-play; it is computed once and appended once, after every play's block. When assembling
-the report for the operator, add the narrative layer on top of that structure per play:
-why now (what the data actually shows, not a guess), the ranked leads, the draft in
-full, the excluded summary, and a one-line call on whether to send.
+`member-triage` and why, a `SELF-FILTERED` line naming every operator test address
+excluded (present only when at least one was filtered), then a footer. Neither `TRIAGE`
+nor `SELF-FILTERED` repeats per play; each is computed once and appended once, after
+every play's block. When assembling the report for the operator, add the narrative
+layer on top of that structure per play: why now (what the data actually shows, not a
+guess), the ranked leads, the draft in full, the excluded summary, and a one-line call
+on whether to send.
 
 **The footer talks about sellable cohorts only, never about triage.** It prints
 "Nothing to send" whenever every play's contactable count is zero, which is a real and
-correct statement about `declined` and `lapsed`, but it says nothing about whether
-`TRIAGE` is empty. Run `--play=uninvited` (or any run where every play is empty but
+correct statement about `declined`, `backfill`, and `lapsed`, but it says nothing about
+whether `TRIAGE` is empty. Run `--play=uninvited` (or any run where every play is empty but
 triage is not) and the output prints the `TRIAGE` line naming real people who need
 `member-triage`, immediately followed by "Nothing to send. Every cohort is empty or
 fully suppressed." Read literally, that footer is about the plays above it, not about
@@ -266,10 +314,11 @@ the whole run. When assembling the report for the operator, never let "Nothing t
 read as "there is nothing to do here": if `TRIAGE` names anyone, say so as work that
 still needs doing, regardless of what the footer says underneath it.
 
-Ranking within a play is warmth first, then recency. `lapsed` outranks `declined` (someone
-who paid before is warmer than someone who only ever received a link and never redeemed
-it), and within the same warmth, a recent event outranks an old one. Never re-order this
-by hand to push a favorite lead to the top.
+Ranking within a play is warmth first, then recency. `lapsed` outranks `backfill`, which
+outranks `declined`: someone who paid before is warmer than someone who was asked to
+contribute and missed the deadline, who in turn is warmer than someone who only ever
+received a link and never redeemed it. Within the same warmth, a recent event outranks an
+old one. Never re-order this by hand to push a favorite lead to the top.
 
 **`contactable` plus `excluded` must always equal `cohortSize`, for every play, every
 run.** If it doesn't, something in the pipeline dropped a person, and that is a bug worth

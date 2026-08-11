@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-import { assignCohort, rankLeads } from './classify.mjs'
+import { execFileSync } from 'node:child_process'
+import { assignCohort, bulkInviteDates, rankLeads } from './classify.mjs'
 import { optOut, readLedger, recordContact, stateDir, suppression, writeLedger } from './ledger.mjs'
 import { fetchAll, requireConfig } from './sources.mjs'
 
-const PLAYS = ['declined', 'lapsed']
+const PLAYS = ['declined', 'lapsed', 'backfill']
 const SELECTABLE = [...PLAYS, 'uninvited']
 
 export const parseArgs = ({ argv }) => {
@@ -60,15 +61,65 @@ export const parseArgs = ({ argv }) => {
 
 const lastEventFor = ({ member }) => member.expires ?? member.invitedAt ?? null
 
-export const buildReport = ({ members, ledger, now, play }) => {
+const localPart = (email) => email.toLowerCase().split('@')[0]?.split('+')[0] ?? ''
+const domainPart = (email) => email.toLowerCase().split('@')[1] ?? ''
+
+const isSelfAddress = ({ email, selfAddresses }) =>
   /**
-   * Assign every member a cohort, then split each sellable play into leads and
-   * excluded. Excluded people are kept and counted: a thin week has to read as
-   * "everyone is in cooldown", never as "there is nobody to contact".
+   * True when email matches one of the operator's own addresses on the local
+   * part before any + tag, lowercased, plus the domain. This catches a
+   * plus-tagged test variant of the operator's address (`name+anything@domain`)
+   * alongside the bare address itself.
    */
-  const assigned = members.map((member) => ({
+  selfAddresses.some(
+    (self) => localPart(email) === localPart(self) && domainPart(email) === domainPart(self),
+  )
+
+export const resolveSelf = ({ envValue = null, gitEmail = null } = {}) => {
+  /**
+   * Resolve the operator's own address list and where it came from, so the
+   * filter is reported and never silent. WZ_SALES_SELF (comma separated)
+   * wins when set and non-empty. Failing that, gitEmail (the caller's
+   * `git config user.email` read) is used. Failing that, the filter is off
+   * and nothing is treated as a self address.
+   */
+  const fromEnv = (envValue ?? '').split(',').map((addr) => addr.trim()).filter(Boolean)
+  if (fromEnv.length) {
+    return { source: 'WZ_SALES_SELF', addresses: fromEnv }
+  }
+  if (gitEmail) {
+    return { source: 'git config user.email', addresses: [gitEmail] }
+  }
+  return { source: 'none', addresses: [] }
+}
+
+export const filterSelf = ({ members, selfAddresses }) =>
+  /**
+   * Split members into those kept and those filtered as the operator's own
+   * test addresses, so a filtered address is reported, never silently
+   * dropped from the run.
+   */
+  members.reduce(
+    (acc, member) =>
+      isSelfAddress({ email: member.email, selfAddresses })
+        ? { ...acc, filtered: [...acc.filtered, member] }
+        : { ...acc, kept: [...acc.kept, member] },
+    { kept: [], filtered: [] },
+  )
+
+export const buildReport = ({ members, ledger, now, play, selfAddresses = [] }) => {
+  /**
+   * Filter out the operator's own test addresses, detect this run's bulk
+   * invite dates from the members that remain, then assign every member a
+   * cohort and split each sellable play into leads and excluded. Excluded
+   * people are kept and counted: a thin week has to read as "everyone is in
+   * cooldown", never as "there is nobody to contact".
+   */
+  const { kept, filtered } = filterSelf({ members, selfAddresses })
+  const bulkDates = bulkInviteDates({ members: kept })
+  const assigned = kept.map((member) => ({
     ...member,
-    cohort: assignCohort({ member, now }),
+    cohort: assignCohort({ member, now, bulkDates }),
     lastEventAt: lastEventFor({ member }),
   }))
   const wanted = play && PLAYS.includes(play) ? [play] : play ? [] : PLAYS
@@ -93,6 +144,7 @@ export const buildReport = ({ members, ledger, now, play }) => {
     triage: assigned.filter(
       (member) => member.cohort === 'triage-billing' || member.cohort === 'uninvited',
     ),
+    selfFiltered: filtered.map((member) => member.email),
   }
 }
 
@@ -116,9 +168,22 @@ export const renderReport = ({ report }) => {
   const triage = report.triage.length
     ? `TRIAGE  ${report.triage.length} routed to member-triage: ${report.triage.map((m) => `${m.email} (${m.cohort})`).join(', ')}`
     : ''
+  const selfFiltered = report.selfFiltered?.length
+    ? `SELF-FILTERED  ${report.selfFiltered.length} operator test address(es) excluded: ${report.selfFiltered.join(', ')}`
+    : ''
   const total = report.plays.reduce((acc, entry) => acc + entry.contactable, 0)
   const footer = total ? '' : 'Nothing to send. Every cohort is empty or fully suppressed.'
-  return [...blocks, triage, footer].filter(Boolean).join('\n')
+  return [...blocks, triage, selfFiltered, footer].filter(Boolean).join('\n')
+}
+
+const gitUserEmail = () => {
+  /** Best-effort read of `git config user.email`; null on any failure or empty value. */
+  try {
+    const value = execFileSync('git', ['config', 'user.email'], { encoding: 'utf8' }).trim()
+    return value || null
+  } catch {
+    return null
+  }
 }
 
 const main = async () => {
@@ -142,11 +207,24 @@ const main = async () => {
   }
   const config = requireConfig({})
   const { members, sources } = await fetchAll({ config, skipStore: args.skipStore })
-  const report = buildReport({ members, ledger: readLedger({ dir }), now: Date.now(), play: args.play })
+  const self = resolveSelf({ envValue: process.env.WZ_SALES_SELF ?? null, gitEmail: gitUserEmail() })
+  const report = buildReport({
+    members,
+    ledger: readLedger({ dir }),
+    now: Date.now(),
+    play: args.play,
+    selfAddresses: self.addresses,
+  })
+  const allSources = {
+    ...sources,
+    self: self.addresses.length
+      ? `${self.source} (${report.selfFiltered.length} filtered)`
+      : `${self.source} (no filter)`,
+  }
   process.stdout.write(
     args.json
-      ? `${JSON.stringify({ ...report, sources }, null, 2)}\n`
-      : `sources: ${Object.entries(sources).map(([k, v]) => `${k} ${v}`).join(', ')}\n\n${renderReport({ report })}\n`,
+      ? `${JSON.stringify({ ...report, sources: allSources }, null, 2)}\n`
+      : `sources: ${Object.entries(allSources).map(([k, v]) => `${k} ${v}`).join(', ')}\n\n${renderReport({ report })}\n`,
   )
   return 0
 }

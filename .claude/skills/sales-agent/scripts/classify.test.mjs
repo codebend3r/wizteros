@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { INVITE_GRACE_DAYS, assignCohort, rankLeads } from './classify.mjs'
+import { BULK_INVITE_THRESHOLD, INVITE_GRACE_DAYS, assignCohort, bulkInviteDates, rankLeads } from './classify.mjs'
 
 const DAY = 86_400_000
 const NOW = Date.parse('2026-08-10T00:00:00Z')
@@ -125,4 +125,77 @@ test('ranking does not mutate its input', () => {
   ]
   rankLeads({ leads })
   assert.equal(leads[0].email, 'a@example.com')
+})
+
+test('bulkInviteDates flags a date reached by the threshold and omits one short of it', () => {
+  const bulkDay = daysAgo(20).slice(0, 10)
+  const quietDay = daysAgo(21).slice(0, 10)
+  const bulkMembers = Array.from({ length: BULK_INVITE_THRESHOLD }, (_, i) =>
+    member({ email: `bulk${i}@example.com`, invitedAt: daysAgo(20) }),
+  )
+  const quietMembers = Array.from({ length: BULK_INVITE_THRESHOLD - 1 }, (_, i) =>
+    member({ email: `quiet${i}@example.com`, invitedAt: daysAgo(21) }),
+  )
+  const dates = bulkInviteDates({ members: [...bulkMembers, ...quietMembers] })
+  assert.equal(dates.has(bulkDay), true)
+  assert.equal(dates.has(quietDay), false)
+})
+
+test('bulkInviteDates counts distinct members, not rows, so duplicates cannot manufacture a bulk date', () => {
+  const day = daysAgo(5).slice(0, 10)
+  const duplicateRows = Array.from({ length: BULK_INVITE_THRESHOLD }, () =>
+    member({ email: 'dup@example.com', invitedAt: daysAgo(5) }),
+  )
+  const dates = bulkInviteDates({ members: duplicateRows })
+  assert.equal(dates.has(day), false)
+})
+
+test('a member past the grace whose invite date is a bulk date is backfill', () => {
+  const bulkDates = new Set([daysAgo(20).slice(0, 10)])
+  const m = member({ invitedAt: daysAgo(20) })
+  assert.equal(assignCohort({ member: m, now: NOW, bulkDates }), 'backfill')
+})
+
+test('a member past the grace whose invite date is not a bulk date is still declined', () => {
+  const bulkDates = new Set([daysAgo(20).slice(0, 10)])
+  const m = member({ invitedAt: daysAgo(30) })
+  assert.equal(assignCohort({ member: m, now: NOW, bulkDates }), 'declined')
+})
+
+test('a member inside the grace on a bulk date is still invited-pending', () => {
+  const day = daysAgo(5).slice(0, 10)
+  const bulkDates = new Set([day])
+  const m = member({ invitedAt: daysAgo(5) })
+  assert.equal(assignCohort({ member: m, now: NOW, bulkDates }), 'invited-pending')
+})
+
+test('a VIP on a bulk date is still vip', () => {
+  const day = daysAgo(20).slice(0, 10)
+  const bulkDates = new Set([day])
+  const m = member({ tag: 'vip', invitedAt: daysAgo(20) })
+  assert.equal(assignCohort({ member: m, now: NOW, bulkDates }), 'vip')
+})
+
+test('a subscribed member on a bulk date is still active', () => {
+  const day = daysAgo(20).slice(0, 10)
+  const bulkDates = new Set([day])
+  const m = member({ subscribed: true, expires: inDays(20), stripeStatus: 'active', invitedAt: daysAgo(20) })
+  assert.equal(assignCohort({ member: m, now: NOW, bulkDates }), 'active')
+})
+
+test('assignCohort called without bulkDates behaves exactly as before', () => {
+  const m = member({ invitedAt: daysAgo(15) })
+  assert.equal(assignCohort({ member: m, now: NOW }), 'declined')
+})
+
+test('ranking places backfill below lapsed and above declined', () => {
+  const leads = [
+    { email: 'declined@example.com', cohort: 'declined', lastEventAt: daysAgo(1) },
+    { email: 'backfill@example.com', cohort: 'backfill', lastEventAt: daysAgo(1) },
+    { email: 'lapsed@example.com', cohort: 'lapsed', lastEventAt: daysAgo(1) },
+  ]
+  assert.deepEqual(
+    rankLeads({ leads }).map((lead) => lead.email),
+    ['lapsed@example.com', 'backfill@example.com', 'declined@example.com'],
+  )
 })

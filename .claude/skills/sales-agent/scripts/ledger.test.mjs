@@ -77,6 +77,14 @@ test('cooldown is per play and lapsed is longer than declined', () => {
   assert.equal(suppression({ record, play: 'lapsed', now: NOW }).reason, 'cooldown')
 })
 
+test('COOLDOWN_DAYS.backfill is 45 and suppression honours it', () => {
+  assert.equal(COOLDOWN_DAYS.backfill, 45)
+  const record = { contacts: [{ at: daysAgo(10), play: 'backfill' }], optedOut: false }
+  const result = suppression({ record, play: 'backfill', now: NOW })
+  assert.equal(result.reason, 'cooldown')
+  assert.match(result.detail, /35d/)
+})
+
 test('cooldown counts contacts from any play, not just the current one', () => {
   const record = { contacts: [{ at: daysAgo(3), play: 'lapsed' }], optedOut: false }
   assert.equal(suppression({ record, play: 'declined', now: NOW }).reason, 'cooldown')

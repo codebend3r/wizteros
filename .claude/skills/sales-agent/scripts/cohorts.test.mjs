@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildReport, parseArgs, renderReport } from './cohorts.mjs'
+import { buildReport, filterSelf, parseArgs, renderReport, resolveSelf } from './cohorts.mjs'
 
 const DAY = 86_400_000
 const NOW = Date.parse('2026-08-10T00:00:00Z')
@@ -141,4 +141,95 @@ test('the rendered report names the excluded reasons', () => {
 test('an empty result renders as a real answer, not a blank page', () => {
   const text = renderReport({ report: buildReport({ members: [], ledger: {}, now: NOW, play: null }) })
   assert.match(text, /nothing to send/i)
+})
+
+test('a play can be backfill', () => {
+  assert.equal(parseArgs({ argv: ['--play=backfill'] }).play, 'backfill')
+})
+
+test('record accepts backfill as a play', () => {
+  const args = parseArgs({ argv: ['--record', 'a@example.com', 'backfill'] })
+  assert.deepEqual(args.record, { email: 'a@example.com', play: 'backfill' })
+})
+
+test('record still rejects an unknown play', () => {
+  assert.throws(() => parseArgs({ argv: ['--record', 'a@example.com', 'upsell'] }), /unknown play/i)
+})
+
+test('a backfill member appears in the backfill play, never in declined', () => {
+  const bulkMembers = Array.from({ length: 10 }, (_, i) =>
+    member({ email: `bulk${i}@example.com`, invitedAt: daysAgo(20) }),
+  )
+  const report = buildReport({ members: bulkMembers, ledger: {}, now: NOW, play: null })
+  const backfill = report.plays.find((entry) => entry.play === 'backfill')
+  const declined = report.plays.find((entry) => entry.play === 'declined')
+  assert.equal(backfill.cohortSize, 10)
+  assert.equal(declined.cohortSize, 0)
+})
+
+test('resolveSelf prefers WZ_SALES_SELF, comma separated', () => {
+  const result = resolveSelf({ envValue: 'a@example.com, b@example.com', gitEmail: 'c@example.com' })
+  assert.equal(result.source, 'WZ_SALES_SELF')
+  assert.deepEqual(result.addresses, ['a@example.com', 'b@example.com'])
+})
+
+test('resolveSelf falls back to git config user.email', () => {
+  const result = resolveSelf({ envValue: null, gitEmail: 'c@example.com' })
+  assert.equal(result.source, 'git config user.email')
+  assert.deepEqual(result.addresses, ['c@example.com'])
+})
+
+test('resolveSelf resolves nothing when neither source is available', () => {
+  const result = resolveSelf({ envValue: null, gitEmail: null })
+  assert.equal(result.source, 'none')
+  assert.deepEqual(result.addresses, [])
+})
+
+test('filterSelf removes a plus tagged variant of the operator address and keeps others', () => {
+  const members = [
+    member({ email: 'me+gold@example.com' }),
+    member({ email: 'someone@example.com' }),
+  ]
+  const { kept, filtered } = filterSelf({ members, selfAddresses: ['me@example.com'] })
+  assert.deepEqual(kept.map((m) => m.email), ['someone@example.com'])
+  assert.deepEqual(filtered.map((m) => m.email), ['me+gold@example.com'])
+})
+
+test('the self address filter removes a plus tagged variant and leaves an unrelated address', () => {
+  const report = buildReport({
+    members: [
+      member({ email: 'me+gold@example.com', invitedAt: daysAgo(30) }),
+      member({ email: 'someone@example.com', invitedAt: daysAgo(30) }),
+    ],
+    ledger: {},
+    now: NOW,
+    play: 'declined',
+    selfAddresses: ['me@example.com'],
+  })
+  const declined = report.plays.find((entry) => entry.play === 'declined')
+  assert.deepEqual(declined.leads.map((lead) => lead.email), ['someone@example.com'])
+})
+
+test('the filter is off and filters nothing when no operator address can be resolved', () => {
+  const report = buildReport({
+    members: [member({ email: 'me+gold@example.com', invitedAt: daysAgo(30) })],
+    ledger: {},
+    now: NOW,
+    play: 'declined',
+    selfAddresses: [],
+  })
+  const declined = report.plays.find((entry) => entry.play === 'declined')
+  assert.equal(declined.cohortSize, 1)
+  assert.deepEqual(report.selfFiltered, [])
+})
+
+test('a filtered address is reported on the report, not silently dropped', () => {
+  const report = buildReport({
+    members: [member({ email: 'me+test@example.com', invitedAt: daysAgo(30) })],
+    ledger: {},
+    now: NOW,
+    play: 'declined',
+    selfAddresses: ['me@example.com'],
+  })
+  assert.deepEqual(report.selfFiltered, ['me+test@example.com'])
 })

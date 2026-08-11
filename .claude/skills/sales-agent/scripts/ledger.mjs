@@ -5,7 +5,7 @@ import { randomBytes } from 'node:crypto'
 const DAY = 86_400_000
 const LEDGER_FILE = 'outreach.json'
 
-export const COOLDOWN_DAYS = { declined: 45, lapsed: 60 }
+export const COOLDOWN_DAYS = { declined: 45, lapsed: 60, backfill: 45 }
 export const LIFETIME_CAP = 3
 
 export const stateDir = ({ env = process.env } = {}) =>
