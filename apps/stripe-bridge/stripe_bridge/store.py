@@ -62,6 +62,16 @@ CREATE TABLE IF NOT EXISTS session_invites (
 """
 
 
+_BASELINE_INVITES_SCHEMA = """
+CREATE TABLE IF NOT EXISTS baseline_invites (
+    code       TEXT PRIMARY KEY,
+    tier       TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+)
+"""
+
+
 def _conn(path: str) -> sqlite3.Connection:
     """Open the SQLite file; the Row factory makes rows dict-like (row["email"])."""
     c = sqlite3.connect(path)
@@ -105,6 +115,7 @@ def init_db(path: str) -> None:
         c.execute(_DOWNLOADS_SCHEMA)
         c.execute(_EVENT_LOG_SCHEMA)
         c.execute(_SESSION_INVITES_SCHEMA)
+        c.execute(_BASELINE_INVITES_SCHEMA)
         _ensure_tier_column(c)
         _ensure_invited_at_column(c)
         _ensure_subscribed_column(c)
@@ -471,3 +482,37 @@ def all_customer_rows(path: str) -> dict[str, dict]:
         }
         for row in rows
     }
+
+
+def record_baseline_invite(path: str, *, code: str, tier: str, expires_at: str,
+                           created_at: str | None = None) -> None:
+    """Remember a baseline invite this system minted, so rotation may later reap it.
+
+    Membership in this table is the sole proof of ownership: rotation deletes
+    only codes recorded here, which is what makes it impossible for a member's
+    checkout invite to be caught by the reaper. created_at defaults to now but
+    is passed in by the rotation so it shares one clock with expires_at — the
+    audit measures rotation liveness as the gap between the two.
+    """
+    with _conn(path) as c:
+        c.execute(
+            "INSERT OR REPLACE INTO baseline_invites (code, tier, created_at, expires_at) "
+            "VALUES (?, ?, ?, ?)",
+            (code, tier, created_at or datetime.now(timezone.utc).isoformat(), expires_at),
+        )
+
+
+def all_baseline_invites(path: str) -> list[dict]:
+    """Every baseline invite this system has minted, newest first."""
+    with _conn(path) as c:
+        rows = c.execute(
+            "SELECT code, tier, created_at, expires_at FROM baseline_invites "
+            "ORDER BY created_at DESC"
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def forget_baseline_invite(path: str, code: str) -> None:
+    """Drop a baseline invite's record once it has been deleted upstream."""
+    with _conn(path) as c:
+        c.execute("DELETE FROM baseline_invites WHERE code = ?", (code,))

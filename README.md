@@ -164,6 +164,7 @@ Skills under `.claude/skills/` are scoped to this repo. Each one's `SKILL.md` ca
 | `arr-stack-update` | Moves the media-stack images (sonarr, radarr, sabnzbd, …) on Meleys and Vermithor to latest, recreating only what changed and rolling back what fails |
 | `copy-compliance` | Audits user-facing copy against the server-cost contribution framing |
 | `sales-agent` | Finds win-back opportunities among declined and lapsed members, ranks them, and drafts a compliance-checked email to send by hand |
+| `invite-audit` | Audits the invitation set: the four per-tier baseline links, their expiry and scope, and whether the 03:00 rotation is still running |
 | `monitor-ci` | Watches Nx Cloud CI, evaluates failures, and coordinates supported self-healing fixes |
 
 **Nx**

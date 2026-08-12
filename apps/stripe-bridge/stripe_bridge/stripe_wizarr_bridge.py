@@ -9,7 +9,7 @@ import stripe
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from stripe_bridge import __version__, admin, store, tiers
+from stripe_bridge import __version__, admin, baseline, store, tiers
 from stripe_bridge.mailer import send_alert_email, send_invite_email
 from stripe_bridge.wizarr import WizarrClient
 
@@ -27,6 +27,8 @@ MAP_DB_PATH = os.environ.get("MAP_DB_PATH", "/data/bridge.db")
 RECONCILE_INTERVAL_SECONDS = int(os.environ.get("RECONCILE_INTERVAL_SECONDS", "3600"))
 MEMBERS_SNAPSHOT_INTERVAL_SECONDS = int(
     os.environ.get("MEMBERS_SNAPSHOT_INTERVAL_SECONDS", "300"))
+# Wall-clock hour the baseline invites rotate at, in the container's local time.
+BASELINE_ROTATE_HOUR = int(os.environ.get("BASELINE_ROTATE_HOUR", "3"))
 
 stripe.api_key = STRIPE_API_KEY
 log = logging.getLogger("bridge")
@@ -152,10 +154,43 @@ async def _snapshot_loop() -> None:
         await asyncio.sleep(MEMBERS_SNAPSHOT_INTERVAL_SECONDS)
 
 
+def _seconds_until_hour(hour: int, *, now: datetime | None = None) -> float:
+    """Seconds from now until the next local occurrence of the given hour.
+
+    Sleeping to a wall-clock target rather than on a fixed interval keeps the
+    rotation pinned to the same time every day instead of drifting forward by
+    however long each run took, and re-anchors it after a restart.
+    """
+    now = now or datetime.now()
+    target = now.replace(hour=hour, minute=0, second=0, microsecond=0)
+    if target <= now:
+        target += timedelta(days=1)
+    return (target - now).total_seconds()
+
+
+async def _baseline_loop() -> None:
+    """Rotate the per-tier baseline invites once a day at BASELINE_ROTATE_HOUR.
+
+    Deliberately does not rotate at boot: a restart loop would otherwise mint a
+    fresh set of invites every time the container came up.
+    """
+    while True:
+        await asyncio.sleep(_seconds_until_hour(BASELINE_ROTATE_HOUR))
+        try:
+            result = await asyncio.to_thread(
+                baseline.rotate_baseline_invites, client=client, db_path=MAP_DB_PATH)
+            log.info("baseline rotation: minted %d, skipped %s, reaped %d",
+                     len(result["minted"]), result["skipped"] or "none",
+                     len(result["reaped"]))
+        except Exception:
+            log.exception("baseline rotation failed")
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    """Keep the reconcile sweep and members-snapshot refresher running for the life of the server."""
-    tasks = [asyncio.create_task(_reconcile_loop()), asyncio.create_task(_snapshot_loop())]
+    """Keep the reconcile sweep, snapshot refresher, and baseline rotation running."""
+    tasks = [asyncio.create_task(_reconcile_loop()), asyncio.create_task(_snapshot_loop()),
+             asyncio.create_task(_baseline_loop())]
     yield
     for task in tasks:
         task.cancel()

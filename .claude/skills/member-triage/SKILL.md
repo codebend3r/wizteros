@@ -23,13 +23,16 @@ CLI can mint. Actions happen in the admin web UI, pressed by a human.
 ## Running it
 
 ```bash
-node --env-file=.env.local .claude/skills/member-triage/scripts/gather-member.mjs member@example.com
+node --env-file=.env .claude/skills/member-triage/scripts/gather-member.mjs member@example.com
 ```
 
-Run it from the repo root. **There is no `.env` in this repo**: it is gitignored and only
-`.env.example` is committed, so `--env-file=.env` dies with `node: .env: not found`
-(exit 9) before a line of the script runs. Point `--env-file` at a file you keep the
-values in locally, or export them for the command instead.
+Run it from the repo root. **`.env` is gitignored, not absent**: only `.env.example` is
+committed, so whether a real `.env` exists is a property of the working copy, not of the
+repo. A checkout that has one (this is the usual case on the machine that runs the
+bridge) works with `--env-file=.env` as above. A fresh clone has none, and `--env-file`
+pointed at a missing file dies with `node: .env: not found` (exit 9) before a line of the
+script runs — there point `--env-file` at whatever file holds the values locally
+(`.env.local` is also gitignored), or export them for the command instead.
 
 It needs `STRIPE_API_KEY`, `WIZARR_BASE_URL`, and `WIZARR_API_KEY` (the same three the
 bridge runs with), plus SSH key auth to the NAS and `sudo -n docker` there for the store

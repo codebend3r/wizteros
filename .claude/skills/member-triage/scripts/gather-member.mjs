@@ -14,8 +14,9 @@
 // handle is opened mode=ro and the SSH calls only read.
 //
 // Run: node --env-file=<env file> .claude/skills/member-triage/scripts/gather-member.mjs member@example.com
-// `.env` is gitignored and not in the repo, so pass whichever file holds the
-// three values locally, or export them for the command.
+// `.env` is gitignored, so whether one exists is a property of the working copy,
+// not of the repo: use it when it is there, otherwise pass whichever file holds
+// the three values locally, or export them for the command.
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 
