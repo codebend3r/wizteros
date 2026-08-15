@@ -1,11 +1,13 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { afterEach, expect, test } from '@/test/vi'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { afterEach, expect, test, vi } from '@/test/vi'
 import { AppRoutes } from '@/AppRoutes'
 import { useAuthStore } from '@/stores/authStore'
 
 afterEach(() => {
   sessionStorage.clear()
+  vi.restoreAllMocks()
 })
 
 test('renders the landing page at /', () => {
@@ -27,6 +29,24 @@ test('gates /manage behind the Supabase login when signed out', () => {
     </MemoryRouter>,
   )
   expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
+})
+
+test('serves the fleet overview at /fleet', () => {
+  // Held in flight so the route assertion never depends on a live monitor.
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => new Promise(() => {})),
+  )
+  render(
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      <MemoryRouter initialEntries={['/fleet']}>
+        <AppRoutes />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+  expect(screen.getByRole('heading', { level: 1, name: 'Fleet' })).toBeInTheDocument()
 })
 
 test('serves the single login page at /login', () => {
