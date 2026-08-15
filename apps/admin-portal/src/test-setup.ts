@@ -2,8 +2,10 @@ import { afterEach } from 'bun:test'
 import { cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { useAuthStore } from '@/stores/authStore'
+import { useTierStore } from '@/stores/tierStore'
 
 const initialAuthState = useAuthStore.getInitialState()
+const initialTierState = useTierStore.getInitialState()
 
 // vitest globals auto-unmounted between tests; Bun test does not, so clean up
 // the rendered tree after each test to keep the DOM isolated.
@@ -15,4 +17,5 @@ const initialAuthState = useAuthStore.getInitialState()
 afterEach(() => {
   cleanup()
   useAuthStore.setState(initialAuthState, true)
+  useTierStore.setState(initialTierState, true)
 })

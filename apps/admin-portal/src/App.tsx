@@ -26,7 +26,7 @@ export const App = () => (
       memberUrl={siteConfig.memberUrl}
       fromPrice={fromPrice(siteConfig.tiers)}
     />
-    <StatusBoard />
+    <StatusBoard tiers={siteConfig.tiers} />
     <Pricing tiers={siteConfig.tiers} />
     <Support items={siteConfig.supportItems} />
     <Footer memberUrl={siteConfig.memberUrl} billingPortalUrl={siteConfig.billingPortalUrl} />

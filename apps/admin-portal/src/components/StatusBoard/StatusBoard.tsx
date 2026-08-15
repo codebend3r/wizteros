@@ -1,18 +1,37 @@
+import type { Tier } from '@/site.config'
+import { useTierStore } from '@/stores/tierStore'
 import styles from '@/components/StatusBoard/StatusBoard.module.scss'
 
-// Every figure here is a static placeholder until the bridge exposes real
-// telemetry; swap the numbers in one place when it does. The framing stays on
+// The weights are static placeholders until the bridge exposes real telemetry;
+// swap the numbers in one place when it does. The framing stays on
 // infrastructure (hardware, storage, uptime), never on content.
-const LEDGER = {
-  eyebrow: 'Where $14 a month goes',
-  tierNote: 'Silver',
-  rows: [
-    { label: 'Server hardware', amount: '$5.20', share: 52, tone: 'accent' },
-    { label: 'Storage & bandwidth', amount: '$4.60', share: 46, tone: 'bronze' },
-    { label: 'Maintenance & uptime', amount: '$2.40', share: 24, tone: 'silver' },
-    { label: 'Disk replacement reserve', amount: '$1.80', share: 18, tone: 'dim' },
-  ],
-} as const
+const LEDGER_SPLIT = [
+  { label: 'Server hardware', weight: 26, tone: 'accent' },
+  { label: 'Storage & bandwidth', weight: 23, tone: 'bronze' },
+  { label: 'Maintenance & uptime', weight: 12, tone: 'silver' },
+  { label: 'Disk replacement reserve', weight: 9, tone: 'dim' },
+] as const
+
+const TOTAL_WEIGHT = LEDGER_SPLIT.reduce((sum, { weight }) => sum + weight, 0)
+
+const priceOf = (tier: Tier): number => Number(tier.price.replace(/[^0-9.]/g, ''))
+
+// Split the tier price across the weights in dimes; the largest row absorbs
+// the rounding residual so the rows always sum to the price exactly.
+const ledgerRows = ({ tier }: { tier: Tier }) => {
+  const priceDimes = priceOf(tier) * 10
+  const rounded = LEDGER_SPLIT.map(({ label, tone, weight }) => ({
+    label,
+    tone,
+    dimes: Math.round((priceDimes * weight) / TOTAL_WEIGHT),
+  }))
+  const residual = priceDimes - rounded.reduce((sum, { dimes }) => sum + dimes, 0)
+  return rounded.map(({ label, tone, dimes }, index) => ({
+    label,
+    tone,
+    amount: `$${((dimes + (index === 0 ? residual : 0)) / 10).toFixed(2)}`,
+  }))
+}
 
 const STATUS_ROWS = [
   { label: 'Streaming', value: 'Nominal', live: true },
@@ -31,44 +50,57 @@ const UPTIME = {
   })),
 } as const
 
-const TONE_CLASS: Record<(typeof LEDGER.rows)[number]['tone'], string> = {
+const TONE_CLASS: Record<(typeof LEDGER_SPLIT)[number]['tone'], string> = {
   accent: styles.toneAccent,
   bronze: styles.toneBronze,
   silver: styles.toneSilver,
   dim: styles.toneDim,
 }
 
-const LedgerCard = () => (
-  <article className={styles.card}>
-    <header className={styles.cardHeader}>
-      <h2 className={styles.eyebrow}>{LEDGER.eyebrow}</h2>
-      <span className={styles.cornerNote}>{LEDGER.tierNote}</span>
-    </header>
-    <div className={styles.cardBody}>
-      <div
-        className={styles.splitBar}
-        role="img"
-        aria-label="How the monthly contribution splits across the four costs below"
-        style={{ gridTemplateColumns: LEDGER.rows.map(({ share }) => `${share}fr`).join(' ') }}
-      >
-        {LEDGER.rows.map(({ label, tone }) => (
-          <span key={label} className={`${styles.splitSegment} ${TONE_CLASS[tone]}`} />
-        ))}
+const LedgerCard = ({ tiers }: { tiers: ReadonlyArray<Tier> }) => {
+  const selectedTierId = useTierStore((state) => state.selectedTierId)
+  const tier = tiers.find(({ id }) => id === selectedTierId) ?? tiers[0]
+
+  if (!tier) {
+    return null
+  }
+
+  const rows = ledgerRows({ tier })
+
+  return (
+    <article className={styles.card}>
+      <header className={styles.cardHeader}>
+        <h2 className={styles.eyebrow}>{`Where ${tier.price} a month goes`}</h2>
+        <span className={styles.cornerNote}>{tier.name}</span>
+      </header>
+      <div className={styles.cardBody}>
+        <div
+          className={styles.splitBar}
+          role="img"
+          aria-label="How the monthly contribution splits across the four costs below"
+          style={{
+            gridTemplateColumns: LEDGER_SPLIT.map(({ weight }) => `${weight}fr`).join(' '),
+          }}
+        >
+          {LEDGER_SPLIT.map(({ label, tone }) => (
+            <span key={label} className={`${styles.splitSegment} ${TONE_CLASS[tone]}`} />
+          ))}
+        </div>
+        <ul className={styles.ledgerRows}>
+          {rows.map(({ label, amount, tone }) => (
+            <li key={label} className={styles.ledgerRow}>
+              <span className={styles.ledgerLabel}>
+                <span className={`${styles.ledgerSwatch} ${TONE_CLASS[tone]}`} aria-hidden="true" />
+                {label}
+              </span>
+              <span className={styles.ledgerAmount}>{amount}</span>
+            </li>
+          ))}
+        </ul>
       </div>
-      <ul className={styles.ledgerRows}>
-        {LEDGER.rows.map(({ label, amount, tone }) => (
-          <li key={label} className={styles.ledgerRow}>
-            <span className={styles.ledgerLabel}>
-              <span className={`${styles.ledgerSwatch} ${TONE_CLASS[tone]}`} aria-hidden="true" />
-              {label}
-            </span>
-            <span className={styles.ledgerAmount}>{amount}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  </article>
-)
+    </article>
+  )
+}
 
 const StatusCard = () => (
   <article className={styles.card}>
@@ -113,9 +145,9 @@ const StatusCard = () => (
   </article>
 )
 
-export const StatusBoard = () => (
+export const StatusBoard = ({ tiers }: { tiers: ReadonlyArray<Tier> }) => (
   <section id="status" className={styles.board} aria-label="Service status and cost breakdown">
-    <LedgerCard />
+    <LedgerCard tiers={tiers} />
     <StatusCard />
   </section>
 )
