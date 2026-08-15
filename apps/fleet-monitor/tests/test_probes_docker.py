@@ -1,0 +1,57 @@
+from fleet_monitor.probes import docker
+
+
+def _payload(**overrides):
+    base = {
+        "Names": ["/sonarr"],
+        "State": "running",
+        "Status": "Up 11 days",
+        "Labels": {},
+    }
+    return {**base, **overrides}
+
+
+def test_parse_containers_strips_the_leading_slash():
+    states = docker.parse_containers([_payload()])
+
+    assert states[0].name == "sonarr"
+    assert states[0].running is True
+
+
+def test_parse_containers_reads_health_from_the_status_string():
+    states = docker.parse_containers([_payload(Status="Up 8 days (healthy)")])
+    assert states[0].health == "healthy"
+
+    states = docker.parse_containers([_payload(Status="Up 2 minutes (unhealthy)")])
+    assert states[0].health == "unhealthy"
+
+    states = docker.parse_containers([_payload(Status="Up 11 days")])
+    assert states[0].health == "none"
+
+
+def test_parse_containers_marks_a_stopped_container_down():
+    states = docker.parse_containers([_payload(State="exited", Status="Exited (0) 3 hours ago")])
+
+    assert states[0].running is False
+    assert states[0].health == "none"
+
+
+def test_parse_containers_handles_a_missing_names_field():
+    # a malformed payload must not kill the tick
+    assert docker.parse_containers([{"State": "running"}]) == ()
+
+
+def test_parse_containers_on_empty_payload():
+    assert docker.parse_containers([]) == ()
+
+
+def test_to_samples_emits_up_and_restart_gauges():
+    states = docker.parse_containers([
+        _payload(Names=["/sonarr"]),
+        _payload(Names=["/radarr"], State="exited", Status="Exited (0) 3 hours ago"),
+    ])
+    got = {s.metric: s.value for s in docker.to_samples(states)}
+
+    assert got["container.sonarr.up"] == 1.0
+    assert got["container.radarr.up"] == 0.0
+    assert got["container.sonarr.healthy"] == 1.0
