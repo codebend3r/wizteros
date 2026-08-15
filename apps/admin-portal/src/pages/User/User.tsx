@@ -35,21 +35,12 @@ import {
   TIER_LABELS,
 } from '@/lib/inviteRules'
 import { buildServerAccess, stateLabel, type LibraryAccessState } from '@/lib/libraryAccess'
-import { deriveStatus, type MemberStatus } from '@/lib/memberStatus'
+import { deriveStatus, STATUS_EMOJI } from '@/lib/memberStatus'
 import { MEMBERS_QUERY_KEY } from '@/pages/Manage/Manage'
 import { siteConfig } from '@/site.config'
 import styles from '@/pages/User/User.module.scss'
 
 const DAY_MS = 24 * 60 * 60 * 1000
-
-const STATUS_EMOJI: Record<MemberStatus, string> = {
-  'Subscribed Monthly': '🟢',
-  'Expired Member': '🔴',
-  Invited: '✉️',
-  'Declined Invite': '🚫',
-  Uninvited: '⚪',
-  VIP: '💎',
-}
 
 const STATE_CLASS: Record<LibraryAccessState, string | undefined> = {
   shared: styles.shared,
@@ -610,7 +601,7 @@ const UserInner = () => {
         )}
         {member === null && <p className={styles.notice}>No member found for {email}.</p>}
         {!!member && (
-          <>
+          <div className={styles.columns}>
             <MemberDetails
               member={member}
               plexAccess={plexAccess}
@@ -622,237 +613,239 @@ const UserInner = () => {
                 setPendingDownloads(!(member.downloads ?? false))
               }}
             />
-            <div className={styles.actions}>
-              <div className={styles.menuWrap}>
-                <button
-                  className={styles.invite}
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    setMenuOpen(!menuOpen)
-                  }}
-                  disabled={inviteMutation.isPending}
-                  aria-haspopup="menu"
-                  aria-expanded={menuOpen}
-                >
-                  {inviteMutation.isPending
-                    ? 'Inviting…'
-                    : deriveStatus({ member }) === 'Subscribed Monthly'
-                      ? 'Re-invite'
-                      : 'Invite'}
-                </button>
-                {menuOpen && (
-                  <ul className={styles.menu} role="menu">
-                    {PAID_TIERS.map((tier) => (
-                      <li key={tier} role="none">
-                        <button
-                          className={styles.menuItem}
-                          type="button"
-                          role="menuitem"
-                          onClick={() => {
-                            setMenuOpen(false)
-                            setActionError(null)
-                            setInviteResult(null)
-                            setPendingTier(tier)
-                          }}
-                        >
-                          <TierIcon tier={tier} /> {TIER_LABELS[tier]} Tier
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </div>
-            <section className={styles.controlSection}>
-              <h2 className={styles.sectionTitle}>Hard reset tier</h2>
-              <p className={styles.controlHint}>
-                Rewrites the recorded tier instantly — no new invite is sent.
-              </p>
-              <div className={styles.controlRow}>
-                {PAID_TIERS.map((tier) => (
+            <div className={styles.controls}>
+              <div className={styles.actions}>
+                <div className={styles.menuWrap}>
                   <button
-                    key={tier}
+                    className={styles.invite}
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setMenuOpen(!menuOpen)
+                    }}
+                    disabled={inviteMutation.isPending}
+                    aria-haspopup="menu"
+                    aria-expanded={menuOpen}
+                  >
+                    {inviteMutation.isPending
+                      ? 'Inviting…'
+                      : deriveStatus({ member }) === 'Subscribed Monthly'
+                        ? 'Re-invite'
+                        : 'Invite'}
+                  </button>
+                  {menuOpen && (
+                    <ul className={styles.menu} role="menu">
+                      {PAID_TIERS.map((tier) => (
+                        <li key={tier} role="none">
+                          <button
+                            className={styles.menuItem}
+                            type="button"
+                            role="menuitem"
+                            onClick={() => {
+                              setMenuOpen(false)
+                              setActionError(null)
+                              setInviteResult(null)
+                              setPendingTier(tier)
+                            }}
+                          >
+                            <TierIcon tier={tier} /> {TIER_LABELS[tier]} Tier
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+              <section className={styles.controlSection}>
+                <h2 className={styles.sectionTitle}>Hard reset tier</h2>
+                <p className={styles.controlHint}>
+                  Rewrites the recorded tier instantly — no new invite is sent.
+                </p>
+                <div className={styles.controlRow}>
+                  {PAID_TIERS.map((tier) => (
+                    <button
+                      key={tier}
+                      className={styles.controlButton}
+                      type="button"
+                      onClick={() => {
+                        setActionError(null)
+                        setPendingHardReset(tier)
+                      }}
+                      disabled={tierResetMutation.isPending}
+                    >
+                      <TierIcon tier={tier} /> {TIER_LABELS[tier]}
+                    </button>
+                  ))}
+                  {tierResetMutation.isPending && (
+                    <span className={styles.spinner} role="status" aria-label="Resetting tier" />
+                  )}
+                </div>
+              </section>
+              <section className={styles.controlSection}>
+                <h2 className={styles.sectionTitle}>Tag</h2>
+                <p className={styles.controlHint}>
+                  A manual designation shown as the member's status
+                </p>
+                <div className={styles.controlRow}>
+                  <button
                     className={styles.controlButton}
                     type="button"
                     onClick={() => {
                       setActionError(null)
-                      setPendingHardReset(tier)
+                      tagMutation.mutate('vip')
                     }}
-                    disabled={tierResetMutation.isPending}
+                    disabled={tagMutation.isPending || member.tag === 'vip'}
                   >
-                    <TierIcon tier={tier} /> {TIER_LABELS[tier]}
+                    💎 VIP
                   </button>
-                ))}
-                {tierResetMutation.isPending && (
-                  <span className={styles.spinner} role="status" aria-label="Resetting tier" />
-                )}
-              </div>
-            </section>
-            <section className={styles.controlSection}>
-              <h2 className={styles.sectionTitle}>Tag</h2>
-              <p className={styles.controlHint}>
-                A manual designation shown as the member's status
-              </p>
-              <div className={styles.controlRow}>
-                <button
-                  className={styles.controlButton}
-                  type="button"
-                  onClick={() => {
+                  {tagMutation.isPending && tagMutation.variables === 'vip' && (
+                    <span className={styles.spinner} role="status" aria-label="Updating tag" />
+                  )}
+                  <button
+                    className={styles.controlButton}
+                    type="button"
+                    onClick={() => {
+                      setActionError(null)
+                      tagMutation.mutate('hvu')
+                    }}
+                    disabled={tagMutation.isPending || member.tag === 'hvu'}
+                  >
+                    ⭐ HVU
+                  </button>
+                  {tagMutation.isPending && tagMutation.variables === 'hvu' && (
+                    <span className={styles.spinner} role="status" aria-label="Updating tag" />
+                  )}
+                  <button
+                    className={styles.controlButton}
+                    type="button"
+                    onClick={() => {
+                      setActionError(null)
+                      tagMutation.mutate(null)
+                    }}
+                    disabled={tagMutation.isPending || !member.tag}
+                  >
+                    Clear tag
+                  </button>
+                  {tagMutation.isPending && tagMutation.variables === null && (
+                    <span className={styles.spinner} role="status" aria-label="Updating tag" />
+                  )}
+                </div>
+              </section>
+              <section className={styles.controlSection}>
+                <h2 className={styles.sectionTitle}>Set expiry</h2>
+                <form
+                  className={styles.controlRow}
+                  onSubmit={(event) => {
+                    event.preventDefault()
                     setActionError(null)
-                    tagMutation.mutate('vip')
+                    setPendingExpiry(new Date(expiryValue).toISOString())
                   }}
-                  disabled={tagMutation.isPending || member.tag === 'vip'}
                 >
-                  💎 VIP
-                </button>
-                {tagMutation.isPending && tagMutation.variables === 'vip' && (
-                  <span className={styles.spinner} role="status" aria-label="Updating tag" />
-                )}
-                <button
-                  className={styles.controlButton}
-                  type="button"
-                  onClick={() => {
-                    setActionError(null)
-                    tagMutation.mutate('hvu')
-                  }}
-                  disabled={tagMutation.isPending || member.tag === 'hvu'}
-                >
-                  ⭐ HVU
-                </button>
-                {tagMutation.isPending && tagMutation.variables === 'hvu' && (
-                  <span className={styles.spinner} role="status" aria-label="Updating tag" />
-                )}
-                <button
-                  className={styles.controlButton}
-                  type="button"
-                  onClick={() => {
-                    setActionError(null)
-                    tagMutation.mutate(null)
-                  }}
-                  disabled={tagMutation.isPending || !member.tag}
-                >
-                  Clear tag
-                </button>
-                {tagMutation.isPending && tagMutation.variables === null && (
-                  <span className={styles.spinner} role="status" aria-label="Updating tag" />
-                )}
-              </div>
-            </section>
-            <section className={styles.controlSection}>
-              <h2 className={styles.sectionTitle}>Set expiry</h2>
-              <form
-                className={styles.controlRow}
-                onSubmit={(event) => {
-                  event.preventDefault()
-                  setActionError(null)
-                  setPendingExpiry(new Date(expiryValue).toISOString())
-                }}
-              >
-                <input
-                  className={styles.expiryInput}
-                  type="datetime-local"
-                  value={expiryValue}
-                  aria-label="New expiry date and time"
-                  onChange={(event) => setExpiryDraft(event.target.value)}
+                  <input
+                    className={styles.expiryInput}
+                    type="datetime-local"
+                    value={expiryValue}
+                    aria-label="New expiry date and time"
+                    onChange={(event) => setExpiryDraft(event.target.value)}
+                  />
+                  <button
+                    className={styles.controlButton}
+                    type="submit"
+                    disabled={!expiryValid || expiryMutation.isPending}
+                  >
+                    Set expiry
+                  </button>
+                  <button
+                    className={styles.dangerButton}
+                    type="button"
+                    onClick={() => {
+                      setActionError(null)
+                      setPendingNeverExpire(true)
+                    }}
+                    disabled={expiryMutation.isPending || neverExpireMutation.isPending}
+                  >
+                    Never expire
+                  </button>
+                  {neverExpireMutation.isPending && (
+                    <span className={styles.spinner} role="status" aria-label="Clearing expiry" />
+                  )}
+                </form>
+              </section>
+              <section className={styles.controlSection}>
+                <h2 className={styles.sectionTitle}>Subscription</h2>
+                <p className={styles.controlHint}>
+                  Flags the member's Stripe subscription to cancel at the end of the billing period
+                  — access shuts off automatically when it lapses.
+                </p>
+                {!!cancelNotice && <p className={styles.cancelNotice}>{cancelNotice}</p>}
+                <div className={styles.controlRow}>
+                  <button
+                    className={styles.dangerButton}
+                    type="button"
+                    onClick={() => {
+                      setActionError(null)
+                      setPendingCancelSub(true)
+                    }}
+                    disabled={cancelSubMutation.isPending}
+                  >
+                    {cancelSubMutation.isPending ? 'Cancelling…' : 'Cancel subscription'}
+                  </button>
+                </div>
+              </section>
+              <section className={styles.notesSection}>
+                <h2 className={styles.sectionTitle}>
+                  Notes
+                  {notesPending && (
+                    <span className={styles.spinner} role="status" aria-label="Loading notes" />
+                  )}
+                </h2>
+                <textarea
+                  className={styles.notes}
+                  value={notes}
+                  placeholder="Notes about this member…"
+                  aria-label="Member notes"
+                  rows={6}
+                  disabled={notesPending}
+                  onChange={(event) => setNotesDraft(event.target.value)}
                 />
-                <button
-                  className={styles.controlButton}
-                  type="submit"
-                  disabled={!expiryValid || expiryMutation.isPending}
-                >
-                  Set expiry
-                </button>
-                <button
-                  className={styles.dangerButton}
-                  type="button"
-                  onClick={() => {
-                    setActionError(null)
-                    setPendingNeverExpire(true)
-                  }}
-                  disabled={expiryMutation.isPending || neverExpireMutation.isPending}
-                >
-                  Never expire
-                </button>
-                {neverExpireMutation.isPending && (
-                  <span className={styles.spinner} role="status" aria-label="Clearing expiry" />
+                <div className={styles.notesActions}>
+                  <button
+                    className={styles.notesSave}
+                    type="button"
+                    onClick={() => notesMutation.mutate(notes)}
+                    disabled={!notesDirty || notesMutation.isPending}
+                  >
+                    {notesMutation.isPending ? 'Saving…' : 'Save notes'}
+                  </button>
+                  {notesMutation.isSuccess && !notesDirty && (
+                    <span className={styles.notesSaved}>Saved ✓</span>
+                  )}
+                </div>
+              </section>
+              <section className={styles.historySection}>
+                <h2 className={styles.sectionTitle}>History</h2>
+                {eventsPending ? (
+                  <span className={styles.spinner} role="status" aria-label="Loading history" />
+                ) : historyRows.length ? (
+                  <ul className={styles.history}>
+                    {historyRows.map((event) => (
+                      <li key={event.id} className={styles.historyRow}>
+                        <span className={styles.historyAt}>
+                          {new Date(event.at).toLocaleString()}
+                        </span>
+                        <span className={styles.historyAction}>{event.action}</span>
+                        {!!event.detail && (
+                          <span className={styles.historyDetail}>{event.detail}</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className={styles.notice}>No history yet.</p>
                 )}
-              </form>
-            </section>
-            <section className={styles.controlSection}>
-              <h2 className={styles.sectionTitle}>Subscription</h2>
-              <p className={styles.controlHint}>
-                Flags the member's Stripe subscription to cancel at the end of the billing period —
-                access shuts off automatically when it lapses.
-              </p>
-              {!!cancelNotice && <p className={styles.cancelNotice}>{cancelNotice}</p>}
-              <div className={styles.controlRow}>
-                <button
-                  className={styles.dangerButton}
-                  type="button"
-                  onClick={() => {
-                    setActionError(null)
-                    setPendingCancelSub(true)
-                  }}
-                  disabled={cancelSubMutation.isPending}
-                >
-                  {cancelSubMutation.isPending ? 'Cancelling…' : 'Cancel subscription'}
-                </button>
-              </div>
-            </section>
-            <section className={styles.notesSection}>
-              <h2 className={styles.sectionTitle}>
-                Notes
-                {notesPending && (
-                  <span className={styles.spinner} role="status" aria-label="Loading notes" />
-                )}
-              </h2>
-              <textarea
-                className={styles.notes}
-                value={notes}
-                placeholder="Notes about this member…"
-                aria-label="Member notes"
-                rows={6}
-                disabled={notesPending}
-                onChange={(event) => setNotesDraft(event.target.value)}
-              />
-              <div className={styles.notesActions}>
-                <button
-                  className={styles.notesSave}
-                  type="button"
-                  onClick={() => notesMutation.mutate(notes)}
-                  disabled={!notesDirty || notesMutation.isPending}
-                >
-                  {notesMutation.isPending ? 'Saving…' : 'Save notes'}
-                </button>
-                {notesMutation.isSuccess && !notesDirty && (
-                  <span className={styles.notesSaved}>Saved ✓</span>
-                )}
-              </div>
-            </section>
-            <section className={styles.historySection}>
-              <h2 className={styles.sectionTitle}>History</h2>
-              {eventsPending ? (
-                <span className={styles.spinner} role="status" aria-label="Loading history" />
-              ) : historyRows.length ? (
-                <ul className={styles.history}>
-                  {historyRows.map((event) => (
-                    <li key={event.id} className={styles.historyRow}>
-                      <span className={styles.historyAt}>
-                        {new Date(event.at).toLocaleString()}
-                      </span>
-                      <span className={styles.historyAction}>{event.action}</span>
-                      {!!event.detail && (
-                        <span className={styles.historyDetail}>{event.detail}</span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className={styles.notice}>No history yet.</p>
-              )}
-            </section>
-          </>
+              </section>
+            </div>
+          </div>
         )}
         {!!member && !!pendingHardReset && (
           <ConfirmActionModal

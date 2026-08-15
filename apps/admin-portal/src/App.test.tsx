@@ -2,9 +2,9 @@ import { expect, test } from '@/test/vi'
 import { render, screen } from '@testing-library/react'
 import { App } from '@/App'
 
-test('renders the brand heading', () => {
+test('renders the marquee headline', () => {
   render(<App />)
-  expect(screen.getByRole('heading', { name: 'Westeroz' })).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: "It's up. Come on in." })).toBeInTheDocument()
 })
 
 test('hero CTA scrolls to the pricing section', () => {
@@ -12,12 +12,12 @@ test('hero CTA scrolls to the pricing section', () => {
   expect(screen.getByRole('link', { name: 'Choose a plan' })).toHaveAttribute('href', '#pricing')
 })
 
-test('renders the four tier cards', () => {
+test('renders a tab per tier in the switcher', () => {
   render(<App />)
-  expect(screen.getByRole('heading', { name: 'Bronze' })).toBeInTheDocument()
-  expect(screen.getByRole('heading', { name: 'Silver' })).toBeInTheDocument()
-  expect(screen.getByRole('heading', { name: 'Gold' })).toBeInTheDocument()
-  expect(screen.getByRole('heading', { name: 'Youth' })).toBeInTheDocument()
+  expect(screen.getByRole('tab', { name: 'Bronze' })).toBeInTheDocument()
+  expect(screen.getByRole('tab', { name: 'Silver' })).toBeInTheDocument()
+  expect(screen.getByRole('tab', { name: 'Gold' })).toBeInTheDocument()
+  expect(screen.getByRole('tab', { name: 'Youth' })).toBeInTheDocument()
 })
 
 test('renders the three support items', () => {

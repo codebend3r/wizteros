@@ -1,143 +1,124 @@
 .pricing {
   display: grid;
-  gap: var(--space-2);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  grid-template-areas: 'intro switcher';
+  align-items: start;
+  gap: var(--space-6);
+  width: 100%;
   max-width: var(--max-width);
   margin-inline: auto;
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-4) var(--space-3) var(--space-6);
+
+  @media (max-width: 64rem) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'intro' 'switcher';
+    gap: var(--space-3);
+  }
 }
 
-.header {
+.intro {
+  grid-area: intro;
   display: grid;
-  gap: var(--space-1);
-  justify-items: center;
-  text-align: center;
+  justify-items: start;
+  gap: var(--space-2);
 }
 
 .eyebrow {
   font-family: var(--font-pixel);
   font-size: var(--font-size-xs);
   font-weight: 400;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--color-accent);
 }
 
 .title {
   font-family: var(--font-display);
-  font-size: var(--font-size-lg);
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font-size: var(--font-size-xl);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.02;
 }
 
 .subtitle {
+  font-size: var(--font-size-md);
+  color: var(--color-muted);
+  line-height: 1.6;
+}
+
+.bullets {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-1) 0 0;
+  list-style: none;
+}
+
+.bullet {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: var(--space-1);
   font-size: var(--font-size-sm);
   color: var(--color-muted);
 }
 
-.grid {
+.bulletDot {
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 50%;
+  background: var(--color-accent);
+}
+
+.switcher {
+  grid-area: switcher;
   display: grid;
   gap: var(--space-2);
-  grid-template-columns: 1fr;
 }
 
-@media (min-width: 40rem) {
-  .grid {
-    grid-template-columns: repeat(2, 1fr);
+// The segmented track sits a step deeper than the page so the selected
+// tier's metal fill pops out of it.
+.tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: calc(var(--space-1) / 2);
+  padding: calc(var(--space-1) / 2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-bg) 82%, rgb(0 0 0));
+}
+
+.tab {
+  --metal: var(--color-muted);
+  padding: var(--space-1);
+  border: 0;
+  border-radius: calc(var(--radius-md) - 4px);
+  background: transparent;
+  color: var(--metal);
+  font-family: var(--font-pixel);
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--metal);
+    outline-offset: 2px;
   }
 }
 
-@media (min-width: 64rem) {
-  .grid {
-    grid-template-columns: repeat(4, 1fr);
-  }
+.tabSelected {
+  background: var(--metal);
+  color: var(--color-accent-text);
 }
 
 .card {
   --metal: var(--color-muted);
-  position: relative;
   display: grid;
-  grid-template-rows: auto auto auto 1fr auto;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
+  grid-template-columns: minmax(0, 1fr);
+  border: 1px solid var(--metal);
   border-radius: var(--radius-md);
   background: var(--color-surface);
   overflow: hidden;
-  transition:
-    transform 0.2s ease,
-    border-color 0.2s ease;
-}
-
-.card::before {
-  content: '';
-  position: absolute;
-  inset: 0 0 auto;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, var(--metal) 35%, var(--metal) 65%, transparent);
-}
-
-.card:hover {
-  transform: translateY(-3px);
-  border-color: color-mix(in srgb, var(--metal) 45%, var(--color-border));
-}
-
-// Animated multi-color ring, masked so only a 2px band inside the card edge
-// paints. Sits on ::after (::before is the resting top strip) and fades in on
-// hover, where the registered --border-angle lets the conic gradient rotate.
-@property --border-angle {
-  syntax: '<angle>';
-  inherits: false;
-  initial-value: 0deg;
-}
-
-.card::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 2px;
-  background: conic-gradient(
-    from var(--border-angle),
-    var(--color-bronze),
-    var(--color-gold),
-    var(--color-youth),
-    var(--color-silver),
-    var(--color-accent),
-    var(--color-bronze)
-  );
-  mask:
-    linear-gradient(#ffffff 0 0) content-box,
-    linear-gradient(#ffffff 0 0);
-  mask-composite: exclude;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-  pointer-events: none;
-}
-
-.card:hover::after {
-  opacity: 1;
-  animation: border-spin 2.5s linear infinite;
-}
-
-@keyframes border-spin {
-  to {
-    --border-angle: 360deg;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .card {
-    transition: none;
-  }
-
-  .card:hover {
-    transform: none;
-  }
-
-  // The ring still appears, it just holds still.
-  .card:hover::after {
-    animation: none;
-  }
 }
 
 .bronze {
@@ -156,55 +137,70 @@
   --metal: var(--color-youth);
 }
 
-.name {
-  font-family: var(--font-pixel);
-  font-size: var(--font-size-xs);
-  font-weight: 400;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--metal);
+.cardTop {
+  height: 4px;
+  background: linear-gradient(90deg, transparent, var(--metal) 35%, var(--metal) 65%, transparent);
+}
+
+.cardBody {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+
+  @media (max-width: 48rem) {
+    padding: var(--space-3);
+  }
+}
+
+.cardHeader {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: end;
+  gap: var(--space-2);
 }
 
 .price {
   display: grid;
   gap: var(--space-1);
   font-family: var(--font-display);
-  font-size: var(--font-size-xl);
-  font-weight: 500;
-  letter-spacing: -0.02em;
+  font-size: clamp(2.5rem, 5vw, 3.625rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
   line-height: 1;
 }
 
 .cadence {
+  font-family: var(--font-mono);
   font-size: var(--font-size-xs);
   font-weight: 400;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--color-muted);
 }
 
 .summary {
-  font-size: var(--font-size-sm);
-  color: var(--color-muted);
+  justify-self: end;
+  max-width: 20ch;
+  font-size: var(--font-size-md);
+  text-align: right;
+  text-wrap: pretty;
 }
 
 .features {
   display: grid;
   align-content: start;
-  margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .feature {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto 1fr auto;
   gap: var(--space-1);
   align-items: center;
   padding-block: var(--space-1);
   border-top: 1px solid var(--color-border);
   font-size: var(--font-size-sm);
-  color: var(--color-muted);
 }
 
 .mark {
@@ -222,7 +218,12 @@
 }
 
 .excluded {
-  color: color-mix(in srgb, var(--color-muted) 45%, transparent);
+  color: color-mix(in srgb, var(--color-muted) 55%, transparent);
+}
+
+.hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-accent);
 }
 
 // Visually hidden but announced: pairs each mark with "Included"/"Not
@@ -236,30 +237,28 @@
   white-space: nowrap;
 }
 
+// The amber fill: the tier card's single filled CTA.
 .cta {
   display: inline-grid;
   align-items: center;
   justify-items: center;
   justify-self: stretch;
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--color-border);
+  padding: var(--space-2);
   border-radius: var(--radius-md);
-  color: var(--color-text);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+  font-size: var(--font-size-md);
+  font-weight: 700;
   text-decoration: none;
-  transition:
-    border-color 0.2s ease,
-    color 0.2s ease;
-}
 
-.cta:hover,
-.cta:focus-visible {
-  border-color: var(--metal);
-  color: var(--metal);
-}
+  &:hover,
+  &:focus-visible {
+    background: var(--color-gold);
+    color: var(--color-accent-text);
+  }
 
-.cta:focus-visible {
-  outline: 2px solid var(--metal);
-  outline-offset: 2px;
+  &:focus-visible {
+    outline: 2px solid var(--metal);
+    outline-offset: 2px;
+  }
 }

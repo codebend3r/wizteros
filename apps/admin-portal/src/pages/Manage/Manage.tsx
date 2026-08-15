@@ -17,7 +17,7 @@ import {
   type PaidTier,
 } from '@/lib/adminApi'
 import { TIER_DOWNLOADS } from '@/lib/inviteRules'
-import { deriveStatus } from '@/lib/memberStatus'
+import { deriveStatus, STATUS_EMOJI, type MemberStatus } from '@/lib/memberStatus'
 import styles from '@/pages/Manage/Manage.module.scss'
 
 export const MEMBERS_QUERY_KEY = ['members'] as const
@@ -27,10 +27,31 @@ type PendingInvite = {
   tier: PaidTier
 }
 
+// The lifecycle pills double as a legend: every status the table can derive,
+// with its live count, in the order the lifecycle moves.
+const STATUS_FILTERS: ReadonlyArray<{ status: MemberStatus; label: string }> = [
+  { status: 'Subscribed Monthly', label: 'Subscribed' },
+  { status: 'VIP', label: 'VIP' },
+  { status: 'Invited', label: 'Invited' },
+  { status: 'Declined Invite', label: 'Declined' },
+  { status: 'Expired Member', label: 'Expired' },
+  { status: 'Uninvited', label: 'Uninvited' },
+]
+
+const EMPTY_COUNTS: Record<MemberStatus, number> = {
+  'Subscribed Monthly': 0,
+  'Expired Member': 0,
+  Invited: 0,
+  'Declined Invite': 0,
+  Uninvited: 0,
+  VIP: 0,
+}
+
 const ManageInner = () => {
   const { deauthenticate } = useAdminAuth()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<MemberStatus | null>(null)
   const [pendingInvite, setPendingInvite] = useState<PendingInvite | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [inviteResult, setInviteResult] = useState<InviteResult | null>(null)
@@ -53,11 +74,26 @@ const ManageInner = () => {
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase()
-    if (!needle) {
-      return members
-    }
-    return members?.filter((member) => member.email.toLowerCase().includes(needle))
-  }, [members, search])
+    return members?.filter(
+      (member) =>
+        (!needle || member.email.toLowerCase().includes(needle)) &&
+        (!statusFilter || deriveStatus({ member }) === statusFilter),
+    )
+  }, [members, search, statusFilter])
+
+  const statusCounts = useMemo(
+    () =>
+      // The accumulator starts as a fresh copy and is bumped in place:
+      // spreading it per row is the one immutability habit the linter vetoes.
+      (members ?? []).reduce<Record<MemberStatus, number>>(
+        (counts, member) => {
+          counts[deriveStatus({ member })] += 1
+          return counts
+        },
+        { ...EMPTY_COUNTS },
+      ),
+    [members],
+  )
 
   const inviteMutation = useMutation({
     mutationFn: ({ member, tier }: PendingInvite) => reissueInvite({ email: member.email, tier }),
@@ -146,6 +182,28 @@ const ManageInner = () => {
         {isPending && !error && <Preloader message="Loading members… (this can take ~15s)" />}
         {!!members && (
           <>
+            <div className={styles.filters} role="group" aria-label="Filter by status">
+              <button
+                className={statusFilter === null ? styles.filterActive : styles.filterPill}
+                type="button"
+                aria-pressed={statusFilter === null}
+                onClick={() => setStatusFilter(null)}
+              >
+                All {members.length}
+              </button>
+              {STATUS_FILTERS.map(({ status, label }) => (
+                <button
+                  key={status}
+                  className={statusFilter === status ? styles.filterActive : styles.filterPill}
+                  type="button"
+                  aria-pressed={statusFilter === status}
+                  onClick={() => setStatusFilter(statusFilter === status ? null : status)}
+                >
+                  <span aria-hidden="true">{STATUS_EMOJI[status]}</span> {label}{' '}
+                  {statusCounts[status]}
+                </button>
+              ))}
+            </div>
             <label className={styles.searchLabel} htmlFor="member-search">
               Search by email
             </label>

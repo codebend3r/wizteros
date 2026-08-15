@@ -12,7 +12,11 @@
 # Targets /bin/bash 3.2 (what macOS ships): no associative arrays, no mapfile.
 set -euo pipefail
 
-DOCKER="/usr/local/bin/docker"   # not on the non-interactive PATH; sudoers matches this literal
+DOCKER_BIN="/usr/local/bin/docker"   # not on the non-interactive PATH; sudoers matches this literal
+# How snippets invoke docker on the current host. On a NOPASSWD host the rule
+# covers only the docker path, not bash, so the remote shell stays unprivileged
+# and sudo wraps each docker call; set per host right after probe_host.
+DOCKER="$DOCKER_BIN"
 SSH="ssh -o BatchMode=yes -o ConnectTimeout=10"
 KEYCHAIN_SERVICE="${WZ_NAS_KEYCHAIN:-synology-nas}"
 
@@ -101,13 +105,15 @@ host_password() {
   printf '%s' "$HOST_PW"
 }
 
-# Runs a shell snippet on a host as root. The snippet is base64-encoded in
-# transit so quoting, newlines, and Go template braces survive the trip.
+# Runs a shell snippet on a host. The snippet is base64-encoded in transit so
+# quoting, newlines, and Go template braces survive the trip. On a NOPASSWD
+# host the shell runs as the login user and $DOCKER carries the sudo; on a
+# password host the whole snippet runs under sudo -S instead.
 run_remote() {
   host="$1"; snippet="$2"
   b64="$(printf '%s' "$snippet" | base64 | tr -d '\n')"
   if [ "$HOST_NOPASSWD" = 1 ]; then
-    $SSH "$(ssh_target "$host")" "echo $b64 | base64 -d | sudo -n bash"
+    $SSH "$(ssh_target "$host")" "echo $b64 | base64 -d | bash"
   else
     # sudo -S eats one line of stdin for the password; bash reads the script
     # from the temp file, so the two do not fight over the same stream.
@@ -123,10 +129,12 @@ probe_host() {
   $SSH "$(ssh_target "$host")" true 2>/dev/null \
     || die "cannot reach $host ($(ssh_target "$host")) over SSH. Is the NAS up, are you on the LAN?"
   HOST_PW=""
-  if $SSH "$(ssh_target "$host")" "sudo -n $DOCKER ps -q >/dev/null 2>&1"; then
+  if $SSH "$(ssh_target "$host")" "sudo -n $DOCKER_BIN ps -q >/dev/null 2>&1"; then
     HOST_NOPASSWD=1
+    DOCKER="sudo -n $DOCKER_BIN"
   else
     HOST_NOPASSWD=0
+    DOCKER="$DOCKER_BIN"
     host_password "$host" >/dev/null   # fail fast, before anything is pulled
   fi
 }
@@ -179,6 +187,14 @@ update_host() {
   fi
   say "  · project dir: $workdir"
   say "  · services: ${services[*]}"
+
+  # docker ps's Image column degrades to a bare image ID once a newer pull has
+  # moved the tag (exactly the state a prior --check leaves behind), which made
+  # the change detection compare the old image against itself. Config.Image
+  # keeps the tag reference the container was created with, so use that.
+  refs="$(run_remote "$host" "for c in ${names[*]}; do $DOCKER inspect -f '{{.Config.Image}}' \$c 2>/dev/null || echo NONE; done")"
+  images=()
+  while IFS= read -r ref; do images[${#images[@]}]="$ref"; done <<<"$refs"
 
   # ─── record the rollback point ──────────────────────────────────────────────
   # One line per container, NONE on failure, so the output stays index-aligned
@@ -270,7 +286,7 @@ update_host() {
       EXIT_CODE=1
       old="${old_ids[$i]:-NONE}"
       if [ "$ROLLBACK" != 1 ] || [ "$old" = "NONE" ]; then
-        say "    ✗ not rolled back. Logs: ssh $(ssh_target "$host") 'sudo $DOCKER logs --tail 80 $n'"
+        say "    ✗ not rolled back. Logs: ssh $(ssh_target "$host") 'sudo $DOCKER_BIN logs --tail 80 $n'"
         note "$host/$s: FAILED, left on the new image"
       else
         say "    rolling back to ${old#sha256:}"
