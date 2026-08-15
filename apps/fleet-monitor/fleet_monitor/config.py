@@ -26,9 +26,12 @@ class Host:
 # The container list under each is discovered per tick, so a new stack member
 # needs no change here; only a host gaining Docker does.
 #
-# vermithor answers on its local socket today. meleys and vhagar need a socket
-# proxy that is not deployed yet, so their fetch fails every tick until it is.
-# That failure is recorded against the docker: target only - see collector.
+# Measured 2026-08-15: all three refuse on :2375. vermithor runs Docker on a
+# local unix socket, which this url cannot address, and meleys and vhagar need
+# a socket proxy that is not deployed yet. So every docker fetch fails on every
+# tick until all three have a reachable TCP endpoint. That failure is recorded
+# against the docker: target only - the containers behind it are never
+# observed, so no container result is recorded either way. See collector.
 HOSTS = (
     Host(name="meleys", ip="192.168.50.2", has_gpu=False,
          docker_url="http://192.168.50.2:2375"),

@@ -112,8 +112,13 @@ def test_samples_from_sections_keeps_an_empty_section_empty():
     assert collector.samples_from_sections({"gpu": ""}) == ()
 
 
-async def test_collect_host_records_a_failure_for_an_unroutable_ip(tmp_path):
+async def test_collect_host_records_a_failure_for_an_unroutable_ip(tmp_path, monkeypatch):
+    # faked at the transport seam rather than spawning a real ssh at 192.0.2.1:
+    # no test in this package may leave the process
     db = _db(tmp_path)
+    monkeypatch.setattr(
+        collector.ssh, "run", _fake_ssh(SshResult(ok=False, stdout="", reason="unreachable"))
+    )
     host = config.Host(name="ghost", ip="192.0.2.1", has_gpu=False, docker_url="")
 
     result = await collector.collect_host(host, T0, db, timeout=2)
@@ -293,6 +298,38 @@ async def test_collect_containers_reports_bad_json_without_touching_containers(
 
     assert _targets(checks) == {"docker:meleys"}
     assert checks[0].reason == "bad_json"
+
+
+async def test_a_json_object_body_is_not_an_empty_fleet(tmp_path, monkeypatch):
+    # a socket proxy answering 200 {"message": "page not found"} is valid JSON,
+    # so it clears the decode guard, and it parses to zero containers. Treating
+    # that as "this host runs nothing" would record the endpoint as ok and hand
+    # retire_absent an empty seen, closing every live container incident as
+    # "removed" and wiping its streak.
+    db = _db(tmp_path)
+    monkeypatch.setattr(
+        collector.http, "get_json", _fake_http(_docker_ok(_entry("sonarr", state="exited")))
+    )
+    await collector.collect_containers(DOCKER_HOST, T0, db)
+    await collector.collect_containers(DOCKER_HOST, T0 + timedelta(seconds=30), db)
+    assert _open_targets(db) == {"container:meleys/sonarr"}
+
+    monkeypatch.setattr(
+        collector.http,
+        "get_json",
+        _fake_http(
+            HttpResult(ok=True, status=200, body='{"message":"page not found"}', reason="")
+        ),
+    )
+    checks = await collector.collect_containers(DOCKER_HOST, T0 + timedelta(minutes=5), db)
+
+    assert _targets(checks) == {"docker:meleys"}
+    assert checks[0].ok is False
+    assert checks[0].reason == "bad_json"
+    rows = incidents.history(db, since=T0 - timedelta(hours=1))
+    assert len(rows) == 1
+    assert rows[0]["closed_at"] is None
+    assert rows[0]["reason"] != "removed"
 
 
 async def test_an_unreachable_docker_host_never_fabricates_a_container_incident(
