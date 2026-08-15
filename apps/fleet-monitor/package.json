@@ -1,0 +1,12 @@
+{
+  "name": "fleet-monitor",
+  "private": true,
+  "scripts": {
+    "lint:py": "bash scripts/lint-monitor.sh",
+    "lint:py:fix": "bash scripts/lint-monitor.sh --fix",
+    "test": "bash scripts/test-monitor.sh"
+  },
+  "nx": {
+    "includedScripts": ["lint:py", "lint:py:fix", "test"]
+  }
+}

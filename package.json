@@ -32,6 +32,8 @@
     "format": "nx run-many -t format",
     "format:check": "nx run-many -t format:check",
     "setup:py": "python3 -m venv apps/stripe-bridge/.venv && apps/stripe-bridge/.venv/bin/pip install -r apps/stripe-bridge/requirements-dev.txt",
+    "setup:py:monitor": "python3 -m venv apps/fleet-monitor/.venv && apps/fleet-monitor/.venv/bin/pip install -r apps/fleet-monitor/requirements-dev.txt",
+    "test:monitor": "nx run fleet-monitor:test",
     "test:web": "nx run admin-portal:test",
     "test:bridge": "nx run stripe-bridge:test",
     "test:unit": "nx run stripe-bridge:test-docker",
