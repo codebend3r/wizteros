@@ -65,6 +65,43 @@ def test_fleet_marks_a_never_collected_host_as_such(tmp_path, monkeypatch):
     assert caraxes["metrics"] == {}
 
 
+def test_fleet_flags_a_host_whose_slow_tier_metrics_are_stale(tmp_path, monkeypatch):
+    client, db = _client(tmp_path, monkeypatch)
+    now = datetime.now(tz=timezone.utc)
+    store.write_heartbeat(db, now)
+    store.write_samples(db, "host:caraxes", now, [Sample("load.1m", 0.1, "gauge")])
+    store.write_samples(
+        db, "host:caraxes", now - timedelta(days=7),
+        [Sample("disk.percent", 42.0, "gauge")],
+    )
+    body = client.get("/fleet").json()
+    caraxes = next(h for h in body["hosts"] if h["name"] == "caraxes")
+
+    # the collector is alive and the fast tier is current, so the fleet-wide
+    # heartbeat flag reads fresh - only the per-host metric age catches the
+    # week-dead slow tier hiding behind it
+    assert body["stale"] is False
+    assert caraxes["collected"] is True
+    assert caraxes["metrics_stale"] is True
+    assert caraxes["oldest_metric_age_seconds"] > 6 * 24 * 3600
+
+
+def test_fleet_never_collected_host_has_no_uptime(tmp_path, monkeypatch):
+    client, _ = _client(tmp_path, monkeypatch)
+    body = client.get("/fleet").json()
+    caraxes = next(h for h in body["hosts"] if h["name"] == "caraxes")
+
+    # a host that was never checked is unknown, not a perfect uptime score
+    assert caraxes["uptime_percent_24h"] is None
+
+
+def test_incidents_rejects_absurdly_large_hours(tmp_path, monkeypatch):
+    client, _ = _client(tmp_path, monkeypatch)
+    response = client.get("/incidents?hours=999999999999999999")
+
+    assert response.status_code == 422
+
+
 def test_incidents_splits_open_from_recent(tmp_path, monkeypatch):
     client, db = _client(tmp_path, monkeypatch)
     now = datetime.now(tz=timezone.utc)

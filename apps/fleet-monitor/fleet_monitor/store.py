@@ -75,6 +75,22 @@ def latest(path: str, target: str) -> dict[str, float]:
     return {row["metric"]: row["value"] for row in rows}
 
 
+def metric_ages(path: str, target: str) -> dict[str, datetime]:
+    """The timestamp of the newest value of every metric for one target.
+
+    Companion to `latest`: same grouping, exposing the `MAX(at)` that query
+    computes internally and discards. Kept as a separate call rather than
+    widening `latest`'s return shape, since other callers depend on it
+    returning bare values.
+    """
+    with _conn(path) as connection:
+        rows = connection.execute(
+            "SELECT metric, MAX(at) AS at FROM samples WHERE target = ? GROUP BY metric",
+            (target,),
+        ).fetchall()
+    return {row["metric"]: datetime.fromisoformat(row["at"]) for row in rows}
+
+
 def series(
     path: str, target: str, metric: str, since: datetime
 ) -> tuple[tuple[datetime, float], ...]:
