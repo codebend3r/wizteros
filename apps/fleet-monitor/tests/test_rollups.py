@@ -64,8 +64,32 @@ def test_prune_drops_raw_samples_past_retention(tmp_path):
     assert store.latest(db, "host:syrax")["load.1m"] == 1.0
 
 
+def test_prune_boundary_is_strictly_older_than_the_window(tmp_path):
+    db = _prepare(tmp_path)
+    store.write_samples(db, "host:onboundary", T0 - timedelta(days=7),
+                        [Sample("load.1m", 1.0, "gauge")])
+    store.write_samples(db, "host:pastboundary", T0 - timedelta(days=7, seconds=1),
+                        [Sample("load.1m", 2.0, "gauge")])
+
+    rollups.prune(db, now=T0)
+
+    assert store.latest(db, "host:onboundary")["load.1m"] == 1.0
+    assert store.latest(db, "host:pastboundary") == {}
+
+
 def test_prune_keeps_rollups_longer_than_raw(tmp_path):
-    _prepare(tmp_path)
+    db = _prepare(tmp_path)
     assert rollups.RETENTION["samples"] == timedelta(days=7)
     assert rollups.RETENTION["rollup_5m"] == timedelta(days=90)
     assert rollups.RETENTION["rollup_1h"] == timedelta(days=730)
+
+    old = T0 - timedelta(days=8)
+    store.write_samples(db, "host:vhagar", old, [Sample("load.1m", 9.0, "gauge")])
+    rollups.compact(db, "5m", now=old + timedelta(minutes=10))
+    rollups.compact(db, "1h", now=old + timedelta(hours=2))
+
+    rollups.prune(db, now=T0)
+
+    assert store.latest(db, "host:vhagar") == {}
+    assert len(rollups.read(db, "5m", "host:vhagar", "load.1m")) == 1
+    assert len(rollups.read(db, "1h", "host:vhagar", "load.1m")) == 1
