@@ -105,6 +105,37 @@
   color: var(--color-muted);
 }
 
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.filterPill,
+.filterActive {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-muted);
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.filterPill {
+  &:hover {
+    border-color: var(--color-accent);
+  }
+}
+
+// The active filter takes the amber fill: it is a state marker, not a CTA.
+.filterActive {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+}
+
 .searchLabel {
   color: var(--color-muted);
   font-size: var(--font-size-xs);

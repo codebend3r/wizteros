@@ -9,6 +9,7 @@ export const menuRoutes = [
   { label: 'Members', path: '/manage' },
   { label: 'Invite', path: '/invite' },
   { label: 'Email', path: '/email' },
+  { label: 'Design', path: '/design' },
 ] as const
 
 export const SideMenu = () => {

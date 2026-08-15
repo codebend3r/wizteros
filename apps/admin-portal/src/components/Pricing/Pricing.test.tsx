@@ -1,5 +1,6 @@
 import { expect, test } from '@/test/vi'
 import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { Pricing } from '@/components/Pricing/Pricing'
 import type { Tier } from '@/site.config'
 
@@ -13,6 +14,7 @@ const TIERS: ReadonlyArray<Tier> = [
     features: [
       { label: '1080p HD streaming', included: true },
       { label: '4K UHD streaming', included: false },
+      { label: 'Offline downloads for travel', included: false },
     ],
     paymentLinkUrl: 'https://buy.stripe.com/test_bronze',
   },
@@ -35,16 +37,32 @@ const getFeatureRow = ({ label }: { label: string }): HTMLLIElement => {
 
 test('renders the section header', () => {
   render(<Pricing tiers={TIERS} />)
-  expect(screen.getByRole('heading', { name: 'Choose your tier' })).toBeInTheDocument()
+  expect(
+    screen.getByRole('heading', { name: 'Four levels of server capability' }),
+  ).toBeInTheDocument()
 })
 
-test('renders a card per tier with price, cadence, summary, and features', () => {
+test('renders a tab per tier and selects the first without a silver tier', () => {
   render(<Pricing tiers={TIERS} />)
-  expect(screen.getByRole('heading', { name: 'Bronze' })).toBeInTheDocument()
-  expect(screen.getByText('$8')).toBeInTheDocument()
-  expect(screen.getAllByText('CAD / month')).toHaveLength(2)
-  expect(screen.getByText('Everyday playback in 1080p.')).toBeInTheDocument()
-  expect(screen.getByText('1080p HD streaming')).toBeInTheDocument()
+  expect(screen.getByRole('tab', { name: 'Bronze' })).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getByRole('tab', { name: 'Gold' })).toHaveAttribute('aria-selected', 'false')
+})
+
+test('shows the selected tier card with price, cadence, summary, and features', () => {
+  render(<Pricing tiers={TIERS} />)
+  const panel = screen.getByRole('tabpanel')
+  expect(within(panel).getByText('$8')).toBeInTheDocument()
+  expect(within(panel).getByText('CAD / month')).toBeInTheDocument()
+  expect(within(panel).getByText('Everyday playback in 1080p.')).toBeInTheDocument()
+  expect(within(panel).getByText('1080p HD streaming')).toBeInTheDocument()
+})
+
+test('switches the card when another tab is chosen', async () => {
+  render(<Pricing tiers={TIERS} />)
+  await userEvent.click(screen.getByRole('tab', { name: 'Gold' }))
+  const panel = screen.getByRole('tabpanel')
+  expect(within(panel).getByText('$20')).toBeInTheDocument()
+  expect(within(panel).queryByText('$8')).toBeNull()
 })
 
 test('marks features as included or excluded', () => {
@@ -55,6 +73,14 @@ test('marks features as included or excluded', () => {
   expect(within(excluded).getByText('Not included:')).toBeInTheDocument()
 })
 
+test('hints the cheapest upgrade that includes an excluded feature', () => {
+  render(<Pricing tiers={TIERS} />)
+  const downloads = getFeatureRow({ label: 'Offline downloads for travel' })
+  expect(within(downloads).getByText('in Gold, +$12')).toBeInTheDocument()
+  const uhd = getFeatureRow({ label: '4K UHD streaming' })
+  expect(within(uhd).queryByText(/^in /)).toBeNull()
+})
+
 test('links the CTA to the tier payment link', () => {
   render(<Pricing tiers={TIERS} />)
   expect(screen.getByRole('link', { name: 'Choose Bronze' })).toHaveAttribute(
@@ -63,7 +89,8 @@ test('links the CTA to the tier payment link', () => {
   )
 })
 
-test('hides the CTA when the payment link is not configured', () => {
+test('hides the CTA when the payment link is not configured', async () => {
   render(<Pricing tiers={TIERS} />)
+  await userEvent.click(screen.getByRole('tab', { name: 'Gold' }))
   expect(screen.queryByRole('link', { name: 'Choose Gold' })).toBeNull()
 })

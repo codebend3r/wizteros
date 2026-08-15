@@ -88,6 +88,26 @@
   }
 }
 
+// Record on the left, actions on the right, so a re-invite no longer means
+// scrolling past the whole server list. One column under the breakpoint.
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  align-items: start;
+  gap: var(--space-3);
+
+  @media (max-width: 48rem) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: var(--space-3);
+}
+
 .tier {
   text-transform: capitalize;
 }

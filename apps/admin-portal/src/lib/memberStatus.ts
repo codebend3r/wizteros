@@ -11,6 +11,17 @@ export type MemberStatus =
 
 const GRACE_MS = INVITE_GRACE_DAYS * 24 * 60 * 60 * 1000
 
+// Status is always emoji plus text, never colour or emoji alone; shared by
+// the members table, the member page, and the design reference.
+export const STATUS_EMOJI: Record<MemberStatus, string> = {
+  'Subscribed Monthly': '🟢',
+  'Expired Member': '🔴',
+  Invited: '✉️',
+  'Declined Invite': '🚫',
+  Uninvited: '⚪',
+  VIP: '💎',
+}
+
 /**
  * Derive a member's lifecycle status from the bridge's member record.
  *

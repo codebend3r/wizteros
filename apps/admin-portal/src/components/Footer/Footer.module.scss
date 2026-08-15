@@ -1,33 +1,129 @@
-.footer {
+.account,
+.fineprint {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.disclaimer {
+  font-size: var(--font-size-sm);
+  max-width: 34rem;
+  text-wrap: pretty;
+}
+
+.contact {
+  font-size: var(--font-size-sm);
+}
+
+// The admin's quiet footer: navy, centered, bordered like the old one.
+.quiet {
   display: grid;
   gap: var(--space-2);
   justify-items: center;
   text-align: center;
   padding: var(--space-4) var(--space-3);
   border-top: 1px solid var(--color-border);
+
+  .account,
+  .fineprint {
+    justify-items: center;
+  }
+
+  .member {
+    color: var(--color-text);
+    font-size: var(--font-size-md);
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .manage,
+  .contact {
+    color: var(--color-muted);
+    text-decoration: underline;
+  }
+
+  .manage {
+    font-size: var(--font-size-sm);
+  }
+
+  .disclaimer {
+    color: var(--color-muted);
+  }
 }
 
-.member {
-  color: var(--color-text);
-  font-size: var(--font-size-md);
-  font-weight: 600;
-  text-decoration: none;
-}
+// The marquee's closing band: the page opens amber and closes amber.
+.band {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: 'account fineprint';
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-3);
+  background: var(--color-accent);
+  color: var(--color-accent-text);
 
-.manage {
-  color: var(--color-muted);
-  font-size: var(--font-size-sm);
-  text-decoration: underline;
-}
+  @media (max-width: 48rem) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'account' 'fineprint';
+  }
 
-.contact {
-  color: var(--color-muted);
-  font-size: var(--font-size-sm);
-  text-decoration: underline;
-}
+  .account {
+    grid-area: account;
+    justify-items: start;
+  }
 
-.disclaimer {
-  color: var(--color-muted);
-  font-size: var(--font-size-sm);
-  max-width: 34rem;
+  .fineprint {
+    grid-area: fineprint;
+    justify-items: end;
+    text-align: right;
+
+    @media (max-width: 48rem) {
+      justify-items: start;
+      text-align: left;
+    }
+  }
+
+  .member {
+    font-family: var(--font-display);
+    font-size: var(--font-size-lg);
+    font-weight: 800;
+    color: var(--color-accent-text);
+    text-decoration: none;
+
+    &:hover,
+    &:focus-visible {
+      color: var(--color-accent-text);
+      text-decoration: underline;
+      text-underline-offset: 0.3em;
+    }
+  }
+
+  .manage {
+    font-size: var(--font-size-sm);
+    color: var(--color-accent-text);
+    opacity: 0.75;
+    text-decoration: underline;
+
+    &:hover,
+    &:focus-visible {
+      color: var(--color-accent-text);
+      opacity: 1;
+    }
+  }
+
+  .disclaimer {
+    color: var(--color-accent-text);
+    opacity: 0.75;
+  }
+
+  .contact {
+    font-weight: 600;
+    color: var(--color-accent-text);
+    text-decoration: none;
+
+    &:hover,
+    &:focus-visible {
+      color: var(--color-accent-text);
+      text-decoration: underline;
+    }
+  }
 }

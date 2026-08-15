@@ -20,7 +20,11 @@ export const AdminLayout = ({ children }: AdminLayoutProps) => {
         <SideMenu />
         <div className={styles.content}>{children}</div>
       </div>
-      <Footer memberUrl={siteConfig.memberUrl} billingPortalUrl={siteConfig.billingPortalUrl} />
+      <Footer
+        memberUrl={siteConfig.memberUrl}
+        billingPortalUrl={siteConfig.billingPortalUrl}
+        tone="quiet"
+      />
       <button
         className={styles.hardRefresh}
         type="button"

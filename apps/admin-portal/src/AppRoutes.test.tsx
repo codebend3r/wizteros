@@ -14,7 +14,9 @@ test('renders the landing page at /', () => {
       <AppRoutes />
     </MemoryRouter>,
   )
-  expect(screen.getByRole('heading', { name: 'Choose your tier' })).toBeInTheDocument()
+  expect(
+    screen.getByRole('heading', { name: 'Four levels of server capability' }),
+  ).toBeInTheDocument()
 })
 
 test('gates /manage behind the Supabase login when signed out', () => {

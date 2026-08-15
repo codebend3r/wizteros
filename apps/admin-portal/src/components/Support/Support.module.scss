@@ -1,8 +1,11 @@
 .support {
   display: grid;
-  gap: var(--space-3);
+  gap: var(--space-2);
   grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-  padding: var(--space-4) var(--space-3);
+  width: 100%;
+  max-width: var(--max-width);
+  margin-inline: auto;
+  padding: var(--space-2) var(--space-3) var(--space-6);
 }
 
 .item {
@@ -14,12 +17,23 @@
   background: var(--color-surface);
 }
 
+// The ledger's line-item numbering carried onto the cards: these three are
+// the split the ledger bar charts, in the same order.
+.number {
+  font-family: var(--font-pixel);
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.12em;
+  color: var(--color-accent);
+}
+
 .itemTitle {
-  font-size: var(--font-size-md);
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: var(--font-size-lg);
+  font-weight: 700;
 }
 
 .itemDetail {
   font-size: var(--font-size-sm);
   color: var(--color-muted);
+  line-height: 1.55;
 }

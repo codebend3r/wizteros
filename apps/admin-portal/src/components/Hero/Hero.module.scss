@@ -1,40 +1,296 @@
-.hero {
+// The amber marquee: the one loud surface on the page. It opens the page and
+// the Footer band closes it; everything between stays navy.
+.marquee {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+}
+
+.nav {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
   gap: var(--space-2);
-  justify-items: center;
-  text-align: center;
+  width: 100%;
+  max-width: var(--max-width);
+  margin-inline: auto;
   padding: var(--space-2) var(--space-3);
 }
 
+.brandGroup {
+  display: grid;
+  grid-auto-flow: column;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.brandLogo {
+  width: var(--space-4);
+  height: var(--space-4);
+  border-radius: calc(var(--radius-md) / 2);
+  object-fit: cover;
+}
+
 .brand {
+  font-family: var(--font-brand);
+  // Lily Script One ships a single 400 weight; heavier would faux-bold.
+  font-weight: 400;
+  font-size: var(--font-size-lg);
+  color: var(--color-accent-text);
+}
+
+.navLinks {
+  display: grid;
+  grid-auto-flow: column;
+  justify-content: end;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.navLink {
+  font-family: var(--font-pixel);
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-accent-text);
+  text-decoration: none;
+
+  &:hover,
+  &:focus-visible {
+    color: var(--color-accent-text);
+    text-decoration: underline;
+    text-underline-offset: 0.3em;
+  }
+
+  // The phone marquee keeps only the brand and sign in.
+  @media (max-width: 48rem) {
+    display: none;
+  }
+}
+
+.signIn {
+  font-family: var(--font-pixel);
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: var(--space-1) var(--space-2);
+  border-radius: calc(var(--radius-md) / 2);
+  background: var(--color-accent-text);
+  color: var(--color-accent);
+  text-decoration: none;
+
+  &:hover,
+  &:focus-visible {
+    color: var(--color-gold);
+  }
+}
+
+.stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  grid-template-areas: 'copy art';
+  align-items: center;
+  gap: var(--space-4);
+  width: 100%;
+  max-width: var(--max-width);
+  margin-inline: auto;
+  padding: var(--space-4) var(--space-3) var(--space-6);
+
+  @media (max-width: 64rem) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'art' 'copy';
+  }
+}
+
+.copy {
+  grid-area: copy;
+  display: grid;
+  justify-items: start;
+  gap: var(--space-3);
+}
+
+.badge {
+  display: inline-grid;
+  grid-auto-flow: column;
+  align-items: center;
+  gap: var(--space-1);
+  font-family: var(--font-pixel);
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+  background: var(--color-accent-text);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-lg);
+}
+
+.badgeDot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--color-state-shared);
+  animation: pulse 2s ease-in-out infinite;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+}
+
+.headline {
+  display: grid;
   font-family: var(--font-display);
-  font-size: var(--font-size-hero);
+  font-size: clamp(3rem, 8vw, 5.25rem);
   font-weight: 800;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.045em;
+  line-height: 0.9;
+  color: var(--color-accent-text);
+}
+
+.headlineLine {
+  display: block;
 }
 
 .tagline {
   font-size: var(--font-size-lg);
-  color: var(--color-muted);
-  max-width: 32rem;
+  line-height: 1.5;
+  max-width: 38ch;
+  color: var(--color-accent-text);
+  opacity: 0.82;
+  text-wrap: pretty;
 }
 
+.ctaRow {
+  display: grid;
+  grid-auto-flow: column;
+  align-items: center;
+  justify-content: start;
+  gap: var(--space-2);
+
+  @media (max-width: 48rem) {
+    grid-auto-flow: row;
+    justify-items: start;
+    width: 100%;
+  }
+}
+
+// The single amber-surface fill of the page: dark on amber, one per view.
 .cta {
   display: inline-grid;
   align-items: center;
   padding: var(--space-2) var(--space-4);
   border-radius: var(--radius-md);
-  background: var(--color-accent);
-  color: var(--color-accent-text);
-  font-weight: 600;
+  background: var(--color-accent-text);
+  color: var(--color-accent);
+  font-family: var(--font-display);
+  font-size: var(--font-size-lg);
+  font-weight: 700;
   text-decoration: none;
 
-  // The global a:hover gold outranks the class color and washes the label
-  // out against the amber background; keep the dark label and brighten the
-  // fill instead.
   &:hover,
   &:focus-visible {
-    background: var(--color-gold);
-    color: var(--color-accent-text);
+    color: var(--color-gold);
   }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent-text);
+    outline-offset: 2px;
+  }
+
+  @media (max-width: 48rem) {
+    justify-self: stretch;
+    justify-items: center;
+  }
+}
+
+.ctaCaption {
+  font-family: var(--font-pixel);
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-accent-text);
+  opacity: 0.7;
+}
+
+.art {
+  grid-area: art;
+  display: grid;
+  justify-items: center;
+}
+
+.ticker {
+  background: var(--color-accent-text);
+  padding-block: var(--space-1);
+  overflow: hidden;
+  white-space: nowrap;
+
+  // With the drift stopped the second copy is redundant; let the row be
+  // scrolled instead so nothing is stranded off-screen.
+  @media (prefers-reduced-motion: reduce) {
+    overflow-x: auto;
+  }
+}
+
+.tickerTrack {
+  display: inline-grid;
+  grid-auto-flow: column;
+  animation: drift 30s linear infinite;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+@keyframes drift {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.tickerRow {
+  display: inline-grid;
+  grid-auto-flow: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding-inline-end: var(--space-3);
+  font-family: var(--font-pixel);
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.tickerGroup {
+  display: inline-grid;
+  grid-auto-flow: column;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.tickerItem {
+  color: var(--color-accent);
+}
+
+.tickerLive {
+  color: var(--color-state-shared);
+}
+
+.tickerDot {
+  color: var(--color-accent);
 }

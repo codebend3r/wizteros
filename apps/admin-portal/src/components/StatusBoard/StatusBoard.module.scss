@@ -1,0 +1,239 @@
+.board {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: var(--space-3);
+  width: 100%;
+  max-width: var(--max-width);
+  margin-inline: auto;
+  padding: var(--space-6) var(--space-3) var(--space-4);
+
+  @media (max-width: 64rem) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
+.cardHeader {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+// The pixel-caps header treatment shared with the members table.
+.eyebrow {
+  font-family: var(--font-pixel);
+  font-size: var(--font-size-xs);
+  font-weight: 400;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+.cornerNote {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-muted);
+}
+
+.cardBody {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+
+.splitBar {
+  display: grid;
+  gap: 3px;
+  height: 0.75rem;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.splitSegment {
+  display: block;
+}
+
+.toneAccent {
+  background: var(--color-accent);
+}
+
+.toneBronze {
+  background: var(--color-bronze);
+}
+
+.toneSilver {
+  background: var(--color-silver);
+}
+
+// The board's dim fourth segment: muted pulled toward the page tone, so the
+// reserve reads quieter than the three live costs.
+.toneDim {
+  background: color-mix(in srgb, var(--color-muted) 55%, var(--color-bg));
+}
+
+.ledgerRows {
+  display: grid;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+}
+
+.ledgerRow {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding-block: var(--space-1);
+  border-top: 1px solid var(--color-border);
+
+  &:first-child {
+    border-top: 0;
+  }
+}
+
+.ledgerLabel {
+  display: inline-grid;
+  grid-auto-flow: column;
+  justify-content: start;
+  align-items: baseline;
+  gap: var(--space-1);
+  color: var(--color-muted);
+}
+
+.ledgerSwatch {
+  width: 0.6em;
+  height: 0.6em;
+  border-radius: 1px;
+}
+
+// Dotted amber marks a placeholder figure, straight from the design board.
+.ledgerAmount {
+  border-bottom: 1px dotted var(--color-accent);
+}
+
+.statusRows {
+  display: grid;
+  padding: 0;
+  list-style: none;
+}
+
+.statusRow {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.statusLabel {
+  font-size: var(--font-size-sm);
+}
+
+.statusLive {
+  display: inline-grid;
+  grid-auto-flow: column;
+  align-items: center;
+  gap: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  color: var(--color-state-shared);
+}
+
+.statusDot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--color-state-shared);
+  animation: pulse 2.4s ease-in-out infinite;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+}
+
+.statusValue {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  color: var(--color-muted);
+  border-bottom: 1px dotted var(--color-accent);
+}
+
+.uptime {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg);
+}
+
+.uptimeHeader {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.uptimeFigure {
+  color: var(--color-text);
+  border-bottom: 1px dotted var(--color-accent);
+}
+
+.uptimeStrip {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 2px;
+}
+
+.uptimeOk,
+.uptimeMaintenance {
+  display: block;
+  height: 1.375rem;
+  border-radius: 2px;
+}
+
+.uptimeOk {
+  background: var(--color-state-shared);
+}
+
+.uptimeMaintenance {
+  background: var(--color-accent);
+}
+
+.uptimeCaption {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-muted);
+}

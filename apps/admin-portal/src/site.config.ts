@@ -85,7 +85,9 @@ const toChecklist = ({
 
 export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
   brandName: 'Westeroz',
-  tagline: 'A community-run media server. Contribute to the cost of keeping it online.',
+  tagline:
+    'Get access to the media servers, kept online by the people who use them. ' +
+    'Your contribution covers hosting, storage and bandwidth, nothing else.',
   memberUrl: env.VITE_MEMBER_URL ?? null,
   billingPortalUrl: env.VITE_BILLING_PORTAL_URL ?? null,
   stripeDashboardUrl: env.VITE_STRIPE_DASHBOARD_URL ?? null,
