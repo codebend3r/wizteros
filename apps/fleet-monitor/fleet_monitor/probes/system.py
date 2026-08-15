@@ -14,7 +14,11 @@ def parse_df(text: str) -> tuple[Sample, ...]:
     return tuple(
         sample
         for fields in rows
-        if len(fields) >= 6
+        if (len(fields) >= 6 and
+            fields[1].lstrip("-").isdigit() and
+            fields[2].lstrip("-").isdigit() and
+            fields[3].lstrip("-").isdigit() and
+            fields[4].rstrip("%").lstrip("-").isdigit())
         for name in (fields[5].lstrip("/").replace("/", "_") or "root",)
         for sample in (
             Sample(
@@ -104,7 +108,9 @@ def parse_gpu_freq(text: str) -> tuple[Sample, ...]:
     anything transcoding on meleys is doing it in software on 2 physical cores.
     """
     fields = text.split()
-    if len(fields) < 2:
+    if (len(fields) < 2 or
+        not fields[0].lstrip("-").isdigit() or
+        not fields[1].lstrip("-").isdigit()):
         return ()
     current, ceiling = float(fields[0]), float(fields[1])
     base = (

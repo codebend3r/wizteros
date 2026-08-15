@@ -80,3 +80,25 @@ def test_system_parsers_are_total_on_empty_input():
     assert system.parse_df("") == ()
     assert system.parse_hwmon("") == ()
     assert system.parse_inotify("") == ()
+
+
+def test_parse_df_skips_rows_with_non_numeric_usage():
+    # tmpfs and proc filesystems often report - for capacity/usage columns
+    text = (
+        "Filesystem 1024-blocks Used Available Capacity Mounted on\n"
+        "/dev/mapper/good_fs 1000000 500000 500000 50% /volume1\n"
+        "tmpfs 1000000 - - - /run\n"
+        "/dev/mapper/another_good 2000000 1000000 1000000 50% /volume2\n"
+    )
+    got = _by_metric(system.parse_df(text))
+
+    # Good rows parse, bad row with dashes is silently skipped
+    assert got["disk.volume1.used_percent"] == 50.0
+    assert got["disk.volume2.used_percent"] == 50.0
+    assert "disk.run.used_percent" not in got
+
+
+def test_parse_gpu_freq_returns_empty_on_non_numeric_multi_token_input():
+    # transient cat error with multiple tokens (e.g. cat: read error)
+    assert system.parse_gpu_freq("cat: read error\n") == ()
+    assert system.parse_gpu_freq("abc def\n") == ()
