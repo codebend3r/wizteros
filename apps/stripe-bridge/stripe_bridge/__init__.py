@@ -6,4 +6,4 @@ It is the only version marker that reaches the running container, so
 `GET /version` is the authoritative answer to "what release is the NAS on".
 """
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"

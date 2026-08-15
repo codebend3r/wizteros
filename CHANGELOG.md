@@ -12,6 +12,15 @@ the version recorded in the tree at that commit. That was not always true; the
 history was rewritten on 2026-08-08 to make it so. See
 [The 2026-08-08 history rewrite](#the-2026-08-08-history-rewrite).
 
+## v0.2.2 (2026-08-14)
+
+- Implement the Marquee Ledger redesign (#44): refreshed Hero, Pricing, Footer,
+  Support, User, and Manage surfaces, a new StatusBoard component, and a Design
+  reference page
+- Rotate and audit the baseline invitations (#43): the bridge now owns the four
+  per-tier baseline invite links, rotating them daily and persisting them in the
+  store
+
 ## v0.2.1 (2026-08-08)
 
 - Keep tier card copy on infrastructure language (#40): feature rows and tier
