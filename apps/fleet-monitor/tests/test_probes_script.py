@@ -1,4 +1,4 @@
-from fleet_monitor.probes import script
+from fleet_monitor.probes import proc, script
 
 
 def test_split_sections_keys_by_sentinel():
@@ -62,3 +62,54 @@ def test_scripts_do_not_use_set_e():
     # a missing optional source must not abort the remaining sections
     assert "set -e" not in script.VITALS_SCRIPT
     assert "set -e" not in script.SLOW_SCRIPT
+
+
+def test_split_sections_is_line_anchored_sentinel():
+    # Sentinels mid-line in a body must not be treated as section boundaries.
+    # This guards against Docker container names or other values containing ###.
+    text = "###stat\nvalue###middle\nmore data\n###meminfo\nMemTotal: 1 kB\n"
+    sections = script.split_sections(text)
+
+    assert sections["stat"] == "value###middle\nmore data\n"
+    assert sections["meminfo"] == "MemTotal: 1 kB\n"
+    assert len(sections) == 2
+
+
+def test_vitals_script_captures_all_meminfo_keys():
+    # Derive the head count from VITALS_SCRIPT to ensure it covers all keys
+    # in proc._MEM_KEYS, not just the first few. The test fails if either
+    # module changes without the other.
+    import re
+
+    match = re.search(r"head -n (\d+) /proc/meminfo", script.VITALS_SCRIPT)
+    assert match, "meminfo head command not found in VITALS_SCRIPT"
+    head_count = int(match.group(1))
+
+    # Verify that a meminfo with head_count lines contains at least all the keys
+    # that parse_meminfo will try to extract.
+    sample_meminfo_lines = [
+        "MemTotal:        1683776 kB",
+        "MemFree:         1078964 kB",
+        "MemAvailable:    1500000 kB",
+        "Buffers:          100000 kB",
+        "Cached:           200000 kB",
+        "SwapCached:            0 kB",
+        "Active:           400000 kB",
+        "Inactive:        300000 kB",
+        "Active(anon):     150000 kB",
+        "Inactive(anon):   100000 kB",
+        "Active(file):     250000 kB",
+        "Inactive(file):   200000 kB",
+        "Unevictable:           0 kB",
+        "Mlocked:               0 kB",
+        "SwapTotal:        500000 kB",
+        "SwapFree:         500000 kB",
+    ]
+    captured_meminfo = "\n".join(sample_meminfo_lines[:head_count])
+
+    # All keys from proc._MEM_KEYS must be present in the captured lines
+    for key in proc._MEM_KEYS:
+        assert key in captured_meminfo, (
+            f"'{key}' from proc._MEM_KEYS not reachable within "
+            f"head -n {head_count} in VITALS_SCRIPT"
+        )
