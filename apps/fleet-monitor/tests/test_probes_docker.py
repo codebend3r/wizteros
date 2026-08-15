@@ -45,7 +45,17 @@ def test_parse_containers_on_empty_payload():
     assert docker.parse_containers([]) == ()
 
 
-def test_to_samples_emits_up_and_restart_gauges():
+def test_parse_containers_defaults_a_null_restart_count_and_started_at():
+    # a key present with a JSON null, not merely absent: entry.get(key) would
+    # return None rather than the default, so this must be coerced, not just
+    # defaulted via .get(key, default)
+    states = docker.parse_containers([_payload(RestartCount=None, StartedAt=None)])
+
+    assert states[0].restart_count == 0
+    assert states[0].started_at == ""
+
+
+def test_to_samples_emits_up_and_healthy_gauges():
     states = docker.parse_containers([
         _payload(Names=["/sonarr"]),
         _payload(Names=["/radarr"], State="exited", Status="Exited (0) 3 hours ago"),
@@ -55,3 +65,14 @@ def test_to_samples_emits_up_and_restart_gauges():
     assert got["container.sonarr.up"] == 1.0
     assert got["container.radarr.up"] == 0.0
     assert got["container.sonarr.healthy"] == 1.0
+
+
+def test_to_samples_never_emits_a_restart_count_sample():
+    # GET /containers/json never returns RestartCount, so a sample built from
+    # it would read as a constant zero forever, indistinguishable from a
+    # genuinely healthy container. Never re-add this without an inspect-based
+    # source for the field.
+    states = docker.parse_containers([_payload()])
+    metrics = {s.metric for s in docker.to_samples(states)}
+
+    assert not any(metric.endswith(".restart_count") for metric in metrics)
