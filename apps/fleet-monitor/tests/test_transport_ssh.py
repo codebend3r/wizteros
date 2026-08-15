@@ -52,3 +52,17 @@ async def test_run_succeeds_against_localhost_shell():
     assert result.ok is True
     assert "###hi" in result.stdout
     assert result.reason == ""
+
+
+@pytest.mark.asyncio
+async def test_run_returns_a_typed_failure_when_ssh_cannot_be_spawned(monkeypatch):
+    # forces asyncio.create_subprocess_exec to raise FileNotFoundError for
+    # real, by hiding the ssh binary from PATH, so the spawn-time guard is
+    # proven against an actual OSError rather than a mock
+    monkeypatch.setenv("PATH", "/nonexistent-empty-dir-for-fleet-monitor-tests")
+
+    result = await ssh.run("192.0.2.1", "echo hi", control_dir="/tmp/fm-spawn-test", timeout=1)
+
+    assert result.ok is False
+    assert result.stdout == ""
+    assert result.reason == "spawn_error"

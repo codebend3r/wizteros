@@ -54,12 +54,19 @@ def build_argv(*, host: str, user: str, control_dir: str, timeout: int) -> tuple
 
 
 async def _capture(argv: tuple[str, ...], body: str, timeout: int) -> SshResult:
-    process = await asyncio.create_subprocess_exec(
-        *argv,
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *argv,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except OSError:
+        # the binary itself could not be spawned: missing from PATH, no
+        # permission, or the OS is out of file descriptors. Never let this
+        # cross the boundary as a raw traceback.
+        return SshResult(ok=False, stdout="", reason="spawn_error")
+
     try:
         raw_out, raw_err = await asyncio.wait_for(
             process.communicate(body.encode()), timeout=timeout * 2
