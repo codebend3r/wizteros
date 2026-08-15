@@ -148,3 +148,65 @@ def test_a_newly_discovered_container_needs_no_special_casing(tmp_path):
     assert incidents.uptime_percent(
         path, "container:meleys/jellyfin", since=T0, now=T0 + timedelta(hours=1)
     ) == 100.0
+
+
+def test_retire_absent_stops_uptime_percent_from_degrading_further(tmp_path):
+    # this is the entire reason retire_absent exists: without it, a container
+    # removed while down stays "open" and drags uptime toward zero forever
+    path = _db(tmp_path)
+    _feed(path, "container:meleys/oldapp", [False, False])  # opens at T0 + 30s, never closes
+
+    still_open = incidents.uptime_percent(
+        path, "container:meleys/oldapp", since=T0, now=T0 + timedelta(hours=1)
+    )
+    assert still_open < 5.0
+
+    incidents.retire_absent(
+        path, prefix="container:meleys/", seen=set(), at=T0 + timedelta(minutes=5)
+    )
+
+    an_hour_out = incidents.uptime_percent(
+        path, "container:meleys/oldapp", since=T0, now=T0 + timedelta(hours=1)
+    )
+    a_day_out = incidents.uptime_percent(
+        path, "container:meleys/oldapp", since=T0, now=T0 + timedelta(days=1)
+    )
+
+    # retirement fixes the down time at (opened_at, retired_at); as `now`
+    # keeps advancing past retirement, uptime climbs toward 100 instead of
+    # trending toward 0 the way a permanently open incident would
+    assert an_hour_out > 90.0
+    assert a_day_out > an_hour_out
+
+
+def test_uptime_percent_clips_an_incident_that_opened_before_the_window(tmp_path):
+    path = _db(tmp_path)
+    # opens at T0 + 30s, closes at T0 + 90s: a 60 second outage
+    _feed(path, "host:clip-check", [False, False, True, True])
+
+    since = T0 + timedelta(seconds=60)
+    now = T0 + timedelta(seconds=120)
+
+    # since (T0+60s) falls inside the incident's [T0+30s, T0+90s) span, so
+    # only the last 30 seconds of the outage are inside the window
+    got = incidents.uptime_percent(path, "host:clip-check", since=since, now=now)
+
+    assert 49.0 < got < 51.0
+
+
+def test_a_non_default_threshold_is_honored(tmp_path):
+    path = _db(tmp_path)
+    target = "host:threshold-check"
+
+    incidents.record(path, incidents.CheckResult(target, False, "down"), T0, threshold=3)
+    incidents.record(
+        path, incidents.CheckResult(target, False, "down"), T0 + timedelta(seconds=30),
+        threshold=3,
+    )
+    assert incidents.open_incidents(path) == ()
+
+    incidents.record(
+        path, incidents.CheckResult(target, False, "down"), T0 + timedelta(seconds=60),
+        threshold=3,
+    )
+    assert len(incidents.open_incidents(path)) == 1
