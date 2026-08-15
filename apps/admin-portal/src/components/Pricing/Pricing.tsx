@@ -1,5 +1,6 @@
-import { useRef, useState, type KeyboardEvent } from 'react'
+import { useRef, type KeyboardEvent } from 'react'
 import type { Tier } from '@/site.config'
+import { useTierStore } from '@/stores/tierStore'
 import styles from '@/components/Pricing/Pricing.module.scss'
 
 type PricingProps = {
@@ -21,8 +22,6 @@ const INTRO = {
     'Youth scopes profiles for family households',
   ],
 } as const
-
-const DEFAULT_TIER_ID = 'silver'
 
 const priceOf = (tier: Tier): number => Number(tier.price.replace(/[^0-9.]/g, ''))
 
@@ -48,9 +47,8 @@ const upgradeHint = ({
 }
 
 export const Pricing = ({ tiers }: PricingProps) => {
-  const [selectedId, setSelectedId] = useState(
-    tiers.some(({ id }) => id === DEFAULT_TIER_ID) ? DEFAULT_TIER_ID : (tiers[0]?.id ?? ''),
-  )
+  const selectedId = useTierStore((state) => state.selectedTierId)
+  const selectTier = useTierStore((state) => state.selectTier)
   const tabRefs = useRef(new Map<string, HTMLButtonElement>())
   const selected = tiers.find(({ id }) => id === selectedId) ?? tiers[0]
 
@@ -62,7 +60,7 @@ export const Pricing = ({ tiers }: PricingProps) => {
     const index = tiers.findIndex(({ id }) => id === selected.id)
     const next = tiers[(index + offset + tiers.length) % tiers.length]
     if (next) {
-      setSelectedId(next.id)
+      selectTier({ id: next.id })
       tabRefs.current.get(next.id)?.focus()
     }
   }
@@ -112,7 +110,7 @@ export const Pricing = ({ tiers }: PricingProps) => {
               aria-selected={id === selected.id}
               aria-controls="tier-panel"
               tabIndex={id === selected.id ? 0 : -1}
-              onClick={() => setSelectedId(id)}
+              onClick={() => selectTier({ id })}
               onKeyDown={onTabKeyDown}
             >
               {name}

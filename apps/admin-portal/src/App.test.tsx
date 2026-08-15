@@ -1,5 +1,6 @@
 import { expect, test } from '@/test/vi'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { App } from '@/App'
 
 test('renders the marquee headline', () => {
@@ -18,6 +19,15 @@ test('renders a tab per tier in the switcher', () => {
   expect(screen.getByRole('tab', { name: 'Silver' })).toBeInTheDocument()
   expect(screen.getByRole('tab', { name: 'Gold' })).toBeInTheDocument()
   expect(screen.getByRole('tab', { name: 'Youth' })).toBeInTheDocument()
+})
+
+test('ledger follows the tier chosen in the switcher', async () => {
+  render(<App />)
+  expect(screen.getByRole('heading', { name: 'Where $14 a month goes' })).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('tab', { name: 'Gold' }))
+  expect(screen.getByRole('heading', { name: 'Where $20 a month goes' })).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('tab', { name: 'Bronze' }))
+  expect(screen.getByRole('heading', { name: 'Where $8 a month goes' })).toBeInTheDocument()
 })
 
 test('renders the three support items', () => {
