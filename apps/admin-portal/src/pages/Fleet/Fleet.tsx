@@ -111,7 +111,7 @@ const FleetInner = () => {
 }
 
 export const Fleet = () => (
-  <AdminGate title="Westeroz - Fleet">
+  <AdminGate title="Westeroz — Fleet">
     <FleetInner />
   </AdminGate>
 )
