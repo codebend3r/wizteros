@@ -9,11 +9,23 @@ import styles from '@/pages/Fleet/Fleet.module.scss'
 const REFETCH_MS = 30_000
 const INCIDENT_HOURS = 24
 
+const FALLBACK_ERROR = 'Could not reach the fleet monitor.'
+
 const formatTimestamp = (isoTimestamp: string | null): string => {
   if (isoTimestamp === null) return 'never recorded'
   const at = new Date(isoTimestamp)
   return Number.isNaN(at.getTime()) ? isoTimestamp : at.toLocaleString()
 }
+
+/** What actually went wrong, not a guess.
+ *
+ * `fetchFleet` composes precise messages - an unset VITE_FLEET_BASE, a schema
+ * the monitor answered with - and collapsing them all into "could not reach
+ * the monitor" both loses the diagnostic and is wrong for a monitor that
+ * answered fine.
+ */
+const errorMessage = (error: unknown): string =>
+  error instanceof Error && error.message.length > 0 ? error.message : FALLBACK_ERROR
 
 const FleetInner = () => {
   const fleet = useQuery({
@@ -58,18 +70,23 @@ const FleetInner = () => {
           )}
           {!!fleet.isError && (
             <p className={styles.alert} role="alert">
-              Could not reach the fleet monitor. No host state is available.
+              {errorMessage(fleet.error)} No host state is available.
             </p>
           )}
-          {!!fleet.data && (
-            <ul className={styles.grid}>
-              {fleet.data.hosts.map((host) => (
-                <li key={host.name} className={styles.gridItem}>
-                  <HostCard summary={toHostSummary(host)} />
-                </li>
-              ))}
-            </ul>
-          )}
+          {!!fleet.data &&
+            (fleet.data.hosts.length > 0 ? (
+              <ul className={styles.grid}>
+                {fleet.data.hosts.map((host) => (
+                  <li key={host.name} className={styles.gridItem}>
+                    <HostCard summary={toHostSummary(host)} />
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              /* an empty ul renders as nothing at all, which reads as a page
+                still loading rather than as a monitor with no hosts */
+              <p className={styles.muted}>The fleet monitor reported no hosts.</p>
+            ))}
         </section>
 
         <section className={styles.section} aria-labelledby="fleet-incidents">
@@ -83,7 +100,7 @@ const FleetInner = () => {
           )}
           {!!incidents.isError && (
             <p className={styles.alert} role="alert">
-              Could not reach the incident feed.
+              {errorMessage(incidents.error)} No incident state is available.
             </p>
           )}
           {!!incidents.data &&

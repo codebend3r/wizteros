@@ -1,7 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
-import { QueryClient } from '@tanstack/react-query'
+import { defaultShouldDehydrateQuery, QueryClient } from '@tanstack/react-query'
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client'
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister'
 import '@fontsource-variable/bricolage-grotesque'
@@ -10,6 +10,7 @@ import '@fontsource-variable/jetbrains-mono'
 import '@fontsource/lily-script-one'
 import '@fontsource/silkscreen'
 import { AppRoutes } from '@/AppRoutes'
+import { isLiveQueryKey } from '@/lib/queryPersistence'
 import '@/styles/globals.scss'
 
 // The members call is ~15s (Wizarr fan-out), so never refetch it just for
@@ -39,7 +40,17 @@ if (rootElement) {
     <StrictMode>
       <PersistQueryClientProvider
         client={queryClient}
-        persistOptions={{ persister, maxAge: CACHE_MINUTES * 60 * 1000 }}
+        persistOptions={{
+          persister,
+          maxAge: CACHE_MINUTES * 60 * 1000,
+          // the live fleet queries are excluded, never restored from storage:
+          // a half-hour-old fleet painted as the present is the one thing that
+          // page must never do
+          dehydrateOptions: {
+            shouldDehydrateQuery: (query) =>
+              defaultShouldDehydrateQuery(query) && !isLiveQueryKey(query.queryKey),
+          },
+        }}
       >
         <BrowserRouter>
           <AppRoutes />

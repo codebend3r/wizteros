@@ -40,7 +40,11 @@ export type HostStatus = 'ok' | 'warn' | 'unknown'
 export type ContainerSummary = {
   readonly name: string
   readonly up: boolean
+  /** A healthcheck ran and passed. Meaningless unless `hasHealthcheck` is true. */
   readonly healthy: boolean
+  /** Whether the container declares a healthcheck at all. Most on this fleet do
+      not, and "no check configured" is neither a pass nor a failure. */
+  readonly hasHealthcheck: boolean
 }
 
 export type HostSummary = {
@@ -78,13 +82,15 @@ const AGE_UNITS = [
   { seconds: 60, name: 'minute' },
 ] as const
 
-const CONTAINER_METRIC = /^container\.(.+)\.(?:up|healthy)$/
+const CONTAINER_METRIC = /^container\.(.+)\.(?:up|healthy|has_healthcheck)$/
 
 export const formatBytes = (value: number | null): string => {
   if (value === null || !Number.isFinite(value)) return '--'
+  // log2/10, not log(v)/log(1024): the latter comes back 2.9999999999999996 for
+  // exactly 1024 ** 3, which floors to the wrong unit and renders "1024.0 MB"
   const index = Math.min(
     UNITS.length - 1,
-    Math.max(0, Math.floor(Math.log(Math.max(value, 1)) / Math.log(1024))),
+    Math.max(0, Math.floor(Math.log2(Math.max(value, 1)) / 10)),
   )
   return `${(value / 1024 ** index).toFixed(1)} ${UNITS[index]}`
 }
@@ -128,6 +134,7 @@ const toContainers = (metrics: FleetMetrics): readonly ContainerSummary[] =>
     name,
     up: metricValue({ metrics, key: `container.${name}.up` }) === 1,
     healthy: metricValue({ metrics, key: `container.${name}.healthy` }) === 1,
+    hasHealthcheck: metricValue({ metrics, key: `container.${name}.has_healthcheck` }) === 1,
   }))
 
 const hostStatus = ({

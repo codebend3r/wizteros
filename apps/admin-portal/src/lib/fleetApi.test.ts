@@ -45,6 +45,16 @@ test('formatBytes scales to the largest sensible unit', () => {
   expect(formatBytes(101_815_078_912 * 1024)).toBe('94.8 TB')
 })
 
+test('formatBytes crosses each unit exactly on the boundary', () => {
+  // log(v)/log(1024) comes back 2.9999999999999996 for exactly 1024 ** 3 and
+  // floors to the unit below, rendering a gibibyte as "1024.0 MB"
+  expect(formatBytes(1024)).toBe('1.0 KB')
+  expect(formatBytes(1024 ** 2)).toBe('1.0 MB')
+  expect(formatBytes(1024 ** 3)).toBe('1.0 GB')
+  expect(formatBytes(1024 ** 4)).toBe('1.0 TB')
+  expect(formatBytes(1024 ** 5)).toBe('1.0 PB')
+})
+
 test('formatBytes renders a dash for a missing value', () => {
   expect(formatBytes(null)).toBe('--')
 })
@@ -125,14 +135,31 @@ test('toHostSummary reads containers out of the host metric keys', () => {
     metrics: {
       'container.sonarr.up': 1,
       'container.sonarr.healthy': 1,
+      'container.sonarr.has_healthcheck': 1,
       'container.plex.media.server.up': 1,
       'container.plex.media.server.healthy': 0,
+      'container.plex.media.server.has_healthcheck': 1,
     },
   })
 
   expect(summary.containers).toEqual([
-    { name: 'plex.media.server', up: true, healthy: false },
-    { name: 'sonarr', up: true, healthy: true },
+    { name: 'plex.media.server', up: true, healthy: false, hasHealthcheck: true },
+    { name: 'sonarr', up: true, healthy: true, hasHealthcheck: true },
+  ])
+})
+
+test('toHostSummary keeps a container with no healthcheck out of the health claim', () => {
+  const summary = toHostSummary({
+    ...host,
+    metrics: {
+      'container.sabnzbd.up': 1,
+      'container.sabnzbd.healthy': 0,
+      'container.sabnzbd.has_healthcheck': 0,
+    },
+  })
+
+  expect(summary.containers).toEqual([
+    { name: 'sabnzbd', up: true, healthy: false, hasHealthcheck: false },
   ])
 })
 

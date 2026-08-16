@@ -21,7 +21,7 @@ const summary: HostSummary = {
   uptimePercent: 100,
   metricsStale: false,
   oldestMetricAgeSeconds: 12,
-  containers: [{ name: 'sonarr', up: true, healthy: true }],
+  containers: [{ name: 'sonarr', up: true, healthy: true, hasHealthcheck: true }],
 }
 
 const host: FleetHost = {
@@ -95,7 +95,7 @@ test('HostCard renders an uncollected host as unknown with no fabricated numbers
   )
 
   expect(screen.getByText('Not collected')).toBeInTheDocument()
-  expect(screen.getByText(/Nothing has ever been recorded/)).toBeInTheDocument()
+  expect(screen.getByText(/No current readings for this host/)).toBeInTheDocument()
   expect(screen.queryByText('0%')).toBeNull()
   // the "oldest metric" note would be meaningless with no metrics at all
   expect(screen.queryByText(/Stale readings/)).toBeNull()
@@ -158,8 +158,8 @@ test('HostCard lists containers with their state in text', () => {
       summary={{
         ...summary,
         containers: [
-          { name: 'sonarr', up: true, healthy: true },
-          { name: 'radarr', up: false, healthy: false },
+          { name: 'sonarr', up: true, healthy: true, hasHealthcheck: true },
+          { name: 'radarr', up: false, healthy: false, hasHealthcheck: false },
         ],
       }}
     />,
@@ -168,6 +168,35 @@ test('HostCard lists containers with their state in text', () => {
   expect(screen.getByText('sonarr')).toBeInTheDocument()
   expect(screen.getByText('Up, healthy')).toBeInTheDocument()
   expect(screen.getByText('Down')).toBeInTheDocument()
+})
+
+test('HostCard claims no health for a container that declares no healthcheck', () => {
+  // "no healthcheck configured" is neither a pass nor a failure: "Up, healthy"
+  // asserts a check that never ran, "Up, unhealthy" asserts one that failed
+  render(
+    <HostCard
+      summary={{
+        ...summary,
+        containers: [{ name: 'sabnzbd', up: true, healthy: false, hasHealthcheck: false }],
+      }}
+    />,
+  )
+
+  expect(screen.getByText('Up')).toBeInTheDocument()
+  expect(screen.queryByText(/Up, /)).toBeNull()
+})
+
+test('HostCard names a failing healthcheck as unhealthy', () => {
+  render(
+    <HostCard
+      summary={{
+        ...summary,
+        containers: [{ name: 'plex', up: true, healthy: false, hasHealthcheck: true }],
+      }}
+    />,
+  )
+
+  expect(screen.getByText('Up, unhealthy')).toBeInTheDocument()
 })
 
 test('HostCard reads absent container data as not collected, never as no containers', () => {
@@ -224,7 +253,39 @@ test('Fleet reports an unreachable monitor instead of an empty fleet', async () 
   vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')))
   renderFleet()
 
-  expect(await screen.findByText(/Could not reach the fleet monitor/)).toBeInTheDocument()
+  expect(await screen.findByText(/No host state is available/)).toBeInTheDocument()
+})
+
+// requestJson composes a message naming the variable; collapsing every failure
+// into one fixed string loses the only diagnostic the page has, and misreads a
+// monitor that answered fine as one that could not be reached.
+test('Fleet surfaces the configuration diagnostic rather than a fixed message', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => 'text/html; charset=UTF-8' },
+      json: async () => ({}),
+    })),
+  )
+  renderFleet()
+
+  // both queries fail the same way, so scope the assertion to the host alert
+  expect(
+    await screen.findByText(/Expected JSON from \/fleet .*VITE_FLEET_BASE/),
+  ).toBeInTheDocument()
+})
+
+test('Fleet says so when the monitor reports no hosts at all', async () => {
+  stubFleetFetch({
+    fleet: { collected_at: '2026-08-15T00:00:00+00:00', stale: false, hosts: [] },
+    incidents: { open: [], recent: [] },
+  })
+  renderFleet()
+
+  // an empty list renders as nothing, which reads as a page still loading
+  expect(await screen.findByText('The fleet monitor reported no hosts.')).toBeInTheDocument()
 })
 
 test('Fleet lists open incidents by target and reason', async () => {

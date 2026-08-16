@@ -17,8 +17,16 @@ const STATUS_LABEL = {
 // assert the present tense while the note below scopes only the readings.
 const STALE_STATUS_SUFFIX = ' as of the last reading'
 
+/** A container's state in words.
+ *
+ * A container with no healthcheck gets a bare "Up" and no health claim either
+ * way: "Up, healthy" would assert a check passed that was never run, and "Up,
+ * unhealthy" would assert one failed. Most containers on this fleet declare no
+ * healthcheck at all, so this is the common case, not the edge one.
+ */
 const containerLabel = (container: ContainerSummary): string => {
   if (!container.up) return 'Down'
+  if (!container.hasHealthcheck) return 'Up'
   return container.healthy ? 'Up, healthy' : 'Up, unhealthy'
 }
 
@@ -48,9 +56,12 @@ export const HostCard = ({ summary }: HostCardProps) => {
 
       <p className={styles.ip}>{summary.ip}</p>
 
+      {/* not "nothing has ever been recorded": after retention prunes a host's
+        samples at 7 days this state is reached again, and the stronger claim
+        would then be false */}
       {summary.status === 'unknown' && (
         <p className={styles.note}>
-          Nothing has ever been recorded for this host. Every reading below is absent, not zero.
+          No current readings for this host. Every reading below is absent, not zero.
         </p>
       )}
 
