@@ -2,10 +2,11 @@ import asyncio
 import os
 from dataclasses import dataclass
 
-# Matched against stderr, most specific first.
+# Matched against stderr in order, first hit wins. The needles are disjoint
+# except for "timed out", which is deliberately the loose form: it also covers
+# ssh's "Operation timed out", so listing that separately would be unreachable.
 _REASONS = (
     ("timed out", "timeout"),
-    ("Operation timed out", "timeout"),
     ("Permission denied", "auth"),
     ("Host key verification failed", "auth"),
     ("Connection refused", "refused"),

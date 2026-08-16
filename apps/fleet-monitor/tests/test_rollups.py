@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from fleet_monitor import rollups, store
 from fleet_monitor.probes.types import Sample
 
@@ -93,3 +95,27 @@ def test_prune_keeps_rollups_longer_than_raw(tmp_path):
     assert store.latest(db, "host:vhagar") == {}
     assert len(rollups.read(db, "5m", "host:vhagar", "load.1m")) == 1
     assert len(rollups.read(db, "1h", "host:vhagar", "load.1m")) == 1
+
+
+def test_read_rejects_an_unknown_resolution(tmp_path):
+    # the resolution names a table and so is interpolated rather than bound;
+    # the membership check is the only thing between a caller's string and
+    # the SQL, and `compact` has had it all along
+    db = _prepare(tmp_path)
+
+    with pytest.raises(KeyError):
+        rollups.read(db, "5m; DROP TABLE samples", "host:vermithor", "load.1m")
+
+
+def test_read_returns_the_compacted_buckets(tmp_path):
+    db = _prepare(tmp_path)
+    for offset, value in ((0, 1.0), (60, 3.0)):
+        store.write_samples(db, "host:vermithor", T0 + timedelta(seconds=offset),
+                            [Sample("load.1m", value, "gauge")])
+    rollups.compact(db, "5m", T0 + timedelta(minutes=10))
+
+    rows = rollups.read(db, "5m", "host:vermithor", "load.1m")
+
+    assert len(rows) == 1
+    assert rows[0][1] == 1.0
+    assert rows[0][2] == 3.0

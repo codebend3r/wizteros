@@ -1,5 +1,8 @@
+import asyncio
 import json
 from datetime import datetime, timedelta, timezone
+
+import pytest
 
 from fleet_monitor import collector, config, incidents, store
 from fleet_monitor.transport.http import HttpResult
@@ -153,6 +156,80 @@ async def test_collect_host_writes_no_samples_when_ssh_fails(tmp_path, monkeypat
     assert result.ok is False
     assert result.reason == "timeout"
     assert store.latest(db, "host:meleys") == {}
+
+
+def test_one_bad_section_never_discards_the_others(monkeypatch):
+    # the parsers run in one flat pass, so without per-section isolation a
+    # single malformed byte anywhere costs every section for that host
+    def _explode(_body: str) -> tuple:
+        raise ValueError("malformed")
+
+    monkeypatch.setitem(collector._PARSERS, "loadavg", _explode)
+    got = {s.metric for s in collector.samples_from_sections(SECTIONS)}
+
+    assert "load.1m" not in got
+    assert "cpu.total.user" in got
+    assert "mem.total_bytes" in got
+    assert "uptime.seconds" in got
+
+
+async def test_a_local_spawn_failure_records_no_host_check(tmp_path, monkeypatch):
+    # ssh missing from PATH, or the collector out of file descriptors: a fault
+    # on this side of the wire that says nothing about the host. Recording it
+    # would open an incident on all five boxes at once and crater every
+    # uptime_percent_24h for a day.
+    db = _db(tmp_path)
+    monkeypatch.setattr(
+        collector.ssh, "run", _fake_ssh(SshResult(ok=False, stdout="", reason="spawn_error"))
+    )
+
+    for index in range(4):
+        result = await collector.collect_host(
+            DOCKER_HOST, T0 + timedelta(seconds=30 * index), db
+        )
+        assert result is None
+
+    assert incidents.open_incidents(db) == ()
+    assert incidents.history(db, since=T0 - timedelta(hours=1)) == ()
+    assert store.latest(db, "host:meleys") == {}
+
+
+async def test_a_spawn_failure_leaves_no_check_in_the_tick(tmp_path, monkeypatch):
+    db = _db(tmp_path)
+    monkeypatch.setattr(
+        collector.ssh, "run", _fake_ssh(SshResult(ok=False, stdout="", reason="spawn_error"))
+    )
+    monkeypatch.setattr(collector.http, "get_json", _fake_http(DOCKER_REFUSED))
+
+    checks = await collector.tick(T0, db)
+
+    assert not any(check.target.startswith("host:") for check in checks)
+
+
+async def test_a_successful_probe_that_measured_nothing_is_not_a_healthy_check(
+    tmp_path, monkeypatch
+):
+    # ssh exited 0 but the payload is unparseable: the box was observed and
+    # none of it was measured. Recording ok=True with zero samples is a fourth
+    # state the taxonomy does not allow, and it reads as healthy.
+    db = _db(tmp_path)
+    monkeypatch.setattr(
+        collector.ssh, "run", _fake_ssh(SshResult(ok=True, stdout="garbage, no sentinels", reason=""))
+    )
+
+    result = await collector.collect_host(DOCKER_HOST, T0, db)
+
+    assert result is not None
+    assert result.ok is False
+    assert result.reason == "empty_payload"
+    assert store.latest(db, "host:meleys") == {}
+
+
+def test_a_cancelled_job_is_never_swallowed():
+    # CancelledError is the process being torn down, not a job that failed;
+    # absorbing it makes graceful shutdown impossible
+    with pytest.raises(asyncio.CancelledError):
+        collector._log_raised("tick", (asyncio.CancelledError(),))
 
 
 async def test_collect_host_stamps_an_aware_utc_timestamp(tmp_path, monkeypatch):

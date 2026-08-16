@@ -93,6 +93,73 @@ def test_heartbeat_roundtrips(tmp_path):
     assert store.last_heartbeat(db) == T0
 
 
+def test_metric_ages_drops_a_metric_source_that_stopped_producing(tmp_path):
+    # a veth renamed by a container restart is written once and never again.
+    # Without the floor its one timestamp is still the oldest thing on the
+    # host a week later, and every staleness signal derived from it is pinned.
+    db = str(tmp_path / "fleet.db")
+    store.init_db(db)
+    store.write_samples(db, "host:vermithor", T0 - timedelta(days=3),
+                        [Sample("net.veth8a3f21.rx_bytes", 12.0, "counter")])
+    store.write_samples(db, "host:vermithor", T0, [Sample("load.1m", 0.4, "gauge")])
+
+    ages = store.metric_ages(db, "host:vermithor", since=T0 - timedelta(hours=24))
+
+    assert set(ages) == {"load.1m"}
+    assert ages["load.1m"] == T0
+
+
+def test_metric_ages_keeps_a_metric_that_is_merely_late(tmp_path):
+    # the floor must sit far above the staleness threshold, or nothing could
+    # ever be reported stale: a late metric has to survive to be caught
+    db = str(tmp_path / "fleet.db")
+    store.init_db(db)
+    store.write_samples(db, "host:vermithor", T0 - timedelta(hours=6),
+                        [Sample("disk.volume1.used_percent", 42.0, "gauge")])
+
+    ages = store.metric_ages(db, "host:vermithor", since=T0 - timedelta(hours=24))
+
+    assert ages["disk.volume1.used_percent"] == T0 - timedelta(hours=6)
+
+
+def test_coverage_starts_at_the_first_heartbeat(tmp_path):
+    db = str(tmp_path / "fleet.db")
+    store.init_db(db)
+
+    assert store.coverage_since(db) is None
+    store.write_heartbeat(db, T0)
+    assert store.coverage_since(db) == T0
+
+
+def test_coverage_survives_consecutive_rounds(tmp_path):
+    db = str(tmp_path / "fleet.db")
+    store.init_db(db)
+    for offset in (0, 30, 60, 90):
+        store.write_heartbeat(db, T0 + timedelta(seconds=offset))
+
+    assert store.coverage_since(db) == T0
+
+
+def test_a_gap_in_the_rounds_restarts_coverage(tmp_path):
+    # the collector was down for those hours. Nobody watched them, and an
+    # empty incident history over unwatched hours is not proof of uptime.
+    db = str(tmp_path / "fleet.db")
+    store.init_db(db)
+    store.write_heartbeat(db, T0)
+    store.write_heartbeat(db, T0 + timedelta(hours=8))
+
+    assert store.coverage_since(db) == T0 + timedelta(hours=8)
+
+
+def test_a_backwards_clock_step_restarts_coverage(tmp_path):
+    db = str(tmp_path / "fleet.db")
+    store.init_db(db)
+    store.write_heartbeat(db, T0)
+    store.write_heartbeat(db, T0 - timedelta(hours=2))
+
+    assert store.coverage_since(db) == T0 - timedelta(hours=2)
+
+
 def test_init_db_is_idempotent(tmp_path):
     db = str(tmp_path / "fleet.db")
     store.init_db(db)

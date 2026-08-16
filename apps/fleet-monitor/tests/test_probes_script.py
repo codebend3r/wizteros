@@ -1,4 +1,9 @@
+import re
+from pathlib import Path
+
 from fleet_monitor.probes import proc, script
+
+FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def test_split_sections_keys_by_sentinel():
@@ -76,36 +81,17 @@ def test_split_sections_is_line_anchored_sentinel():
 
 
 def test_vitals_script_captures_all_meminfo_keys():
-    # Derive the head count from VITALS_SCRIPT to ensure it covers all keys
-    # in proc._MEM_KEYS, not just the first few. The test fails if either
-    # module changes without the other.
-    import re
-
+    # Derive the head count from VITALS_SCRIPT and apply it to a real kernel's
+    # /proc/meminfo, captured from caraxes. A synthetic meminfo would encode
+    # the very assumption under test - its own key ordering - so only a real
+    # one is evidence that `head -n N` reaches SwapTotal and SwapFree.
     match = re.search(r"head -n (\d+) /proc/meminfo", script.VITALS_SCRIPT)
     assert match, "meminfo head command not found in VITALS_SCRIPT"
     head_count = int(match.group(1))
 
-    # Verify that a meminfo with head_count lines contains at least all the keys
-    # that parse_meminfo will try to extract.
-    sample_meminfo_lines = [
-        "MemTotal:        1683776 kB",
-        "MemFree:         1078964 kB",
-        "MemAvailable:    1500000 kB",
-        "Buffers:          100000 kB",
-        "Cached:           200000 kB",
-        "SwapCached:            0 kB",
-        "Active:           400000 kB",
-        "Inactive:        300000 kB",
-        "Active(anon):     150000 kB",
-        "Inactive(anon):   100000 kB",
-        "Active(file):     250000 kB",
-        "Inactive(file):   200000 kB",
-        "Unevictable:           0 kB",
-        "Mlocked:               0 kB",
-        "SwapTotal:        500000 kB",
-        "SwapFree:         500000 kB",
-    ]
-    captured_meminfo = "\n".join(sample_meminfo_lines[:head_count])
+    real_meminfo = (FIXTURES / "caraxes_proc_meminfo.txt").read_text().splitlines()
+    assert len(real_meminfo) >= head_count, "fixture is shorter than the head count"
+    captured_meminfo = "\n".join(real_meminfo[:head_count])
 
     # All keys from proc._MEM_KEYS must be present in the captured lines
     for key in proc._MEM_KEYS:

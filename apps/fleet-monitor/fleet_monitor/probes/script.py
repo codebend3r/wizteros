@@ -1,7 +1,5 @@
 import re
 
-_SENTINEL = "###"
-
 # One script per tick, not one command per metric. With ControlMaster holding
 # the connection open, a whole host costs one round trip.
 #

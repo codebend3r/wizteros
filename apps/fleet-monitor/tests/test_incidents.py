@@ -76,7 +76,9 @@ def test_uptime_percent_over_a_window(tmp_path):
     incidents.record(path, incidents.CheckResult("host:vhagar", True, ""),
                      T0 + timedelta(minutes=30, seconds=30))
 
-    got = incidents.uptime_percent(path, "host:vhagar", since=T0, now=T0 + timedelta(hours=1))
+    got = incidents.uptime_percent(
+        path, "host:vhagar", since=T0, now=T0 + timedelta(hours=1), observed_since=T0
+    )
 
     assert 49.0 < got < 51.0
 
@@ -86,7 +88,7 @@ def test_uptime_is_100_with_no_incidents(tmp_path):
     _feed(path, "host:vermithor", [True, True, True])
 
     assert incidents.uptime_percent(
-        path, "host:vermithor", since=T0, now=T0 + timedelta(hours=1)
+        path, "host:vermithor", since=T0, now=T0 + timedelta(hours=1), observed_since=T0
     ) == 100.0
 
 
@@ -146,7 +148,8 @@ def test_a_newly_discovered_container_needs_no_special_casing(tmp_path):
 
     assert incidents.open_incidents(path) == ()
     assert incidents.uptime_percent(
-        path, "container:meleys/jellyfin", since=T0, now=T0 + timedelta(hours=1)
+        path, "container:meleys/jellyfin", since=T0, now=T0 + timedelta(hours=1),
+        observed_since=T0,
     ) == 100.0
 
 
@@ -157,7 +160,8 @@ def test_retire_absent_stops_uptime_percent_from_degrading_further(tmp_path):
     _feed(path, "container:meleys/oldapp", [False, False])  # opens at T0 + 30s, never closes
 
     still_open = incidents.uptime_percent(
-        path, "container:meleys/oldapp", since=T0, now=T0 + timedelta(hours=1)
+        path, "container:meleys/oldapp", since=T0, now=T0 + timedelta(hours=1),
+        observed_since=T0,
     )
     assert still_open < 5.0
 
@@ -166,10 +170,12 @@ def test_retire_absent_stops_uptime_percent_from_degrading_further(tmp_path):
     )
 
     an_hour_out = incidents.uptime_percent(
-        path, "container:meleys/oldapp", since=T0, now=T0 + timedelta(hours=1)
+        path, "container:meleys/oldapp", since=T0, now=T0 + timedelta(hours=1),
+        observed_since=T0,
     )
     a_day_out = incidents.uptime_percent(
-        path, "container:meleys/oldapp", since=T0, now=T0 + timedelta(days=1)
+        path, "container:meleys/oldapp", since=T0, now=T0 + timedelta(days=1),
+        observed_since=T0,
     )
 
     # retirement fixes the down time at (opened_at, retired_at); as `now`
@@ -189,9 +195,68 @@ def test_uptime_percent_clips_an_incident_that_opened_before_the_window(tmp_path
 
     # since (T0+60s) falls inside the incident's [T0+30s, T0+90s) span, so
     # only the last 30 seconds of the outage are inside the window
-    got = incidents.uptime_percent(path, "host:clip-check", since=since, now=now)
+    got = incidents.uptime_percent(
+        path, "host:clip-check", since=since, now=now, observed_since=T0
+    )
 
     assert 49.0 < got < 51.0
+
+
+def test_uptime_is_unknown_for_a_window_nobody_watched(tmp_path):
+    # the collector was down for 23 of the 24 hours, so there are no incident
+    # rows for them - not because the target was up, but because nothing was
+    # looking. A flawless score for that day is the exact lie this guards.
+    path = _db(tmp_path)
+    now = T0 + timedelta(hours=24)
+    _feed(path, "host:vermithor", [True, True], start=now - timedelta(minutes=1))
+
+    assert incidents.uptime_percent(
+        path, "host:vermithor", since=T0, now=now, observed_since=now - timedelta(hours=1)
+    ) is None
+
+
+def test_uptime_scores_a_window_the_collector_watched_from_the_start(tmp_path):
+    path = _db(tmp_path)
+    _feed(path, "host:vermithor", [True, True])
+
+    assert incidents.uptime_percent(
+        path, "host:vermithor", since=T0, now=T0 + timedelta(hours=1),
+        observed_since=T0 - timedelta(hours=1),
+    ) == 100.0
+
+
+def test_a_continued_failure_updates_the_open_incident_reason(tmp_path):
+    # a target degrading from timeout to auth is the same outage, but the
+    # operator needs the reason it is failing for now, not the one it opened
+    # with
+    path = _db(tmp_path)
+    for index in range(2):
+        incidents.record(
+            path, incidents.CheckResult("host:syrax", False, "timeout"),
+            T0 + timedelta(seconds=30 * index),
+        )
+    assert incidents.open_incidents(path)[0]["reason"] == "timeout"
+
+    incidents.record(
+        path, incidents.CheckResult("host:syrax", False, "auth"), T0 + timedelta(seconds=60)
+    )
+
+    assert incidents.open_incidents(path)[0]["reason"] == "auth"
+
+
+def test_an_unnamed_failure_never_overwrites_a_named_reason(tmp_path):
+    path = _db(tmp_path)
+    for index in range(2):
+        incidents.record(
+            path, incidents.CheckResult("host:syrax", False, "timeout"),
+            T0 + timedelta(seconds=30 * index),
+        )
+
+    incidents.record(
+        path, incidents.CheckResult("host:syrax", False, ""), T0 + timedelta(seconds=60)
+    )
+
+    assert incidents.open_incidents(path)[0]["reason"] == "timeout"
 
 
 def test_a_non_default_threshold_is_honored(tmp_path):

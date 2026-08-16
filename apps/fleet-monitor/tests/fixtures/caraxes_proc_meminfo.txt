@@ -6,3 +6,11 @@ Cached:           624132 kB
 SwapCached:          104 kB
 Active:           644308 kB
 Inactive:         579664 kB
+Active(anon):     512904 kB
+Inactive(anon):   161228 kB
+Active(file):     131404 kB
+Inactive(file):   418436 kB
+Unevictable:           0 kB
+Mlocked:               0 kB
+SwapTotal:       2097084 kB
+SwapFree:        2094876 kB

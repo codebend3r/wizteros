@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from datetime import datetime, timezone
 
 from fleet_monitor import config, incidents, rollups, store
@@ -29,6 +29,29 @@ _PARSERS = {
 
 _SLOW_EVERY = config.SLOW_INTERVAL // config.VITALS_INTERVAL
 
+# Transport reasons that mean nothing was observed rather than that the target
+# failed. spawn_error is raised on this side of the wire - ssh missing from
+# PATH, or the process out of file descriptors - so recording it as a failed
+# host check would manufacture an outage on all five hosts at once, from a
+# fault none of them have. Same contract the docker endpoint already follows.
+_NOT_OBSERVED = frozenset({"spawn_error"})
+
+
+def _section_samples(
+    name: str, parser: Callable[[str], tuple[Sample, ...]], body: str
+) -> tuple[Sample, ...]:
+    """One section's samples, or none if its parser could not read it.
+
+    The isolation is the point. Without it the whole run is one generator, and
+    a single malformed byte anywhere discards every section for that host
+    rather than the one it came from.
+    """
+    try:
+        return tuple(parser(body))
+    except Exception:
+        log.warning("section %r failed to parse (%d bytes)", name, len(body), exc_info=True)
+        return ()
+
 
 def samples_from_sections(sections: dict[str, str]) -> tuple[Sample, ...]:
     """Run every section through its parser and flatten the result.
@@ -40,7 +63,7 @@ def samples_from_sections(sections: dict[str, str]) -> tuple[Sample, ...]:
         sample
         for name, parser in _PARSERS.items()
         if name in sections
-        for sample in parser(sections[name])
+        for sample in _section_samples(name, parser, sections[name])
     )
 
 
@@ -50,13 +73,27 @@ def _log_raised(label: str, outcomes: Iterable[object]) -> tuple[object, ...]:
     gather(return_exceptions=True) is what keeps one wedged host from taking
     the whole round down, but a swallowed exception is a silent hole, so every
     one of them is logged here before being dropped.
+
+    Only `Exception` is swallowed. A BaseException that is not one is the
+    process being torn down - CancelledError above all - and absorbing that
+    makes graceful shutdown impossible, so it is re-raised instead.
     """
-    raised = tuple(item for item in outcomes if isinstance(item, BaseException))
+    fatal = next(
+        (
+            item
+            for item in outcomes
+            if isinstance(item, BaseException) and not isinstance(item, Exception)
+        ),
+        None,
+    )
+    if fatal is not None:
+        raise fatal
+    raised = tuple(item for item in outcomes if isinstance(item, Exception))
     if raised:
         log.warning(
             "%s: %d job(s) raised: %s", label, len(raised), "; ".join(map(repr, raised))
         )
-    return tuple(item for item in outcomes if not isinstance(item, BaseException))
+    return tuple(item for item in outcomes if not isinstance(item, Exception))
 
 
 async def _probe(host: Host, body: str, timeout: int) -> ssh.SshResult:
@@ -71,19 +108,32 @@ def _write_sections(db: str, host: Host, at: datetime, stdout: str) -> int:
 
 async def collect_host(
     host: Host, at: datetime, db: str, *, timeout: int = 15
-) -> CheckResult:
-    """One host, one vitals round trip.
+) -> CheckResult | None:
+    """One host, one vitals round trip, or None when nothing was observed.
 
     The host itself is a target the collector really did observe: the ssh run
     either worked or it did not, so either outcome is a real check and is
     recorded. A failure writes no samples, so an unreachable box never renders
     as a healthy empty one.
+
+    Two cases are not that. A local spawn failure says nothing about the host,
+    so no check is recorded at all. And an ssh run that exits 0 carrying a
+    payload nothing could parse observed the box but measured none of it, which
+    is not a healthy round either: it is recorded as a failure named
+    empty_payload rather than as a success with zero samples.
     """
     result = await _probe(host, script.VITALS_SCRIPT, timeout)
-    check = CheckResult(target=f"host:{host.name}", ok=result.ok, reason=result.reason)
+    if result.reason in _NOT_OBSERVED:
+        log.warning("vitals probe for %s could not run: %s", host.name, result.reason)
+        return None
+
+    written = _write_sections(db, host, at, result.stdout) if result.ok else 0
+    check = CheckResult(
+        target=f"host:{host.name}",
+        ok=result.ok and written > 0,
+        reason=result.reason or ("" if written else "empty_payload"),
+    )
     incidents.record(db, check, at)
-    if result.ok:
-        _write_sections(db, host, at, result.stdout)
     return check
 
 
@@ -185,6 +235,17 @@ async def collect_containers(
     return checks
 
 
+def _as_checks(outcome: object) -> tuple[CheckResult, ...]:
+    """The checks one job recorded, if it recorded any.
+
+    A job that observed nothing hands back None or an empty tuple, and the
+    difference between that and a healthy result must survive the flattening.
+    """
+    if isinstance(outcome, tuple):
+        return outcome
+    return (outcome,) if isinstance(outcome, CheckResult) else ()
+
+
 async def tick(at: datetime, db: str) -> tuple[CheckResult, ...]:
     """One collection round across the whole fleet, fully concurrent.
 
@@ -199,11 +260,7 @@ async def tick(at: datetime, db: str) -> tuple[CheckResult, ...]:
     completed = _log_raised("tick", outcomes)
 
     store.write_heartbeat(db, at)
-    return tuple(
-        check
-        for outcome in completed
-        for check in (outcome if isinstance(outcome, tuple) else (outcome,))
-    )
+    return tuple(check for outcome in completed for check in _as_checks(outcome))
 
 
 def is_slow_round(index: int) -> bool:
@@ -237,3 +294,11 @@ async def run_forever(db: str) -> None:
             rollups.prune(db, now)
         rounds += 1
         await asyncio.sleep(config.VITALS_INTERVAL)
+
+
+if __name__ == "__main__":
+    # `python -m fleet_monitor.collector` runs the loop against the same
+    # database the API reads. Where and how it is actually scheduled is a
+    # deployment decision, and deliberately not one this module makes.
+    logging.basicConfig(level=logging.INFO)
+    asyncio.run(run_forever(config.db_path()))

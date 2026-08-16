@@ -32,6 +32,11 @@ def parse_containers(payload: list[dict]) -> tuple[ContainerState, ...]:
 
     A malformed entry is skipped rather than raised on: one bad row must not
     cost the whole host's container view.
+
+    An entry whose first name is empty is skipped too. It would yield metrics
+    shaped `container..up`, which the web's container pattern cannot match, and
+    an incident against `container:<host>/` - an invisible container carrying an
+    invisible incident.
     """
     named = [
         (entry, entry.get("Names") or [])
@@ -40,7 +45,7 @@ def parse_containers(payload: list[dict]) -> tuple[ContainerState, ...]:
     ]
     return tuple(
         ContainerState(
-            name=names[0].lstrip("/"),
+            name=name,
             running=entry.get("State") == "running",
             health=_health(entry.get("Status", "")),
             restart_count=entry.get("RestartCount") or 0,
@@ -48,11 +53,20 @@ def parse_containers(payload: list[dict]) -> tuple[ContainerState, ...]:
         )
         for entry, names in named
         if names and isinstance(names[0], str)
+        for name in (names[0].lstrip("/"),)
+        if name
     )
 
 
 def to_samples(states: Iterable[ContainerState]) -> tuple[Sample, ...]:
-    """Up and health gauges, one pair per container.
+    """Up, health, and has_healthcheck gauges, one triple per container.
+
+    `healthy` means a healthcheck ran and passed, nothing weaker. Most
+    containers on this fleet declare no healthcheck at all, and folding that
+    into `healthy` would assert a check passed that was never run; dropping the
+    sample instead would read as failing one. So the third gauge carries
+    whether there is a check to believe, and the UI says plain "Up" when there
+    is not.
 
     No restart_count sample: GET /containers/json never returns RestartCount,
     so ContainerState.restart_count is always the default and a sample built
@@ -70,7 +84,12 @@ def to_samples(states: Iterable[ContainerState]) -> tuple[Sample, ...]:
             ),
             Sample(
                 metric=f"container.{state.name}.healthy",
-                value=1.0 if state.health in {"healthy", "none"} and state.running else 0.0,
+                value=1.0 if state.health == "healthy" and state.running else 0.0,
+                kind="gauge",
+            ),
+            Sample(
+                metric=f"container.{state.name}.has_healthcheck",
+                value=0.0 if state.health == "none" else 1.0,
                 kind="gauge",
             ),
         )

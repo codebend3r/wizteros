@@ -55,9 +55,17 @@ def test_parse_containers_defaults_a_null_restart_count_and_started_at():
     assert states[0].started_at == ""
 
 
+def test_parse_containers_skips_an_empty_first_name():
+    # an empty name yields metrics shaped `container..up`, which the web's
+    # container pattern cannot match, and an incident against `container:host/`:
+    # an invisible container carrying an invisible incident
+    assert docker.parse_containers([_payload(Names=[""])]) == ()
+    assert docker.parse_containers([_payload(Names=["/"])]) == ()
+
+
 def test_to_samples_emits_up_and_healthy_gauges():
     states = docker.parse_containers([
-        _payload(Names=["/sonarr"]),
+        _payload(Names=["/sonarr"], Status="Up 8 days (healthy)"),
         _payload(Names=["/radarr"], State="exited", Status="Exited (0) 3 hours ago"),
     ])
     got = {s.metric: s.value for s in docker.to_samples(states)}
@@ -65,6 +73,25 @@ def test_to_samples_emits_up_and_healthy_gauges():
     assert got["container.sonarr.up"] == 1.0
     assert got["container.radarr.up"] == 0.0
     assert got["container.sonarr.healthy"] == 1.0
+
+
+def test_to_samples_separates_a_failing_healthcheck_from_an_absent_one():
+    # "no healthcheck configured" is not "healthcheck passed": claiming the
+    # latter asserts a check ran that never did. The third gauge is what lets
+    # the UI say plain "Up" instead of guessing either way.
+    states = docker.parse_containers([
+        _payload(Names=["/passing"], Status="Up 8 days (healthy)"),
+        _payload(Names=["/failing"], Status="Up 2 minutes (unhealthy)"),
+        _payload(Names=["/unchecked"], Status="Up 11 days"),
+    ])
+    got = {s.metric: s.value for s in docker.to_samples(states)}
+
+    assert got["container.passing.healthy"] == 1.0
+    assert got["container.passing.has_healthcheck"] == 1.0
+    assert got["container.failing.healthy"] == 0.0
+    assert got["container.failing.has_healthcheck"] == 1.0
+    assert got["container.unchecked.healthy"] == 0.0
+    assert got["container.unchecked.has_healthcheck"] == 0.0
 
 
 def test_to_samples_never_emits_a_restart_count_sample():

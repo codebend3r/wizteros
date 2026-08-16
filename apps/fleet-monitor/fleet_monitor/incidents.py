@@ -76,6 +76,15 @@ def record(
             (result.target,),
         ).fetchone()
 
+        # a target degrading from timeout to auth is still the same outage,
+        # but the operator needs the reason it is failing for now, not the one
+        # it opened with. An empty reason never overwrites a named one.
+        if not result.ok and current is not None and result.reason:
+            connection.execute(
+                "UPDATE incidents SET reason = ? WHERE id = ?",
+                (result.reason, current["id"]),
+            )
+
         if fail_run >= threshold and current is None:
             connection.execute(
                 "INSERT INTO incidents (target, reason, opened_at) VALUES (?, ?, ?)",
@@ -148,15 +157,26 @@ def retire_absent(path: str, prefix: str, seen: Collection[str], at: datetime) -
     return len(stale)
 
 
-def uptime_percent(path: str, target: str, since: datetime, now: datetime) -> float:
-    """Percentage of the window the target was not inside an open incident.
+def uptime_percent(
+    path: str, target: str, since: datetime, now: datetime, *, observed_since: datetime
+) -> float | None:
+    """Percentage of the window the target was not inside an open incident, or
+    None when the collector did not watch the whole window.
 
     An incident still open at `now` counts as down through `now`; one that
     opened before the window is clipped to the window start.
+
+    `observed_since` is when the collector's current unbroken run began, and it
+    is required for the reason this whole module exists: availability computed
+    from incident rows alone knows nothing about whether anyone was watching.
+    A collector down for 23 of 24 hours leaves no incident rows for those 23
+    hours, and the window would score a flawless 100% for a day in which
+    nothing was observed. Unknown is the honest answer, so a window that starts
+    before the current run does returns None.
     """
     window = (now - since).total_seconds()
-    if window <= 0:
-        return 100.0
+    if window <= 0 or observed_since > since:
+        return None
 
     rows = _rows(
         path,

@@ -71,6 +71,14 @@ def compact(path: str, resolution: str, now: datetime) -> int:
 def read(
     path: str, resolution: str, target: str, metric: str
 ) -> tuple[tuple[datetime, float, float, float, int], ...]:
+    """One metric's rollup rows at the given resolution, oldest first.
+
+    `resolution` names a table and so is interpolated rather than bound, which
+    makes the membership check load-bearing rather than cosmetic: it is the
+    only thing between a caller's string and the SQL.
+    """
+    if resolution not in RESOLUTIONS:
+        raise KeyError(resolution)
     with _conn(path) as connection:
         rows = connection.execute(
             f"SELECT bucket, min_value, max_value, avg_value, sample_count "
@@ -90,7 +98,7 @@ def read(
 
 
 def prune(path: str, now: datetime) -> dict[str, int]:
-    """Drop rows past their retention window, newest resolution first."""
+    """Drop rows past their retention window, shortest retention first."""
     with _conn(path) as connection:
         return {
             table: connection.execute(
