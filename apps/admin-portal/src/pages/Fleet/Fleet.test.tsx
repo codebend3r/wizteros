@@ -119,6 +119,19 @@ test('HostCard flags week-stale readings while the fast tier still reads fresh',
   expect(screen.getByText(/7 days old/)).toBeInTheDocument()
 })
 
+test('HostCard says stale readings cannot be dated rather than "unknown old"', () => {
+  // the monitor sends a null age when nothing reported inside its age window,
+  // and when a clock step left a reading stamped ahead of now
+  render(
+    <HostCard
+      summary={{ ...summary, status: 'ok', metricsStale: true, oldestMetricAgeSeconds: null }}
+    />,
+  )
+
+  expect(screen.getByText(/recently enough to date these values/)).toBeInTheDocument()
+  expect(screen.queryByText(/unknown old/)).toBeNull()
+})
+
 // The status word is derived from disk, which is itself a slow-tier metric: on
 // a host whose slow probe died it is as frozen as the numbers under it. The
 // most prominent text on the card must not claim the present tense.

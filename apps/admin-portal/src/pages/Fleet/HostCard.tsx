@@ -67,9 +67,14 @@ export const HostCard = ({ summary }: HostCardProps) => {
 
       {!!staleStatus && (
         <p className={styles.note}>
-          Stale readings: the oldest metric on this host is{' '}
-          {formatAge(summary.oldestMetricAgeSeconds)} old. Disk and temperature refresh every 15
-          minutes, so the status above and every value below are history, not the present.
+          {/* the age is absent when nothing reported inside the monitor's age
+            window, or when a clock step left a reading stamped ahead of now;
+            "unknown old" would be worse than saying it cannot be dated */}
+          {summary.oldestMetricAgeSeconds === null
+            ? 'Stale readings: nothing on this host has reported recently enough to date these values.'
+            : `Stale readings: the oldest metric on this host is ${formatAge(summary.oldestMetricAgeSeconds)} old.`}{' '}
+          Disk and temperature refresh every 15 minutes, so the status above and every value below
+          are history, not the present.
         </p>
       )}
 
