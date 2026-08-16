@@ -31,8 +31,8 @@ test('gates /manage behind the Supabase login when signed out', () => {
   expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
 })
 
-test('serves the fleet overview at /fleet', () => {
-  // Held in flight so the route assertion never depends on a live monitor.
+// Held in flight so no route assertion here depends on a live fleet monitor.
+const renderFleetRoute = () => {
   vi.stubGlobal(
     'fetch',
     vi.fn(() => new Promise(() => {})),
@@ -46,6 +46,18 @@ test('serves the fleet overview at /fleet', () => {
       </MemoryRouter>
     </QueryClientProvider>,
   )
+}
+
+test('gates /fleet behind the Supabase login when signed out', () => {
+  useAuthStore.setState({ enabled: true, status: 'signed-out' })
+  renderFleetRoute()
+  expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
+  expect(screen.queryByRole('heading', { level: 1, name: 'Fleet' })).toBeNull()
+})
+
+test('serves the fleet overview at /fleet once past the gate', () => {
+  useAuthStore.setState({ enabled: false })
+  renderFleetRoute()
   expect(screen.getByRole('heading', { level: 1, name: 'Fleet' })).toBeInTheDocument()
 })
 

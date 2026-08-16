@@ -46,6 +46,14 @@
   text-transform: uppercase;
 }
 
+// The qualified form is a phrase, not a micro-label: uppercase tracking at
+// that length is unreadable, so drop it while keeping the same position.
+.statusStale {
+  font-size: var(--font-size-sm);
+  letter-spacing: normal;
+  text-transform: none;
+}
+
 .ip {
   color: var(--color-muted);
   font-family: var(--font-mono);

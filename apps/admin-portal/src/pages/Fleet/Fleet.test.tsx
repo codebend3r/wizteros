@@ -1,9 +1,11 @@
 import { render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, expect, test, vi } from '@/test/vi'
 import type { FleetHost, HostSummary } from '@/lib/fleetApi'
 import { Fleet } from '@/pages/Fleet/Fleet'
 import { HostCard } from '@/pages/Fleet/HostCard'
+import { useAuthStore } from '@/stores/authStore'
 
 const summary: HostSummary = {
   name: 'vermithor',
@@ -34,11 +36,17 @@ const host: FleetHost = {
   uptime_percent_24h: 100,
 }
 
+// AdminLayout brings the header, sidebar and footer, so the page needs a
+// router; the gate is dormant while Supabase is unconfigured, as in every
+// other page suite.
 const renderFleet = () => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  useAuthStore.setState({ enabled: false })
   return render(
     <QueryClientProvider client={queryClient}>
-      <Fleet />
+      <MemoryRouter initialEntries={['/fleet']}>
+        <Fleet />
+      </MemoryRouter>
     </QueryClientProvider>,
   )
 }
@@ -107,9 +115,35 @@ test('HostCard flags week-stale readings while the fast tier still reads fresh',
     />,
   )
 
-  expect(screen.getByText('Healthy')).toBeInTheDocument()
   expect(screen.getByText(/Stale readings/)).toBeInTheDocument()
   expect(screen.getByText(/7 days old/)).toBeInTheDocument()
+})
+
+// The status word is derived from disk, which is itself a slow-tier metric: on
+// a host whose slow probe died it is as frozen as the numbers under it. The
+// most prominent text on the card must not claim the present tense.
+test.each([
+  ['ok', 'Healthy'],
+  ['warn', 'Needs attention'],
+] as const)(
+  'HostCard never presents an unqualified %s status when metrics are stale',
+  (status, label) => {
+    render(
+      <HostCard
+        summary={{ ...summary, status, metricsStale: true, oldestMetricAgeSeconds: 604_800 }}
+      />,
+    )
+
+    expect(screen.queryByText(label)).toBeNull()
+    expect(screen.getByText(`${label} as of the last reading`)).toBeInTheDocument()
+  },
+)
+
+test('HostCard leaves the status unqualified when every metric is fresh', () => {
+  render(<HostCard summary={{ ...summary, status: 'ok', metricsStale: false }} />)
+
+  expect(screen.getByText('Healthy')).toBeInTheDocument()
+  expect(screen.queryByText(/as of the last reading/)).toBeNull()
 })
 
 test('HostCard omits the gpu row on a host with no render node', () => {

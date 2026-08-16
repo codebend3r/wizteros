@@ -103,12 +103,12 @@ export const formatAge = (seconds: number | null): string => {
 }
 
 /** A metric's value, or null when the collector never recorded it. */
-const metricValue = (metrics: FleetMetrics, key: string): number | null =>
+const metricValue = ({ metrics, key }: { metrics: FleetMetrics; key: string }): number | null =>
   typeof metrics[key] === 'number' ? metrics[key] : null
 
 export const memoryUsedPercent = (metrics: FleetMetrics): number | null => {
-  const total = metricValue(metrics, 'mem.total_bytes')
-  const available = metricValue(metrics, 'mem.available_bytes')
+  const total = metricValue({ metrics, key: 'mem.total_bytes' })
+  const available = metricValue({ metrics, key: 'mem.available_bytes' })
   if (total === null || total <= 0 || available === null) return null
   return Math.round(((total - available) / total) * 100)
 }
@@ -126,8 +126,8 @@ const containerNames = (metrics: FleetMetrics): readonly string[] =>
 const toContainers = (metrics: FleetMetrics): readonly ContainerSummary[] =>
   containerNames(metrics).map((name) => ({
     name,
-    up: metricValue(metrics, `container.${name}.up`) === 1,
-    healthy: metricValue(metrics, `container.${name}.healthy`) === 1,
+    up: metricValue({ metrics, key: `container.${name}.up` }) === 1,
+    healthy: metricValue({ metrics, key: `container.${name}.healthy` }) === 1,
   }))
 
 const hostStatus = ({
@@ -153,8 +153,10 @@ const hostStatus = ({
  * unhealthy, and calling it so would bury the one fact worth surfacing.
  */
 export const toHostSummary = (host: FleetHost): HostSummary => {
-  const load = host.collected ? metricValue(host.metrics, 'load.1m') : null
-  const diskPercent = host.collected ? metricValue(host.metrics, DISK_PERCENT_METRIC) : null
+  const load = host.collected ? metricValue({ metrics: host.metrics, key: 'load.1m' }) : null
+  const diskPercent = host.collected
+    ? metricValue({ metrics: host.metrics, key: DISK_PERCENT_METRIC })
+    : null
   const loadPerCore = load === null ? null : load / CORES
 
   return {
@@ -165,9 +167,13 @@ export const toHostSummary = (host: FleetHost): HostSummary => {
     hasDocker: host.has_docker,
     loadPerCore,
     memoryPercent: host.collected ? memoryUsedPercent(host.metrics) : null,
-    memoryTotalBytes: host.collected ? metricValue(host.metrics, 'mem.total_bytes') : null,
+    memoryTotalBytes: host.collected
+      ? metricValue({ metrics: host.metrics, key: 'mem.total_bytes' })
+      : null,
     diskPercent,
-    diskTotalBytes: host.collected ? metricValue(host.metrics, DISK_TOTAL_METRIC) : null,
+    diskTotalBytes: host.collected
+      ? metricValue({ metrics: host.metrics, key: DISK_TOTAL_METRIC })
+      : null,
     uptimePercent: host.uptime_percent_24h,
     metricsStale: host.metrics_stale,
     oldestMetricAgeSeconds: host.oldest_metric_age_seconds,
