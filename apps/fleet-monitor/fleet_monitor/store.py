@@ -34,10 +34,18 @@ CREATE TABLE IF NOT EXISTS coverage (
 )
 """
 
-# Three missed rounds. Under that the collector was up and merely late; past
-# it there are hours nobody watched, and coverage has to restart so nothing
-# downstream reads that silence as a clean run.
-COVERAGE_GAP = timedelta(seconds=config.VITALS_INTERVAL * 3)
+# How far apart two rounds may start before the silence between them counts as
+# unwatched. Measured start to start, which means a round's own duration is
+# inside it: a slow round spends up to MAX_ROUND_SECONDS (90s) on ssh before
+# the loop sleeps VITALS_INTERVAL again, so consecutive stamps land ~120s apart
+# with the collector never having stopped. A three-missed-tick tolerance (90s)
+# tripped on that every 15 minutes and blanked every uptime score for the next
+# 24 hours.
+#
+# True tolerance: one worst-case slow round plus three missed intervals, 180s.
+# That admits the 120s round with 60s to spare and still restarts coverage on
+# any real stall, which staleness surfaces separately at 90s regardless.
+COVERAGE_GAP = timedelta(seconds=config.MAX_ROUND_SECONDS + config.VITALS_INTERVAL * 3)
 
 
 def _conn(path: str) -> sqlite3.Connection:
@@ -73,18 +81,27 @@ def write_samples(path: str, target: str, at: datetime, samples: Iterable[Sample
     return len(rows)
 
 
-def latest(path: str, target: str) -> dict[str, float]:
-    """The newest value of every metric for one target."""
+def latest(path: str, target: str, *, since: datetime) -> dict[str, float]:
+    """The newest value of every metric for one target, seen since `since`.
+
+    `since` is required, and it is the same floor `metric_ages` takes, because
+    the two must always describe the same set of metrics. Samples are retained
+    for seven days while the age window is a day, so an unfloored read returns
+    values nothing can date: a disk reading from a slow tier that died three
+    days ago came back as a current number with no age beside it and no
+    staleness flag, and the page printed a bare "Healthy" over it. A value that
+    cannot be dated is not shown at all.
+    """
     with _conn(path) as connection:
         rows = connection.execute(
             """
             SELECT metric, value FROM samples
-            WHERE target = ? AND at = (
+            WHERE target = ? AND at >= ? AND at = (
                 SELECT MAX(at) FROM samples AS inner
                 WHERE inner.target = samples.target AND inner.metric = samples.metric
             )
             """,
-            (target,),
+            (target, since.isoformat()),
         ).fetchall()
     return {row["metric"]: row["value"] for row in rows}
 
@@ -160,10 +177,17 @@ def write_heartbeat(path: str, at: datetime, *, gap: timedelta = COVERAGE_GAP) -
 
     The coverage mark is the second half of that: it is when the current
     unbroken run of rounds began. A round more than `gap` after the previous
-    one - or before it, if the clock stepped backwards - means hours went
+    one - or before it, if the clock stepped backwards - means time went
     unwatched, so the mark restarts and no window reaching back past it can be
-    scored as uptime. `gap` is a parameter only so a test can span hours in two
-    writes; the collector always uses the default.
+    scored as uptime. The default tolerates a worst-case slow round plus three
+    missed intervals (180s), not three missed intervals: the gap is measured
+    between round starts, so each round's own duration is spent inside it.
+    `gap` is a parameter only so a test can span hours in two writes; the
+    collector always uses the default.
+
+    This mark is collector-wide and says only that a round happened. Whether
+    any one target was observed by that round is a separate fact, tracked per
+    target in `incidents.observed_run`.
     """
     with _conn(path) as connection:
         row = connection.execute("SELECT at FROM heartbeat WHERE id = 1").fetchone()

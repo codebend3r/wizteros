@@ -10,6 +10,11 @@ from fleet_monitor.transport.ssh import SshResult
 
 T0 = datetime(2026, 8, 10, 12, 0, 0, tzinfo=timezone.utc)
 
+# these tests are about what the collector writes, not about the age floor
+# `latest` takes, so the floor is set wide enough that it never decides an
+# assertion here
+ANY_AGE = T0 - timedelta(days=30)
+
 SECTIONS = {
     "stat": "cpu  100 0 50 900 0 0 0 0 0 0\n",
     "meminfo": "MemTotal:  1683776 kB\nMemAvailable: 741756 kB\n",
@@ -130,7 +135,7 @@ async def test_collect_host_records_a_failure_for_an_unroutable_ip(tmp_path, mon
     assert result.target == "host:ghost"
     assert result.reason != ""
     # nothing collected must not look like a healthy empty host
-    assert store.latest(db, "host:ghost") == {}
+    assert store.latest(db, "host:ghost", since=ANY_AGE) == {}
 
 
 async def test_collect_host_writes_samples_on_success(tmp_path, monkeypatch):
@@ -142,7 +147,7 @@ async def test_collect_host_writes_samples_on_success(tmp_path, monkeypatch):
     result = await collector.collect_host(DOCKER_HOST, T0, db)
 
     assert result == incidents.CheckResult(target="host:meleys", ok=True, reason="")
-    assert store.latest(db, "host:meleys")["load.1m"] == 0.20
+    assert store.latest(db, "host:meleys", since=ANY_AGE)["load.1m"] == 0.20
 
 
 async def test_collect_host_writes_no_samples_when_ssh_fails(tmp_path, monkeypatch):
@@ -155,7 +160,7 @@ async def test_collect_host_writes_no_samples_when_ssh_fails(tmp_path, monkeypat
 
     assert result.ok is False
     assert result.reason == "timeout"
-    assert store.latest(db, "host:meleys") == {}
+    assert store.latest(db, "host:meleys", since=ANY_AGE) == {}
 
 
 def test_one_bad_section_never_discards_the_others(monkeypatch):
@@ -191,7 +196,7 @@ async def test_a_local_spawn_failure_records_no_host_check(tmp_path, monkeypatch
 
     assert incidents.open_incidents(db) == ()
     assert incidents.history(db, since=T0 - timedelta(hours=1)) == ()
-    assert store.latest(db, "host:meleys") == {}
+    assert store.latest(db, "host:meleys", since=ANY_AGE) == {}
 
 
 async def test_a_spawn_failure_leaves_no_check_in_the_tick(tmp_path, monkeypatch):
@@ -204,6 +209,27 @@ async def test_a_spawn_failure_leaves_no_check_in_the_tick(tmp_path, monkeypatch
     checks = await collector.tick(T0, db)
 
     assert not any(check.target.startswith("host:") for check in checks)
+
+
+async def test_a_spawn_failure_leaves_the_hosts_uptime_unknown(tmp_path, monkeypatch):
+    # the whole shape of the bug: ssh cannot be spawned, so no host check is
+    # recorded - correctly, since a fault on this side says nothing about any
+    # host - while the docker endpoints beside them do record one every tick.
+    # Coverage tracked collector-wide therefore ran on unbroken, and every host
+    # scored a flawless day over hours in which not one of them was observed.
+    db = _db(tmp_path)
+    monkeypatch.setattr(
+        collector.ssh, "run", _fake_ssh(SshResult(ok=False, stdout="", reason="spawn_error"))
+    )
+    monkeypatch.setattr(collector.http, "get_json", _fake_http(DOCKER_REFUSED))
+
+    for index in range(4):
+        await collector.tick(T0 + timedelta(seconds=30 * index), db)
+
+    assert incidents.observed_run(db, "host:meleys") is None
+    # the endpoint beside it was observed on every one of those ticks, which is
+    # exactly why a collector-wide mark could not tell the difference
+    assert incidents.observed_run(db, "docker:meleys").since == T0
 
 
 async def test_a_successful_probe_that_measured_nothing_is_not_a_healthy_check(
@@ -222,7 +248,7 @@ async def test_a_successful_probe_that_measured_nothing_is_not_a_healthy_check(
     assert result is not None
     assert result.ok is False
     assert result.reason == "empty_payload"
-    assert store.latest(db, "host:meleys") == {}
+    assert store.latest(db, "host:meleys", since=ANY_AGE) == {}
 
 
 def test_a_cancelled_job_is_never_swallowed():
@@ -272,7 +298,7 @@ async def test_collect_slow_writes_the_slow_tier_samples(tmp_path, monkeypatch):
 
     await collector.collect_slow(DOCKER_HOST, T0, db)
 
-    assert store.latest(db, "host:meleys")["disk.volume1.used_percent"] == 40.0
+    assert store.latest(db, "host:meleys", since=ANY_AGE)["disk.volume1.used_percent"] == 40.0
 
 
 async def test_collect_slow_never_folds_a_second_check_into_the_streak(tmp_path, monkeypatch):
@@ -299,7 +325,7 @@ async def test_collect_slow_writes_nothing_when_ssh_fails(tmp_path, monkeypatch)
 
     await collector.collect_slow(DOCKER_HOST, T0, db)
 
-    assert store.latest(db, "host:meleys") == {}
+    assert store.latest(db, "host:meleys", since=ANY_AGE) == {}
 
 
 async def test_collect_containers_is_a_no_op_without_a_docker_url(tmp_path):
@@ -307,7 +333,7 @@ async def test_collect_containers_is_a_no_op_without_a_docker_url(tmp_path):
     host = config.Host(name="caraxes", ip="192.168.50.4", has_gpu=False, docker_url="")
 
     assert await collector.collect_containers(host, T0, db) == ()
-    assert store.latest(db, "host:caraxes") == {}
+    assert store.latest(db, "host:caraxes", since=ANY_AGE) == {}
 
 
 async def test_collect_containers_checks_every_container(tmp_path, monkeypatch):
@@ -328,7 +354,7 @@ async def test_collect_containers_checks_every_container(tmp_path, monkeypatch):
     assert by_target["container:meleys/sonarr"].ok is True
     assert by_target["container:meleys/radarr"].ok is False
     assert by_target["container:meleys/radarr"].reason == "not_running"
-    assert store.latest(db, "host:meleys")["container.sonarr.up"] == 1.0
+    assert store.latest(db, "host:meleys", since=ANY_AGE)["container.sonarr.up"] == 1.0
 
 
 async def test_collect_containers_names_an_unhealthy_container(tmp_path, monkeypatch):

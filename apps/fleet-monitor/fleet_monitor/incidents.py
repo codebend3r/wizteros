@@ -1,8 +1,8 @@
 from collections.abc import Collection
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from fleet_monitor.store import _conn
+from fleet_monitor.store import COVERAGE_GAP, _conn
 
 _INCIDENTS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS incidents (
@@ -16,10 +16,11 @@ CREATE TABLE IF NOT EXISTS incidents (
 
 _STREAK_SCHEMA = """
 CREATE TABLE IF NOT EXISTS check_streak (
-    target     TEXT PRIMARY KEY,
-    ok_run     INTEGER NOT NULL DEFAULT 0,
-    fail_run   INTEGER NOT NULL DEFAULT 0,
-    last_at    TEXT NOT NULL
+    target         TEXT PRIMARY KEY,
+    ok_run         INTEGER NOT NULL DEFAULT 0,
+    fail_run       INTEGER NOT NULL DEFAULT 0,
+    last_at        TEXT NOT NULL,
+    observed_since TEXT NOT NULL
 )
 """
 
@@ -31,17 +32,53 @@ class CheckResult:
     reason: str = ""
 
 
+@dataclass(frozen=True, slots=True)
+class ObservedRun:
+    """The stretch of time one target was actually being checked.
+
+    `since` is when its current unbroken run of recorded checks began, `until`
+    is when the last one landed. Both halves are load-bearing: a run that began
+    before a window but stopped inside it leaves the rest of that window
+    unobserved, and scoring it would read the collector's silence as the target
+    being up.
+    """
+
+    since: datetime
+    until: datetime
+
+
 def init_db(path: str) -> None:
+    """Create this module's tables, and carry an older check_streak forward.
+
+    CREATE TABLE IF NOT EXISTS never widens an existing table, so a database
+    written before observed_since existed would answer every check with "no
+    such column". The backfill claims only what the old row proves: the last
+    check it saw. That under-claims coverage - uptime reads Unknown until a
+    fresh run has spanned the window - which is the safe direction to be wrong.
+    """
     with _conn(path) as connection:
         connection.execute(_INCIDENTS_SCHEMA)
         connection.execute(_STREAK_SCHEMA)
+        columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(check_streak)")
+        }
+        if "observed_since" not in columns:
+            connection.execute(
+                "ALTER TABLE check_streak ADD COLUMN observed_since TEXT NOT NULL DEFAULT ''"
+            )
+            connection.execute("UPDATE check_streak SET observed_since = last_at")
         connection.execute(
             "CREATE INDEX IF NOT EXISTS ix_incidents_target ON incidents (target, opened_at)"
         )
 
 
 def record(
-    path: str, result: CheckResult, at: datetime, *, threshold: int = 2
+    path: str,
+    result: CheckResult,
+    at: datetime,
+    *,
+    threshold: int = 2,
+    gap: timedelta = COVERAGE_GAP,
 ) -> str | None:
     """Fold one check into the streak, opening or closing an incident on the
     threshold. Returns "opened", "closed", or None.
@@ -56,19 +93,40 @@ def record(
     collector could not reach is left unknown rather than being marked
     healthy (which would silently close a real incident) or down (which
     would fabricate one).
+
+    Skipping it is also what makes the coverage mark honest, and that is the
+    other half of this row. Every recorded check extends this target's observed
+    run; a tick that recorded nothing for it extends nothing, so a stretch the
+    collector could not observe shows up as a gap here rather than as an
+    unbroken run over hours nobody watched. `gap` is the same tolerance the
+    collector-wide mark uses, and is a parameter only so a test can span hours
+    in two calls.
     """
     with _conn(path) as connection:
         row = connection.execute(
-            "SELECT ok_run, fail_run FROM check_streak WHERE target = ?", (result.target,)
+            "SELECT ok_run, fail_run, last_at, observed_since FROM check_streak "
+            "WHERE target = ?",
+            (result.target,),
         ).fetchone()
         ok_run = (row["ok_run"] if row else 0) + 1 if result.ok else 0
         fail_run = 0 if result.ok else (row["fail_run"] if row else 0) + 1
 
+        previous_at = datetime.fromisoformat(row["last_at"]) if row else None
+        # a check further than `gap` from the previous one - or before it, if
+        # the clock stepped backwards - leaves time this target was not being
+        # checked, so its run starts over here
+        observed_since = (
+            row["observed_since"]
+            if previous_at is not None and timedelta(0) <= at - previous_at <= gap
+            else at.isoformat()
+        )
+
         connection.execute(
-            "INSERT INTO check_streak (target, ok_run, fail_run, last_at) "
-            "VALUES (?, ?, ?, ?) ON CONFLICT(target) DO UPDATE SET "
-            "ok_run = excluded.ok_run, fail_run = excluded.fail_run, last_at = excluded.last_at",
-            (result.target, ok_run, fail_run, at.isoformat()),
+            "INSERT INTO check_streak (target, ok_run, fail_run, last_at, observed_since) "
+            "VALUES (?, ?, ?, ?, ?) ON CONFLICT(target) DO UPDATE SET "
+            "ok_run = excluded.ok_run, fail_run = excluded.fail_run, "
+            "last_at = excluded.last_at, observed_since = excluded.observed_since",
+            (result.target, ok_run, fail_run, at.isoformat(), observed_since),
         )
 
         current = connection.execute(
@@ -157,25 +215,58 @@ def retire_absent(path: str, prefix: str, seen: Collection[str], at: datetime) -
     return len(stale)
 
 
+def observed_run(path: str, target: str) -> ObservedRun | None:
+    """This target's current unbroken run of recorded checks, or None when it
+    has never had one.
+
+    Per target, not collector-wide, because those are different facts. A host
+    whose ssh cannot even be spawned records no check while the docker endpoint
+    beside it records one every tick: the round happened, that host was not
+    observed by it. A host that is merely down still records a failed check and
+    so keeps its run advancing, which is why per-target coverage does not go
+    Unknown for the host that is actually down - only for the one nothing
+    looked at.
+    """
+    with _conn(path) as connection:
+        row = connection.execute(
+            "SELECT observed_since, last_at FROM check_streak WHERE target = ?", (target,)
+        ).fetchone()
+    if row is None:
+        return None
+    return ObservedRun(
+        since=datetime.fromisoformat(row["observed_since"]),
+        until=datetime.fromisoformat(row["last_at"]),
+    )
+
+
 def uptime_percent(
-    path: str, target: str, since: datetime, now: datetime, *, observed_since: datetime
+    path: str,
+    target: str,
+    since: datetime,
+    now: datetime,
+    *,
+    observed: ObservedRun,
+    gap: timedelta = COVERAGE_GAP,
 ) -> float | None:
     """Percentage of the window the target was not inside an open incident, or
-    None when the collector did not watch the whole window.
+    None when the target was not watched for the whole window.
 
     An incident still open at `now` counts as down through `now`; one that
     opened before the window is clipped to the window start.
 
-    `observed_since` is when the collector's current unbroken run began, and it
-    is required for the reason this whole module exists: availability computed
-    from incident rows alone knows nothing about whether anyone was watching.
-    A collector down for 23 of 24 hours leaves no incident rows for those 23
-    hours, and the window would score a flawless 100% for a day in which
-    nothing was observed. Unknown is the honest answer, so a window that starts
-    before the current run does returns None.
+    `observed` is required for the reason this whole module exists:
+    availability computed from incident rows alone knows nothing about whether
+    anyone was watching. A collector down for 23 of 24 hours leaves no incident
+    rows for those 23 hours, and the window would score a flawless 100% for a
+    day in which nothing was observed. So both ends of the run have to cover
+    the window: one that started after `since` leaves the front unwatched, and
+    one whose last check is further back than `gap` leaves the tail unwatched -
+    which is exactly the shape of a collector that can no longer reach this
+    target while still ticking. Unknown is the honest answer for both.
     """
     window = (now - since).total_seconds()
-    if window <= 0 or observed_since > since:
+    watched_to_the_end = timedelta(0) <= now - observed.until <= gap
+    if window <= 0 or observed.since > since or not watched_to_the_end:
         return None
 
     rows = _rows(

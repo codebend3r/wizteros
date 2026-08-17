@@ -4,6 +4,22 @@ from dataclasses import dataclass
 VITALS_INTERVAL = 30
 SLOW_INTERVAL = 900
 
+# ssh connect budgets for the two tiers. transport.ssh gives a whole capture
+# SSH_CAPTURE_FACTOR times the connect timeout before it kills the process, so
+# the wall-clock ceiling of one probe is the product, not the timeout itself.
+# tests/test_config.py pins the factor against transport.ssh so this cannot
+# drift out from under the derivation below.
+VITALS_TIMEOUT = 15
+SLOW_TIMEOUT = 30
+SSH_CAPTURE_FACTOR = 2
+
+# The longest one collection round can legitimately take. Both tiers fan every
+# host out concurrently, so fleet size does not enter into it; a slow round is
+# the two tiers in series, each bounded by its own capture ceiling. Anything
+# that measures the distance between rounds has to allow for this, because a
+# round's own duration lands inside that distance.
+MAX_ROUND_SECONDS = (VITALS_TIMEOUT + SLOW_TIMEOUT) * SSH_CAPTURE_FACTOR
+
 
 @dataclass(frozen=True, slots=True)
 class Host:

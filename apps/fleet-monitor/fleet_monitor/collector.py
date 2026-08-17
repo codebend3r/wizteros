@@ -107,7 +107,7 @@ def _write_sections(db: str, host: Host, at: datetime, stdout: str) -> int:
 
 
 async def collect_host(
-    host: Host, at: datetime, db: str, *, timeout: int = 15
+    host: Host, at: datetime, db: str, *, timeout: int = config.VITALS_TIMEOUT
 ) -> CheckResult | None:
     """One host, one vitals round trip, or None when nothing was observed.
 
@@ -137,7 +137,9 @@ async def collect_host(
     return check
 
 
-async def collect_slow(host: Host, at: datetime, db: str, *, timeout: int = 30) -> None:
+async def collect_slow(
+    host: Host, at: datetime, db: str, *, timeout: int = config.SLOW_TIMEOUT
+) -> None:
     """One host, one slow-tier round trip: disks, temperatures, inotify.
 
     Deliberately records no check. The vitals tier already checks this exact

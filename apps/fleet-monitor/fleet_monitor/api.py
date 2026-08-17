@@ -41,6 +41,11 @@ METRICS_STALE_AFTER = config.SLOW_INTERVAL * 3
 # reading. Counting it forever would pin `metrics_stale` true on a healthy
 # host. Deliberately far above METRICS_STALE_AFTER: everything between the two
 # still reads as stale, which is the whole detection band.
+#
+# It bounds what is reported, not just what is aged. Samples live seven days,
+# so past this window a reading is still on disk with no age the window can
+# express, and reporting the value while dropping its age is how a week-old
+# disk number came back beside a bare "Healthy". Both reads take this floor.
 METRIC_AGE_WINDOW = 24 * 3600
 
 # Generous but bounded, well under what `timedelta` can represent. Without a
@@ -99,6 +104,13 @@ def fleet() -> dict:
     temperatures) has been failing silently is still caught: `collected` is
     true, the top-level `stale` is false, but `metrics_stale` is true because
     its oldest metric has outlived three slow-tier ticks.
+
+    That flag can only speak for readings inside METRIC_AGE_WINDOW. Past a day
+    a metric is no longer late, it is gone, and `metrics` stops carrying it at
+    the same moment `metric_ages` stops dating it - so the slow tier that died
+    three days ago shows its disk reading as absent rather than as a current
+    number nothing can date. A host whose every reading has aged out that way
+    reports `collected` false, the same as one nothing has ever reached.
     """
     db = config.db_path()
     now = datetime.now(tz=timezone.utc)
@@ -118,12 +130,43 @@ def fleet() -> dict:
     }
 
 
+def _uptime_24h(
+    *, db: str, target: str, now: datetime, observed_since: datetime | None
+) -> float | None:
+    """This target's 24h availability, or None when nobody watched the window.
+
+    Two coverage facts have to hold, and they are not the same fact.
+    `observed_since` is collector-wide and says a round happened at all; the
+    per-target run says a round observed *this* target. A spawn failure - ssh
+    missing from PATH, the process out of file descriptors - records no check
+    for any host while the docker endpoints beside them keep recording one, so
+    the collector-wide mark runs on unbroken and would score a flawless day
+    over hours in which not one host was looked at.
+    """
+    run = incidents.observed_run(db, target)
+    if run is None or observed_since is None:
+        return None
+    return incidents.uptime_percent(
+        db,
+        target,
+        since=now - timedelta(hours=24),
+        now=now,
+        # the later of the two starts: neither mark may widen the other's claim
+        observed=incidents.ObservedRun(
+            since=max(run.since, observed_since), until=run.until
+        ),
+    )
+
+
 def _host_status(
     *, db: str, host: config.Host, now: datetime, observed_since: datetime | None
 ) -> dict:
     target = f"host:{host.name}"
-    metrics = store.latest(db, target)
-    ages = store.metric_ages(db, target, since=now - timedelta(seconds=METRIC_AGE_WINDOW))
+    # one floor, read once, for both: a value `metric_ages` cannot date is a
+    # value `latest` must not report
+    since = now - timedelta(seconds=METRIC_AGE_WINDOW)
+    metrics = store.latest(db, target, since=since)
+    ages = store.metric_ages(db, target, since=since)
     oldest_age = _age_seconds(now=now, at=min(ages.values())) if ages else None
     return {
         "name": host.name,
@@ -136,17 +179,11 @@ def _host_status(
         "metrics_stale": oldest_age is None or oldest_age > METRICS_STALE_AFTER,
         # a host never checked at all is unknown, not a perfect score - an
         # empty incident history must not read as proven uptime. Neither must
-        # hours the collector itself was not running for: uptime_percent
-        # returns None when the window starts before its current run did.
+        # hours nothing observed this host for, whether because the collector
+        # was not running or because it was running and could not see it.
         "uptime_percent_24h": (
-            incidents.uptime_percent(
-                db,
-                target,
-                since=now - timedelta(hours=24),
-                now=now,
-                observed_since=observed_since,
-            )
-            if metrics and observed_since is not None
+            _uptime_24h(db=db, target=target, now=now, observed_since=observed_since)
+            if metrics
             else None
         ),
     }

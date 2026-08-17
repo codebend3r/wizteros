@@ -7,6 +7,10 @@ from fleet_monitor.probes.types import Sample
 
 T0 = datetime(2026, 8, 10, 12, 0, 0, tzinfo=timezone.utc)
 
+# these tests are about retention, not about the age floor `latest` takes, so
+# the floor is set wide enough that it never decides an assertion here
+ANY_AGE = T0 - timedelta(days=30)
+
 
 def _prepare(tmp_path):
     db = str(tmp_path / "fleet.db")
@@ -63,7 +67,7 @@ def test_prune_drops_raw_samples_past_retention(tmp_path):
     dropped = rollups.prune(db, now=T0)
 
     assert dropped["samples"] == 1
-    assert store.latest(db, "host:syrax")["load.1m"] == 1.0
+    assert store.latest(db, "host:syrax", since=ANY_AGE)["load.1m"] == 1.0
 
 
 def test_prune_boundary_is_strictly_older_than_the_window(tmp_path):
@@ -75,8 +79,8 @@ def test_prune_boundary_is_strictly_older_than_the_window(tmp_path):
 
     rollups.prune(db, now=T0)
 
-    assert store.latest(db, "host:onboundary")["load.1m"] == 1.0
-    assert store.latest(db, "host:pastboundary") == {}
+    assert store.latest(db, "host:onboundary", since=ANY_AGE)["load.1m"] == 1.0
+    assert store.latest(db, "host:pastboundary", since=ANY_AGE) == {}
 
 
 def test_prune_keeps_rollups_longer_than_raw(tmp_path):
@@ -92,7 +96,7 @@ def test_prune_keeps_rollups_longer_than_raw(tmp_path):
 
     rollups.prune(db, now=T0)
 
-    assert store.latest(db, "host:vhagar") == {}
+    assert store.latest(db, "host:vhagar", since=ANY_AGE) == {}
     assert len(rollups.read(db, "5m", "host:vhagar", "load.1m")) == 1
     assert len(rollups.read(db, "1h", "host:vhagar", "load.1m")) == 1
 

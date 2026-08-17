@@ -1,9 +1,14 @@
 from datetime import datetime, timedelta, timezone
 
-from fleet_monitor import store
+from fleet_monitor import config, store
 from fleet_monitor.probes.types import Sample
 
 T0 = datetime(2026, 8, 10, 12, 0, 0, tzinfo=timezone.utc)
+
+# `latest` takes the same required floor `metric_ages` does. Where a test is
+# about storage rather than about the floor, it passes one wide enough that the
+# floor never participates in what is under test.
+ANY_AGE = T0 - timedelta(days=30)
 
 
 def test_write_and_read_latest(tmp_path):
@@ -15,7 +20,7 @@ def test_write_and_read_latest(tmp_path):
         Sample(metric="mem.total_bytes", value=16_642_768_896.0, kind="gauge"),
     ])
 
-    assert store.latest(db, "host:vermithor") == {
+    assert store.latest(db, "host:vermithor", since=ANY_AGE) == {
         "load.1m": 0.46,
         "mem.total_bytes": 16_642_768_896.0,
     }
@@ -29,13 +34,13 @@ def test_latest_returns_the_newest_value_per_metric(tmp_path):
     store.write_samples(db, "host:meleys", T0 + timedelta(seconds=30),
                         [Sample("load.1m", 0.75, "gauge")])
 
-    assert store.latest(db, "host:meleys")["load.1m"] == 0.75
+    assert store.latest(db, "host:meleys", since=ANY_AGE)["load.1m"] == 0.75
 
 
 def test_latest_is_empty_for_an_unknown_target(tmp_path):
     db = str(tmp_path / "fleet.db")
     store.init_db(db)
-    assert store.latest(db, "host:nope") == {}
+    assert store.latest(db, "host:nope", since=ANY_AGE) == {}
 
 
 def test_series_is_ordered_and_windowed(tmp_path):
@@ -160,10 +165,66 @@ def test_a_backwards_clock_step_restarts_coverage(tmp_path):
     assert store.coverage_since(db) == T0 - timedelta(hours=2)
 
 
+def test_latest_drops_a_reading_the_age_window_cannot_date(tmp_path):
+    # samples live seven days and the age window is a day, so an unfloored read
+    # hands back values metric_ages has already dropped: a number on the page
+    # with no age accounted for anywhere, which is how a week-old disk reading
+    # rendered under a bare "Healthy"
+    db = str(tmp_path / "fleet.db")
+    store.init_db(db)
+    store.write_samples(db, "host:caraxes", T0 - timedelta(days=7),
+                        [Sample("disk.volume1.used_percent", 42.0, "gauge")])
+    store.write_samples(db, "host:caraxes", T0, [Sample("load.1m", 0.1, "gauge")])
+
+    floor = T0 - timedelta(hours=24)
+
+    assert set(store.latest(db, "host:caraxes", since=floor)) == {"load.1m"}
+    # the two reads agree by construction: same floor, same set
+    assert set(store.latest(db, "host:caraxes", since=floor)) == set(
+        store.metric_ages(db, "host:caraxes", since=floor)
+    )
+
+
+def test_latest_keeps_a_reading_that_is_merely_late(tmp_path):
+    # the floor must not swallow the detection band: a metric between its
+    # refresh interval and the window still has to be reported, with its age,
+    # so the page can call it stale rather than silently drop it
+    db = str(tmp_path / "fleet.db")
+    store.init_db(db)
+    store.write_samples(db, "host:caraxes", T0 - timedelta(hours=6),
+                        [Sample("disk.volume1.used_percent", 42.0, "gauge")])
+
+    got = store.latest(db, "host:caraxes", since=T0 - timedelta(hours=24))
+
+    assert got["disk.volume1.used_percent"] == 42.0
+
+
+def test_a_slow_round_never_restarts_coverage(tmp_path):
+    # the gap is measured between round starts, so a round's own duration is
+    # spent inside it. A slow round can spend MAX_ROUND_SECONDS on ssh before
+    # the loop sleeps VITALS_INTERVAL again: ~120s apart, collector never
+    # stopped. A 90s tolerance tripped on that every 15 minutes and blanked
+    # every uptime score for the following 24 hours.
+    db = str(tmp_path / "fleet.db")
+    store.init_db(db)
+    store.write_heartbeat(db, T0)
+    store.write_heartbeat(db, T0 + timedelta(seconds=120))
+
+    assert store.coverage_since(db) == T0
+
+
+def test_the_coverage_gap_admits_a_worst_case_round(tmp_path):
+    # stated as arithmetic so the constant cannot drift back under the round
+    # duration it has to tolerate
+    worst_case = config.MAX_ROUND_SECONDS + config.VITALS_INTERVAL
+
+    assert store.COVERAGE_GAP.total_seconds() > worst_case
+
+
 def test_init_db_is_idempotent(tmp_path):
     db = str(tmp_path / "fleet.db")
     store.init_db(db)
     store.write_samples(db, "host:vhagar", T0, [Sample("load.1m", 0.14, "gauge")])
     store.init_db(db)
 
-    assert store.latest(db, "host:vhagar")["load.1m"] == 0.14
+    assert store.latest(db, "host:vhagar", since=ANY_AGE)["load.1m"] == 0.14

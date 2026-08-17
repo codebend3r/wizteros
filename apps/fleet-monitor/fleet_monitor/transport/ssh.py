@@ -15,6 +15,13 @@ _REASONS = (
 )
 
 
+# A whole capture gets this multiple of the connect timeout before the process
+# is killed: connecting is only the first half of the budget, and the script
+# still has to run and stream back. Named so callers that have to reason about
+# how long a round can take can derive it rather than guess.
+CAPTURE_FACTOR = 2
+
+
 @dataclass(frozen=True, slots=True)
 class SshResult:
     ok: bool
@@ -70,7 +77,7 @@ async def _capture(argv: tuple[str, ...], body: str, timeout: int) -> SshResult:
 
     try:
         raw_out, raw_err = await asyncio.wait_for(
-            process.communicate(body.encode()), timeout=timeout * 2
+            process.communicate(body.encode()), timeout=timeout * CAPTURE_FACTOR
         )
     except TimeoutError:
         process.kill()

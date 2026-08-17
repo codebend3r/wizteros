@@ -11,6 +11,16 @@ def _db(tmp_path):
     return path
 
 
+def _watched(since, until):
+    """The observed run a test means when it says "the collector watched this".
+
+    Both ends are stated rather than assumed: uptime_percent scores a window
+    only when the run covers it end to end, so a test that names just the start
+    would be asserting a score over hours whose observation it never claimed.
+    """
+    return incidents.ObservedRun(since=since, until=until)
+
+
 def _feed(path, target, flags, *, start=T0, step=30):
     return [
         incidents.record(
@@ -77,7 +87,8 @@ def test_uptime_percent_over_a_window(tmp_path):
                      T0 + timedelta(minutes=30, seconds=30))
 
     got = incidents.uptime_percent(
-        path, "host:vhagar", since=T0, now=T0 + timedelta(hours=1), observed_since=T0
+        path, "host:vhagar", since=T0, now=T0 + timedelta(hours=1),
+        observed=_watched(T0, T0 + timedelta(hours=1)),
     )
 
     assert 49.0 < got < 51.0
@@ -88,7 +99,8 @@ def test_uptime_is_100_with_no_incidents(tmp_path):
     _feed(path, "host:vermithor", [True, True, True])
 
     assert incidents.uptime_percent(
-        path, "host:vermithor", since=T0, now=T0 + timedelta(hours=1), observed_since=T0
+        path, "host:vermithor", since=T0, now=T0 + timedelta(hours=1),
+        observed=_watched(T0, T0 + timedelta(hours=1)),
     ) == 100.0
 
 
@@ -149,7 +161,7 @@ def test_a_newly_discovered_container_needs_no_special_casing(tmp_path):
     assert incidents.open_incidents(path) == ()
     assert incidents.uptime_percent(
         path, "container:meleys/jellyfin", since=T0, now=T0 + timedelta(hours=1),
-        observed_since=T0,
+        observed=_watched(T0, T0 + timedelta(hours=1)),
     ) == 100.0
 
 
@@ -161,7 +173,7 @@ def test_retire_absent_stops_uptime_percent_from_degrading_further(tmp_path):
 
     still_open = incidents.uptime_percent(
         path, "container:meleys/oldapp", since=T0, now=T0 + timedelta(hours=1),
-        observed_since=T0,
+        observed=_watched(T0, T0 + timedelta(hours=1)),
     )
     assert still_open < 5.0
 
@@ -171,11 +183,11 @@ def test_retire_absent_stops_uptime_percent_from_degrading_further(tmp_path):
 
     an_hour_out = incidents.uptime_percent(
         path, "container:meleys/oldapp", since=T0, now=T0 + timedelta(hours=1),
-        observed_since=T0,
+        observed=_watched(T0, T0 + timedelta(hours=1)),
     )
     a_day_out = incidents.uptime_percent(
         path, "container:meleys/oldapp", since=T0, now=T0 + timedelta(days=1),
-        observed_since=T0,
+        observed=_watched(T0, T0 + timedelta(days=1)),
     )
 
     # retirement fixes the down time at (opened_at, retired_at); as `now`
@@ -196,7 +208,7 @@ def test_uptime_percent_clips_an_incident_that_opened_before_the_window(tmp_path
     # since (T0+60s) falls inside the incident's [T0+30s, T0+90s) span, so
     # only the last 30 seconds of the outage are inside the window
     got = incidents.uptime_percent(
-        path, "host:clip-check", since=since, now=now, observed_since=T0
+        path, "host:clip-check", since=since, now=now, observed=_watched(T0, now)
     )
 
     assert 49.0 < got < 51.0
@@ -211,7 +223,8 @@ def test_uptime_is_unknown_for_a_window_nobody_watched(tmp_path):
     _feed(path, "host:vermithor", [True, True], start=now - timedelta(minutes=1))
 
     assert incidents.uptime_percent(
-        path, "host:vermithor", since=T0, now=now, observed_since=now - timedelta(hours=1)
+        path, "host:vermithor", since=T0, now=now,
+        observed=_watched(now - timedelta(hours=1), now),
     ) is None
 
 
@@ -221,8 +234,88 @@ def test_uptime_scores_a_window_the_collector_watched_from_the_start(tmp_path):
 
     assert incidents.uptime_percent(
         path, "host:vermithor", since=T0, now=T0 + timedelta(hours=1),
-        observed_since=T0 - timedelta(hours=1),
+        observed=_watched(T0 - timedelta(hours=1), T0 + timedelta(hours=1)),
     ) == 100.0
+
+
+def test_the_observed_run_spans_consecutive_checks(tmp_path):
+    path = _db(tmp_path)
+    _feed(path, "host:vermithor", [True, False, True, True])
+
+    run = incidents.observed_run(path, "host:vermithor")
+
+    assert run.since == T0
+    assert run.until == T0 + timedelta(seconds=90)
+
+
+def test_a_target_that_was_never_checked_has_no_observed_run(tmp_path):
+    path = _db(tmp_path)
+
+    assert incidents.observed_run(path, "host:never-seen") is None
+
+
+def test_a_gap_in_a_target_s_checks_restarts_its_observed_run(tmp_path):
+    # the collector kept ticking; this target was not observed by those ticks.
+    # A run that spans the silence would score those hours as watched.
+    path = _db(tmp_path)
+    incidents.record(path, incidents.CheckResult("host:caraxes", True, ""), T0)
+    incidents.record(
+        path, incidents.CheckResult("host:caraxes", True, ""), T0 + timedelta(hours=8)
+    )
+
+    assert incidents.observed_run(path, "host:caraxes").since == T0 + timedelta(hours=8)
+
+
+def test_a_backwards_clock_step_restarts_the_observed_run(tmp_path):
+    path = _db(tmp_path)
+    incidents.record(path, incidents.CheckResult("host:caraxes", True, ""), T0)
+    incidents.record(
+        path, incidents.CheckResult("host:caraxes", True, ""), T0 - timedelta(hours=2)
+    )
+
+    assert incidents.observed_run(path, "host:caraxes").since == T0 - timedelta(hours=2)
+
+
+def test_a_target_that_is_down_keeps_its_observed_run_advancing(tmp_path):
+    # per-target coverage must not go Unknown for the host that is actually
+    # down: a down host still answers with a failed check, and a failed check
+    # is an observation
+    path = _db(tmp_path)
+    _feed(path, "host:syrax", [False] * 6)
+
+    run = incidents.observed_run(path, "host:syrax")
+
+    assert run.since == T0
+    assert incidents.uptime_percent(
+        path, "host:syrax", since=T0, now=T0 + timedelta(minutes=5),
+        observed=_watched(T0, T0 + timedelta(minutes=5)),
+    ) < 100.0
+
+
+def test_uptime_is_unknown_once_a_target_stops_being_checked(tmp_path):
+    # a spawn_error records nothing for this target, so its run stops advancing
+    # while the collector keeps ticking. Scoring the window from the run's
+    # start alone hands back 100% for hours nothing observed.
+    path = _db(tmp_path)
+    now = T0 + timedelta(hours=24)
+    _feed(path, "host:vermithor", [True, True])
+
+    assert incidents.uptime_percent(
+        path, "host:vermithor", since=T0, now=now,
+        observed=incidents.observed_run(path, "host:vermithor"),
+    ) is None
+
+
+def test_a_slow_round_never_restarts_an_observed_run(tmp_path):
+    # a vitals tick plus a slow tier plus the loop's own sleep can put two
+    # rounds ~120s apart with the collector never having stopped
+    path = _db(tmp_path)
+    incidents.record(path, incidents.CheckResult("host:meleys", True, ""), T0)
+    incidents.record(
+        path, incidents.CheckResult("host:meleys", True, ""), T0 + timedelta(seconds=120)
+    )
+
+    assert incidents.observed_run(path, "host:meleys").since == T0
 
 
 def test_a_continued_failure_updates_the_open_incident_reason(tmp_path):
