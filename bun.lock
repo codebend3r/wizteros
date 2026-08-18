@@ -11,7 +11,7 @@
     },
     "apps/admin-portal": {
       "name": "admin-portal",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "dependencies": {
         "@fontsource-variable/bricolage-grotesque": "5.2.10",
         "@fontsource-variable/instrument-sans": "5.2.8",
@@ -46,6 +46,9 @@
         "typescript": "5.9.3",
         "vite": "5.4.21",
       },
+    },
+    "apps/fleet-monitor": {
+      "name": "fleet-monitor",
     },
     "apps/stripe-bridge": {
       "name": "stripe-bridge",
@@ -554,6 +557,8 @@
     "figures": ["figures@3.2.0", "", { "dependencies": { "escape-string-regexp": "^1.0.5" } }, "sha512-yaduQFRKLXYOGgEn6AZau90j3ggSOyiqXU0F9JZfeXYhNa+Jk4X+s45A2zg5jns87GAFa34BBm2kXw4XpNcbdg=="],
 
     "flat": ["flat@5.0.2", "", { "bin": { "flat": "cli.js" } }, "sha512-b6suED+5/3rTpUBdG1gupIl8MPFCAMA0QXwmljLhvCUKcUvdE4gWky9zpuGCcXHOsz4J9wPGNWq6OKpmIzz3hQ=="],
+
+    "fleet-monitor": ["fleet-monitor@workspace:apps/fleet-monitor"],
 
     "follow-redirects": ["follow-redirects@1.16.0", "", { "peerDependencies": { "debug": "*" }, "optionalPeers": ["debug"] }, "sha512-y5rN/uOsadFT/JfYwhxRS5R7Qce+g3zG97+JrtFZlC9klX/W5hD7iiLzScI4nZqUS7DNUdhPgw4xI8W2LuXlUw=="],
 
