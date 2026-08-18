@@ -1,0 +1,114 @@
+.page {
+  display: grid;
+  align-content: start;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+  max-width: var(--max-width);
+  width: 100%;
+  margin-inline: auto;
+  padding: var(--space-4) var(--space-3);
+
+  // AdminLayout's body keeps a slim gutter on phones; adding our own on top
+  // of it wastes horizontal space.
+  @media (max-width: 48rem) {
+    padding-inline: 0;
+  }
+}
+
+.header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-1);
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+}
+
+.heartbeat {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.alert {
+  padding: var(--space-2);
+  border: 1px solid var(--color-youth);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  font-size: var(--font-size-sm);
+}
+
+.section {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+}
+
+.sectionTitle {
+  font-family: var(--font-display);
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+}
+
+.muted {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+.grid {
+  // min(100%, 18rem) keeps the track from demanding 18rem on a 320px screen,
+  // which is what would push the page into a sideways scroll.
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: var(--space-2);
+  padding: 0;
+  list-style: none;
+}
+
+.gridItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.incidents {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-1);
+  padding: 0;
+  list-style: none;
+}
+
+.incident {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  font-size: var(--font-size-sm);
+
+  // Three columns cannot survive a phone; stack them instead of scrolling.
+  @media (max-width: 48rem) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.incidentTarget {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.incidentReason {
+  overflow-wrap: anywhere;
+}
+
+.incidentTime {
+  color: var(--color-muted);
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
+}

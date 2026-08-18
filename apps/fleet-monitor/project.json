@@ -1,0 +1,17 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "fleet-monitor",
+  "projectType": "application",
+  "sourceRoot": "apps/fleet-monitor/fleet_monitor",
+  "tags": ["scope:monitor", "lang:python"],
+  "targets": {
+    "docker-build": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "docker build -t fleet-monitor apps/fleet-monitor",
+        "cwd": "{workspaceRoot}"
+      }
+    }
+  }
+}
