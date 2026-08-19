@@ -43,43 +43,43 @@
       "enabled": false
     },
     {
-      "id": 23,
-      "name": "01. Movies",
-      "server_id": 2,
-      "server_name": "Meleys",
-      "enabled": true
-    },
-    {
       "id": 41,
-      "name": "02. 4K Movies",
-      "server_id": 2,
-      "server_name": "Meleys",
-      "enabled": true
-    },
-    {
-      "id": 24,
-      "name": "03. Family Movies",
+      "name": "01. 4K Movies",
       "server_id": 2,
       "server_name": "Meleys",
       "enabled": true
     },
     {
       "id": 42,
-      "name": "04. 4K Family Movies",
-      "server_id": 2,
-      "server_name": "Meleys",
-      "enabled": true
-    },
-    {
-      "id": 43,
-      "name": "05. TV Shows",
+      "name": "02. 4K Family Movies",
       "server_id": 2,
       "server_name": "Meleys",
       "enabled": true
     },
     {
       "id": 25,
-      "name": "06. 4K TV Shows",
+      "name": "03. 4K TV Shows",
+      "server_id": 2,
+      "server_name": "Meleys",
+      "enabled": true
+    },
+    {
+      "id": 23,
+      "name": "04. Movies",
+      "server_id": 2,
+      "server_name": "Meleys",
+      "enabled": true
+    },
+    {
+      "id": 24,
+      "name": "05. Family Movies",
+      "server_id": 2,
+      "server_name": "Meleys",
+      "enabled": true
+    },
+    {
+      "id": 43,
+      "name": "06. TV Shows",
       "server_id": 2,
       "server_name": "Meleys",
       "enabled": true

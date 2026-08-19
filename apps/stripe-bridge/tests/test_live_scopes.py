@@ -93,7 +93,8 @@ def test_only_gold_and_youth_allow_downloads():
 
 
 def test_youth_matches_its_allowlist_exactly():
-    assert set(names("youth")) == set(tiers.YOUTH_LIBRARIES)
+    titles = {tiers.LIBRARY_PREFIX_RE.sub("", name) for name in names("youth")}
+    assert titles == set(tiers.YOUTH_LIBRARY_TITLES)
 
 
 def test_bronze_grants_strictly_less_than_silver():

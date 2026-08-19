@@ -13,15 +13,23 @@ PRIVATE_NAME_RE = re.compile(r"^9\d\.")
 # "(switch to Meleys)" mirrors and must never be granted again.
 SHARE_SERVER = "Meleys"
 
-# Youth allowlist, matched on library name alone — every shareable library is
+# Youth allowlist, matched on library title alone — every shareable library is
 # on SHARE_SERVER, so the server half of the key added nothing but a second
-# way to drift out of date. The names are the actual Plex library names; they
-# do not follow the tier's branding.
-YOUTH_LIBRARIES = frozenset({
-    "03. Family Movies",
-    "04. 4K Family Movies",
-    "14. Kid Shows",
+# way to drift out of date. The titles are the actual Plex library names with
+# the "NN. " ordering prefix stripped; they do not follow the tier's branding.
+#
+# Matching the title rather than the full name is deliberate. The prefixes are
+# display ordering, not identity: regrouping the Plex libraries renumbers them
+# without changing what they hold, and an allowlist keyed on the full name
+# silently narrows the tier when that happens.
+YOUTH_LIBRARY_TITLES = frozenset({
+    "Family Movies",
+    "4K Family Movies",
+    "Kid Shows",
 })
+
+# Leading "NN. " ordering prefix on a Plex library name.
+LIBRARY_PREFIX_RE = re.compile(r"^\d+\.\s*")
 
 TIER_DOWNLOADS = {
     "bronze": False,
@@ -59,6 +67,11 @@ def _is_private(library: dict) -> bool:
     return bool(PRIVATE_NAME_RE.match(library.get("name") or ""))
 
 
+def library_title(library: dict) -> str:
+    """A library's name with its "NN. " ordering prefix stripped."""
+    return LIBRARY_PREFIX_RE.sub("", library.get("name") or "")
+
+
 def _is_4k(library: dict) -> bool:
     """Case-insensitive '4K' match on the library name."""
     return "4k" in (library.get("name") or "").lower()
@@ -76,7 +89,7 @@ def _is_on_share_server(library: dict) -> bool:
 def _tier_wants(tier: str, library: dict) -> bool:
     """Whether a tier's rules include a library (before the server/private filters)."""
     if tier == "youth":
-        return (library.get("name") or "") in YOUTH_LIBRARIES
+        return library_title(library) in YOUTH_LIBRARY_TITLES
     if tier == "bronze":
         return not _is_4k(library)
     return True  # silver / gold: everything
@@ -118,10 +131,10 @@ def tier_server_libraries(*, tier: str, libraries: list) -> dict:
 def resolve_tier_access(*, tier: str, libraries: list) -> dict:
     """Compute an invite's scope for a tier from the live Wizarr library list."""
     shareable = _shareable_libraries(tier=tier, libraries=libraries)
-    if tier == "youth" and len(shareable) < len(YOUTH_LIBRARIES):
-        found = {lib.get("name") for lib in shareable}
+    if tier == "youth" and len(shareable) < len(YOUTH_LIBRARY_TITLES):
+        found = {library_title(lib) for lib in shareable}
         log.error("youth allowlist mismatch on %s; missing %s",
-                  SHARE_SERVER, sorted(YOUTH_LIBRARIES - found))
+                  SHARE_SERVER, sorted(YOUTH_LIBRARY_TITLES - found))
     return {
         "library_ids": [lib["id"] for lib in shareable],
         "server_ids": sorted({lib["server_id"] for lib in shareable}),
@@ -149,7 +162,7 @@ def tier_scope_problems(*, libraries: list) -> dict:
                 f"tier will fail and retry forever"
             )
         elif tier == "youth":
-            missing = sorted(YOUTH_LIBRARIES - {lib.get("name") for lib in shareable})
+            missing = sorted(YOUTH_LIBRARY_TITLES - {library_title(lib) for lib in shareable})
             if missing:
                 problems[tier] = (
                     f"allowlist entries missing from {SHARE_SERVER}: {', '.join(missing)}"

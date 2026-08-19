@@ -32,7 +32,20 @@ def test_a_partial_youth_allowlist_miss_is_reported():
     partial = [lib for lib in HEALTHY if lib["id"] != 29]
     problems = tiers.tier_scope_problems(libraries=partial)
     assert "youth" in problems
-    assert "14. Kid Shows" in problems["youth"]
+    assert "Kid Shows" in problems["youth"]
+
+
+def test_renumbering_the_libraries_does_not_narrow_youth():
+    # The 2026-08-19 Meleys regroup: the 4K libraries moved to the top, so
+    # every "NN. " prefix shifted while the titles stayed put. An allowlist
+    # keyed on the full name silently dropped youth from 3 libraries to 1.
+    renumbered = [
+        {**lib, "name": tiers.LIBRARY_PREFIX_RE.sub(f"{lib['id']}. ", lib["name"])}
+        for lib in HEALTHY
+    ]
+    assert tiers.tier_scope_problems(libraries=renumbered) == {}
+    scope = tiers.resolve_tier_access(tier="youth", libraries=renumbered)
+    assert len(scope["library_ids"]) == len(tiers.YOUTH_LIBRARY_TITLES)
 
 
 def test_an_empty_library_list_reports_every_tier():
