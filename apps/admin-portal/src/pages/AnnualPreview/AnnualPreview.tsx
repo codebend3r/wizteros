@@ -105,8 +105,8 @@ const AnnualPreviewPage = () => {
         memberUrl={siteConfig.memberUrl}
         fromPrice={fromPrice({ tiers: siteConfig.tiers, cadence })}
       />
-      <StatusBoard tiers={siteConfig.tiers} />
       <Pricing tiers={siteConfig.tiers} preview />
+      <StatusBoard tiers={siteConfig.tiers} />
       <Support items={siteConfig.supportItems} />
       <PreviewNotes />
       <Footer memberUrl={siteConfig.memberUrl} billingPortalUrl={siteConfig.billingPortalUrl} />
