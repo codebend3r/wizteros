@@ -38,7 +38,7 @@ const TIERS: ReadonlyArray<Tier> = [
 ]
 
 afterEach(() => {
-  useTierStore.setState({ selectedTierId: 'silver' })
+  useTierStore.setState({ selectedTierId: 'bronze' })
   useBillingStore.setState({ cadence: 'monthly' })
 })
 
@@ -55,10 +55,16 @@ test('renders the section header', () => {
   ).toBeInTheDocument()
 })
 
-test('renders a tab per tier and selects the first without a silver tier', () => {
+test('renders a tab per tier and opens on the store default', () => {
   render(<Pricing tiers={TIERS} />)
   expect(screen.getByRole('tab', { name: 'Bronze' })).toHaveAttribute('aria-selected', 'true')
   expect(screen.getByRole('tab', { name: 'Gold' })).toHaveAttribute('aria-selected', 'false')
+})
+
+test('falls back to the first tier when the selected one is not offered', () => {
+  useTierStore.setState({ selectedTierId: 'silver' })
+  render(<Pricing tiers={TIERS} />)
+  expect(screen.getByRole('tab', { name: 'Bronze' })).toHaveAttribute('aria-selected', 'true')
 })
 
 test('shows the selected tier card with price, cadence, summary, and features', () => {

@@ -8,7 +8,7 @@ import { useBillingStore } from '@/stores/billingStore'
 import { useTierStore } from '@/stores/tierStore'
 
 afterEach(() => {
-  useTierStore.setState({ selectedTierId: 'silver' })
+  useTierStore.setState({ selectedTierId: 'bronze' })
   useBillingStore.setState({ cadence: 'monthly' })
 })
 

@@ -30,7 +30,7 @@ const TIERS: ReadonlyArray<Tier> = [
 ]
 
 afterEach(() => {
-  useTierStore.setState({ selectedTierId: 'silver' })
+  useTierStore.setState({ selectedTierId: 'bronze' })
   useBillingStore.setState({ cadence: 'monthly' })
 })
 
@@ -40,7 +40,8 @@ const getLedgerCard = (): HTMLElement => {
   return card
 }
 
-test('ledgers the silver tier by default', () => {
+test('ledgers the tier selected in the store', () => {
+  useTierStore.setState({ selectedTierId: 'silver' })
   render(<StatusBoard tiers={TIERS} />)
   const card = getLedgerCard()
   expect(within(card).getByRole('heading', { name: 'Where $14 a month goes' })).toBeInTheDocument()
@@ -51,7 +52,7 @@ test('ledgers the silver tier by default', () => {
   expect(within(card).getByText('$1.80')).toBeInTheDocument()
 })
 
-test('ledgers the tier selected in the store', () => {
+test('follows the store to another tier', () => {
   useTierStore.setState({ selectedTierId: 'gold' })
   render(<StatusBoard tiers={TIERS} />)
   const card = getLedgerCard()
@@ -70,6 +71,7 @@ test('falls back to the first tier when the selected id is absent', () => {
 })
 
 test('splits the monthly equivalent, not the yearly total, under annual billing', () => {
+  useTierStore.setState({ selectedTierId: 'silver' })
   useBillingStore.setState({ cadence: 'annual' })
   render(<StatusBoard tiers={TIERS} />)
   const card = getLedgerCard()
