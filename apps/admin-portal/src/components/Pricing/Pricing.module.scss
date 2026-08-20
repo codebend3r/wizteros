@@ -104,6 +104,13 @@
     outline: 2px solid var(--metal);
     outline-offset: 2px;
   }
+
+  // BRONZE is the widest label in the pixel face, and at 320px the four equal
+  // columns leave it 5px short, so the last letter spills past its own pill.
+  @media (max-width: 48rem) {
+    padding: var(--space-1) calc(var(--space-1) / 2);
+    letter-spacing: 0.05em;
+  }
 }
 
 .tabSelected {
@@ -321,5 +328,12 @@
   &:focus-visible {
     outline: 2px solid var(--metal);
     outline-offset: 2px;
+  }
+
+  // BRONZE is the widest label in the pixel face, and at 320px the four equal
+  // columns leave it 5px short, so the last letter spills past its own pill.
+  @media (max-width: 48rem) {
+    padding: var(--space-1) calc(var(--space-1) / 2);
+    letter-spacing: 0.05em;
   }
 }
