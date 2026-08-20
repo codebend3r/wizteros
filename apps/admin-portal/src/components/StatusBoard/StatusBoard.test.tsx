@@ -1,6 +1,8 @@
-import { expect, test } from '@/test/vi'
+import { afterEach, expect, test } from '@/test/vi'
 import { render, screen, within } from '@testing-library/react'
 import { StatusBoard } from '@/components/StatusBoard/StatusBoard'
+import { toAnnualPricing } from '@/lib/billing'
+import { useBillingStore } from '@/stores/billingStore'
 import { useTierStore } from '@/stores/tierStore'
 import type { Tier } from '@/site.config'
 
@@ -13,6 +15,7 @@ const TIERS: ReadonlyArray<Tier> = [
     summary: 'Sharper picture, richer sound.',
     features: [{ label: '1080p HD streaming', included: true }],
     paymentLinkUrl: '',
+    annual: toAnnualPricing({ price: '$14', paymentLinkUrl: '' }),
   },
   {
     id: 'gold',
@@ -22,8 +25,14 @@ const TIERS: ReadonlyArray<Tier> = [
     summary: 'Everything the server offers.',
     features: [{ label: '4K UHD streaming', included: true }],
     paymentLinkUrl: '',
+    annual: toAnnualPricing({ price: '$20', paymentLinkUrl: '' }),
   },
 ]
+
+afterEach(() => {
+  useTierStore.setState({ selectedTierId: 'silver' })
+  useBillingStore.setState({ cadence: 'monthly' })
+})
 
 const getLedgerCard = (): HTMLElement => {
   const card = screen.getByRole('heading', { name: /a month goes/ }).closest('article')
@@ -58,4 +67,18 @@ test('falls back to the first tier when the selected id is absent', () => {
   useTierStore.setState({ selectedTierId: 'bronze' })
   render(<StatusBoard tiers={TIERS} />)
   expect(screen.getByRole('heading', { name: 'Where $14 a month goes' })).toBeInTheDocument()
+})
+
+test('splits the monthly equivalent, not the yearly total, under annual billing', () => {
+  useBillingStore.setState({ cadence: 'annual' })
+  render(<StatusBoard tiers={TIERS} />)
+  const card = getLedgerCard()
+  // $14/month becomes $140 a year, which is $11.67 a month.
+  expect(
+    within(card).getByRole('heading', { name: 'Where $11.67 a month goes' }),
+  ).toBeInTheDocument()
+  const amounts = within(card)
+    .getAllByText(/^\$\d/)
+    .map((node) => Number(node.textContent?.replace('$', '')))
+  expect(amounts.reduce((sum, amount) => sum + amount, 0)).toBeCloseTo(11.67, 2)
 })

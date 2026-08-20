@@ -157,6 +157,18 @@
   grid-template-columns: auto minmax(0, 1fr);
   align-items: end;
   gap: var(--space-2);
+
+  @media (max-width: 48rem) {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: var(--space-1);
+  }
+}
+
+.priceBlock {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
 }
 
 .price {
@@ -183,6 +195,55 @@
   max-width: 20ch;
   font-size: var(--font-size-md);
   text-align: right;
+  text-wrap: pretty;
+
+  @media (max-width: 48rem) {
+    justify-self: start;
+    max-width: none;
+    text-align: left;
+  }
+}
+
+// The annual card's second line: what a month costs on monthly billing,
+// struck through, next to the plain-language saving. Both figures stay on
+// screen so nobody has to work out the yearly total themselves.
+.compare {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, auto);
+  justify-content: start;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-sm);
+
+  @media (max-width: 48rem) {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: start;
+  }
+}
+
+.was {
+  color: color-mix(in srgb, var(--color-muted) 85%, transparent);
+  overflow-wrap: anywhere;
+}
+
+// A bordered pill, not amber text alone: the saving is spelled out in words
+// as well, so colour is never the only thing carrying it.
+.savings {
+  padding: calc(var(--space-1) / 4) var(--space-1);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+// The yearly total, stated under the button rather than buried in a footnote.
+.chargeNote {
+  font-size: var(--font-size-xs);
+  color: var(--color-muted);
+  text-align: center;
   text-wrap: pretty;
 }
 

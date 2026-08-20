@@ -71,3 +71,36 @@ test('serves the single login page at /login', () => {
   expect(screen.getByRole('heading', { name: 'Admin login' })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
 })
+
+test('gates the hidden annual preview at /annual when signed out', () => {
+  useAuthStore.setState({ enabled: true, status: 'signed-out' })
+  render(
+    <MemoryRouter initialEntries={['/annual']}>
+      <AppRoutes />
+    </MemoryRouter>,
+  )
+  expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
+  expect(screen.queryByRole('radio', { name: /Annual/ })).toBeNull()
+})
+
+test('serves the annual preview at /annual once past the gate', () => {
+  useAuthStore.setState({ enabled: false })
+  render(
+    <MemoryRouter initialEntries={['/annual']}>
+      <AppRoutes />
+    </MemoryRouter>,
+  )
+  expect(screen.getByLabelText('Preview notice')).toBeInTheDocument()
+  expect(screen.getByRole('radio', { name: 'Monthly' })).toBeChecked()
+})
+
+test('keeps the landing page free of the cadence toggle', () => {
+  useAuthStore.setState({ enabled: false })
+  render(
+    <MemoryRouter initialEntries={['/']}>
+      <AppRoutes />
+    </MemoryRouter>,
+  )
+  expect(screen.queryByRole('radio', { name: /Annual/ })).toBeNull()
+  expect(screen.queryByLabelText('Preview notice')).toBeNull()
+})

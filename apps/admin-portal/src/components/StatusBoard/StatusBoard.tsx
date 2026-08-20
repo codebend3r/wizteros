@@ -1,4 +1,6 @@
 import type { Tier } from '@/site.config'
+import { monthlyAmount, monthlyPrice, type BillingCadence } from '@/lib/billing'
+import { useBillingStore } from '@/stores/billingStore'
 import { useTierStore } from '@/stores/tierStore'
 import styles from '@/components/StatusBoard/StatusBoard.module.scss'
 
@@ -14,12 +16,12 @@ const LEDGER_SPLIT = [
 
 const TOTAL_WEIGHT = LEDGER_SPLIT.reduce((sum, { weight }) => sum + weight, 0)
 
-const priceOf = (tier: Tier): number => Number(tier.price.replace(/[^0-9.]/g, ''))
-
 // Split the tier price across the weights in dimes; the largest row absorbs
-// the rounding residual so the rows always sum to the price exactly.
-const ledgerRows = ({ tier }: { tier: Tier }) => {
-  const priceDimes = priceOf(tier) * 10
+// the rounding residual so the rows always sum to the price exactly. Annual
+// feeds in the monthly-equivalent, so this stays a per-month breakdown in
+// either cadence.
+const ledgerRows = ({ tier, cadence }: { tier: Tier; cadence: BillingCadence }) => {
+  const priceDimes = monthlyAmount({ tier, cadence }) * 10
   const rounded = LEDGER_SPLIT.map(({ label, tone, weight }) => ({
     label,
     tone,
@@ -59,18 +61,21 @@ const TONE_CLASS: Record<(typeof LEDGER_SPLIT)[number]['tone'], string> = {
 
 const LedgerCard = ({ tiers }: { tiers: ReadonlyArray<Tier> }) => {
   const selectedTierId = useTierStore((state) => state.selectedTierId)
+  const cadence = useBillingStore((state) => state.cadence)
   const tier = tiers.find(({ id }) => id === selectedTierId) ?? tiers[0]
 
   if (!tier) {
     return null
   }
 
-  const rows = ledgerRows({ tier })
+  const rows = ledgerRows({ tier, cadence })
 
   return (
     <article className={styles.card}>
       <header className={styles.cardHeader}>
-        <h2 className={styles.eyebrow}>{`Where ${tier.price} a month goes`}</h2>
+        <h2 className={styles.eyebrow}>
+          {`Where ${monthlyPrice({ tier, cadence })} a month goes`}
+        </h2>
         <span className={styles.cornerNote}>{tier.name}</span>
       </header>
       <div className={styles.cardBody}>

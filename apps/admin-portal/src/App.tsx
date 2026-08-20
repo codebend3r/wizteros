@@ -4,31 +4,27 @@ import { StatusBoard } from '@/components/StatusBoard/StatusBoard'
 import { Pricing } from '@/components/Pricing/Pricing'
 import { Support } from '@/components/Support/Support'
 import { Footer } from '@/components/Footer/Footer'
-import { siteConfig, type Tier } from '@/site.config'
+import { fromPrice } from '@/lib/billing'
+import { useBillingStore } from '@/stores/billingStore'
+import { siteConfig } from '@/site.config'
 import styles from '@/App.module.scss'
 
-// "From $8": the cheapest tier's price anchors the marquee caption.
-const fromPrice = (tiers: ReadonlyArray<Tier>): string =>
-  tiers.reduce(
-    (cheapest, tier) =>
-      Number(tier.price.replace(/[^0-9.]/g, '')) < Number(cheapest.replace(/[^0-9.]/g, ''))
-        ? tier.price
-        : cheapest,
-    tiers[0]?.price ?? '$8',
-  )
+export const App = () => {
+  const cadence = useBillingStore((state) => state.cadence)
 
-export const App = () => (
-  <main className={styles.page}>
-    <AdminLoginButton />
-    <Hero
-      brandName={siteConfig.brandName}
-      tagline={siteConfig.tagline}
-      memberUrl={siteConfig.memberUrl}
-      fromPrice={fromPrice(siteConfig.tiers)}
-    />
-    <StatusBoard tiers={siteConfig.tiers} />
-    <Pricing tiers={siteConfig.tiers} />
-    <Support items={siteConfig.supportItems} />
-    <Footer memberUrl={siteConfig.memberUrl} billingPortalUrl={siteConfig.billingPortalUrl} />
-  </main>
-)
+  return (
+    <main className={styles.page}>
+      <AdminLoginButton />
+      <Hero
+        brandName={siteConfig.brandName}
+        tagline={siteConfig.tagline}
+        memberUrl={siteConfig.memberUrl}
+        fromPrice={fromPrice({ tiers: siteConfig.tiers, cadence })}
+      />
+      <StatusBoard tiers={siteConfig.tiers} />
+      <Pricing tiers={siteConfig.tiers} />
+      <Support items={siteConfig.supportItems} />
+      <Footer memberUrl={siteConfig.memberUrl} billingPortalUrl={siteConfig.billingPortalUrl} />
+    </main>
+  )
+}

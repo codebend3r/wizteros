@@ -1,0 +1,82 @@
+.toggle {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: 0;
+  border: 0;
+}
+
+.legend {
+  padding: 0;
+  font-family: var(--font-pixel);
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+// Same segmented track as the tier tabs, so the two controls read as one
+// family rather than two unrelated switches.
+.options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: calc(var(--space-1) / 2);
+  padding: calc(var(--space-1) / 2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-bg) 82%, rgb(0 0 0));
+}
+
+.option {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: calc(var(--space-1) / 4);
+  padding: var(--space-1);
+  border-radius: calc(var(--radius-md) - 4px);
+  color: var(--color-muted);
+  text-align: center;
+  cursor: pointer;
+
+  &:has(.input:focus-visible) {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+
+.optionSelected {
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+}
+
+// The radio stays in the accessibility tree and keeps arrow-key navigation;
+// only its default box is replaced by the segment styling above.
+.input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.optionLabel {
+  font-family: var(--font-pixel);
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.note {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.04em;
+  overflow-wrap: anywhere;
+}
+
+.hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-muted);
+  line-height: 1.5;
+  text-wrap: pretty;
+}

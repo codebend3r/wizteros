@@ -1,0 +1,141 @@
+// Mirrors the landing page grid so the preview measures the same as the real
+// thing, with the notice and the rationale panel added around it.
+.page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+// Pinned to the top of the viewport: at no scroll position should this read
+// as the live pricing page.
+.banner {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border-bottom: 1px solid var(--color-accent);
+  background: color-mix(in srgb, var(--color-bg) 88%, rgb(0 0 0));
+
+  @media (max-width: 48rem) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: calc(var(--space-1) / 2);
+    padding: var(--space-1) var(--space-2);
+  }
+}
+
+.bannerLabel {
+  justify-self: start;
+  padding: calc(var(--space-1) / 4) var(--space-1);
+  border-radius: var(--radius-md);
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+  font-family: var(--font-pixel);
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.bannerDetail {
+  font-size: var(--font-size-sm);
+  color: var(--color-muted);
+  text-wrap: pretty;
+}
+
+.notes {
+  display: grid;
+  gap: var(--space-3);
+  width: 100%;
+  max-width: var(--max-width);
+  margin-inline: auto;
+  padding: var(--space-6) var(--space-3);
+}
+
+.notesHeader {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.notesTitle {
+  font-family: var(--font-display);
+  font-size: var(--font-size-xl);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.02;
+}
+
+.notesLead {
+  font-size: var(--font-size-md);
+  color: var(--color-muted);
+  text-wrap: pretty;
+}
+
+.noteList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  gap: var(--space-2);
+  padding: 0;
+  list-style: none;
+}
+
+.note {
+  display: grid;
+  align-content: start;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.noteTitle {
+  font-family: var(--font-display);
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  text-wrap: pretty;
+}
+
+.noteDetail {
+  font-size: var(--font-size-sm);
+  color: var(--color-muted);
+  line-height: 1.6;
+  text-wrap: pretty;
+  overflow-wrap: anywhere;
+}
+
+.openTitle {
+  font-family: var(--font-pixel);
+  font-size: var(--font-size-xs);
+  font-weight: 400;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+.openList {
+  display: grid;
+  gap: var(--space-1);
+  padding: 0;
+  list-style: none;
+}
+
+.openItem {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-1);
+  font-size: var(--font-size-sm);
+  color: var(--color-muted);
+  line-height: 1.6;
+  text-wrap: pretty;
+
+  &::before {
+    content: '·';
+    color: var(--color-accent);
+  }
+}
