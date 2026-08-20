@@ -52,6 +52,9 @@ const SCAN_FILES = [
   'apps/admin-portal/index.html',
   'apps/admin-portal/src/App.tsx',
   'apps/admin-portal/src/site.config.ts',
+  // Not under pages/ or components/, but it derives the annual cadence label
+  // and the savings line that the tier card prints next to a price.
+  'apps/admin-portal/src/lib/billing.ts',
   'apps/stripe-bridge/stripe_bridge/email_template.py',
   'apps/stripe-bridge/stripe_bridge/mailer.py',
 ]
@@ -62,8 +65,11 @@ const PAYMENT_SURFACES = [
   'apps/admin-portal/index.html',
   'apps/admin-portal/src/App.tsx',
   'apps/admin-portal/src/site.config.ts',
+  'apps/admin-portal/src/lib/billing.ts',
   'apps/admin-portal/src/components/Hero/',
   'apps/admin-portal/src/components/Pricing/',
+  // Renders inside Pricing, so its copy sits directly against a price.
+  'apps/admin-portal/src/components/BillingToggle/',
   'apps/admin-portal/src/components/Support/',
   'apps/admin-portal/src/components/Footer/',
   'apps/stripe-bridge/stripe_bridge/email_template.py',
