@@ -80,7 +80,9 @@ export const HostCard = ({ summary }: HostCardProps) => {
 
       <dl className={styles.metrics}>
         <div className={styles.row}>
-          <dt>Load per core</dt>
+          {/* the core count is observed, not assumed, so it is worth showing:
+            it is what the load figure beside it was divided by */}
+          <dt>Load per core{summary.cores === null ? '' : ` (${summary.cores})`}</dt>
           <dd>{summary.loadPerCore === null ? '--' : summary.loadPerCore.toFixed(2)}</dd>
         </div>
         <div className={styles.row}>

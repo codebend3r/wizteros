@@ -2,16 +2,40 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 
-from fleet_monitor import api, incidents, store
+from fleet_monitor import api, collector, incidents, store
+from fleet_monitor import db as fleet_db
 from fleet_monitor.probes.types import Sample
 
 
 def _client(tmp_path, monkeypatch):
     db = str(tmp_path / "fleet.db")
-    store.init_db(db)
-    incidents.init_db(db)
+    collector.init_db(db)
     monkeypatch.setenv("FM_DB_PATH", db)
     return TestClient(api.app), db
+
+
+
+# One session per write, the same way a collector round opens one. store and
+# incidents take a connection now, and the API under test opens its own, so a
+# test seeding state has to commit through a session of its own.
+def _write_samples(path, target, at, samples):
+    with fleet_db.session(path) as connection:
+        return store.write_samples(connection, target, at, samples)
+
+
+def _write_heartbeat(path, at, **kwargs):
+    with fleet_db.session(path) as connection:
+        store.write_heartbeat(connection, at, **kwargs)
+
+
+def _record(path, result, at, **kwargs):
+    with fleet_db.session(path) as connection:
+        return incidents.record(connection, result, at, **kwargs)
+
+
+def _metric_ages(path, target, *, since):
+    with fleet_db.session(path) as connection:
+        return store.metric_ages(connection, target, since=since)
 
 
 def _watched(*, db, target, since, until, gap=store.COVERAGE_GAP):
@@ -24,7 +48,7 @@ def _watched(*, db, target, since, until, gap=store.COVERAGE_GAP):
     observation, not just the data.
     """
     for at in (since, until):
-        incidents.record(
+        _record(
             db, incidents.CheckResult(target=target, ok=True, reason=""), at, gap=gap
         )
 
@@ -54,7 +78,7 @@ def test_health_reports_stale_when_no_heartbeat(tmp_path, monkeypatch):
 
 def test_health_is_fresh_right_after_a_heartbeat(tmp_path, monkeypatch):
     client, db = _client(tmp_path, monkeypatch)
-    store.write_heartbeat(db, datetime.now(tz=timezone.utc))
+    _write_heartbeat(db, datetime.now(tz=timezone.utc))
     body = client.get("/health").json()
 
     assert body["stale"] is False
@@ -63,14 +87,14 @@ def test_health_is_fresh_right_after_a_heartbeat(tmp_path, monkeypatch):
 
 def test_health_goes_stale_after_three_missed_ticks(tmp_path, monkeypatch):
     client, db = _client(tmp_path, monkeypatch)
-    store.write_heartbeat(db, datetime.now(tz=timezone.utc) - timedelta(seconds=200))
+    _write_heartbeat(db, datetime.now(tz=timezone.utc) - timedelta(seconds=200))
 
     assert client.get("/health").json()["stale"] is True
 
 
 def test_fleet_lists_every_configured_host(tmp_path, monkeypatch):
     client, db = _client(tmp_path, monkeypatch)
-    store.write_samples(db, "host:vermithor", datetime.now(tz=timezone.utc), [
+    _write_samples(db, "host:vermithor", datetime.now(tz=timezone.utc), [
         Sample("load.1m", 0.46, "gauge"),
         Sample("mem.total_bytes", 16_642_768_896.0, "gauge"),
         Sample("mem.available_bytes", 11_000_000_000.0, "gauge"),
@@ -98,9 +122,9 @@ def test_fleet_marks_a_never_collected_host_as_such(tmp_path, monkeypatch):
 def test_fleet_flags_a_host_whose_slow_tier_metrics_are_stale(tmp_path, monkeypatch):
     client, db = _client(tmp_path, monkeypatch)
     now = datetime.now(tz=timezone.utc)
-    store.write_heartbeat(db, now)
-    store.write_samples(db, "host:caraxes", now, [Sample("load.1m", 0.1, "gauge")])
-    store.write_samples(
+    _write_heartbeat(db, now)
+    _write_samples(db, "host:caraxes", now, [Sample("load.1m", 0.1, "gauge")])
+    _write_samples(
         db, "host:caraxes", now - timedelta(hours=6),
         [Sample("disk.percent", 42.0, "gauge")],
     )
@@ -125,9 +149,9 @@ def test_fleet_never_reports_a_reading_it_cannot_date(tmp_path, monkeypatch):
     # seven-day-old disk number with no stale note anywhere.
     client, db = _client(tmp_path, monkeypatch)
     now = datetime.now(tz=timezone.utc)
-    store.write_heartbeat(db, now)
-    store.write_samples(db, "host:caraxes", now, [Sample("load.1m", 0.1, "gauge")])
-    store.write_samples(
+    _write_heartbeat(db, now)
+    _write_samples(db, "host:caraxes", now, [Sample("load.1m", 0.1, "gauge")])
+    _write_samples(
         db, "host:caraxes", now - timedelta(days=7),
         [Sample("disk.volume1.used_percent", 42.0, "gauge")],
     )
@@ -149,20 +173,20 @@ def test_fleet_dates_every_reading_it_reports(tmp_path, monkeypatch):
     # accounted for anywhere.
     client, db = _client(tmp_path, monkeypatch)
     now = datetime.now(tz=timezone.utc)
-    store.write_heartbeat(db, now)
+    _write_heartbeat(db, now)
     for offset, metric in (
         (timedelta(0), "load.1m"),
         (timedelta(hours=6), "disk.volume1.used_percent"),
         (timedelta(days=3), "temp.coretemp.package_c"),
         (timedelta(days=7), "net.veth8a3f21.rx_bytes"),
     ):
-        store.write_samples(db, "host:caraxes", now - offset, [Sample(metric, 1.0, "gauge")])
+        _write_samples(db, "host:caraxes", now - offset, [Sample(metric, 1.0, "gauge")])
     caraxes = next(
         h for h in client.get("/fleet").json()["hosts"] if h["name"] == "caraxes"
     )
 
     window = now - timedelta(seconds=api.METRIC_AGE_WINDOW)
-    assert set(caraxes["metrics"]) == set(store.metric_ages(db, "host:caraxes", since=window))
+    assert set(caraxes["metrics"]) == set(_metric_ages(db, "host:caraxes", since=window))
     assert set(caraxes["metrics"]) == {"load.1m", "disk.volume1.used_percent"}
 
 
@@ -172,9 +196,9 @@ def test_a_container_removed_days_ago_stops_reporting_as_up(tmp_path, monkeypatc
     # and the card kept rendering it "Up" indefinitely
     client, db = _client(tmp_path, monkeypatch)
     now = datetime.now(tz=timezone.utc)
-    store.write_heartbeat(db, now)
-    store.write_samples(db, "host:meleys", now, [Sample("load.1m", 0.2, "gauge")])
-    store.write_samples(
+    _write_heartbeat(db, now)
+    _write_samples(db, "host:meleys", now, [Sample("load.1m", 0.2, "gauge")])
+    _write_samples(
         db, "host:meleys", now - timedelta(days=3), [Sample("container.oldapp.up", 1.0, "gauge")]
     )
     meleys = next(h for h in client.get("/fleet").json()["hosts"] if h["name"] == "meleys")
@@ -190,8 +214,8 @@ def test_fleet_marks_a_host_whose_every_reading_aged_out_as_not_collected(
     # copy is written for exactly this: not collected *now*.
     client, db = _client(tmp_path, monkeypatch)
     now = datetime.now(tz=timezone.utc)
-    store.write_heartbeat(db, now)
-    store.write_samples(
+    _write_heartbeat(db, now)
+    _write_samples(
         db, "host:syrax", now - timedelta(days=3), [Sample("load.1m", 0.1, "gauge")]
     )
     syrax = next(h for h in client.get("/fleet").json()["hosts"] if h["name"] == "syrax")
@@ -218,12 +242,12 @@ def test_fleet_drops_a_metric_source_that_stopped_producing(tmp_path, monkeypatc
     # walks oldest_metric_age_seconds up to seven days.
     client, db = _client(tmp_path, monkeypatch)
     now = datetime.now(tz=timezone.utc)
-    store.write_heartbeat(db, now)
-    store.write_samples(
+    _write_heartbeat(db, now)
+    _write_samples(
         db, "host:vermithor", now - timedelta(days=3),
         [Sample("net.veth8a3f21.rx_bytes", 12.0, "counter")],
     )
-    store.write_samples(db, "host:vermithor", now, [Sample("load.1m", 0.4, "gauge")])
+    _write_samples(db, "host:vermithor", now, [Sample("load.1m", 0.4, "gauge")])
     body = client.get("/fleet").json()
     vermithor = next(h for h in body["hosts"] if h["name"] == "vermithor")
 
@@ -240,8 +264,8 @@ def test_fleet_reports_no_uptime_for_a_window_the_collector_did_not_watch(
     # "Unknown" rather than a perfect score.
     client, db = _client(tmp_path, monkeypatch)
     now = datetime.now(tz=timezone.utc)
-    store.write_heartbeat(db, now)
-    store.write_samples(db, "host:caraxes", now, [Sample("load.1m", 0.1, "gauge")])
+    _write_heartbeat(db, now)
+    _write_samples(db, "host:caraxes", now, [Sample("load.1m", 0.1, "gauge")])
     body = client.get("/fleet").json()
     caraxes = next(h for h in body["hosts"] if h["name"] == "caraxes")
 
@@ -256,8 +280,8 @@ def test_fleet_scores_uptime_once_the_collector_has_watched_the_window(
     now = datetime.now(tz=timezone.utc)
     # one unbroken run reaching back past the window: two rounds is enough to
     # express that, with a gap tolerance wide enough to admit the second
-    store.write_heartbeat(db, now - timedelta(hours=25))
-    store.write_heartbeat(db, now, gap=timedelta(days=2))
+    _write_heartbeat(db, now - timedelta(hours=25))
+    _write_heartbeat(db, now, gap=timedelta(days=2))
     # and the host itself checked across that run, not merely the collector
     # ticking beside it. A round that recorded no check for this host observed
     # the fleet, not the host.
@@ -268,7 +292,7 @@ def test_fleet_scores_uptime_once_the_collector_has_watched_the_window(
         until=now,
         gap=timedelta(days=2),
     )
-    store.write_samples(db, "host:caraxes", now, [Sample("load.1m", 0.1, "gauge")])
+    _write_samples(db, "host:caraxes", now, [Sample("load.1m", 0.1, "gauge")])
     body = client.get("/fleet").json()
     caraxes = next(h for h in body["hosts"] if h["name"] == "caraxes")
 
@@ -285,8 +309,8 @@ def test_fleet_reports_no_uptime_for_a_host_the_collector_stopped_checking(
     # them a flawless 100%.
     client, db = _client(tmp_path, monkeypatch)
     now = datetime.now(tz=timezone.utc)
-    store.write_heartbeat(db, now - timedelta(hours=25))
-    store.write_heartbeat(db, now, gap=timedelta(days=2))
+    _write_heartbeat(db, now - timedelta(hours=25))
+    _write_heartbeat(db, now, gap=timedelta(days=2))
     # checks for this host stop six hours ago; its readings are still inside
     # the age window, so the card is still showing numbers
     _watched(
@@ -296,7 +320,7 @@ def test_fleet_reports_no_uptime_for_a_host_the_collector_stopped_checking(
         until=now - timedelta(hours=6),
         gap=timedelta(days=2),
     )
-    store.write_samples(
+    _write_samples(
         db, "host:caraxes", now - timedelta(hours=6), [Sample("load.1m", 0.1, "gauge")]
     )
     caraxes = next(
@@ -313,8 +337,8 @@ def test_a_future_timestamp_never_reads_as_fresh(tmp_path, monkeypatch):
     # frozen values and affirmatively call them current.
     client, db = _client(tmp_path, monkeypatch)
     ahead = datetime.now(tz=timezone.utc) + timedelta(hours=6)
-    store.write_heartbeat(db, ahead)
-    store.write_samples(db, "host:caraxes", ahead, [Sample("load.1m", 0.1, "gauge")])
+    _write_heartbeat(db, ahead)
+    _write_samples(db, "host:caraxes", ahead, [Sample("load.1m", 0.1, "gauge")])
 
     health = client.get("/health").json()
     assert health["stale"] is True
@@ -345,10 +369,124 @@ def test_incidents_splits_open_from_recent(tmp_path, monkeypatch):
     client, db = _client(tmp_path, monkeypatch)
     now = datetime.now(tz=timezone.utc)
     for offset in (0, 30):
-        incidents.record(db, incidents.CheckResult("host:caraxes", False, "timeout"),
+        _record(db, incidents.CheckResult("host:caraxes", False, "timeout"),
                          now + timedelta(seconds=offset))
     body = client.get("/incidents?hours=24").json()
 
     assert len(body["open"]) == 1
     assert body["open"][0]["target"] == "host:caraxes"
     assert len(body["recent"]) == 1
+
+
+def test_core_count_is_read_from_the_per_cpu_rows():
+    """Counted, not declared. A declared 4 goes silently wrong the day a box is
+    replaced, and the fleet is not uniform to begin with."""
+    metrics = {f"cpu{index}.user": 1.0 for index in range(8)}
+    metrics["cpu.total.user"] = 1.0  # the aggregate row must not be counted
+
+    assert api.core_count(metrics) == 8
+
+
+def test_core_count_is_unknown_before_a_host_reports():
+    assert api.core_count({}) is None
+    assert api.core_count({"load.1m": 0.4}) is None
+
+
+def test_host_state_never_calls_an_uncollected_host_healthy():
+    assert api.host_state(collected=False, disk_percent=1.0, load_per_core=0.0) == "unknown"
+
+
+def test_host_state_warns_on_a_full_volume_or_a_loaded_box():
+    assert api.host_state(collected=True, disk_percent=91.0, load_per_core=0.1) == "warn"
+    assert api.host_state(collected=True, disk_percent=10.0, load_per_core=1.5) == "warn"
+    assert api.host_state(collected=True, disk_percent=10.0, load_per_core=0.1) == "ok"
+
+
+def test_host_state_is_ok_when_a_reading_is_simply_absent():
+    # a missing metric is not a failing one
+    assert api.host_state(collected=True, disk_percent=None, load_per_core=None) == "ok"
+
+
+def test_fleet_divides_load_by_the_cores_it_observed(tmp_path, monkeypatch):
+    client, db = _client(tmp_path, monkeypatch)
+    now = datetime.now(tz=timezone.utc)
+    _write_heartbeat(db, now)
+    _write_samples(db, "host:meleys", now, [
+        *(Sample(f"cpu{index}.user", 1.0, "counter") for index in range(4)),
+        Sample("load.1m", 2.0, "gauge"),
+    ])
+
+    host = next(h for h in client.get("/fleet").json()["hosts"] if h["name"] == "meleys")
+
+    assert host["cores"] == 4
+    assert host["load_per_core"] == 0.5
+    assert host["status"] == "ok"
+
+
+def test_fleet_reports_no_load_per_core_before_the_cpu_rows_arrive(tmp_path, monkeypatch):
+    client, db = _client(tmp_path, monkeypatch)
+    now = datetime.now(tz=timezone.utc)
+    _write_heartbeat(db, now)
+    _write_samples(db, "host:meleys", now, [Sample("load.1m", 2.0, "gauge")])
+
+    host = next(h for h in client.get("/fleet").json()["hosts"] if h["name"] == "meleys")
+
+    # dividing by a guessed core count would invent a number
+    assert host["cores"] is None
+    assert host["load_per_core"] is None
+
+
+def test_fleet_warns_on_a_nearly_full_volume(tmp_path, monkeypatch):
+    client, db = _client(tmp_path, monkeypatch)
+    now = datetime.now(tz=timezone.utc)
+    _write_heartbeat(db, now)
+    _write_samples(db, "host:meleys", now, [
+        Sample("disk.volume1.used_percent", 94.0, "gauge"),
+    ])
+
+    host = next(h for h in client.get("/fleet").json()["hosts"] if h["name"] == "meleys")
+
+    assert host["status"] == "warn"
+
+
+def test_memory_percent_uses_available_not_free():
+    """free excludes reclaimable page cache; on these boxes that reads as 95%
+    used on an idle machine."""
+    assert api.memory_used_percent({
+        "mem.total_bytes": 1000.0,
+        "mem.available_bytes": 250.0,
+        "mem.free_bytes": 50.0,
+    }) == 75
+
+
+def test_memory_percent_is_absent_when_either_reading_is():
+    assert api.memory_used_percent({"mem.total_bytes": 1000.0}) is None
+    assert api.memory_used_percent({"mem.available_bytes": 250.0}) is None
+    assert api.memory_used_percent({}) is None
+
+
+def test_memory_percent_never_divides_by_a_zero_total():
+    assert api.memory_used_percent(
+        {"mem.total_bytes": 0.0, "mem.available_bytes": 0.0}
+    ) is None
+
+
+def test_fleet_serves_containers_as_objects(tmp_path, monkeypatch):
+    client, db = _client(tmp_path, monkeypatch)
+    now = datetime.now(tz=timezone.utc)
+    _write_heartbeat(db, now)
+    _write_samples(db, "host:meleys", now, [
+        Sample("container.plex.up", 1.0, "gauge"),
+        Sample("container.plex.healthy", 1.0, "gauge"),
+        Sample("container.plex.has_healthcheck", 1.0, "gauge"),
+        Sample("container.radarr.up", 0.0, "gauge"),
+        Sample("container.radarr.healthy", 0.0, "gauge"),
+        Sample("container.radarr.has_healthcheck", 0.0, "gauge"),
+    ])
+
+    host = next(h for h in client.get("/fleet").json()["hosts"] if h["name"] == "meleys")
+
+    assert host["containers"] == [
+        {"name": "plex", "up": True, "healthy": True, "has_healthcheck": True},
+        {"name": "radarr", "up": False, "healthy": False, "has_healthcheck": False},
+    ]

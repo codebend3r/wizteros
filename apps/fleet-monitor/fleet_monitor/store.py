@@ -36,52 +36,46 @@ CREATE TABLE IF NOT EXISTS coverage (
 
 # How far apart two rounds may start before the silence between them counts as
 # unwatched. Measured start to start, which means a round's own duration is
-# inside it: a slow round spends up to MAX_ROUND_SECONDS (90s) on ssh before
-# the loop sleeps VITALS_INTERVAL again, so consecutive stamps land ~120s apart
-# with the collector never having stopped. A three-missed-tick tolerance (90s)
-# tripped on that every 15 minutes and blanked every uptime score for the next
-# 24 hours.
+# inside it: a slow round spends up to MAX_ROUND_SECONDS on ssh before the loop
+# sleeps again, so consecutive stamps land further apart than the interval with
+# the collector never having stopped.
 #
-# True tolerance: one worst-case slow round plus three missed intervals, 180s.
-# That admits the 120s round with 60s to spare and still restarts coverage on
-# any real stall, which staleness surfaces separately at 90s regardless.
+# The tolerance is one worst-case slow round plus three missed intervals. It
+# used to have to absorb compaction too, which was unbounded and ran on the
+# event loop; that is fixed at the source now (rollups.compact scans only what
+# is new, off the loop), so this covers what it says it covers.
 COVERAGE_GAP = timedelta(seconds=config.MAX_ROUND_SECONDS + config.VITALS_INTERVAL * 3)
 
 
-def _conn(path: str) -> sqlite3.Connection:
-    """Open the SQLite file in WAL mode so a read never blocks a tick's write."""
-    connection = sqlite3.connect(path)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA journal_mode=WAL")
-    return connection
+def init_db(connection: sqlite3.Connection) -> None:
+    connection.execute(_SAMPLES_SCHEMA)
+    connection.execute(_SAMPLES_INDEX)
+    connection.execute(_HEARTBEAT_SCHEMA)
+    connection.execute(_COVERAGE_SCHEMA)
 
 
-def init_db(path: str) -> None:
-    with _conn(path) as connection:
-        connection.execute(_SAMPLES_SCHEMA)
-        connection.execute(_SAMPLES_INDEX)
-        connection.execute(_HEARTBEAT_SCHEMA)
-        connection.execute(_COVERAGE_SCHEMA)
+def write_samples(
+    connection: sqlite3.Connection, target: str, at: datetime, samples: Iterable[Sample]
+) -> int:
+    """Insert one tick's samples.
 
-
-def write_samples(path: str, target: str, at: datetime, samples: Iterable[Sample]) -> int:
-    """Insert one tick's samples in a single transaction.
-
-    Batched on purpose: a crash mid-tick then loses that tick and nothing else.
+    Commits with the rest of the session, so a tick's samples and the check
+    derived from them land together or not at all.
     """
     stamp = at.isoformat()
     rows = [(target, s.metric, stamp, s.value, s.kind) for s in samples]
     if not rows:
         return 0
-    with _conn(path) as connection:
-        connection.executemany(
-            "INSERT INTO samples (target, metric, at, value, kind) VALUES (?, ?, ?, ?, ?)",
-            rows,
-        )
+    connection.executemany(
+        "INSERT INTO samples (target, metric, at, value, kind) VALUES (?, ?, ?, ?, ?)",
+        rows,
+    )
     return len(rows)
 
 
-def latest(path: str, target: str, *, since: datetime) -> dict[str, float]:
+def latest(
+    connection: sqlite3.Connection, target: str, *, since: datetime
+) -> dict[str, float]:
     """The newest value of every metric for one target, seen since `since`.
 
     `since` is required, and it is the same floor `metric_ages` takes, because
@@ -92,21 +86,22 @@ def latest(path: str, target: str, *, since: datetime) -> dict[str, float]:
     staleness flag, and the page printed a bare "Healthy" over it. A value that
     cannot be dated is not shown at all.
     """
-    with _conn(path) as connection:
-        rows = connection.execute(
-            """
-            SELECT metric, value FROM samples
-            WHERE target = ? AND at >= ? AND at = (
-                SELECT MAX(at) FROM samples AS inner
-                WHERE inner.target = samples.target AND inner.metric = samples.metric
-            )
-            """,
-            (target, since.isoformat()),
-        ).fetchall()
+    rows = connection.execute(
+        """
+        SELECT metric, value FROM samples
+        WHERE target = ? AND at >= ? AND at = (
+            SELECT MAX(at) FROM samples AS inner
+            WHERE inner.target = samples.target AND inner.metric = samples.metric
+        )
+        """,
+        (target, since.isoformat()),
+    ).fetchall()
     return {row["metric"]: row["value"] for row in rows}
 
 
-def metric_ages(path: str, target: str, *, since: datetime) -> dict[str, datetime]:
+def metric_ages(
+    connection: sqlite3.Connection, target: str, *, since: datetime
+) -> dict[str, datetime]:
     """The timestamp of the newest value of every metric seen since `since`.
 
     Companion to `latest`: same grouping, exposing the `MAX(at)` that query
@@ -120,24 +115,22 @@ def metric_ages(path: str, target: str, *, since: datetime) -> dict[str, datetim
     with it, so a perfectly healthy host reads as permanently stale. Anything
     that stopped being produced before `since` drops out instead.
     """
-    with _conn(path) as connection:
-        rows = connection.execute(
-            "SELECT metric, MAX(at) AS at FROM samples "
-            "WHERE target = ? AND at >= ? GROUP BY metric",
-            (target, since.isoformat()),
-        ).fetchall()
+    rows = connection.execute(
+        "SELECT metric, MAX(at) AS at FROM samples "
+        "WHERE target = ? AND at >= ? GROUP BY metric",
+        (target, since.isoformat()),
+    ).fetchall()
     return {row["metric"]: datetime.fromisoformat(row["at"]) for row in rows}
 
 
 def series(
-    path: str, target: str, metric: str, since: datetime
+    connection: sqlite3.Connection, target: str, metric: str, since: datetime
 ) -> tuple[tuple[datetime, float], ...]:
-    with _conn(path) as connection:
-        rows = connection.execute(
-            "SELECT at, value FROM samples "
-            "WHERE target = ? AND metric = ? AND at >= ? ORDER BY at",
-            (target, metric, since.isoformat()),
-        ).fetchall()
+    rows = connection.execute(
+        "SELECT at, value FROM samples "
+        "WHERE target = ? AND metric = ? AND at >= ? ORDER BY at",
+        (target, metric, since.isoformat()),
+    ).fetchall()
     return tuple((datetime.fromisoformat(row["at"]), row["value"]) for row in rows)
 
 
@@ -168,7 +161,9 @@ def rate_series(
     return tuple((at, value) for at, value in computed if value is not None)
 
 
-def write_heartbeat(path: str, at: datetime, *, gap: timedelta = COVERAGE_GAP) -> None:
+def write_heartbeat(
+    connection: sqlite3.Connection, at: datetime, *, gap: timedelta = COVERAGE_GAP
+) -> None:
     """Record that a collection round completed, and advance the coverage mark.
 
     The collector runs on a box it also monitors, so it cannot report that box
@@ -179,41 +174,35 @@ def write_heartbeat(path: str, at: datetime, *, gap: timedelta = COVERAGE_GAP) -
     unbroken run of rounds began. A round more than `gap` after the previous
     one - or before it, if the clock stepped backwards - means time went
     unwatched, so the mark restarts and no window reaching back past it can be
-    scored as uptime. The default tolerates a worst-case slow round plus three
-    missed intervals (180s), not three missed intervals: the gap is measured
-    between round starts, so each round's own duration is spent inside it.
-    `gap` is a parameter only so a test can span hours in two writes; the
-    collector always uses the default.
+    scored as uptime. `gap` is a parameter only so a test can span hours in two
+    writes; the collector always uses the default.
 
     This mark is collector-wide and says only that a round happened. Whether
     any one target was observed by that round is a separate fact, tracked per
     target in `incidents.observed_run`.
     """
-    with _conn(path) as connection:
-        row = connection.execute("SELECT at FROM heartbeat WHERE id = 1").fetchone()
-        last = datetime.fromisoformat(row["at"]) if row else None
+    row = connection.execute("SELECT at FROM heartbeat WHERE id = 1").fetchone()
+    last = datetime.fromisoformat(row["at"]) if row else None
+    connection.execute(
+        "INSERT INTO heartbeat (id, at) VALUES (1, ?) "
+        "ON CONFLICT(id) DO UPDATE SET at = excluded.at",
+        (at.isoformat(),),
+    )
+    if last is None or not (timedelta(0) <= at - last <= gap):
         connection.execute(
-            "INSERT INTO heartbeat (id, at) VALUES (1, ?) "
-            "ON CONFLICT(id) DO UPDATE SET at = excluded.at",
+            "INSERT INTO coverage (id, started_at) VALUES (1, ?) "
+            "ON CONFLICT(id) DO UPDATE SET started_at = excluded.started_at",
             (at.isoformat(),),
         )
-        if last is None or not (timedelta(0) <= at - last <= gap):
-            connection.execute(
-                "INSERT INTO coverage (id, started_at) VALUES (1, ?) "
-                "ON CONFLICT(id) DO UPDATE SET started_at = excluded.started_at",
-                (at.isoformat(),),
-            )
 
 
-def last_heartbeat(path: str) -> datetime | None:
-    with _conn(path) as connection:
-        row = connection.execute("SELECT at FROM heartbeat WHERE id = 1").fetchone()
+def last_heartbeat(connection: sqlite3.Connection) -> datetime | None:
+    row = connection.execute("SELECT at FROM heartbeat WHERE id = 1").fetchone()
     return datetime.fromisoformat(row["at"]) if row else None
 
 
-def coverage_since(path: str) -> datetime | None:
+def coverage_since(connection: sqlite3.Connection) -> datetime | None:
     """When the collector's current unbroken run of rounds began, or None when
     it has never completed one."""
-    with _conn(path) as connection:
-        row = connection.execute("SELECT started_at FROM coverage WHERE id = 1").fetchone()
+    row = connection.execute("SELECT started_at FROM coverage WHERE id = 1").fetchone()
     return datetime.fromisoformat(row["started_at"]) if row else None

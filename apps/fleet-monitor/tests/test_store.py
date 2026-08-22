@@ -11,9 +11,7 @@ T0 = datetime(2026, 8, 10, 12, 0, 0, tzinfo=timezone.utc)
 ANY_AGE = T0 - timedelta(days=30)
 
 
-def test_write_and_read_latest(tmp_path):
-    db = str(tmp_path / "fleet.db")
-    store.init_db(db)
+def test_write_and_read_latest(db):
 
     store.write_samples(db, "host:vermithor", T0, [
         Sample(metric="load.1m", value=0.46, kind="gauge"),
@@ -26,9 +24,7 @@ def test_write_and_read_latest(tmp_path):
     }
 
 
-def test_latest_returns_the_newest_value_per_metric(tmp_path):
-    db = str(tmp_path / "fleet.db")
-    store.init_db(db)
+def test_latest_returns_the_newest_value_per_metric(db):
 
     store.write_samples(db, "host:meleys", T0, [Sample("load.1m", 1.01, "gauge")])
     store.write_samples(db, "host:meleys", T0 + timedelta(seconds=30),
@@ -37,15 +33,11 @@ def test_latest_returns_the_newest_value_per_metric(tmp_path):
     assert store.latest(db, "host:meleys", since=ANY_AGE)["load.1m"] == 0.75
 
 
-def test_latest_is_empty_for_an_unknown_target(tmp_path):
-    db = str(tmp_path / "fleet.db")
-    store.init_db(db)
+def test_latest_is_empty_for_an_unknown_target(db):
     assert store.latest(db, "host:nope", since=ANY_AGE) == {}
 
 
-def test_series_is_ordered_and_windowed(tmp_path):
-    db = str(tmp_path / "fleet.db")
-    store.init_db(db)
+def test_series_is_ordered_and_windowed(db):
     for offset in (0, 30, 60):
         store.write_samples(db, "host:syrax", T0 + timedelta(seconds=offset),
                             [Sample("load.1m", offset / 100, "gauge")])
@@ -89,21 +81,17 @@ def test_rate_series_needs_two_points():
     assert store.rate_series(()) == ()
 
 
-def test_heartbeat_roundtrips(tmp_path):
-    db = str(tmp_path / "fleet.db")
-    store.init_db(db)
+def test_heartbeat_roundtrips(db):
 
     assert store.last_heartbeat(db) is None
     store.write_heartbeat(db, T0)
     assert store.last_heartbeat(db) == T0
 
 
-def test_metric_ages_drops_a_metric_source_that_stopped_producing(tmp_path):
+def test_metric_ages_drops_a_metric_source_that_stopped_producing(db):
     # a veth renamed by a container restart is written once and never again.
     # Without the floor its one timestamp is still the oldest thing on the
     # host a week later, and every staleness signal derived from it is pinned.
-    db = str(tmp_path / "fleet.db")
-    store.init_db(db)
     store.write_samples(db, "host:vermithor", T0 - timedelta(days=3),
                         [Sample("net.veth8a3f21.rx_bytes", 12.0, "counter")])
     store.write_samples(db, "host:vermithor", T0, [Sample("load.1m", 0.4, "gauge")])
@@ -114,11 +102,9 @@ def test_metric_ages_drops_a_metric_source_that_stopped_producing(tmp_path):
     assert ages["load.1m"] == T0
 
 
-def test_metric_ages_keeps_a_metric_that_is_merely_late(tmp_path):
+def test_metric_ages_keeps_a_metric_that_is_merely_late(db):
     # the floor must sit far above the staleness threshold, or nothing could
     # ever be reported stale: a late metric has to survive to be caught
-    db = str(tmp_path / "fleet.db")
-    store.init_db(db)
     store.write_samples(db, "host:vermithor", T0 - timedelta(hours=6),
                         [Sample("disk.volume1.used_percent", 42.0, "gauge")])
 
@@ -127,51 +113,41 @@ def test_metric_ages_keeps_a_metric_that_is_merely_late(tmp_path):
     assert ages["disk.volume1.used_percent"] == T0 - timedelta(hours=6)
 
 
-def test_coverage_starts_at_the_first_heartbeat(tmp_path):
-    db = str(tmp_path / "fleet.db")
-    store.init_db(db)
+def test_coverage_starts_at_the_first_heartbeat(db):
 
     assert store.coverage_since(db) is None
     store.write_heartbeat(db, T0)
     assert store.coverage_since(db) == T0
 
 
-def test_coverage_survives_consecutive_rounds(tmp_path):
-    db = str(tmp_path / "fleet.db")
-    store.init_db(db)
+def test_coverage_survives_consecutive_rounds(db):
     for offset in (0, 30, 60, 90):
         store.write_heartbeat(db, T0 + timedelta(seconds=offset))
 
     assert store.coverage_since(db) == T0
 
 
-def test_a_gap_in_the_rounds_restarts_coverage(tmp_path):
+def test_a_gap_in_the_rounds_restarts_coverage(db):
     # the collector was down for those hours. Nobody watched them, and an
     # empty incident history over unwatched hours is not proof of uptime.
-    db = str(tmp_path / "fleet.db")
-    store.init_db(db)
     store.write_heartbeat(db, T0)
     store.write_heartbeat(db, T0 + timedelta(hours=8))
 
     assert store.coverage_since(db) == T0 + timedelta(hours=8)
 
 
-def test_a_backwards_clock_step_restarts_coverage(tmp_path):
-    db = str(tmp_path / "fleet.db")
-    store.init_db(db)
+def test_a_backwards_clock_step_restarts_coverage(db):
     store.write_heartbeat(db, T0)
     store.write_heartbeat(db, T0 - timedelta(hours=2))
 
     assert store.coverage_since(db) == T0 - timedelta(hours=2)
 
 
-def test_latest_drops_a_reading_the_age_window_cannot_date(tmp_path):
+def test_latest_drops_a_reading_the_age_window_cannot_date(db):
     # samples live seven days and the age window is a day, so an unfloored read
     # hands back values metric_ages has already dropped: a number on the page
     # with no age accounted for anywhere, which is how a week-old disk reading
     # rendered under a bare "Healthy"
-    db = str(tmp_path / "fleet.db")
-    store.init_db(db)
     store.write_samples(db, "host:caraxes", T0 - timedelta(days=7),
                         [Sample("disk.volume1.used_percent", 42.0, "gauge")])
     store.write_samples(db, "host:caraxes", T0, [Sample("load.1m", 0.1, "gauge")])
@@ -185,12 +161,10 @@ def test_latest_drops_a_reading_the_age_window_cannot_date(tmp_path):
     )
 
 
-def test_latest_keeps_a_reading_that_is_merely_late(tmp_path):
+def test_latest_keeps_a_reading_that_is_merely_late(db):
     # the floor must not swallow the detection band: a metric between its
     # refresh interval and the window still has to be reported, with its age,
     # so the page can call it stale rather than silently drop it
-    db = str(tmp_path / "fleet.db")
-    store.init_db(db)
     store.write_samples(db, "host:caraxes", T0 - timedelta(hours=6),
                         [Sample("disk.volume1.used_percent", 42.0, "gauge")])
 
@@ -199,21 +173,19 @@ def test_latest_keeps_a_reading_that_is_merely_late(tmp_path):
     assert got["disk.volume1.used_percent"] == 42.0
 
 
-def test_a_slow_round_never_restarts_coverage(tmp_path):
+def test_a_slow_round_never_restarts_coverage(db):
     # the gap is measured between round starts, so a round's own duration is
     # spent inside it. A slow round can spend MAX_ROUND_SECONDS on ssh before
     # the loop sleeps VITALS_INTERVAL again: ~120s apart, collector never
     # stopped. A 90s tolerance tripped on that every 15 minutes and blanked
     # every uptime score for the following 24 hours.
-    db = str(tmp_path / "fleet.db")
-    store.init_db(db)
     store.write_heartbeat(db, T0)
     store.write_heartbeat(db, T0 + timedelta(seconds=120))
 
     assert store.coverage_since(db) == T0
 
 
-def test_the_coverage_gap_admits_a_worst_case_round(tmp_path):
+def test_the_coverage_gap_admits_a_worst_case_round(db):
     # stated as arithmetic so the constant cannot drift back under the round
     # duration it has to tolerate
     worst_case = config.MAX_ROUND_SECONDS + config.VITALS_INTERVAL
@@ -221,10 +193,7 @@ def test_the_coverage_gap_admits_a_worst_case_round(tmp_path):
     assert store.COVERAGE_GAP.total_seconds() > worst_case
 
 
-def test_init_db_is_idempotent(tmp_path):
-    db = str(tmp_path / "fleet.db")
-    store.init_db(db)
+def test_init_db_is_idempotent(db):
     store.write_samples(db, "host:vhagar", T0, [Sample("load.1m", 0.14, "gauge")])
-    store.init_db(db)
 
     assert store.latest(db, "host:vhagar", since=ANY_AGE)["load.1m"] == 0.14

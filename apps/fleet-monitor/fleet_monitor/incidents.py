@@ -1,8 +1,9 @@
+import sqlite3
 from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from fleet_monitor.store import COVERAGE_GAP, _conn
+from fleet_monitor.store import COVERAGE_GAP
 
 _INCIDENTS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS incidents (
@@ -33,6 +34,23 @@ class CheckResult:
 
 
 @dataclass(frozen=True, slots=True)
+class Incident:
+    """One outage, open when `closed_at` is None.
+
+    A real type rather than the row dict `SELECT *` used to hand back. That
+    made the table's shape the wire's shape, so renaming a column silently
+    reshaped the public API and the only thing describing the contract was a
+    hand-written type guard in the SPA.
+    """
+
+    id: int
+    target: str
+    reason: str
+    opened_at: datetime
+    closed_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
 class ObservedRun:
     """The stretch of time one target was actually being checked.
 
@@ -47,7 +65,7 @@ class ObservedRun:
     until: datetime
 
 
-def init_db(path: str) -> None:
+def init_db(connection: sqlite3.Connection) -> None:
     """Create this module's tables, and carry an older check_streak forward.
 
     CREATE TABLE IF NOT EXISTS never widens an existing table, so a database
@@ -56,24 +74,23 @@ def init_db(path: str) -> None:
     check it saw. That under-claims coverage - uptime reads Unknown until a
     fresh run has spanned the window - which is the safe direction to be wrong.
     """
-    with _conn(path) as connection:
-        connection.execute(_INCIDENTS_SCHEMA)
-        connection.execute(_STREAK_SCHEMA)
-        columns = {
-            row["name"] for row in connection.execute("PRAGMA table_info(check_streak)")
-        }
-        if "observed_since" not in columns:
-            connection.execute(
-                "ALTER TABLE check_streak ADD COLUMN observed_since TEXT NOT NULL DEFAULT ''"
-            )
-            connection.execute("UPDATE check_streak SET observed_since = last_at")
+    connection.execute(_INCIDENTS_SCHEMA)
+    connection.execute(_STREAK_SCHEMA)
+    columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(check_streak)")
+    }
+    if "observed_since" not in columns:
         connection.execute(
-            "CREATE INDEX IF NOT EXISTS ix_incidents_target ON incidents (target, opened_at)"
+            "ALTER TABLE check_streak ADD COLUMN observed_since TEXT NOT NULL DEFAULT ''"
         )
+        connection.execute("UPDATE check_streak SET observed_since = last_at")
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS ix_incidents_target ON incidents (target, opened_at)"
+    )
 
 
 def record(
-    path: str,
+    connection: sqlite3.Connection,
     result: CheckResult,
     at: datetime,
     *,
@@ -101,86 +118,106 @@ def record(
     unbroken run over hours nobody watched. `gap` is the same tolerance the
     collector-wide mark uses, and is a parameter only so a test can span hours
     in two calls.
+
+    Commits with the session, not on its own, so one host's whole container set
+    advances together instead of leaving half the containers with an advanced
+    streak when a round dies midway.
     """
-    with _conn(path) as connection:
-        row = connection.execute(
-            "SELECT ok_run, fail_run, last_at, observed_since FROM check_streak "
-            "WHERE target = ?",
-            (result.target,),
-        ).fetchone()
-        ok_run = (row["ok_run"] if row else 0) + 1 if result.ok else 0
-        fail_run = 0 if result.ok else (row["fail_run"] if row else 0) + 1
+    row = connection.execute(
+        "SELECT ok_run, fail_run, last_at, observed_since FROM check_streak "
+        "WHERE target = ?",
+        (result.target,),
+    ).fetchone()
+    ok_run = (row["ok_run"] if row else 0) + 1 if result.ok else 0
+    fail_run = 0 if result.ok else (row["fail_run"] if row else 0) + 1
 
-        previous_at = datetime.fromisoformat(row["last_at"]) if row else None
-        # a check further than `gap` from the previous one - or before it, if
-        # the clock stepped backwards - leaves time this target was not being
-        # checked, so its run starts over here
-        observed_since = (
-            row["observed_since"]
-            if previous_at is not None and timedelta(0) <= at - previous_at <= gap
-            else at.isoformat()
-        )
+    previous_at = datetime.fromisoformat(row["last_at"]) if row else None
+    # a check further than `gap` from the previous one - or before it, if
+    # the clock stepped backwards - leaves time this target was not being
+    # checked, so its run starts over here
+    observed_since = (
+        row["observed_since"]
+        if previous_at is not None and timedelta(0) <= at - previous_at <= gap
+        else at.isoformat()
+    )
 
+    connection.execute(
+        "INSERT INTO check_streak (target, ok_run, fail_run, last_at, observed_since) "
+        "VALUES (?, ?, ?, ?, ?) ON CONFLICT(target) DO UPDATE SET "
+        "ok_run = excluded.ok_run, fail_run = excluded.fail_run, "
+        "last_at = excluded.last_at, observed_since = excluded.observed_since",
+        (result.target, ok_run, fail_run, at.isoformat(), observed_since),
+    )
+
+    current = connection.execute(
+        "SELECT id FROM incidents WHERE target = ? AND closed_at IS NULL",
+        (result.target,),
+    ).fetchone()
+
+    # a target degrading from timeout to auth is still the same outage,
+    # but the operator needs the reason it is failing for now, not the one
+    # it opened with. An empty reason never overwrites a named one.
+    if not result.ok and current is not None and result.reason:
         connection.execute(
-            "INSERT INTO check_streak (target, ok_run, fail_run, last_at, observed_since) "
-            "VALUES (?, ?, ?, ?, ?) ON CONFLICT(target) DO UPDATE SET "
-            "ok_run = excluded.ok_run, fail_run = excluded.fail_run, "
-            "last_at = excluded.last_at, observed_since = excluded.observed_since",
-            (result.target, ok_run, fail_run, at.isoformat(), observed_since),
+            "UPDATE incidents SET reason = ? WHERE id = ?",
+            (result.reason, current["id"]),
         )
 
-        current = connection.execute(
-            "SELECT id FROM incidents WHERE target = ? AND closed_at IS NULL",
-            (result.target,),
-        ).fetchone()
+    if fail_run >= threshold and current is None:
+        connection.execute(
+            "INSERT INTO incidents (target, reason, opened_at) VALUES (?, ?, ?)",
+            (result.target, result.reason, at.isoformat()),
+        )
+        return "opened"
 
-        # a target degrading from timeout to auth is still the same outage,
-        # but the operator needs the reason it is failing for now, not the one
-        # it opened with. An empty reason never overwrites a named one.
-        if not result.ok and current is not None and result.reason:
-            connection.execute(
-                "UPDATE incidents SET reason = ? WHERE id = ?",
-                (result.reason, current["id"]),
-            )
-
-        if fail_run >= threshold and current is None:
-            connection.execute(
-                "INSERT INTO incidents (target, reason, opened_at) VALUES (?, ?, ?)",
-                (result.target, result.reason, at.isoformat()),
-            )
-            return "opened"
-
-        if ok_run >= threshold and current is not None:
-            connection.execute(
-                "UPDATE incidents SET closed_at = ? WHERE id = ?", (at.isoformat(), current["id"])
-            )
-            return "closed"
+    if ok_run >= threshold and current is not None:
+        connection.execute(
+            "UPDATE incidents SET closed_at = ? WHERE id = ?",
+            (at.isoformat(), current["id"]),
+        )
+        return "closed"
 
     return None
 
 
-def _rows(path: str, sql: str, params: tuple) -> tuple[dict, ...]:
-    with _conn(path) as connection:
-        return tuple(dict(row) for row in connection.execute(sql, params).fetchall())
+def _incident(row: sqlite3.Row) -> Incident:
+    return Incident(
+        id=row["id"],
+        target=row["target"],
+        reason=row["reason"],
+        opened_at=datetime.fromisoformat(row["opened_at"]),
+        closed_at=datetime.fromisoformat(row["closed_at"]) if row["closed_at"] else None,
+    )
 
 
-def open_incidents(path: str) -> tuple[dict, ...]:
-    return _rows(
-        path,
-        "SELECT * FROM incidents WHERE closed_at IS NULL ORDER BY opened_at DESC",
+def _select(
+    connection: sqlite3.Connection, sql: str, params: tuple
+) -> tuple[Incident, ...]:
+    return tuple(_incident(row) for row in connection.execute(sql, params).fetchall())
+
+
+_COLUMNS = "id, target, reason, opened_at, closed_at"
+
+
+def open_incidents(connection: sqlite3.Connection) -> tuple[Incident, ...]:
+    return _select(
+        connection,
+        f"SELECT {_COLUMNS} FROM incidents WHERE closed_at IS NULL ORDER BY opened_at DESC",
         (),
     )
 
 
-def history(path: str, since: datetime) -> tuple[dict, ...]:
-    return _rows(
-        path,
-        "SELECT * FROM incidents WHERE opened_at >= ? ORDER BY opened_at DESC",
+def history(connection: sqlite3.Connection, since: datetime) -> tuple[Incident, ...]:
+    return _select(
+        connection,
+        f"SELECT {_COLUMNS} FROM incidents WHERE opened_at >= ? ORDER BY opened_at DESC",
         (since.isoformat(),),
     )
 
 
-def retire_absent(path: str, prefix: str, seen: Collection[str], at: datetime) -> int:
+def retire_absent(
+    connection: sqlite3.Connection, prefix: str, seen: Collection[str], at: datetime
+) -> int:
     """Close open incidents under `prefix` whose suffix is no longer present.
 
     Targets are discovered, not declared: a stack gains Jellyfin, loses an app,
@@ -192,30 +229,29 @@ def retire_absent(path: str, prefix: str, seen: Collection[str], at: datetime) -
     the other's.
     """
     present = frozenset(seen)
-    with _conn(path) as connection:
-        stale = [
-            (row["id"], row["target"])
-            for row in connection.execute(
-                "SELECT id, target FROM incidents "
-                "WHERE closed_at IS NULL AND target LIKE ? || '%'",
-                (prefix,),
-            ).fetchall()
-            if row["target"].removeprefix(prefix) not in present
-        ]
-        connection.executemany(
-            "UPDATE incidents SET closed_at = ?, reason = 'removed' WHERE id = ?",
-            [(at.isoformat(), incident_id) for incident_id, _ in stale],
-        )
-        # drop the streak too, so a container that comes back under the same
-        # name starts clean rather than inheriting its old failure run
-        connection.executemany(
-            "DELETE FROM check_streak WHERE target = ?",
-            [(target,) for _, target in stale],
-        )
+    stale = [
+        (row["id"], row["target"])
+        for row in connection.execute(
+            "SELECT id, target FROM incidents "
+            "WHERE closed_at IS NULL AND target LIKE ? || '%'",
+            (prefix,),
+        ).fetchall()
+        if row["target"].removeprefix(prefix) not in present
+    ]
+    connection.executemany(
+        "UPDATE incidents SET closed_at = ?, reason = 'removed' WHERE id = ?",
+        [(at.isoformat(), incident_id) for incident_id, _ in stale],
+    )
+    # drop the streak too, so a container that comes back under the same
+    # name starts clean rather than inheriting its old failure run
+    connection.executemany(
+        "DELETE FROM check_streak WHERE target = ?",
+        [(target,) for _, target in stale],
+    )
     return len(stale)
 
 
-def observed_run(path: str, target: str) -> ObservedRun | None:
+def observed_run(connection: sqlite3.Connection, target: str) -> ObservedRun | None:
     """This target's current unbroken run of recorded checks, or None when it
     has never had one.
 
@@ -227,10 +263,9 @@ def observed_run(path: str, target: str) -> ObservedRun | None:
     Unknown for the host that is actually down - only for the one nothing
     looked at.
     """
-    with _conn(path) as connection:
-        row = connection.execute(
-            "SELECT observed_since, last_at FROM check_streak WHERE target = ?", (target,)
-        ).fetchone()
+    row = connection.execute(
+        "SELECT observed_since, last_at FROM check_streak WHERE target = ?", (target,)
+    ).fetchone()
     if row is None:
         return None
     return ObservedRun(
@@ -240,7 +275,7 @@ def observed_run(path: str, target: str) -> ObservedRun | None:
 
 
 def uptime_percent(
-    path: str,
+    connection: sqlite3.Connection,
     target: str,
     since: datetime,
     now: datetime,
@@ -269,21 +304,16 @@ def uptime_percent(
     if window <= 0 or observed.since > since or not watched_to_the_end:
         return None
 
-    rows = _rows(
-        path,
-        "SELECT opened_at, closed_at FROM incidents "
+    outages = _select(
+        connection,
+        f"SELECT {_COLUMNS} FROM incidents "
         "WHERE target = ? AND (closed_at IS NULL OR closed_at >= ?)",
         (target, since.isoformat()),
     )
     down = sum(
-        (min(closed, now) - max(opened, since)).total_seconds()
-        for opened, closed in (
-            (
-                datetime.fromisoformat(row["opened_at"]),
-                datetime.fromisoformat(row["closed_at"]) if row["closed_at"] else now,
-            )
-            for row in rows
-        )
-        if min(closed, now) > max(opened, since)
+        (min(closed, now) - max(incident.opened_at, since)).total_seconds()
+        for incident in outages
+        for closed in (incident.closed_at or now,)
+        if min(closed, now) > max(incident.opened_at, since)
     )
     return round(max(0.0, (window - down) / window) * 100.0, 3)

@@ -64,12 +64,10 @@ def test_the_slow_tier_is_a_whole_multiple_of_the_vitals_tier():
 
 
 def test_the_round_budget_matches_the_transport_that_spends_it():
-    # MAX_ROUND_SECONDS is derived, and store.COVERAGE_GAP is derived from it.
-    # Nothing in the import graph ties that arithmetic to the transport it
-    # describes, so this is the tie: if _capture's multiple ever changes, the
-    # derived tolerance is wrong and this fails instead of a slow round
-    # silently blanking every uptime score.
-    assert config.SSH_CAPTURE_FACTOR == ssh.CAPTURE_FACTOR
+    # config imports the factor from the transport that spends it, so the two
+    # cannot drift apart any more. What still needs pinning is the arithmetic
+    # built on top of it: store.COVERAGE_GAP is derived from this, and a wrong
+    # tolerance silently blanks every uptime score on a slow round.
     assert config.MAX_ROUND_SECONDS == (
         config.VITALS_TIMEOUT + config.SLOW_TIMEOUT
     ) * ssh.CAPTURE_FACTOR

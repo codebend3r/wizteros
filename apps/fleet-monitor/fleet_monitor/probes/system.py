@@ -1,6 +1,10 @@
+from fleet_monitor.probes.parse import number, ratio
 from fleet_monitor.probes.types import Sample
 
 _BLOCK_BYTES = 1024
+
+# df -Pk column order after the filesystem name.
+_TOTAL, _USED, _AVAILABLE, _CAPACITY, _MOUNT = 1, 2, 3, 4, 5
 
 
 def parse_df(text: str) -> tuple[Sample, ...]:
@@ -14,33 +18,25 @@ def parse_df(text: str) -> tuple[Sample, ...]:
     return tuple(
         sample
         for fields in rows
-        if (len(fields) >= 6 and
-            fields[1].lstrip("-").isdigit() and
-            fields[2].lstrip("-").isdigit() and
-            fields[3].lstrip("-").isdigit() and
-            fields[4].rstrip("%").lstrip("-").isdigit())
-        for name in (fields[5].lstrip("/").replace("/", "_") or "root",)
+        if len(fields) > _MOUNT
+        for total, used, available, capacity in (
+            (
+                number(fields[_TOTAL]),
+                number(fields[_USED]),
+                number(fields[_AVAILABLE]),
+                number(fields[_CAPACITY].rstrip("%")),
+            ),
+        )
+        if None not in (total, used, available, capacity)
+        for name in (fields[_MOUNT].lstrip("/").replace("/", "_") or "root",)
         for sample in (
-            Sample(
-                metric=f"disk.{name}.total_bytes",
-                value=float(fields[1]) * _BLOCK_BYTES,
-                kind="gauge",
-            ),
-            Sample(
-                metric=f"disk.{name}.used_bytes",
-                value=float(fields[2]) * _BLOCK_BYTES,
-                kind="gauge",
-            ),
-            Sample(
-                metric=f"disk.{name}.available_bytes",
-                value=float(fields[3]) * _BLOCK_BYTES,
-                kind="gauge",
-            ),
-            Sample(
-                metric=f"disk.{name}.used_percent",
-                value=float(fields[4].rstrip("%")),
-                kind="gauge",
-            ),
+            Sample(metric=f"disk.{name}.total_bytes", value=total * _BLOCK_BYTES,
+                   kind="gauge"),
+            Sample(metric=f"disk.{name}.used_bytes", value=used * _BLOCK_BYTES,
+                   kind="gauge"),
+            Sample(metric=f"disk.{name}.available_bytes", value=available * _BLOCK_BYTES,
+                   kind="gauge"),
+            Sample(metric=f"disk.{name}.used_percent", value=capacity, kind="gauge"),
         )
     )
 
@@ -56,13 +52,14 @@ def parse_hwmon(text: str) -> tuple[Sample, ...]:
     return tuple(
         Sample(
             metric=f"temp.{fields[0]}.{key.removesuffix('_input')}",
-            value=float(raw) / 1000.0,
+            value=millidegrees / 1000.0,
             kind="gauge",
         )
         for fields in rows
         if len(fields) >= 2
         for key, _, raw in (fields[1].partition("="),)
-        if raw.lstrip("-").isdigit()
+        for millidegrees in (number(raw),)
+        if millidegrees is not None
     )
 
 
@@ -76,21 +73,21 @@ def parse_inotify(text: str) -> tuple[Sample, ...]:
     """
     pairs = [line.split("=", 1) for line in text.splitlines() if "=" in line]
     values = {
-        key: float(raw)
+        key: value
         for key, raw in pairs
-        if raw.strip() and raw.strip().lstrip("-").isdigit()
+        for value in (number(raw.strip()),)
+        if value is not None
     }
-    base = tuple(
-        Sample(metric=f"inotify.{key}", value=value, kind="gauge")
-        for key, value in values.items()
-    )
-    ceiling = values.get("max_user_instances", 0.0)
-    in_use = values.get("instances_in_use")
-    if ceiling <= 0 or in_use is None:
-        return base
     return (
-        *base,
-        Sample(metric="inotify.instances_used_ratio", value=in_use / ceiling, kind="gauge"),
+        *(
+            Sample(metric=f"inotify.{key}", value=value, kind="gauge")
+            for key, value in values.items()
+        ),
+        *ratio(
+            metric="inotify.instances_used_ratio",
+            value=values.get("instances_in_use"),
+            ceiling=values.get("max_user_instances", 0.0),
+        ),
     )
 
 
@@ -108,15 +105,13 @@ def parse_gpu_freq(text: str) -> tuple[Sample, ...]:
     anything transcoding on meleys is doing it in software on 2 physical cores.
     """
     fields = text.split()
-    if (len(fields) < 2 or
-        not fields[0].lstrip("-").isdigit() or
-        not fields[1].lstrip("-").isdigit()):
+    if len(fields) < 2:
         return ()
-    current, ceiling = float(fields[0]), float(fields[1])
-    base = (
+    current, ceiling = number(fields[0]), number(fields[1])
+    if current is None or ceiling is None:
+        return ()
+    return (
         Sample(metric="gpu.freq_mhz", value=current, kind="gauge"),
         Sample(metric="gpu.freq_max_mhz", value=ceiling, kind="gauge"),
+        *ratio(metric="gpu.freq_ratio", value=current, ceiling=ceiling),
     )
-    if ceiling <= 0:
-        return base
-    return (*base, Sample(metric="gpu.freq_ratio", value=current / ceiling, kind="gauge"))

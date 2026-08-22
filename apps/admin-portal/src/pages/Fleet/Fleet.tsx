@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, type UseQueryResult } from '@tanstack/react-query'
+import type { ReactNode } from 'react'
 import { AdminGate } from '@/components/AdminGate/AdminGate'
 import { AdminLayout } from '@/components/AdminLayout/AdminLayout'
 import { fetchFleet, fetchIncidents, toHostSummary } from '@/lib/fleetApi'
@@ -26,6 +27,48 @@ const formatTimestamp = (isoTimestamp: string | null): string => {
  */
 const errorMessage = (error: unknown): string =>
   error instanceof Error && error.message.length > 0 ? error.message : FALLBACK_ERROR
+
+type AsyncSectionProps<T> = {
+  readonly id: string
+  readonly title: string
+  readonly query: UseQueryResult<T>
+  readonly loadingLabel: string
+  readonly errorSuffix: string
+  readonly children: (data: T) => ReactNode
+}
+
+/** A section that says which of loading, failed, or loaded it is showing.
+ *
+ * Both sections on this page need all three states, and the page's whole
+ * thesis is that history must never be presented as the present. Writing the
+ * triple twice invites the two to drift, and a section that silently renders
+ * nothing while a query is in flight reads as a monitor with nothing to report.
+ */
+const AsyncSection = <T,>({
+  id,
+  title,
+  query,
+  loadingLabel,
+  errorSuffix,
+  children,
+}: AsyncSectionProps<T>) => (
+  <section className={styles.section} aria-labelledby={id}>
+    <h2 className={styles.sectionTitle} id={id}>
+      {title}
+    </h2>
+    {!!query.isPending && (
+      <p className={styles.muted} aria-live="polite">
+        {loadingLabel}
+      </p>
+    )}
+    {!!query.isError && (
+      <p className={styles.alert} role="alert">
+        {`${errorMessage(query.error)} ${errorSuffix}`}
+      </p>
+    )}
+    {!!query.data && children(query.data)}
+  </section>
+)
 
 const FleetInner = () => {
   const fleet = useQuery({
@@ -59,24 +102,17 @@ const FleetInner = () => {
           )}
         </header>
 
-        <section className={styles.section} aria-labelledby="fleet-hosts">
-          <h2 className={styles.sectionTitle} id="fleet-hosts">
-            Hosts
-          </h2>
-          {!!fleet.isPending && (
-            <p className={styles.muted} aria-live="polite">
-              Loading fleet status.
-            </p>
-          )}
-          {!!fleet.isError && (
-            <p className={styles.alert} role="alert">
-              {errorMessage(fleet.error)} No host state is available.
-            </p>
-          )}
-          {!!fleet.data &&
-            (fleet.data.hosts.length > 0 ? (
+        <AsyncSection
+          id="fleet-hosts"
+          title="Hosts"
+          query={fleet}
+          loadingLabel="Loading fleet status."
+          errorSuffix="No host state is available."
+        >
+          {(data) =>
+            data.hosts.length > 0 ? (
               <ul className={styles.grid}>
-                {fleet.data.hosts.map((host) => (
+                {data.hosts.map((host) => (
                   <li key={host.name} className={styles.gridItem}>
                     <HostCard summary={toHostSummary(host)} />
                   </li>
@@ -86,27 +122,21 @@ const FleetInner = () => {
               /* an empty ul renders as nothing at all, which reads as a page
                 still loading rather than as a monitor with no hosts */
               <p className={styles.muted}>The fleet monitor reported no hosts.</p>
-            ))}
-        </section>
+            )
+          }
+        </AsyncSection>
 
-        <section className={styles.section} aria-labelledby="fleet-incidents">
-          <h2 className={styles.sectionTitle} id="fleet-incidents">
-            Open incidents
-          </h2>
-          {!!incidents.isPending && (
-            <p className={styles.muted} aria-live="polite">
-              Loading incidents.
-            </p>
-          )}
-          {!!incidents.isError && (
-            <p className={styles.alert} role="alert">
-              {errorMessage(incidents.error)} No incident state is available.
-            </p>
-          )}
-          {!!incidents.data &&
-            (incidents.data.open.length > 0 ? (
+        <AsyncSection
+          id="fleet-incidents"
+          title="Open incidents"
+          query={incidents}
+          loadingLabel="Loading incidents."
+          errorSuffix="No incident state is available."
+        >
+          {(data) =>
+            data.open.length > 0 ? (
               <ul className={styles.incidents}>
-                {incidents.data.open.map((incident) => (
+                {data.open.map((incident) => (
                   <li key={incident.id} className={styles.incident}>
                     <span className={styles.incidentTarget}>{incident.target}</span>
                     <span className={styles.incidentReason}>
@@ -120,8 +150,9 @@ const FleetInner = () => {
               </ul>
             ) : (
               <p className={styles.muted}>No open incidents.</p>
-            ))}
-        </section>
+            )
+          }
+        </AsyncSection>
       </main>
     </AdminLayout>
   )
