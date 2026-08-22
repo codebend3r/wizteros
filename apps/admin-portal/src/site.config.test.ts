@@ -91,3 +91,61 @@ test('provides three support items', () => {
   const config = resolveConfig({ env: {} })
   expect(config.supportItems).toHaveLength(3)
 })
+
+test('derives an annual column from every tier price at two months free', () => {
+  const config = resolveConfig({ env: {} })
+  const byId = Object.fromEntries(
+    config.tiers.map((tier) => [
+      tier.id,
+      { total: tier.annual.total, perMonth: tier.annual.perMonth, savings: tier.annual.savings },
+    ]),
+  )
+  expect(byId).toEqual({
+    bronze: { total: '$80', perMonth: '$6.67', savings: 'Save $16 a year' },
+    silver: { total: '$140', perMonth: '$11.67', savings: 'Save $28 a year' },
+    gold: { total: '$200', perMonth: '$16.67', savings: 'Save $40 a year' },
+    youth: { total: '$100', perMonth: '$8.33', savings: 'Save $20 a year' },
+  })
+})
+
+test('labels every annual card as billed annually', () => {
+  const config = resolveConfig({ env: {} })
+  expect(config.tiers.map((tier) => tier.annual.cadence)).toEqual(
+    config.tiers.map(() => 'CAD / month, billed annually'),
+  )
+})
+
+test('annual payment links fall back to empty strings with empty env', () => {
+  const config = resolveConfig({ env: {} })
+  expect(config.tiers.map((tier) => tier.annual.paymentLinkUrl)).toEqual(config.tiers.map(() => ''))
+})
+
+test('maps each annual payment link env var to its tier', () => {
+  const config = resolveConfig({
+    env: {
+      VITE_PAYMENT_LINK_BRONZE_ANNUAL_URL: 'https://buy.stripe.com/by',
+      VITE_PAYMENT_LINK_SILVER_ANNUAL_URL: 'https://buy.stripe.com/sy',
+      VITE_PAYMENT_LINK_GOLD_ANNUAL_URL: 'https://buy.stripe.com/gy',
+      VITE_PAYMENT_LINK_YOUTH_ANNUAL_URL: 'https://buy.stripe.com/ky',
+    },
+  })
+  const byId = Object.fromEntries(config.tiers.map((tier) => [tier.id, tier.annual.paymentLinkUrl]))
+  expect(byId).toEqual({
+    bronze: 'https://buy.stripe.com/by',
+    silver: 'https://buy.stripe.com/sy',
+    gold: 'https://buy.stripe.com/gy',
+    youth: 'https://buy.stripe.com/ky',
+  })
+})
+
+test('keeps the monthly and annual links apart on the same tier', () => {
+  const config = resolveConfig({
+    env: {
+      VITE_PAYMENT_LINK_GOLD_URL: 'https://buy.stripe.com/g',
+      VITE_PAYMENT_LINK_GOLD_ANNUAL_URL: 'https://buy.stripe.com/gy',
+    },
+  })
+  const gold = config.tiers.find((tier) => tier.id === 'gold')
+  expect(gold?.paymentLinkUrl).toBe('https://buy.stripe.com/g')
+  expect(gold?.annual.paymentLinkUrl).toBe('https://buy.stripe.com/gy')
+})

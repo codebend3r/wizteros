@@ -9,6 +9,6 @@ type TierState = {
 }
 
 export const useTierStore = create<TierState>((set) => ({
-  selectedTierId: 'silver',
+  selectedTierId: 'bronze',
   selectTier: ({ id }) => set({ selectedTierId: id }),
 }))

@@ -1,3 +1,5 @@
+import { toAnnualPricing, type AnnualPricing } from '@/lib/billing'
+
 type SupportItem = {
   title: string
   detail: string
@@ -16,6 +18,9 @@ type Tier = {
   summary: string
   features: ReadonlyArray<TierFeature>
   paymentLinkUrl: string
+  // Derived from price, never hand-written. Only the hidden /annual preview
+  // reads it today; the landing page stays on the monthly figures.
+  annual: AnnualPricing
 }
 
 type SiteConfig = {
@@ -33,6 +38,13 @@ type RawEnv = {
   VITE_PAYMENT_LINK_SILVER_URL?: string
   VITE_PAYMENT_LINK_GOLD_URL?: string
   VITE_PAYMENT_LINK_YOUTH_URL?: string
+  // Annual links are their own Stripe prices. A cadence toggle that does not
+  // carry its term into the checkout href is the classic annual-pricing bug:
+  // the page says annual, the session opens monthly.
+  VITE_PAYMENT_LINK_BRONZE_ANNUAL_URL?: string
+  VITE_PAYMENT_LINK_SILVER_ANNUAL_URL?: string
+  VITE_PAYMENT_LINK_GOLD_ANNUAL_URL?: string
+  VITE_PAYMENT_LINK_YOUTH_ANNUAL_URL?: string
   VITE_MEMBER_URL?: string
   VITE_BILLING_PORTAL_URL?: string
   VITE_STRIPE_DASHBOARD_URL?: string
@@ -74,6 +86,15 @@ const YOUTH_FEATURE_LABELS = [
   'Access to the request queue',
 ] as const
 
+// One source for each tier's monthly figure: the card quotes it directly and
+// toAnnualPricing derives the annual column from it.
+const PRICES = {
+  bronze: '$8',
+  silver: '$14',
+  gold: '$20',
+  youth: '$10',
+} as const
+
 const toChecklist = ({
   labels,
   included,
@@ -96,7 +117,7 @@ export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
     {
       id: 'bronze',
       name: 'Bronze',
-      price: '$8',
+      price: PRICES.bronze,
       cadence: 'CAD / month',
       summary: 'Everyday playback in 1080p.',
       features: toChecklist({
@@ -104,11 +125,15 @@ export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
         included: ['1080p HD streaming', 'Lossless audio streaming', 'Access to the request queue'],
       }),
       paymentLinkUrl: env.VITE_PAYMENT_LINK_BRONZE_URL ?? '',
+      annual: toAnnualPricing({
+        price: PRICES.bronze,
+        paymentLinkUrl: env.VITE_PAYMENT_LINK_BRONZE_ANNUAL_URL ?? '',
+      }),
     },
     {
       id: 'silver',
       name: 'Silver',
-      price: '$14',
+      price: PRICES.silver,
       cadence: 'CAD / month',
       summary: 'Full 4K playback quality.',
       features: toChecklist({
@@ -121,11 +146,15 @@ export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
         ],
       }),
       paymentLinkUrl: env.VITE_PAYMENT_LINK_SILVER_URL ?? '',
+      annual: toAnnualPricing({
+        price: PRICES.silver,
+        paymentLinkUrl: env.VITE_PAYMENT_LINK_SILVER_ANNUAL_URL ?? '',
+      }),
     },
     {
       id: 'gold',
       name: 'Gold',
-      price: '$20',
+      price: PRICES.gold,
       cadence: 'CAD / month',
       summary: 'Everything the server offers.',
       features: toChecklist({
@@ -139,11 +168,15 @@ export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
         ],
       }),
       paymentLinkUrl: env.VITE_PAYMENT_LINK_GOLD_URL ?? '',
+      annual: toAnnualPricing({
+        price: PRICES.gold,
+        paymentLinkUrl: env.VITE_PAYMENT_LINK_GOLD_ANNUAL_URL ?? '',
+      }),
     },
     {
       id: 'youth',
       name: 'Youth',
-      price: '$10',
+      price: PRICES.youth,
       cadence: 'CAD / month',
       summary: 'A youth profile with restricted defaults.',
       features: toChecklist({
@@ -156,6 +189,10 @@ export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
         ],
       }),
       paymentLinkUrl: env.VITE_PAYMENT_LINK_YOUTH_URL ?? '',
+      annual: toAnnualPricing({
+        price: PRICES.youth,
+        paymentLinkUrl: env.VITE_PAYMENT_LINK_YOUTH_ANNUAL_URL ?? '',
+      }),
     },
   ],
 })
@@ -165,6 +202,10 @@ const env: RawEnv = {
   VITE_PAYMENT_LINK_SILVER_URL: import.meta.env.VITE_PAYMENT_LINK_SILVER_URL,
   VITE_PAYMENT_LINK_GOLD_URL: import.meta.env.VITE_PAYMENT_LINK_GOLD_URL,
   VITE_PAYMENT_LINK_YOUTH_URL: import.meta.env.VITE_PAYMENT_LINK_YOUTH_URL,
+  VITE_PAYMENT_LINK_BRONZE_ANNUAL_URL: import.meta.env.VITE_PAYMENT_LINK_BRONZE_ANNUAL_URL,
+  VITE_PAYMENT_LINK_SILVER_ANNUAL_URL: import.meta.env.VITE_PAYMENT_LINK_SILVER_ANNUAL_URL,
+  VITE_PAYMENT_LINK_GOLD_ANNUAL_URL: import.meta.env.VITE_PAYMENT_LINK_GOLD_ANNUAL_URL,
+  VITE_PAYMENT_LINK_YOUTH_ANNUAL_URL: import.meta.env.VITE_PAYMENT_LINK_YOUTH_ANNUAL_URL,
   VITE_MEMBER_URL: import.meta.env.VITE_MEMBER_URL,
   VITE_BILLING_PORTAL_URL: import.meta.env.VITE_BILLING_PORTAL_URL,
   VITE_STRIPE_DASHBOARD_URL: import.meta.env.VITE_STRIPE_DASHBOARD_URL,

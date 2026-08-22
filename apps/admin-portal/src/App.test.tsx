@@ -23,11 +23,11 @@ test('renders a tab per tier in the switcher', () => {
 
 test('ledger follows the tier chosen in the switcher', async () => {
   render(<App />)
-  expect(screen.getByRole('heading', { name: 'Where $14 a month goes' })).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'Where $8 a month goes' })).toBeInTheDocument()
   await userEvent.click(screen.getByRole('tab', { name: 'Gold' }))
   expect(screen.getByRole('heading', { name: 'Where $20 a month goes' })).toBeInTheDocument()
-  await userEvent.click(screen.getByRole('tab', { name: 'Bronze' }))
-  expect(screen.getByRole('heading', { name: 'Where $8 a month goes' })).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('tab', { name: 'Silver' }))
+  expect(screen.getByRole('heading', { name: 'Where $14 a month goes' })).toBeInTheDocument()
 })
 
 test('renders the three support items', () => {
