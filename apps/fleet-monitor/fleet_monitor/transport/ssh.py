@@ -94,7 +94,7 @@ async def run(
     host: str,
     body: str,
     *,
-    user: str = "crivas",
+    user: str,
     control_dir: str = "/tmp/fm",
     timeout: int = 15,
 ) -> SshResult:

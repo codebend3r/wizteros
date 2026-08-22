@@ -1,12 +1,36 @@
-export type FleetMetrics = Readonly<Record<string, number>>
+export type HostStatus = 'ok' | 'warn' | 'unknown'
 
+/** One container as `/fleet` reports it. `healthy` is meaningless unless
+    `has_healthcheck` is true: most containers on this fleet declare no
+    healthcheck, which is neither a pass nor a failure. */
+export type FleetContainer = {
+  readonly name: string
+  readonly up: boolean
+  readonly healthy: boolean
+  readonly has_healthcheck: boolean
+}
+
+/** One host as `/fleet` reports it.
+ *
+ * Every judgment here is made by the monitor, not by this page: which volume
+ * is watched, how many cores the box turned out to have, what counts as too
+ * full. The SPA used to re-derive all of it from the raw metric map, which put
+ * fleet knowledge in a browser and a hardcoded core count in a constant.
+ */
 export type FleetHost = {
   readonly name: string
   readonly ip: string
   readonly has_gpu: boolean
   readonly has_docker: boolean
   readonly collected: boolean
-  readonly metrics: FleetMetrics
+  readonly status: HostStatus
+  readonly cores: number | null
+  readonly load_per_core: number | null
+  readonly memory_percent: number | null
+  readonly memory_total_bytes: number | null
+  readonly disk_percent: number | null
+  readonly disk_total_bytes: number | null
+  readonly containers: readonly FleetContainer[]
   /** Derived from the metric timestamps, not the heartbeat: true when at least
       one reading on this host has outlived even its slowest refresh. */
   readonly metrics_stale: boolean
@@ -35,15 +59,12 @@ export type IncidentFeed = {
   readonly recent: readonly Incident[]
 }
 
-export type HostStatus = 'ok' | 'warn' | 'unknown'
-
 export type ContainerSummary = {
   readonly name: string
   readonly up: boolean
   /** A healthcheck ran and passed. Meaningless unless `hasHealthcheck` is true. */
   readonly healthy: boolean
-  /** Whether the container declares a healthcheck at all. Most on this fleet do
-      not, and "no check configured" is neither a pass nor a failure. */
+  /** Whether the container declares a healthcheck at all. */
   readonly hasHealthcheck: boolean
 }
 
@@ -53,6 +74,7 @@ export type HostSummary = {
   readonly status: HostStatus
   readonly hasGpu: boolean
   readonly hasDocker: boolean
+  readonly cores: number | null
   readonly loadPerCore: number | null
   readonly memoryPercent: number | null
   readonly memoryTotalBytes: number | null
@@ -64,16 +86,6 @@ export type HostSummary = {
   readonly containers: readonly ContainerSummary[]
 }
 
-// Every box in the fleet is 4-core, measured 2026-08-10.
-const CORES = 4
-const DISK_WARN_PERCENT = 90
-const LOAD_WARN_PER_CORE = 1
-
-// The collector only ever runs `df -Pk /volume1`, so this is the one volume
-// the monitor can report on.
-const DISK_PERCENT_METRIC = 'disk.volume1.used_percent'
-const DISK_TOTAL_METRIC = 'disk.volume1.total_bytes'
-
 const UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'] as const
 
 const AGE_UNITS = [
@@ -81,8 +93,6 @@ const AGE_UNITS = [
   { seconds: 3600, name: 'hour' },
   { seconds: 60, name: 'minute' },
 ] as const
-
-const CONTAINER_METRIC = /^container\.(.+)\.(?:up|healthy|has_healthcheck)$/
 
 export const formatBytes = (value: number | null): string => {
   if (value === null || !Number.isFinite(value)) return '--'
@@ -108,85 +118,35 @@ export const formatAge = (seconds: number | null): string => {
     : 'less than a minute'
 }
 
-/** A metric's value, or null when the collector never recorded it. */
-const metricValue = ({ metrics, key }: { metrics: FleetMetrics; key: string }): number | null =>
-  typeof metrics[key] === 'number' ? metrics[key] : null
-
-export const memoryUsedPercent = (metrics: FleetMetrics): number | null => {
-  const total = metricValue({ metrics, key: 'mem.total_bytes' })
-  const available = metricValue({ metrics, key: 'mem.available_bytes' })
-  if (total === null || total <= 0 || available === null) return null
-  return Math.round(((total - available) / total) * 100)
-}
-
-const containerNames = (metrics: FleetMetrics): readonly string[] =>
-  [
-    ...new Set(
-      Object.keys(metrics).flatMap((key) => {
-        const name = CONTAINER_METRIC.exec(key)?.[1] ?? ''
-        return name ? [name] : []
-      }),
-    ),
-  ].sort()
-
-const toContainers = (metrics: FleetMetrics): readonly ContainerSummary[] =>
-  containerNames(metrics).map((name) => ({
-    name,
-    up: metricValue({ metrics, key: `container.${name}.up` }) === 1,
-    healthy: metricValue({ metrics, key: `container.${name}.healthy` }) === 1,
-    hasHealthcheck: metricValue({ metrics, key: `container.${name}.has_healthcheck` }) === 1,
-  }))
-
-const hostStatus = ({
-  collected,
-  diskPercent,
-  loadPerCore,
-}: {
-  collected: boolean
-  diskPercent: number | null
-  loadPerCore: number | null
-}): HostStatus => {
-  // "not collected" is its own state; it must never render as healthy
-  if (!collected) return 'unknown'
-  const overDisk = diskPercent !== null && diskPercent >= DISK_WARN_PERCENT
-  const overLoad = loadPerCore !== null && loadPerCore >= LOAD_WARN_PER_CORE
-  return overDisk || overLoad ? 'warn' : 'ok'
-}
-
-/** Flattens one `/fleet` host into what the card renders.
+/** Renames one `/fleet` host into what the card renders.
  *
- * Metric staleness stays a field of its own rather than folding into `status`:
- * a host whose fast tier is current but whose slow tier died a week ago is not
- * unhealthy, and calling it so would bury the one fact worth surfacing.
+ * Nothing is derived here any more, which is the point: the monitor decides
+ * status, cores and usage, and this is only the wire-name to component-name
+ * boundary. It used to gate five reads on `collected` while the server already
+ * guaranteed those readings were absent in exactly that case.
  */
-export const toHostSummary = (host: FleetHost): HostSummary => {
-  const load = host.collected ? metricValue({ metrics: host.metrics, key: 'load.1m' }) : null
-  const diskPercent = host.collected
-    ? metricValue({ metrics: host.metrics, key: DISK_PERCENT_METRIC })
-    : null
-  const loadPerCore = load === null ? null : load / CORES
-
-  return {
-    name: host.name,
-    ip: host.ip,
-    status: hostStatus({ collected: host.collected, diskPercent, loadPerCore }),
-    hasGpu: host.has_gpu,
-    hasDocker: host.has_docker,
-    loadPerCore,
-    memoryPercent: host.collected ? memoryUsedPercent(host.metrics) : null,
-    memoryTotalBytes: host.collected
-      ? metricValue({ metrics: host.metrics, key: 'mem.total_bytes' })
-      : null,
-    diskPercent,
-    diskTotalBytes: host.collected
-      ? metricValue({ metrics: host.metrics, key: DISK_TOTAL_METRIC })
-      : null,
-    uptimePercent: host.uptime_percent_24h,
-    metricsStale: host.metrics_stale,
-    oldestMetricAgeSeconds: host.oldest_metric_age_seconds,
-    containers: host.collected ? toContainers(host.metrics) : [],
-  }
-}
+export const toHostSummary = (host: FleetHost): HostSummary => ({
+  name: host.name,
+  ip: host.ip,
+  status: host.status,
+  hasGpu: host.has_gpu,
+  hasDocker: host.has_docker,
+  cores: host.cores,
+  loadPerCore: host.load_per_core,
+  memoryPercent: host.memory_percent,
+  memoryTotalBytes: host.memory_total_bytes,
+  diskPercent: host.disk_percent,
+  diskTotalBytes: host.disk_total_bytes,
+  uptimePercent: host.uptime_percent_24h,
+  metricsStale: host.metrics_stale,
+  oldestMetricAgeSeconds: host.oldest_metric_age_seconds,
+  containers: host.containers.map((container) => ({
+    name: container.name,
+    up: container.up,
+    healthy: container.healthy,
+    hasHealthcheck: container.has_healthcheck,
+  })),
+})
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null
@@ -197,8 +157,15 @@ const isNumberOrNull = (value: unknown): value is number | null =>
 const isStringOrNull = (value: unknown): value is string | null =>
   value === null || typeof value === 'string'
 
-const isMetrics = (value: unknown): value is FleetMetrics =>
-  isRecord(value) && Object.values(value).every((entry) => typeof entry === 'number')
+const isHostStatus = (value: unknown): value is HostStatus =>
+  value === 'ok' || value === 'warn' || value === 'unknown'
+
+const isFleetContainer = (value: unknown): value is FleetContainer =>
+  isRecord(value) &&
+  typeof value.name === 'string' &&
+  typeof value.up === 'boolean' &&
+  typeof value.healthy === 'boolean' &&
+  typeof value.has_healthcheck === 'boolean'
 
 const isFleetHost = (value: unknown): value is FleetHost =>
   isRecord(value) &&
@@ -207,7 +174,15 @@ const isFleetHost = (value: unknown): value is FleetHost =>
   typeof value.has_gpu === 'boolean' &&
   typeof value.has_docker === 'boolean' &&
   typeof value.collected === 'boolean' &&
-  isMetrics(value.metrics) &&
+  isHostStatus(value.status) &&
+  isNumberOrNull(value.cores) &&
+  isNumberOrNull(value.load_per_core) &&
+  isNumberOrNull(value.memory_percent) &&
+  isNumberOrNull(value.memory_total_bytes) &&
+  isNumberOrNull(value.disk_percent) &&
+  isNumberOrNull(value.disk_total_bytes) &&
+  Array.isArray(value.containers) &&
+  value.containers.every(isFleetContainer) &&
   typeof value.metrics_stale === 'boolean' &&
   isNumberOrNull(value.oldest_metric_age_seconds) &&
   isNumberOrNull(value.uptime_percent_24h)

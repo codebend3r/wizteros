@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from fleet_monitor import collector, config, incidents, store
+from fleet_monitor import db as fleet_db
 from fleet_monitor.transport.http import HttpResult
 from fleet_monitor.transport.ssh import SshResult
 
@@ -34,6 +35,40 @@ SLOW_SECTIONS = {
 # The docker host used by every container test. Its url is deliberately
 # unresolvable: every test fakes the transport, so a leaked real request fails
 # loudly instead of touching the LAN.
+
+# One session per assertion, the same way the collector and the API open one
+# per unit of work. store and incidents take a connection, so a test that wants
+# to see what a path-taking call wrote has to open the file the same way.
+def _latest(path, target, *, since=ANY_AGE):
+    with fleet_db.session(path) as connection:
+        return store.latest(connection, target, since=since)
+
+
+def _series(path, target, metric, since):
+    with fleet_db.session(path) as connection:
+        return store.series(connection, target, metric, since)
+
+
+def _last_heartbeat(path):
+    with fleet_db.session(path) as connection:
+        return store.last_heartbeat(connection)
+
+
+def _open_incidents(path):
+    with fleet_db.session(path) as connection:
+        return incidents.open_incidents(connection)
+
+
+def _history(path, since):
+    with fleet_db.session(path) as connection:
+        return incidents.history(connection, since)
+
+
+def _observed_run(path, target):
+    with fleet_db.session(path) as connection:
+        return incidents.observed_run(connection, target)
+
+
 DOCKER_HOST = config.Host(
     name="meleys", ip="192.0.2.2", has_gpu=False, docker_url="http://proxy.invalid:2375"
 )
@@ -46,8 +81,7 @@ def _stdout(sections: dict[str, str]) -> str:
 
 def _db(tmp_path) -> str:
     path = str(tmp_path / "fleet.db")
-    store.init_db(path)
-    incidents.init_db(path)
+    collector.init_db(path)
     return path
 
 
@@ -85,7 +119,7 @@ def _targets(checks) -> set[str]:
 
 
 def _open_targets(db: str) -> set[str]:
-    return {row["target"] for row in incidents.open_incidents(db)}
+    return {incident.target for incident in _open_incidents(db)}
 
 
 def test_samples_from_sections_merges_every_parser():
@@ -131,11 +165,12 @@ async def test_collect_host_records_a_failure_for_an_unroutable_ip(tmp_path, mon
 
     result = await collector.collect_host(host, T0, db, timeout=2)
 
-    assert result.ok is False
-    assert result.target == "host:ghost"
-    assert result.reason != ""
+    (check,) = result
+    assert check.ok is False
+    assert check.target == "host:ghost"
+    assert check.reason != ""
     # nothing collected must not look like a healthy empty host
-    assert store.latest(db, "host:ghost", since=ANY_AGE) == {}
+    assert _latest(db, "host:ghost", since=ANY_AGE) == {}
 
 
 async def test_collect_host_writes_samples_on_success(tmp_path, monkeypatch):
@@ -146,8 +181,8 @@ async def test_collect_host_writes_samples_on_success(tmp_path, monkeypatch):
 
     result = await collector.collect_host(DOCKER_HOST, T0, db)
 
-    assert result == incidents.CheckResult(target="host:meleys", ok=True, reason="")
-    assert store.latest(db, "host:meleys", since=ANY_AGE)["load.1m"] == 0.20
+    assert result == (incidents.CheckResult(target="host:meleys", ok=True, reason=""),)
+    assert _latest(db, "host:meleys", since=ANY_AGE)["load.1m"] == 0.20
 
 
 async def test_collect_host_writes_no_samples_when_ssh_fails(tmp_path, monkeypatch):
@@ -158,9 +193,10 @@ async def test_collect_host_writes_no_samples_when_ssh_fails(tmp_path, monkeypat
 
     result = await collector.collect_host(DOCKER_HOST, T0, db)
 
-    assert result.ok is False
-    assert result.reason == "timeout"
-    assert store.latest(db, "host:meleys", since=ANY_AGE) == {}
+    (check,) = result
+    assert check.ok is False
+    assert check.reason == "timeout"
+    assert _latest(db, "host:meleys", since=ANY_AGE) == {}
 
 
 def test_one_bad_section_never_discards_the_others(monkeypatch):
@@ -192,11 +228,11 @@ async def test_a_local_spawn_failure_records_no_host_check(tmp_path, monkeypatch
         result = await collector.collect_host(
             DOCKER_HOST, T0 + timedelta(seconds=30 * index), db
         )
-        assert result is None
+        assert result == ()
 
-    assert incidents.open_incidents(db) == ()
-    assert incidents.history(db, since=T0 - timedelta(hours=1)) == ()
-    assert store.latest(db, "host:meleys", since=ANY_AGE) == {}
+    assert _open_incidents(db) == ()
+    assert _history(db, since=T0 - timedelta(hours=1)) == ()
+    assert _latest(db, "host:meleys", since=ANY_AGE) == {}
 
 
 async def test_a_spawn_failure_leaves_no_check_in_the_tick(tmp_path, monkeypatch):
@@ -226,10 +262,10 @@ async def test_a_spawn_failure_leaves_the_hosts_uptime_unknown(tmp_path, monkeyp
     for index in range(4):
         await collector.tick(T0 + timedelta(seconds=30 * index), db)
 
-    assert incidents.observed_run(db, "host:meleys") is None
+    assert _observed_run(db, "host:meleys") is None
     # the endpoint beside it was observed on every one of those ticks, which is
     # exactly why a collector-wide mark could not tell the difference
-    assert incidents.observed_run(db, "docker:meleys").since == T0
+    assert _observed_run(db, "docker:meleys").since == T0
 
 
 async def test_a_successful_probe_that_measured_nothing_is_not_a_healthy_check(
@@ -246,9 +282,10 @@ async def test_a_successful_probe_that_measured_nothing_is_not_a_healthy_check(
     result = await collector.collect_host(DOCKER_HOST, T0, db)
 
     assert result is not None
-    assert result.ok is False
-    assert result.reason == "empty_payload"
-    assert store.latest(db, "host:meleys", since=ANY_AGE) == {}
+    (check,) = result
+    assert check.ok is False
+    assert check.reason == "empty_payload"
+    assert _latest(db, "host:meleys", since=ANY_AGE) == {}
 
 
 def test_a_cancelled_job_is_never_swallowed():
@@ -267,7 +304,7 @@ async def test_collect_host_stamps_an_aware_utc_timestamp(tmp_path, monkeypatch)
     )
 
     await collector.collect_host(DOCKER_HOST, T0, db)
-    points = store.series(db, "host:meleys", "load.1m", since=T0 - timedelta(minutes=1))
+    points = _series(db, "host:meleys", "load.1m", since=T0 - timedelta(minutes=1))
 
     assert len(points) == 1
     assert points[0][0] == T0
@@ -298,7 +335,7 @@ async def test_collect_slow_writes_the_slow_tier_samples(tmp_path, monkeypatch):
 
     await collector.collect_slow(DOCKER_HOST, T0, db)
 
-    assert store.latest(db, "host:meleys", since=ANY_AGE)["disk.volume1.used_percent"] == 40.0
+    assert _latest(db, "host:meleys", since=ANY_AGE)["disk.volume1.used_percent"] == 40.0
 
 
 async def test_collect_slow_never_folds_a_second_check_into_the_streak(tmp_path, monkeypatch):
@@ -314,7 +351,7 @@ async def test_collect_slow_never_folds_a_second_check_into_the_streak(tmp_path,
     await collector.collect_host(DOCKER_HOST, T0, db)
     await collector.collect_slow(DOCKER_HOST, T0, db)
 
-    assert incidents.open_incidents(db) == ()
+    assert _open_incidents(db) == ()
 
 
 async def test_collect_slow_writes_nothing_when_ssh_fails(tmp_path, monkeypatch):
@@ -325,7 +362,7 @@ async def test_collect_slow_writes_nothing_when_ssh_fails(tmp_path, monkeypatch)
 
     await collector.collect_slow(DOCKER_HOST, T0, db)
 
-    assert store.latest(db, "host:meleys", since=ANY_AGE) == {}
+    assert _latest(db, "host:meleys", since=ANY_AGE) == {}
 
 
 async def test_collect_containers_is_a_no_op_without_a_docker_url(tmp_path):
@@ -333,7 +370,7 @@ async def test_collect_containers_is_a_no_op_without_a_docker_url(tmp_path):
     host = config.Host(name="caraxes", ip="192.168.50.4", has_gpu=False, docker_url="")
 
     assert await collector.collect_containers(host, T0, db) == ()
-    assert store.latest(db, "host:caraxes", since=ANY_AGE) == {}
+    assert _latest(db, "host:caraxes", since=ANY_AGE) == {}
 
 
 async def test_collect_containers_checks_every_container(tmp_path, monkeypatch):
@@ -354,7 +391,7 @@ async def test_collect_containers_checks_every_container(tmp_path, monkeypatch):
     assert by_target["container:meleys/sonarr"].ok is True
     assert by_target["container:meleys/radarr"].ok is False
     assert by_target["container:meleys/radarr"].reason == "not_running"
-    assert store.latest(db, "host:meleys", since=ANY_AGE)["container.sonarr.up"] == 1.0
+    assert _latest(db, "host:meleys", since=ANY_AGE)["container.sonarr.up"] == 1.0
 
 
 async def test_collect_containers_names_an_unhealthy_container(tmp_path, monkeypatch):
@@ -429,10 +466,10 @@ async def test_a_json_object_body_is_not_an_empty_fleet(tmp_path, monkeypatch):
     assert _targets(checks) == {"docker:meleys"}
     assert checks[0].ok is False
     assert checks[0].reason == "bad_json"
-    rows = incidents.history(db, since=T0 - timedelta(hours=1))
+    rows = _history(db, since=T0 - timedelta(hours=1))
     assert len(rows) == 1
-    assert rows[0]["closed_at"] is None
-    assert rows[0]["reason"] != "removed"
+    assert rows[0].closed_at is None
+    assert rows[0].reason != "removed"
 
 
 async def test_an_unreachable_docker_host_never_fabricates_a_container_incident(
@@ -467,9 +504,9 @@ async def test_an_unreachable_docker_host_never_closes_a_real_container_incident
     for index in range(2, 6):
         await collector.collect_containers(DOCKER_HOST, T0 + timedelta(seconds=30 * index), db)
 
-    still_open = {row["target"]: row for row in incidents.open_incidents(db)}
+    still_open = {incident.target: incident for incident in _open_incidents(db)}
     assert "container:meleys/sonarr" in still_open
-    assert still_open["container:meleys/sonarr"]["reason"] == "not_running"
+    assert still_open["container:meleys/sonarr"].reason == "not_running"
 
 
 async def test_an_unreachable_docker_host_never_retires_a_live_container(tmp_path, monkeypatch):
@@ -485,10 +522,10 @@ async def test_an_unreachable_docker_host_never_retires_a_live_container(tmp_pat
     monkeypatch.setattr(collector.http, "get_json", _fake_http(DOCKER_REFUSED))
     await collector.collect_containers(DOCKER_HOST, T0 + timedelta(minutes=5), db)
 
-    rows = incidents.history(db, since=T0 - timedelta(hours=1))
+    rows = _history(db, since=T0 - timedelta(hours=1))
     assert len(rows) == 1
-    assert rows[0]["closed_at"] is None
-    assert rows[0]["reason"] != "removed"
+    assert rows[0].closed_at is None
+    assert rows[0].reason != "removed"
 
 
 async def test_a_successful_fetch_retires_a_container_that_is_gone(tmp_path, monkeypatch):
@@ -503,8 +540,8 @@ async def test_a_successful_fetch_retires_a_container_that_is_gone(tmp_path, mon
     monkeypatch.setattr(collector.http, "get_json", _fake_http(_docker_ok(_entry("sonarr"))))
     await collector.collect_containers(DOCKER_HOST, T0 + timedelta(minutes=5), db)
 
-    assert incidents.open_incidents(db) == ()
-    assert incidents.history(db, since=T0 - timedelta(hours=1))[0]["reason"] == "removed"
+    assert _open_incidents(db) == ()
+    assert _history(db, since=T0 - timedelta(hours=1))[0].reason == "removed"
 
 
 async def test_tick_covers_every_host_and_every_docker_host(tmp_path, monkeypatch):
@@ -522,7 +559,7 @@ async def test_tick_covers_every_host_and_every_docker_host(tmp_path, monkeypatc
     assert {t for t in _targets(checks) if t.startswith("container:")} == {
         f"container:{host.name}/sonarr" for host in config.HOSTS if host.docker_url
     }
-    assert store.last_heartbeat(db) == T0
+    assert _last_heartbeat(db) == T0
 
 
 async def test_tick_records_no_container_result_for_hosts_it_could_not_observe(
@@ -559,7 +596,7 @@ async def test_tick_survives_one_wedged_host(tmp_path, monkeypatch):
 
     assert "host:caraxes" not in _targets(checks)
     assert "host:vermithor" in _targets(checks)
-    assert store.last_heartbeat(db) == T0
+    assert _last_heartbeat(db) == T0
 
 
 def test_the_slow_tier_fires_on_the_first_round_and_every_thirtieth():

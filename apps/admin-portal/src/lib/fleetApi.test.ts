@@ -5,17 +5,28 @@ import {
   type FleetHost,
   formatAge,
   formatBytes,
-  memoryUsedPercent,
   toHostSummary,
 } from '@/lib/fleetApi'
 
+// The monitor makes every judgment now: status, cores, usage and the container
+// list all arrive decided. What used to be tested here - deriving memory
+// percent, dividing load by a hardcoded four, comparing disk against a warn
+// threshold, regex-parsing container names out of metric keys - moved to the
+// side that owns those facts, and is tested there.
 const host: FleetHost = {
   name: 'vermithor',
   ip: '192.168.50.3',
   has_gpu: true,
   has_docker: true,
   collected: true,
-  metrics: { 'load.1m': 0.46 },
+  status: 'ok',
+  cores: 4,
+  load_per_core: 0.115,
+  memory_percent: 41,
+  memory_total_bytes: 16_642_768_896,
+  disk_percent: 62,
+  disk_total_bytes: 8_000_000_000_000,
+  containers: [{ name: 'sonarr', up: true, healthy: false, has_healthcheck: false }],
   metrics_stale: false,
   oldest_metric_age_seconds: 12,
   uptime_percent_24h: 100,
@@ -25,19 +36,6 @@ const JSON_HEADERS = { get: () => 'application/json' }
 
 afterEach(() => {
   vi.restoreAllMocks()
-})
-
-test('memoryUsedPercent derives used percent from total and available', () => {
-  expect(memoryUsedPercent({ 'mem.total_bytes': 1000, 'mem.available_bytes': 250 })).toBe(75)
-})
-
-test('memoryUsedPercent returns null when either metric is missing', () => {
-  expect(memoryUsedPercent({ 'mem.total_bytes': 1000 })).toBeNull()
-  expect(memoryUsedPercent({})).toBeNull()
-})
-
-test('memoryUsedPercent returns null on a zero total rather than dividing by zero', () => {
-  expect(memoryUsedPercent({ 'mem.total_bytes': 0, 'mem.available_bytes': 0 })).toBeNull()
 })
 
 test('formatBytes scales to the largest sensible unit', () => {
@@ -71,103 +69,54 @@ test('formatAge reports an absent age as unknown rather than zero', () => {
   expect(formatAge(null)).toBe('unknown')
 })
 
-test('toHostSummary marks an uncollected host as unknown rather than healthy', () => {
-  const summary = toHostSummary({
-    ...host,
-    name: 'caraxes',
-    ip: '192.168.50.4',
-    has_gpu: false,
-    has_docker: false,
-    collected: false,
-    metrics: {},
-    metrics_stale: true,
-    oldest_metric_age_seconds: null,
-    uptime_percent_24h: null,
-  })
-
-  expect(summary.status).toBe('unknown')
-  expect(summary.loadPerCore).toBeNull()
+test('toHostSummary carries the status the monitor decided', () => {
+  expect(toHostSummary({ ...host, status: 'unknown' }).status).toBe('unknown')
+  expect(toHostSummary({ ...host, status: 'warn' }).status).toBe('warn')
 })
 
 test('toHostSummary keeps a never-measured uptime null instead of a perfect score', () => {
-  const summary = toHostSummary({ ...host, collected: false, uptime_percent_24h: null })
-
-  expect(summary.uptimePercent).toBeNull()
-})
-
-test('toHostSummary normalizes load against four cores', () => {
-  const summary = toHostSummary({
-    ...host,
-    name: 'meleys',
-    ip: '192.168.50.2',
-    has_gpu: false,
-    metrics: { 'load.1m': 2 },
-  })
-
-  expect(summary.loadPerCore).toBe(0.5)
-  expect(summary.status).toBe('ok')
-})
-
-test('toHostSummary flags a host whose disk is over the warn threshold', () => {
-  const summary = toHostSummary({ ...host, metrics: { 'disk.volume1.used_percent': 99 } })
-
-  expect(summary.status).toBe('warn')
+  expect(toHostSummary({ ...host, uptime_percent_24h: null }).uptimePercent).toBeNull()
 })
 
 test('toHostSummary carries per-metric staleness separately from the host status', () => {
-  const summary = toHostSummary({
-    ...host,
-    metrics: { 'load.1m': 0.4, 'disk.volume1.used_percent': 42 },
-    metrics_stale: true,
-    oldest_metric_age_seconds: 604_800,
-  })
+  const summary = toHostSummary({ ...host, metrics_stale: true, oldest_metric_age_seconds: 7200 })
 
-  // The collector is alive and the fast tier is current, so the host is not
-  // "down"; only the metric age exposes the week-dead slow tier behind it.
+  // a host whose fast tier is current but whose slow tier died is not unhealthy
   expect(summary.status).toBe('ok')
   expect(summary.metricsStale).toBe(true)
-  expect(summary.oldestMetricAgeSeconds).toBe(604_800)
+  expect(summary.oldestMetricAgeSeconds).toBe(7200)
 })
 
-test('toHostSummary reads containers out of the host metric keys', () => {
+test('toHostSummary renames the container fields without reinterpreting them', () => {
   const summary = toHostSummary({
     ...host,
-    metrics: {
-      'container.sonarr.up': 1,
-      'container.sonarr.healthy': 1,
-      'container.sonarr.has_healthcheck': 1,
-      'container.plex.media.server.up': 1,
-      'container.plex.media.server.healthy': 0,
-      'container.plex.media.server.has_healthcheck': 1,
-    },
+    containers: [
+      { name: 'plex', up: true, healthy: true, has_healthcheck: true },
+      { name: 'radarr', up: false, healthy: false, has_healthcheck: false },
+    ],
   })
 
   expect(summary.containers).toEqual([
-    { name: 'plex.media.server', up: true, healthy: false, hasHealthcheck: true },
-    { name: 'sonarr', up: true, healthy: true, hasHealthcheck: true },
+    { name: 'plex', up: true, healthy: true, hasHealthcheck: true },
+    { name: 'radarr', up: false, healthy: false, hasHealthcheck: false },
   ])
 })
 
-test('toHostSummary keeps a container with no healthcheck out of the health claim', () => {
+test('toHostSummary passes an absent reading through as absent', () => {
   const summary = toHostSummary({
     ...host,
-    metrics: {
-      'container.sabnzbd.up': 1,
-      'container.sabnzbd.healthy': 0,
-      'container.sabnzbd.has_healthcheck': 0,
-    },
+    cores: null,
+    load_per_core: null,
+    memory_percent: null,
+    disk_percent: null,
+    containers: [],
   })
 
-  expect(summary.containers).toEqual([
-    { name: 'sabnzbd', up: true, healthy: false, hasHealthcheck: false },
-  ])
-})
-
-test('toHostSummary leaves containers empty on a docker host that reported none', () => {
-  const summary = toHostSummary({ ...host, metrics: { 'load.1m': 0.4 } })
-
+  expect(summary.cores).toBeNull()
+  expect(summary.loadPerCore).toBeNull()
+  expect(summary.memoryPercent).toBeNull()
+  expect(summary.diskPercent).toBeNull()
   expect(summary.containers).toEqual([])
-  expect(summary.hasDocker).toBe(true)
 })
 
 test('fetchFleet requests /fleet and returns the validated payload', async () => {

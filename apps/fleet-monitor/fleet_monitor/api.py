@@ -1,10 +1,16 @@
+import re
+import sqlite3
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 
 from fastapi import FastAPI, Query
 
-from fleet_monitor import config, incidents, rollups, store
+from fleet_monitor import collector, config, db, incidents, store
+from fleet_monitor.incidents import Incident
+from fleet_monitor.probes.docker import ContainerView, from_samples
 
 
 @asynccontextmanager
@@ -13,14 +19,10 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
     sqlite3.connect() happily creates an empty file, so without this a fresh
     FM_DB_PATH turns the first /health into an unhandled 500 on a missing
-    table. Every init_db is idempotent and order-independent, and the API and
-    the collector may each be the first to run against a new volume, so both
-    call all three.
+    table. The collector and the API may each be the first to run against a new
+    volume, so both call the same idempotent setup.
     """
-    db = config.db_path()
-    store.init_db(db)
-    rollups.init_db(db)
-    incidents.init_db(db)
+    collector.init_db(config.db_path())
     yield
 
 
@@ -53,6 +55,79 @@ METRIC_AGE_WINDOW = 24 * 3600
 # turns into an unhandled 500 instead of a client error.
 MAX_INCIDENT_HOURS = 24 * 365 * 5
 
+# When a host needs attention. These live here, beside the staleness bands they
+# sit next to, rather than in the SPA: they are judgments about the fleet, and
+# the browser is not where the fleet is known.
+DISK_WARN_PERCENT = 90.0
+LOAD_WARN_PER_CORE = 1.0
+
+# The collector only ever runs `df -Pk /volume1`, so this is the one volume the
+# monitor can report on. Which volume that is, and which keys carry memory, are
+# facts about what the collector collects: they belong beside it rather than in
+# a browser a wire away from the code that chose the names.
+DISK_PERCENT_METRIC = "disk.volume1.used_percent"
+DISK_TOTAL_METRIC = "disk.volume1.total_bytes"
+MEMORY_TOTAL_METRIC = "mem.total_bytes"
+MEMORY_AVAILABLE_METRIC = "mem.available_bytes"
+
+# /proc/stat emits one row per cpu, so the core count is observed every tick
+# rather than declared anywhere. `cpu.total` is the aggregate row and is named
+# so it cannot match.
+_CORE_METRIC = re.compile(r"^cpu\d+\.user$")
+
+HostState = Literal["ok", "warn", "unknown"]
+
+
+@dataclass(frozen=True, slots=True)
+class HostView:
+    """One host as the dashboard sees it.
+
+    Carries the raw `metrics` map and the judgments drawn from it. The
+    judgments are here rather than in the SPA because they need fleet
+    knowledge: which volume is monitored, how many cores the box turned out to
+    have, what counts as too full.
+    """
+
+    name: str
+    ip: str
+    has_gpu: bool
+    has_docker: bool
+    collected: bool
+    status: HostState
+    cores: int | None
+    load_per_core: float | None
+    memory_percent: float | None
+    memory_total_bytes: float | None
+    disk_percent: float | None
+    disk_total_bytes: float | None
+    containers: list[ContainerView]
+    # the raw readings behind every field above, kept because this is a monitor
+    # and the unreduced numbers are the thing being monitored
+    metrics: dict[str, float]
+    oldest_metric_age_seconds: float | None
+    metrics_stale: bool
+    uptime_percent_24h: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class FleetView:
+    collected_at: datetime | None
+    stale: bool
+    hosts: list[HostView]
+
+
+@dataclass(frozen=True, slots=True)
+class HealthView:
+    ok: bool
+    heartbeat_age_seconds: float | None
+    stale: bool
+
+
+@dataclass(frozen=True, slots=True)
+class IncidentFeed:
+    open: list[Incident]
+    recent: list[Incident]
+
 
 def _age_seconds(*, now: datetime, at: datetime | None) -> float | None:
     """Seconds since `at`, or None when there is nothing to measure.
@@ -69,31 +144,22 @@ def _age_seconds(*, now: datetime, at: datetime | None) -> float | None:
     return age if age >= 0 else None
 
 
-def _heartbeat_status(now: datetime) -> tuple[datetime | None, float | None]:
-    """The last recorded heartbeat and its age, or (None, None) when there has
-    never been one."""
-    last = store.last_heartbeat(config.db_path())
-    return last, _age_seconds(now=now, at=last)
-
-
 @app.get("/health")
-def health() -> dict:
+def health() -> HealthView:
     """Liveness plus staleness.
 
     The collector runs on a box it also monitors, so it cannot report that box
     being down. Staleness is how that blind spot surfaces instead of a frozen
     green dashboard.
     """
-    _, age = _heartbeat_status(datetime.now(tz=timezone.utc))
-    return {
-        "ok": True,
-        "heartbeat_age_seconds": age,
-        "stale": age is None or age > STALE_AFTER,
-    }
+    now = datetime.now(tz=timezone.utc)
+    with db.session(config.db_path()) as connection:
+        age = _age_seconds(now=now, at=store.last_heartbeat(connection))
+    return HealthView(ok=True, heartbeat_age_seconds=age, stale=age is None or age > STALE_AFTER)
 
 
 @app.get("/fleet")
-def fleet() -> dict:
+def fleet() -> FleetView:
     """Every configured host's latest vitals, plus fleet-wide staleness.
 
     The top-level `stale` is heartbeat-derived, same as `/health`: it proves
@@ -111,27 +177,34 @@ def fleet() -> dict:
     three days ago shows its disk reading as absent rather than as a current
     number nothing can date. A host whose every reading has aged out that way
     reports `collected` false, the same as one nothing has ever reached.
-    """
-    db = config.db_path()
-    now = datetime.now(tz=timezone.utc)
-    last, age = _heartbeat_status(now)
 
-    # read once for the whole fleet: it is a property of the collector, not of
-    # any one host
-    observed_since = store.coverage_since(db)
-    hosts = [
-        _host_status(db=db, host=host, now=now, observed_since=observed_since)
-        for host in config.HOSTS
-    ]
-    return {
-        "collected_at": last.isoformat() if last else None,
-        "stale": age is None or age > STALE_AFTER,
-        "hosts": hosts,
-    }
+    The whole response is read through one session. It used to open three
+    connections per host plus two, so answering for five hosts cost seventeen.
+    """
+    now = datetime.now(tz=timezone.utc)
+    with db.session(config.db_path()) as connection:
+        last = store.last_heartbeat(connection)
+        # read once for the whole fleet: it is a property of the collector, not
+        # of any one host
+        observed_since = store.coverage_since(connection)
+        hosts = [
+            _host_view(
+                connection=connection, host=host, now=now, observed_since=observed_since
+            )
+            for host in config.HOSTS
+        ]
+    age = _age_seconds(now=now, at=last)
+    return FleetView(
+        collected_at=last, stale=age is None or age > STALE_AFTER, hosts=hosts
+    )
 
 
 def _uptime_24h(
-    *, db: str, target: str, now: datetime, observed_since: datetime | None
+    *,
+    connection: sqlite3.Connection,
+    target: str,
+    now: datetime,
+    observed_since: datetime | None,
 ) -> float | None:
     """This target's 24h availability, or None when nobody watched the window.
 
@@ -143,11 +216,11 @@ def _uptime_24h(
     the collector-wide mark runs on unbroken and would score a flawless day
     over hours in which not one host was looked at.
     """
-    run = incidents.observed_run(db, target)
+    run = incidents.observed_run(connection, target)
     if run is None or observed_since is None:
         return None
     return incidents.uptime_percent(
-        db,
+        connection,
         target,
         since=now - timedelta(hours=24),
         now=now,
@@ -158,42 +231,106 @@ def _uptime_24h(
     )
 
 
-def _host_status(
-    *, db: str, host: config.Host, now: datetime, observed_since: datetime | None
-) -> dict:
+def core_count(metrics: dict[str, float]) -> int | None:
+    """How many cores this host turned out to have, or None before it reported.
+
+    Counted from the per-cpu rows /proc/stat already sends rather than declared
+    in config. A declared number is a second copy to keep in step with a fleet
+    that is not uniform, and it goes silently wrong the day a box is replaced.
+    """
+    return sum(1 for metric in metrics if _CORE_METRIC.match(metric)) or None
+
+
+def memory_used_percent(metrics: dict[str, float]) -> float | None:
+    """Used memory as a percentage, or None when the host has not reported it.
+
+    Available rather than free: free excludes reclaimable page cache, and on
+    these boxes that reads as 95% used on an idle machine.
+    """
+    total = metrics.get(MEMORY_TOTAL_METRIC)
+    available = metrics.get(MEMORY_AVAILABLE_METRIC)
+    if total is None or available is None or total <= 0:
+        return None
+    return round((total - available) / total * 100.0)
+
+
+def host_state(
+    *, collected: bool, disk_percent: float | None, load_per_core: float | None
+) -> HostState:
+    """Whether a host needs attention.
+
+    "not collected" is its own state; it must never render as healthy.
+    """
+    if not collected:
+        return "unknown"
+    over_disk = disk_percent is not None and disk_percent >= DISK_WARN_PERCENT
+    over_load = load_per_core is not None and load_per_core >= LOAD_WARN_PER_CORE
+    return "warn" if over_disk or over_load else "ok"
+
+
+def _host_view(
+    *,
+    connection: sqlite3.Connection,
+    host: config.Host,
+    now: datetime,
+    observed_since: datetime | None,
+) -> HostView:
     target = f"host:{host.name}"
     # one floor, read once, for both: a value `metric_ages` cannot date is a
     # value `latest` must not report
     since = now - timedelta(seconds=METRIC_AGE_WINDOW)
-    metrics = store.latest(db, target, since=since)
-    ages = store.metric_ages(db, target, since=since)
+    metrics = store.latest(connection, target, since=since)
+    ages = store.metric_ages(connection, target, since=since)
     oldest_age = _age_seconds(now=now, at=min(ages.values())) if ages else None
-    return {
-        "name": host.name,
-        "ip": host.ip,
-        "has_gpu": host.has_gpu,
-        "has_docker": bool(host.docker_url),
-        "collected": bool(metrics),
-        "metrics": metrics,
-        "oldest_metric_age_seconds": oldest_age,
-        "metrics_stale": oldest_age is None or oldest_age > METRICS_STALE_AFTER,
+
+    cores = core_count(metrics)
+    load = metrics.get("load.1m")
+    load_per_core = load / cores if load is not None and cores else None
+    disk_percent = metrics.get(DISK_PERCENT_METRIC)
+
+    return HostView(
+        name=host.name,
+        ip=host.ip,
+        has_gpu=host.has_gpu,
+        has_docker=bool(host.docker_url),
+        collected=bool(metrics),
+        status=host_state(
+            collected=bool(metrics),
+            disk_percent=disk_percent,
+            load_per_core=load_per_core,
+        ),
+        cores=cores,
+        load_per_core=load_per_core,
+        memory_percent=memory_used_percent(metrics),
+        memory_total_bytes=metrics.get(MEMORY_TOTAL_METRIC),
+        disk_percent=disk_percent,
+        disk_total_bytes=metrics.get(DISK_TOTAL_METRIC),
+        containers=list(from_samples(metrics)),
+        metrics=metrics,
+        oldest_metric_age_seconds=oldest_age,
+        metrics_stale=oldest_age is None or oldest_age > METRICS_STALE_AFTER,
         # a host never checked at all is unknown, not a perfect score - an
         # empty incident history must not read as proven uptime. Neither must
         # hours nothing observed this host for, whether because the collector
         # was not running or because it was running and could not see it.
-        "uptime_percent_24h": (
-            _uptime_24h(db=db, target=target, now=now, observed_since=observed_since)
+        uptime_percent_24h=(
+            _uptime_24h(
+                connection=connection,
+                target=target,
+                now=now,
+                observed_since=observed_since,
+            )
             if metrics
             else None
         ),
-    }
+    )
 
 
 @app.get("/incidents")
-def incident_feed(hours: int = Query(default=24, ge=1, le=MAX_INCIDENT_HOURS)) -> dict:
-    db = config.db_path()
+def incident_feed(hours: int = Query(default=24, ge=1, le=MAX_INCIDENT_HOURS)) -> IncidentFeed:
     since = datetime.now(tz=timezone.utc) - timedelta(hours=hours)
-    return {
-        "open": list(incidents.open_incidents(db)),
-        "recent": list(incidents.history(db, since)),
-    }
+    with db.session(config.db_path()) as connection:
+        return IncidentFeed(
+            open=list(incidents.open_incidents(connection)),
+            recent=list(incidents.history(connection, since)),
+        )

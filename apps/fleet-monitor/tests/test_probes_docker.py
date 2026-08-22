@@ -103,3 +103,44 @@ def test_to_samples_never_emits_a_restart_count_sample():
     metrics = {s.metric for s in docker.to_samples(states)}
 
     assert not any(metric.endswith(".restart_count") for metric in metrics)
+
+
+def test_samples_round_trip_back_into_containers():
+    """The gauge names and the code that takes them apart live in one module,
+    so this is the pin that keeps them symmetric. The SPA used to re-derive
+    this with a regex of its own, a wire away from the names it was matching.
+    """
+    states = (
+        docker.ContainerState(
+            name="plex", running=True, health="healthy", restart_count=0, started_at=""
+        ),
+        docker.ContainerState(
+            name="radarr", running=False, health="none", restart_count=0, started_at=""
+        ),
+        docker.ContainerState(
+            name="sonarr", running=True, health="none", restart_count=0, started_at=""
+        ),
+    )
+    metrics = {sample.metric: sample.value for sample in docker.to_samples(states)}
+
+    assert docker.from_samples(metrics) == (
+        docker.ContainerView(name="plex", up=True, healthy=True, has_healthcheck=True),
+        docker.ContainerView(name="radarr", up=False, healthy=False, has_healthcheck=False),
+        docker.ContainerView(name="sonarr", up=True, healthy=False, has_healthcheck=False),
+    )
+
+
+def test_from_samples_ignores_metrics_that_are_not_containers():
+    assert docker.from_samples({"load.1m": 0.4, "mem.total_bytes": 1.0}) == ()
+
+
+def test_from_samples_names_a_container_with_dots_in_its_name():
+    metrics = {
+        "container.web.api.up": 1.0,
+        "container.web.api.healthy": 0.0,
+        "container.web.api.has_healthcheck": 0.0,
+    }
+
+    assert docker.from_samples(metrics) == (
+        docker.ContainerView(name="web.api", up=True, healthy=False, has_healthcheck=False),
+    )

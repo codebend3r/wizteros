@@ -1,4 +1,4 @@
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 from fleet_monitor.probes.types import Sample
@@ -93,4 +93,48 @@ def to_samples(states: Iterable[ContainerState]) -> tuple[Sample, ...]:
                 kind="gauge",
             ),
         )
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class ContainerView:
+    """One container as a reader sees it, rebuilt from the stored gauges.
+
+    `healthy` is only meaningful when `has_healthcheck` is true. Most
+    containers on this fleet declare no healthcheck, and that is neither a pass
+    nor a failure.
+    """
+
+    name: str
+    up: bool
+    healthy: bool
+    has_healthcheck: bool
+
+
+# The three gauges `to_samples` writes per container, and the only place their
+# names are taken apart again. Flattening to `container.<name>.<field>` is what
+# a time series needs; a reader needs the objects back. Both halves live here
+# so the naming cannot drift from the parsing - the SPA used to re-derive this
+# with a regex of its own, a wire away from the code that chose the names.
+_FIELDS = ("up", "healthy", "has_healthcheck")
+
+
+def from_samples(metrics: Mapping[str, float]) -> tuple[ContainerView, ...]:
+    """Rebuild the container list from one host's latest gauges, name-sorted."""
+    names = sorted(
+        {
+            metric.removeprefix("container.").removesuffix(f".{field}")
+            for metric in metrics
+            for field in _FIELDS
+            if metric.startswith("container.") and metric.endswith(f".{field}")
+        }
+    )
+    return tuple(
+        ContainerView(
+            name=name,
+            up=metrics.get(f"container.{name}.up") == 1.0,
+            healthy=metrics.get(f"container.{name}.healthy") == 1.0,
+            has_healthcheck=metrics.get(f"container.{name}.has_healthcheck") == 1.0,
+        )
+        for name in names
     )

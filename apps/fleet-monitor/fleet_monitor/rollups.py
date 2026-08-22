@@ -1,17 +1,38 @@
+import sqlite3
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from fleet_monitor.store import _conn
+# Samples are the raw tier: not a rollup, retained on their own clock, and aged
+# by `at` rather than by `bucket`. Kept beside the rollups rather than inside
+# them so pruning needs no per-table special case.
+SAMPLE_RETENTION = timedelta(days=7)
 
-RESOLUTIONS = {"5m": 300, "1h": 3600}
 
-RETENTION = {
-    "samples": timedelta(days=7),
-    "rollup_5m": timedelta(days=90),
-    "rollup_1h": timedelta(days=730),
-}
+@dataclass(frozen=True, slots=True)
+class Resolution:
+    """One rollup tier. Name, bucket width and retention travel together: they
+    were three parallel dicts keyed by convention, so adding a tier meant
+    remembering every one of them or silently getting a table that never
+    pruned."""
+
+    name: str
+    seconds: int
+    retention: timedelta
+
+    @property
+    def table(self) -> str:
+        return f"rollup_{self.name}"
+
+
+RESOLUTIONS = (
+    Resolution(name="5m", seconds=300, retention=timedelta(days=90)),
+    Resolution(name="1h", seconds=3600, retention=timedelta(days=730)),
+)
+
+_BY_NAME = {resolution.name: resolution for resolution in RESOLUTIONS}
 
 _ROLLUP_SCHEMA = """
-CREATE TABLE IF NOT EXISTS rollup_{name} (
+CREATE TABLE IF NOT EXISTS {table} (
     target     TEXT NOT NULL,
     metric     TEXT NOT NULL,
     bucket     TEXT NOT NULL,
@@ -24,10 +45,17 @@ CREATE TABLE IF NOT EXISTS rollup_{name} (
 """
 
 
-def init_db(path: str) -> None:
-    with _conn(path) as connection:
-        for name in RESOLUTIONS:
-            connection.execute(_ROLLUP_SCHEMA.format(name=name))
+def resolution(name: str) -> Resolution:
+    """The named tier. Its `table` is interpolated into SQL, so going through
+    this lookup is what keeps a caller's string off the query."""
+    if name not in _BY_NAME:
+        raise KeyError(name)
+    return _BY_NAME[name]
+
+
+def init_db(connection: sqlite3.Connection) -> None:
+    for tier in RESOLUTIONS:
+        connection.execute(_ROLLUP_SCHEMA.format(table=tier.table))
 
 
 def bucket(at: datetime, seconds: int) -> datetime:
@@ -36,55 +64,59 @@ def bucket(at: datetime, seconds: int) -> datetime:
     return datetime.fromtimestamp(epoch - (epoch % seconds), tz=timezone.utc)
 
 
-def compact(path: str, resolution: str, now: datetime) -> int:
+def compact(connection: sqlite3.Connection, name: str, now: datetime) -> int:
     """Aggregate closed buckets into the rollup table.
 
-    The bucket containing `now` is skipped: compacting it would freeze partial
-    data that later samples would never correct.
+    Scans only what is not already final. The upper bound skips the bucket
+    containing `now`, because compacting it would freeze partial data that
+    later samples would never correct. The lower bound is the newest bucket
+    already written, which is the whole point: without it every run re-read and
+    re-upserted the entire retention window, so a no-op compaction cost exactly
+    as much as a real one and grew with the database (measured 0.20s at 74k
+    rows, 1.63s at 446k, linear), every fifteen minutes, forever. That is also
+    why the last written bucket is re-read rather than skipped: it is one
+    bucket, and it absorbs any sample that landed after it was first rolled up.
     """
-    seconds = RESOLUTIONS[resolution]
-    cutoff = bucket(now, seconds).isoformat()
-    with _conn(path) as connection:
-        cursor = connection.execute(
-            f"""
-            INSERT INTO rollup_{resolution}
-                (target, metric, bucket, min_value, max_value, avg_value, sample_count)
-            SELECT target, metric,
-                   strftime('%Y-%m-%dT%H:%M:%S+00:00',
-                            (CAST(strftime('%s', at) AS INTEGER) / {seconds}) * {seconds},
-                            'unixepoch') AS b,
-                   MIN(value), MAX(value), AVG(value), COUNT(*)
-            FROM samples
-            WHERE at < ?
-            GROUP BY target, metric, b
-            ON CONFLICT(target, metric, bucket) DO UPDATE SET
-                min_value = excluded.min_value,
-                max_value = excluded.max_value,
-                avg_value = excluded.avg_value,
-                sample_count = excluded.sample_count
-            """,
-            (cutoff,),
-        )
-        return cursor.rowcount
+    tier = resolution(name)
+    cutoff = bucket(now, tier.seconds).isoformat()
+    newest = connection.execute(
+        f"SELECT MAX(bucket) AS bucket FROM {tier.table}"
+    ).fetchone()
+    floor = (newest["bucket"] if newest else None) or ""
+    cursor = connection.execute(
+        f"""
+        INSERT INTO {tier.table}
+            (target, metric, bucket, min_value, max_value, avg_value, sample_count)
+        SELECT target, metric,
+               strftime('%Y-%m-%dT%H:%M:%S+00:00',
+                        (CAST(strftime('%s', at) AS INTEGER) / {tier.seconds})
+                        * {tier.seconds},
+                        'unixepoch') AS b,
+               MIN(value), MAX(value), AVG(value), COUNT(*)
+        FROM samples
+        WHERE at >= ? AND at < ?
+        GROUP BY target, metric, b
+        ON CONFLICT(target, metric, bucket) DO UPDATE SET
+            min_value = excluded.min_value,
+            max_value = excluded.max_value,
+            avg_value = excluded.avg_value,
+            sample_count = excluded.sample_count
+        """,
+        (floor, cutoff),
+    )
+    return cursor.rowcount
 
 
 def read(
-    path: str, resolution: str, target: str, metric: str
+    connection: sqlite3.Connection, name: str, target: str, metric: str
 ) -> tuple[tuple[datetime, float, float, float, int], ...]:
-    """One metric's rollup rows at the given resolution, oldest first.
-
-    `resolution` names a table and so is interpolated rather than bound, which
-    makes the membership check load-bearing rather than cosmetic: it is the
-    only thing between a caller's string and the SQL.
-    """
-    if resolution not in RESOLUTIONS:
-        raise KeyError(resolution)
-    with _conn(path) as connection:
-        rows = connection.execute(
-            f"SELECT bucket, min_value, max_value, avg_value, sample_count "
-            f"FROM rollup_{resolution} WHERE target = ? AND metric = ? ORDER BY bucket",
-            (target, metric),
-        ).fetchall()
+    """One metric's rollup rows at the given resolution, oldest first."""
+    tier = resolution(name)
+    rows = connection.execute(
+        f"SELECT bucket, min_value, max_value, avg_value, sample_count "
+        f"FROM {tier.table} WHERE target = ? AND metric = ? ORDER BY bucket",
+        (target, metric),
+    ).fetchall()
     return tuple(
         (
             datetime.fromisoformat(row["bucket"]),
@@ -97,13 +129,18 @@ def read(
     )
 
 
-def prune(path: str, now: datetime) -> dict[str, int]:
-    """Drop rows past their retention window, shortest retention first."""
-    with _conn(path) as connection:
-        return {
-            table: connection.execute(
-                f"DELETE FROM {table} WHERE {'at' if table == 'samples' else 'bucket'} < ?",
-                ((now - window).isoformat(),),
+def prune(connection: sqlite3.Connection, now: datetime) -> dict[str, int]:
+    """Drop rows past their retention window."""
+    return {
+        "samples": connection.execute(
+            "DELETE FROM samples WHERE at < ?",
+            ((now - SAMPLE_RETENTION).isoformat(),),
+        ).rowcount,
+        **{
+            tier.table: connection.execute(
+                f"DELETE FROM {tier.table} WHERE bucket < ?",
+                ((now - tier.retention).isoformat(),),
             ).rowcount
-            for table, window in RETENTION.items()
-        }
+            for tier in RESOLUTIONS
+        },
+    }

@@ -1,24 +1,27 @@
 import os
 from dataclasses import dataclass
 
+from fleet_monitor.transport.ssh import CAPTURE_FACTOR
+
 VITALS_INTERVAL = 30
 SLOW_INTERVAL = 900
 
 # ssh connect budgets for the two tiers. transport.ssh gives a whole capture
-# SSH_CAPTURE_FACTOR times the connect timeout before it kills the process, so
-# the wall-clock ceiling of one probe is the product, not the timeout itself.
-# tests/test_config.py pins the factor against transport.ssh so this cannot
-# drift out from under the derivation below.
+# CAPTURE_FACTOR times the connect timeout before it kills the process, so the
+# wall-clock ceiling of one probe is the product, not the timeout itself.
 VITALS_TIMEOUT = 15
 SLOW_TIMEOUT = 30
-SSH_CAPTURE_FACTOR = 2
 
 # The longest one collection round can legitimately take. Both tiers fan every
 # host out concurrently, so fleet size does not enter into it; a slow round is
 # the two tiers in series, each bounded by its own capture ceiling. Anything
 # that measures the distance between rounds has to allow for this, because a
 # round's own duration lands inside that distance.
-MAX_ROUND_SECONDS = (VITALS_TIMEOUT + SLOW_TIMEOUT) * SSH_CAPTURE_FACTOR
+#
+# The factor is imported from the transport that spends it rather than restated
+# here. It used to be a second copy with a test asserting the two were equal,
+# which is a number telling you it wants one home.
+MAX_ROUND_SECONDS = (VITALS_TIMEOUT + SLOW_TIMEOUT) * CAPTURE_FACTOR
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,6 +39,11 @@ class Host:
 # no /dev/dri, an empty /sys/class/drm and no amdgpu module because Synology
 # does not enable the R1600's Vega iGPU; syrax is an Atom C3538 with no iGPU;
 # caraxes is ARMv8 with 1.6 GB.
+#
+# Core count is deliberately not a field here. /proc/stat already reports one
+# row per cpu on every tick, so the collector observes it; declaring it as well
+# would be a second copy to keep in step, and the fleet is not uniform (the
+# R1600 is 2 physical cores presenting 4 threads).
 #
 # docker_url is set where Docker exists: vermithor, meleys, and vhagar since
 # 2026-08-11. caraxes is aarch64 and Container Manager is x86-only there.

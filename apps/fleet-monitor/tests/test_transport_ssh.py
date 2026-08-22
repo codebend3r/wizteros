@@ -36,7 +36,7 @@ def test_classify_names_the_reason():
 @pytest.mark.asyncio
 async def test_run_returns_a_typed_failure_for_an_unroutable_host():
     # 192.0.2.1 is TEST-NET-1 and never answers
-    result = await ssh.run("192.0.2.1", "echo hi", control_dir="/tmp/fm-test", timeout=2)
+    result = await ssh.run("192.0.2.1", "echo hi", user="tester", control_dir="/tmp/fm-test", timeout=2)
 
     assert result.ok is False
     assert result.stdout == ""
@@ -61,7 +61,7 @@ async def test_run_returns_a_typed_failure_when_ssh_cannot_be_spawned(monkeypatc
     # proven against an actual OSError rather than a mock
     monkeypatch.setenv("PATH", "/nonexistent-empty-dir-for-fleet-monitor-tests")
 
-    result = await ssh.run("192.0.2.1", "echo hi", control_dir="/tmp/fm-spawn-test", timeout=1)
+    result = await ssh.run("192.0.2.1", "echo hi", user="tester", control_dir="/tmp/fm-spawn-test", timeout=1)
 
     assert result.ok is False
     assert result.stdout == ""

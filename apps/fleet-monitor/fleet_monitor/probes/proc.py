@@ -1,5 +1,4 @@
-import math
-
+from fleet_monitor.probes.parse import number
 from fleet_monitor.probes.types import Sample
 
 # /proc/stat orders these fields after the cpu label. Trailing guest fields are
@@ -33,21 +32,6 @@ _RX_BYTES = 0
 _TX_BYTES = 8
 
 
-def _number(token: str) -> float | None:
-    """A token as a finite float, or None when it is not one.
-
-    Every value in /proc arrives as an unvalidated string, and one malformed
-    token reaching float() raises out of the parser and costs the whole host's
-    round. NaN and inf are rejected too: they parse cleanly and then poison
-    every average and comparison downstream.
-    """
-    try:
-        value = float(token)
-    except ValueError:
-        return None
-    return value if math.isfinite(value) else None
-
-
 def parse_stat(text: str) -> tuple[Sample, ...]:
     """Per-core and aggregate CPU jiffy counters from /proc/stat."""
     rows = [ln.split() for ln in text.splitlines() if ln.startswith("cpu")]
@@ -60,7 +44,7 @@ def parse_stat(text: str) -> tuple[Sample, ...]:
         for row in rows
         for index, field in enumerate(_CPU_FIELDS)
         if index + 1 < len(row)
-        for value in (_number(row[index + 1]),)
+        for value in (number(row[index + 1]),)
         if value is not None
     )
 
@@ -72,7 +56,7 @@ def parse_meminfo(text: str) -> tuple[Sample, ...]:
         Sample(metric=_MEM_KEYS[key], value=kilobytes * 1024, kind="gauge")
         for key, rest in rows
         if key in _MEM_KEYS and rest.split()
-        for kilobytes in (_number(rest.split()[0]),)
+        for kilobytes in (number(rest.split()[0]),)
         if kilobytes is not None
     )
 
@@ -95,7 +79,7 @@ def parse_net_dev(text: str) -> tuple[Sample, ...]:
         if name not in _SKIP_IFACES
         and not name.startswith(_SKIP_PREFIXES)
         and len(fields) > _TX_BYTES
-        for received, sent in ((_number(fields[_RX_BYTES]), _number(fields[_TX_BYTES])),)
+        for received, sent in ((number(fields[_RX_BYTES]), number(fields[_TX_BYTES])),)
         if received is not None and sent is not None
         for sample in (
             Sample(metric=f"net.{name}.rx_bytes", value=received, kind="counter"),
@@ -110,7 +94,7 @@ def parse_loadavg(text: str) -> tuple[Sample, ...]:
     if len(fields) < 4 or "/" not in fields[3]:
         return ()
     running, total = fields[3].split("/", 1)
-    values = tuple(_number(token) for token in (*fields[:3], running, total))
+    values = tuple(number(token) for token in (*fields[:3], running, total))
     # one malformed column makes the whole line untrustworthy: it is a single
     # reading of one file, not five independent ones
     if any(value is None for value in values):
@@ -129,7 +113,7 @@ def parse_uptime(text: str) -> tuple[Sample, ...]:
     output carries Synology's own IO and CPU suffixes, which shift the columns.
     """
     fields = text.split()
-    seconds = _number(fields[0]) if fields else None
+    seconds = number(fields[0]) if fields else None
     if seconds is None:
         return ()
     return (Sample(metric="uptime.seconds", value=seconds, kind="gauge"),)
