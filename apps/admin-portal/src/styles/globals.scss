@@ -41,6 +41,9 @@
   --font-size-xs: 0.75rem;
 
   --max-width: 80rem;
+  // Dense dashboard pages (the fleet grid) get a wider column than the
+  // landing sections, which stay readable at --max-width.
+  --max-width-wide: 100rem;
 }
 
 * {
