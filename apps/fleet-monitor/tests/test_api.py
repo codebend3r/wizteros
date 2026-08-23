@@ -53,6 +53,29 @@ def _watched(*, db, target, since, until, gap=store.COVERAGE_GAP):
         )
 
 
+def test_the_api_answers_cross_origin_requests(tmp_path, monkeypatch):
+    # The portal is served from a different origin than this API everywhere it
+    # runs: the Vite dev server in development, the deployed portal against
+    # vermithor:8010 in production. Without CORS headers the browser discards
+    # the response and the /fleet page reports "Failed to fetch" against a
+    # perfectly healthy API.
+    client, _ = _client(tmp_path, monkeypatch)
+
+    response = client.get("/fleet", headers={"origin": "http://localhost:5173"})
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "*"
+
+    preflight = client.options(
+        "/fleet",
+        headers={
+            "origin": "http://localhost:5173",
+            "access-control-request-method": "GET",
+        },
+    )
+    assert preflight.status_code == 200
+    assert "GET" in preflight.headers["access-control-allow-methods"]
+
+
 def test_the_api_creates_its_own_schema_on_startup(tmp_path, monkeypatch):
     # every other test in this file calls init_db itself, which masks the fact
     # that nothing in the API ever did. sqlite3.connect() happily creates an

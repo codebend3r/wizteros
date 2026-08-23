@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import FastAPI, Query
+from fastapi.middleware.cors import CORSMiddleware
 
 from fleet_monitor import collector, config, db, incidents, store
 from fleet_monitor.incidents import Incident
@@ -27,6 +28,17 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="fleet-monitor", lifespan=lifespan)
+
+# The portal is served from a different origin than this API everywhere it
+# runs (the Vite dev server locally, the deployed portal against
+# vermithor:8010 on the LAN), so without these headers every browser discards
+# the response and the /fleet page reads as down while the API is healthy.
+# Any origin is fine: the API is read-only, LAN-only, and credential-free.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET"],
+)
 
 # Three missed vitals ticks. Past this the dashboard is showing history, not
 # the present, and must say so. This is collector liveness only - it says
