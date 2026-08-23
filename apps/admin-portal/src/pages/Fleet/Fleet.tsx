@@ -2,13 +2,21 @@ import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { AdminGate } from '@/components/AdminGate/AdminGate'
 import { AdminLayout } from '@/components/AdminLayout/AdminLayout'
-import { fetchFleet, fetchIncidents, toHostSummary } from '@/lib/fleetApi'
+import { fetchCpuHistory, fetchFleet, fetchIncidents, toHostSummary } from '@/lib/fleetApi'
+import { CpuChart } from '@/pages/Fleet/CpuChart'
 import { HostCard } from '@/pages/Fleet/HostCard'
+import { seriesClass } from '@/pages/Fleet/seriesPalette'
+import { UpdateRateSlider } from '@/pages/Fleet/UpdateRateSlider'
+import { useFleetPrefsStore } from '@/stores/fleetPrefsStore'
 import styles from '@/pages/Fleet/Fleet.module.scss'
 
 // One vitals tick. Anything slower and the page lags the collector it reports.
+// The chart's own cadence is user-set through the slider instead: polling
+// faster than a tick buys display latency (a fresh tick shows within the
+// chosen interval), never extra data.
 const REFETCH_MS = 30_000
 const INCIDENT_HOURS = 24
+const CPU_WINDOW_MINUTES = 60
 
 const FALLBACK_ERROR = 'Could not reach the fleet monitor.'
 
@@ -34,6 +42,9 @@ type AsyncSectionProps<T> = {
   readonly query: UseQueryResult<T>
   readonly loadingLabel: string
   readonly errorSuffix: string
+  /** Rendered under the title in every query state: a control that tunes the
+      query must stay reachable while that query is loading or failing. */
+  readonly controls?: ReactNode
   readonly children: (data: T) => ReactNode
 }
 
@@ -50,12 +61,14 @@ const AsyncSection = <T,>({
   query,
   loadingLabel,
   errorSuffix,
+  controls,
   children,
 }: AsyncSectionProps<T>) => (
   <section className={styles.section} aria-labelledby={id}>
     <h2 className={styles.sectionTitle} id={id}>
       {title}
     </h2>
+    {controls}
     {!!query.isPending && (
       <p className={styles.muted} aria-live="polite">
         {loadingLabel}
@@ -81,6 +94,13 @@ const FleetInner = () => {
     queryFn: () => fetchIncidents({ hours: INCIDENT_HOURS }),
     refetchInterval: REFETCH_MS,
   })
+  const cpuIntervalMs = useFleetPrefsStore((state) => state.updateIntervalMs)
+  const setCpuIntervalMs = useFleetPrefsStore((state) => state.setUpdateIntervalMs)
+  const cpuHistory = useQuery({
+    queryKey: ['fleet-cpu', CPU_WINDOW_MINUTES],
+    queryFn: () => fetchCpuHistory({ minutes: CPU_WINDOW_MINUTES }),
+    refetchInterval: cpuIntervalMs,
+  })
 
   return (
     <AdminLayout>
@@ -103,6 +123,23 @@ const FleetInner = () => {
         </header>
 
         <AsyncSection
+          id="fleet-cpu"
+          title="CPU"
+          query={cpuHistory}
+          loadingLabel="Loading CPU history."
+          errorSuffix="No CPU history is available."
+          controls={<UpdateRateSlider intervalMs={cpuIntervalMs} onChange={setCpuIntervalMs} />}
+        >
+          {(data) => (
+            <CpuChart
+              hosts={data.hosts}
+              windowMinutes={data.window_minutes}
+              updateEveryMs={cpuIntervalMs}
+            />
+          )}
+        </AsyncSection>
+
+        <AsyncSection
           id="fleet-hosts"
           title="Hosts"
           query={fleet}
@@ -112,9 +149,9 @@ const FleetInner = () => {
           {(data) =>
             data.hosts.length > 0 ? (
               <ul className={styles.grid}>
-                {data.hosts.map((host) => (
+                {data.hosts.map((host, index) => (
                   <li key={host.name} className={styles.gridItem}>
-                    <HostCard summary={toHostSummary(host)} />
+                    <HostCard summary={toHostSummary(host)} className={seriesClass(index)} />
                   </li>
                 ))}
               </ul>

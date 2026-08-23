@@ -1,0 +1,23 @@
+// One class per fleet host, shared by every surface that renders host
+// identity: the chart line, its legend key and tooltip key, and the host
+// card's border all read the same custom property, so a host can never wear
+// one colour on the chart and another on its card.
+.series1 {
+  --series-color: var(--color-series-1);
+}
+
+.series2 {
+  --series-color: var(--color-series-2);
+}
+
+.series3 {
+  --series-color: var(--color-series-3);
+}
+
+.series4 {
+  --series-color: var(--color-series-4);
+}
+
+.series5 {
+  --series-color: var(--color-series-5);
+}

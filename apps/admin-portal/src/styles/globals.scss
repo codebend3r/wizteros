@@ -17,6 +17,18 @@
   --color-state-not-shared: #f7b32b;
   --color-state-not-entitled: #e69a9a;
 
+  /* Chart series identity, one slot per fleet host, always paired with the
+     host's name in text. The order is the colourblind-safety mechanism, not a
+     mood: this exact sequence passes the dataviz palette validator against
+     --color-surface (worst adjacent CVD ΔE 8.4, normal-vision 19.3), so never
+     reorder or restep a slot without re-running it. Slots 2 and 5 sit just
+     under 3:1 on the surface, which is why the chart ships a table view. */
+  --color-series-1: #3987e5;
+  --color-series-2: #d95926;
+  --color-series-3: #199e70;
+  --color-series-4: #c98500;
+  --color-series-5: #d55181;
+
   --space-1: 0.5rem;
   --space-2: 1rem;
   --space-3: 1.5rem;

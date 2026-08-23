@@ -1,0 +1,214 @@
+.chart {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+}
+
+.subtitle {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+.empty {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+// Counts up at the page's own update cadence: the one element that visibly
+// moves exactly as fast as the chosen rate.
+.freshness {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.plotWrap {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+
+  // The SVG is drawn at a measured pixel width, so between mount and the
+  // first measurement it may be wider than this box. Scrolling inside is the
+  // house rule for wide content: the mismatch must never widen the page.
+  overflow-x: auto;
+  padding: var(--space-1) 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.svg {
+  display: block;
+  max-width: 100%;
+}
+
+// The pointer/keyboard layer over the whole plot: one large hit target, so
+// nobody has to land on a 2px line to get a reading.
+.inspector {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-md);
+}
+
+.gridline {
+  stroke: var(--color-border);
+  stroke-width: 1;
+}
+
+.tickLabel {
+  fill: var(--color-muted);
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.line {
+  fill: none;
+  stroke: var(--series-color, var(--color-muted));
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+// Readings ride a 2px ring of the surface colour so they stay legible where
+// lines cross; the same mark doubles as each line's endpoint dot.
+.marker {
+  fill: var(--series-color, var(--color-muted));
+  stroke: var(--color-surface);
+  stroke-width: 2;
+}
+
+.crosshair {
+  stroke: var(--color-muted);
+  stroke-width: 1;
+}
+
+.tooltip {
+  position: absolute;
+  top: var(--space-1);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-1);
+
+  // max-content, because an absolutely positioned box otherwise shrinks to
+  // whatever sliver of the container remains past its offset and overflows
+  // it; the max keeps it inside the plot on a phone.
+  width: max-content;
+  max-width: calc(100% - var(--space-2));
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  font-size: var(--font-size-xs);
+  pointer-events: none;
+}
+
+.tooltipTime {
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.tooltipRows {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-1);
+  padding: 0;
+  list-style: none;
+}
+
+// The value leads and the name follows: at the tooltip the reader already
+// chose a moment and wants the number.
+.tooltipRow {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.tooltipValue {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.tooltipName {
+  color: var(--color-muted);
+}
+
+// A short stroke of the series colour, mirroring the line mark it stands for.
+// Identity always comes with the host's name beside it, never colour alone.
+.seriesKey {
+  width: var(--space-2);
+  height: 2px;
+  border-radius: 1px;
+  background: var(--series-color, var(--color-muted));
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  padding: 0;
+  list-style: none;
+  font-size: var(--font-size-sm);
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.legendNote {
+  color: var(--color-muted);
+  font-size: var(--font-size-xs);
+}
+
+.tableView {
+  font-size: var(--font-size-sm);
+}
+
+.tableSummary {
+  color: var(--color-accent);
+  cursor: pointer;
+}
+
+.tableScroll {
+  overflow-x: auto;
+}
+
+.table {
+  border-collapse: collapse;
+  margin-top: var(--space-1);
+  font-size: var(--font-size-xs);
+
+  caption {
+    padding-bottom: var(--space-1);
+    color: var(--color-muted);
+    text-align: left;
+  }
+
+  th,
+  td {
+    padding: var(--space-1);
+    border-bottom: 1px solid var(--color-border);
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  thead th {
+    color: var(--color-muted);
+    font-weight: 600;
+  }
+
+  th[scope='row'],
+  thead th:first-child {
+    color: var(--color-muted);
+    font-variant-numeric: tabular-nums;
+    font-weight: 400;
+    text-align: left;
+  }
+
+  td {
+    font-variant-numeric: tabular-nums;
+  }
+}

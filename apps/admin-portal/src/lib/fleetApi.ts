@@ -46,6 +46,28 @@ export type FleetResponse = {
   readonly hosts: readonly FleetHost[]
 }
 
+/** One busy-percent reading as `/fleet/cpu` reports it. Stamped at the later
+    of the two counter readings it was derived from. */
+export type CpuPoint = {
+  readonly at: string
+  readonly busy_percent: number
+}
+
+/** One host's series. Empty when the host reported no counters in the window:
+    not observed, never zero load. */
+export type CpuHostSeries = {
+  readonly name: string
+  readonly points: readonly CpuPoint[]
+}
+
+/** `/fleet/cpu`. Hosts arrive in the same order as `/fleet`, guaranteed and
+    tested server-side, which is what lets position bind a host to its colour
+    on both the chart and the cards. */
+export type CpuHistory = {
+  readonly window_minutes: number
+  readonly hosts: readonly CpuHostSeries[]
+}
+
 export type Incident = {
   readonly id: number
   readonly target: string
@@ -194,6 +216,21 @@ const isFleetResponse = (value: unknown): value is FleetResponse =>
   Array.isArray(value.hosts) &&
   value.hosts.every(isFleetHost)
 
+const isCpuPoint = (value: unknown): value is CpuPoint =>
+  isRecord(value) && typeof value.at === 'string' && typeof value.busy_percent === 'number'
+
+const isCpuHostSeries = (value: unknown): value is CpuHostSeries =>
+  isRecord(value) &&
+  typeof value.name === 'string' &&
+  Array.isArray(value.points) &&
+  value.points.every(isCpuPoint)
+
+const isCpuHistory = (value: unknown): value is CpuHistory =>
+  isRecord(value) &&
+  typeof value.window_minutes === 'number' &&
+  Array.isArray(value.hosts) &&
+  value.hosts.every(isCpuHostSeries)
+
 const isIncident = (value: unknown): value is Incident =>
   isRecord(value) &&
   typeof value.id === 'number' &&
@@ -227,6 +264,14 @@ const requestJson = async (path: string): Promise<unknown> => {
 export const fetchFleet = async (): Promise<FleetResponse> => {
   const data = await requestJson('/fleet')
   if (!isFleetResponse(data)) throw new Error('Unexpected fleet response from the fleet monitor')
+  return data
+}
+
+export const fetchCpuHistory = async ({ minutes }: { minutes: number }): Promise<CpuHistory> => {
+  const data = await requestJson(`/fleet/cpu?minutes=${minutes}`)
+  if (!isCpuHistory(data)) {
+    throw new Error('Unexpected CPU history response from the fleet monitor')
+  }
   return data
 }
 

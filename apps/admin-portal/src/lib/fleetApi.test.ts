@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from '@/test/vi'
 import {
+  fetchCpuHistory,
   fetchFleet,
   fetchIncidents,
   type FleetHost,
@@ -169,6 +170,40 @@ test('fetchFleet names the HTML fallback instead of failing to parse it', async 
   )
 
   await expect(fetchFleet()).rejects.toThrow('VITE_FLEET_BASE')
+})
+
+test('fetchCpuHistory asks for the requested window and returns the payload', async () => {
+  const payload = {
+    window_minutes: 60,
+    hosts: [
+      {
+        name: 'meleys',
+        points: [{ at: '2026-08-23T12:00:30+00:00', busy_percent: 12.5 }],
+      },
+      { name: 'caraxes', points: [] },
+    ],
+  }
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValue({ ok: true, status: 200, headers: JSON_HEADERS, json: async () => payload })
+  vi.stubGlobal('fetch', fetchMock)
+
+  await expect(fetchCpuHistory({ minutes: 60 })).resolves.toEqual(payload)
+  expect(fetchMock.mock.calls[0][0]).toBe('/fleet/cpu?minutes=60')
+})
+
+test('fetchCpuHistory rejects a payload that is not a cpu history', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: JSON_HEADERS,
+      json: async () => ({ window_minutes: 60, hosts: [{ name: 'meleys', points: [{}] }] }),
+    }),
+  )
+
+  await expect(fetchCpuHistory({ minutes: 60 })).rejects.toThrow('Unexpected CPU history response')
 })
 
 test('fetchIncidents asks for the requested window and returns both lists', async () => {

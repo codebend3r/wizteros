@@ -59,16 +59,30 @@ const renderFleet = () => {
   )
 }
 
-// Both queries go through the same window.fetch, so route the stub by path
-// rather than by call order.
-const stubFleetFetch = ({ fleet, incidents }: { fleet: unknown; incidents: unknown }) =>
+const EMPTY_CPU = { window_minutes: 60, hosts: [] }
+
+// All three queries go through the same window.fetch, so route the stub by
+// path rather than by call order; /fleet/cpu must be tested before its /fleet
+// prefix.
+const stubFleetFetch = ({
+  fleet,
+  incidents,
+  cpu = EMPTY_CPU,
+}: {
+  fleet: unknown
+  incidents: unknown
+  cpu?: unknown
+}) =>
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string) => ({
       ok: true,
       status: 200,
       headers: { get: () => 'application/json' },
-      json: async () => (url.startsWith('/fleet') ? fleet : incidents),
+      json: async () => {
+        if (url.startsWith('/fleet/cpu')) return cpu
+        return url.startsWith('/fleet') ? fleet : incidents
+      },
     })),
   )
 
@@ -324,6 +338,97 @@ test('Fleet says so when the monitor reports no hosts at all', async () => {
 
   // an empty list renders as nothing, which reads as a page still loading
   expect(await screen.findByText('The fleet monitor reported no hosts.')).toBeInTheDocument()
+})
+
+test('Fleet binds each card to the chart colour of the same host position', async () => {
+  stubFleetFetch({
+    fleet: {
+      collected_at: '2026-08-15T00:00:00+00:00',
+      stale: false,
+      hosts: [host, { ...host, name: 'caraxes', ip: '192.168.50.4' }],
+    },
+    incidents: { open: [], recent: [] },
+    cpu: {
+      window_minutes: 60,
+      hosts: [
+        { name: 'vermithor', points: [{ at: '2026-08-15T00:00:00+00:00', busy_percent: 12.5 }] },
+        { name: 'caraxes', points: [] },
+      ],
+    },
+  })
+  renderFleet()
+
+  const first = await screen.findByRole('heading', { name: 'vermithor' })
+  const second = screen.getByRole('heading', { name: 'caraxes' })
+  // both surfaces derive the class from array position, and the monitor
+  // guarantees /fleet and /fleet/cpu agree on order
+  expect(first.closest('article')).toHaveClass('series1')
+  expect(second.closest('article')).toHaveClass('series2')
+})
+
+test('Fleet renders the CPU section with its chart once the payload lands', async () => {
+  stubFleetFetch({
+    fleet: { collected_at: '2026-08-15T00:00:00+00:00', stale: false, hosts: [host] },
+    incidents: { open: [], recent: [] },
+    cpu: {
+      window_minutes: 60,
+      hosts: [
+        {
+          name: 'vermithor',
+          // recent stamps: the chart's frame is the last hour ending now, and
+          // readings outside it are not drawn
+          points: [
+            { at: new Date(Date.now() - 60_000).toISOString(), busy_percent: 12.5 },
+            { at: new Date(Date.now() - 30_000).toISOString(), busy_percent: 37.5 },
+          ],
+        },
+      ],
+    },
+  })
+  renderFleet()
+
+  expect(await screen.findByRole('heading', { name: 'CPU' })).toBeInTheDocument()
+  expect(screen.getByRole('slider', { name: 'Reading time' })).toBeInTheDocument()
+  expect(screen.getByText('View as table')).toBeInTheDocument()
+})
+
+test('Fleet keeps the update-rate control reachable while the CPU query fails', async () => {
+  // the slider tunes the polling the failing query does, so it must never
+  // disappear behind the error it could help recover from
+  vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')))
+  renderFleet()
+
+  expect(await screen.findByText(/No CPU history is available/)).toBeInTheDocument()
+  expect(screen.getByLabelText('Update every')).toBeInTheDocument()
+})
+
+test('Fleet reports a failed CPU query without taking down the host cards', async () => {
+  const cpuFailure = {
+    ok: false,
+    status: 502,
+    headers: { get: () => 'application/json' },
+    json: async () => ({}),
+  }
+  const good = (payload: unknown) => ({
+    ok: true,
+    status: 200,
+    headers: { get: () => 'application/json' },
+    json: async () => payload,
+  })
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      if (url.startsWith('/fleet/cpu')) return cpuFailure
+      if (url.startsWith('/fleet')) {
+        return good({ collected_at: '2026-08-15T00:00:00+00:00', stale: false, hosts: [host] })
+      }
+      return good({ open: [], recent: [] })
+    }),
+  )
+  renderFleet()
+
+  expect(await screen.findByText(/No CPU history is available/)).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: 'vermithor' })).toBeInTheDocument()
 })
 
 test('Fleet lists open incidents by target and reason', async () => {

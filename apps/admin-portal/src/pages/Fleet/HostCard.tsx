@@ -3,6 +3,9 @@ import styles from '@/pages/Fleet/HostCard.module.scss'
 
 type HostCardProps = {
   readonly summary: HostSummary
+  /** The series class binding this host to its CPU-chart colour; the card
+      border wears it so card and line read as the same host at a glance. */
+  readonly className?: string
 }
 
 const STATUS_LABEL = {
@@ -36,7 +39,7 @@ const usage = ({ percent, total }: { percent: number | null; total: number | nul
   return total === null ? `${percent}%` : `${percent}% of ${formatBytes(total)}`
 }
 
-export const HostCard = ({ summary }: HostCardProps) => {
+export const HostCard = ({ summary, className }: HostCardProps) => {
   // A never-collected host is already unqualified-proof: its label is the
   // absence itself. Only a collected host can carry a stale present tense.
   const staleStatus = summary.status !== 'unknown' && summary.metricsStale
@@ -45,7 +48,10 @@ export const HostCard = ({ summary }: HostCardProps) => {
   const statusText = `${STATUS_LABEL[summary.status]}${staleStatus ? STALE_STATUS_SUFFIX : ''}`
 
   return (
-    <article className={styles.card} data-status={summary.status}>
+    <article
+      className={className ? `${styles.card} ${className}` : styles.card}
+      data-status={summary.status}
+    >
       <header className={styles.header}>
         <h3 className={styles.name}>{summary.name}</h3>
         {/* status is stated in text, never by color alone */}
