@@ -12,6 +12,24 @@ the version recorded in the tree at that commit. That was not always true; the
 history was rewritten on 2026-08-08 to make it so. See
 [The 2026-08-08 history rewrite](#the-2026-08-08-history-rewrite).
 
+## v0.3.0 (2026-08-23)
+
+- Add the fleet-monitor app and fleet overview page (#46): a new Python service
+  (`apps/fleet-monitor/`) that probes the five Synology hosts over SSH for
+  system, process, and Docker state, rolls the samples up, and raises incidents,
+  plus a `/fleet` page in the portal that renders it
+- Harden fleet-monitor and move host judgments server-side (#49): health verdicts
+  are now decided by the collector rather than the browser, so every client reads
+  the same call
+- Add the annual pricing preview and lead with the tiers (#48): a billing-period
+  toggle, an annual preview page, and a landing page reordered to open on the
+  tiers
+- Ledger follows the selected tier (#45): the StatusBoard ledger now tracks the
+  tier the visitor has selected instead of holding a fixed one
+- Match the youth allowlist on library titles (#47): the youth tier resolves
+  libraries by title with the `NN. ` ordering prefix stripped, so renumbering the
+  Plex libraries no longer silently empties the tier
+
 ## v0.2.2 (2026-08-14)
 
 - Implement the Marquee Ledger redesign (#44): refreshed Hero, Pricing, Footer,
