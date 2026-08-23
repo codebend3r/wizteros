@@ -48,6 +48,41 @@ def test_series_is_ordered_and_windowed(db):
     assert points[0][0] == T0 + timedelta(seconds=30)
 
 
+def test_metric_series_groups_the_requested_metrics_in_time_order(db):
+    for offset, user, idle in ((0, 100.0, 900.0), (30, 150.0, 950.0)):
+        store.write_samples(db, "host:syrax", T0 + timedelta(seconds=offset), [
+            Sample("cpu.total.user", user, "counter"),
+            Sample("cpu.total.idle", idle, "counter"),
+            Sample("load.1m", 0.5, "gauge"),
+        ])
+
+    result = store.metric_series(
+        db, "host:syrax", ("cpu.total.user", "cpu.total.idle"), since=ANY_AGE
+    )
+
+    assert result == {
+        "cpu.total.user": ((T0, 100.0), (T0 + timedelta(seconds=30), 150.0)),
+        "cpu.total.idle": ((T0, 900.0), (T0 + timedelta(seconds=30), 950.0)),
+    }
+
+
+def test_metric_series_windows_and_scopes_to_the_target(db):
+    store.write_samples(db, "host:syrax", T0 - timedelta(hours=2),
+                        [Sample("cpu.total.user", 1.0, "counter")])
+    store.write_samples(db, "host:meleys", T0,
+                        [Sample("cpu.total.user", 2.0, "counter")])
+    store.write_samples(db, "host:syrax", T0,
+                        [Sample("cpu.total.user", 3.0, "counter")])
+
+    result = store.metric_series(
+        db, "host:syrax", ("cpu.total.user",), since=T0 - timedelta(hours=1)
+    )
+
+    # a metric with no rows in the window is absent, not an empty series: the
+    # caller cannot tell those apart and must not need to
+    assert result == {"cpu.total.user": ((T0, 3.0),)}
+
+
 def test_rate_divides_by_elapsed_seconds():
     assert store.rate((T0, 1000.0), (T0 + timedelta(seconds=10), 2000.0)) == 100.0
 

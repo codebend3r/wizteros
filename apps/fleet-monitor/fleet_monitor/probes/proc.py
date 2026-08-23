@@ -2,8 +2,10 @@ from fleet_monitor.probes.parse import number
 from fleet_monitor.probes.types import Sample
 
 # /proc/stat orders these fields after the cpu label. Trailing guest fields are
-# ignored: they are already counted inside user and nice.
-_CPU_FIELDS = ("user", "nice", "system", "idle", "iowait", "irq", "softirq", "steal")
+# ignored: they are already counted inside user and nice. Public because cpu.py
+# derives the metric names it reads back from this same list: what the busy
+# derivation sums is defined by what parse_stat writes, in one place.
+CPU_FIELDS = ("user", "nice", "system", "idle", "iowait", "irq", "softirq", "steal")
 
 # Values are in kB. Anything not listed here is not worth a row per tick.
 _MEM_KEYS = {
@@ -42,7 +44,7 @@ def parse_stat(text: str) -> tuple[Sample, ...]:
             kind="counter",
         )
         for row in rows
-        for index, field in enumerate(_CPU_FIELDS)
+        for index, field in enumerate(CPU_FIELDS)
         if index + 1 < len(row)
         for value in (number(row[index + 1]),)
         if value is not None

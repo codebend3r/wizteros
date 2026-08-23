@@ -9,7 +9,7 @@ from typing import Literal
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from fleet_monitor import collector, config, db, incidents, store
+from fleet_monitor import collector, config, cpu, db, incidents, store
 from fleet_monitor.incidents import Incident
 from fleet_monitor.probes.docker import ContainerView, from_samples
 
@@ -66,6 +66,13 @@ METRIC_AGE_WINDOW = 24 * 3600
 # cap, an absurd `hours` value overflows the C int `timedelta` builds from and
 # turns into an unhandled 500 instead of a client error.
 MAX_INCIDENT_HOURS = 24 * 365 * 5
+
+# The CPU history window. The floor is one vitals tick past nothing (a single
+# reading yields no delta, so anything shorter cannot answer); the ceiling is a
+# day - beyond that raw 30s samples stop being what anyone is asking for, and
+# samples only live seven days anyway.
+DEFAULT_CPU_MINUTES = 60
+MAX_CPU_MINUTES = 24 * 60
 
 # When a host needs attention. These live here, beside the staleness bands they
 # sit next to, rather than in the SPA: they are judgments about the fleet, and
@@ -139,6 +146,24 @@ class HealthView:
 class IncidentFeed:
     open: list[Incident]
     recent: list[Incident]
+
+
+@dataclass(frozen=True, slots=True)
+class CpuPoint:
+    at: datetime
+    busy_percent: float
+
+
+@dataclass(frozen=True, slots=True)
+class CpuHostSeries:
+    name: str
+    points: list[CpuPoint]
+
+
+@dataclass(frozen=True, slots=True)
+class CpuHistoryView:
+    window_minutes: int
+    hosts: list[CpuHostSeries]
 
 
 def _age_seconds(*, now: datetime, at: datetime | None) -> float | None:
@@ -336,6 +361,41 @@ def _host_view(
             else None
         ),
     )
+
+
+@app.get("/fleet/cpu")
+def fleet_cpu(
+    minutes: int = Query(default=DEFAULT_CPU_MINUTES, ge=2, le=MAX_CPU_MINUTES),
+) -> CpuHistoryView:
+    """Every configured host's aggregate CPU busy-percent series.
+
+    Hosts arrive in config.HOSTS order, the same order `/fleet` uses. The
+    portal binds one color per host by array position - on the cards from
+    `/fleet`, on the chart from here - so the two responses must never
+    disagree about position.
+
+    A host with no counters in the window has an empty series, not zeros: the
+    chart renders that host as a legend entry with no line, which is the
+    honest rendering of "not observed".
+    """
+    now = datetime.now(tz=timezone.utc)
+    since = now - timedelta(minutes=minutes)
+    with db.session(config.db_path()) as connection:
+        hosts = [
+            CpuHostSeries(
+                name=host.name,
+                points=[
+                    CpuPoint(at=at, busy_percent=value)
+                    for at, value in cpu.busy_series(
+                        store.metric_series(
+                            connection, f"host:{host.name}", cpu.METRICS, since=since
+                        )
+                    )
+                ],
+            )
+            for host in config.HOSTS
+        ]
+    return CpuHistoryView(window_minutes=minutes, hosts=hosts)
 
 
 @app.get("/incidents")

@@ -134,6 +134,41 @@ def series(
     return tuple((datetime.fromisoformat(row["at"]), row["value"]) for row in rows)
 
 
+def metric_series(
+    connection: sqlite3.Connection,
+    target: str,
+    metrics: Sequence[str],
+    *,
+    since: datetime,
+) -> dict[str, tuple[tuple[datetime, float], ...]]:
+    """Every requested metric's series for one target, in one query.
+
+    Companion to `series` for callers that read a family of metrics together -
+    the cpu.total counters are eight metrics that only mean anything as a set,
+    and eight scans per host per request is the alternative. A metric with no
+    rows in the window is absent from the result rather than an empty series;
+    the two are indistinguishable to a caller and must stay that way.
+
+    Only `?` placeholders are interpolated into the SQL, one per metric name;
+    the names themselves travel as parameters.
+    """
+    if not metrics:
+        return {}
+    placeholders = ", ".join("?" for _ in metrics)
+    rows = connection.execute(
+        "SELECT metric, at, value FROM samples "
+        f"WHERE target = ? AND metric IN ({placeholders}) AND at >= ? "
+        "ORDER BY metric, at",
+        (target, *metrics, since.isoformat()),
+    ).fetchall()
+    grouped: dict[str, list[tuple[datetime, float]]] = {}
+    for row in rows:
+        grouped.setdefault(row["metric"], []).append(
+            (datetime.fromisoformat(row["at"]), row["value"])
+        )
+    return {metric: tuple(points) for metric, points in grouped.items()}
+
+
 def rate(
     previous: tuple[datetime, float], current: tuple[datetime, float]
 ) -> float | None:

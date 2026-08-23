@@ -513,3 +513,57 @@ def test_fleet_serves_containers_as_objects(tmp_path, monkeypatch):
         {"name": "plex", "up": True, "healthy": True, "has_healthcheck": True},
         {"name": "radarr", "up": False, "healthy": False, "has_healthcheck": False},
     ]
+
+
+def _cpu_tick(user, idle):
+    return [
+        Sample("cpu.total.user", user, "counter"),
+        Sample("cpu.total.idle", idle, "counter"),
+    ]
+
+
+def test_fleet_cpu_reports_busy_percent_per_host(tmp_path, monkeypatch):
+    client, db = _client(tmp_path, monkeypatch)
+    now = datetime.now(tz=timezone.utc)
+    _write_samples(db, "host:meleys", now - timedelta(seconds=60), _cpu_tick(0.0, 0.0))
+    _write_samples(db, "host:meleys", now - timedelta(seconds=30), _cpu_tick(25.0, 75.0))
+
+    payload = client.get("/fleet/cpu").json()
+
+    assert payload["window_minutes"] == 60
+    by_name = {host["name"]: host["points"] for host in payload["hosts"]}
+    assert [point["busy_percent"] for point in by_name["meleys"]] == [25.0]
+    # a host with no counters in the window has no points, not zeros
+    assert by_name["vermithor"] == []
+
+
+def test_fleet_cpu_lists_hosts_in_the_same_order_as_fleet(tmp_path, monkeypatch):
+    # the portal binds one color per host by array position, on the cards from
+    # /fleet and on the chart from here; the two must never disagree
+    client, _ = _client(tmp_path, monkeypatch)
+
+    fleet_names = [host["name"] for host in client.get("/fleet").json()["hosts"]]
+    cpu_names = [host["name"] for host in client.get("/fleet/cpu").json()["hosts"]]
+
+    assert cpu_names == fleet_names
+
+
+def test_fleet_cpu_honors_the_requested_window(tmp_path, monkeypatch):
+    client, db = _client(tmp_path, monkeypatch)
+    now = datetime.now(tz=timezone.utc)
+    _write_samples(db, "host:meleys", now - timedelta(minutes=10), _cpu_tick(0.0, 0.0))
+    _write_samples(db, "host:meleys", now - timedelta(minutes=9), _cpu_tick(25.0, 75.0))
+
+    narrow = client.get("/fleet/cpu?minutes=5").json()
+    wide = client.get("/fleet/cpu?minutes=30").json()
+
+    assert narrow["window_minutes"] == 5
+    assert [host["points"] for host in narrow["hosts"]] == [[], [], [], [], []]
+    assert [p["busy_percent"] for p in wide["hosts"][0]["points"]] == [25.0]
+
+
+def test_fleet_cpu_rejects_an_out_of_range_window(tmp_path, monkeypatch):
+    client, _ = _client(tmp_path, monkeypatch)
+
+    assert client.get("/fleet/cpu?minutes=0").status_code == 422
+    assert client.get("/fleet/cpu?minutes=100000").status_code == 422
