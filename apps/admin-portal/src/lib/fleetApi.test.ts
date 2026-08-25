@@ -9,6 +9,22 @@ import {
   toHostSummary,
 } from '@/lib/fleetApi'
 
+// The monitor authorizes every read off the Supabase session now, so stub the
+// client for authHeader() to draw a token from. Declared here rather than
+// leaned on from adminApi.test.ts: bun's mock.module is process-global and
+// leaks forward between files, which would leave these assertions passing only
+// because of the order the suite happens to run in.
+vi.mock('@/lib/supabaseClient', () => ({
+  supabase: {
+    auth: {
+      getSession: async () => ({ data: { session: { access_token: 'tok123' } } }),
+      signOut: async () => ({ error: null }),
+      signInWithPassword: async () => ({ data: { session: null }, error: null }),
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => undefined } } }),
+    },
+  },
+}))
+
 // The monitor makes every judgment now: status, cores, usage and the container
 // list all arrive decided. What used to be tested here - deriving memory
 // percent, dividing load by a hardcoded four, comparing disk against a warn
@@ -240,4 +256,44 @@ test('fetchIncidents rejects a payload that is not an incident feed', async () =
   )
 
   await expect(fetchIncidents({ hours: 24 })).rejects.toThrow('Unexpected incidents response')
+})
+
+test('every monitor read carries the signed-in admin as a bearer', async () => {
+  const ok = (json: unknown) => ({
+    ok: true,
+    status: 200,
+    headers: JSON_HEADERS,
+    json: async () => json,
+  })
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce(ok({ collected_at: null, stale: false, hosts: [] }))
+    .mockResolvedValueOnce(ok({ window_minutes: 60, hosts: [] }))
+    .mockResolvedValueOnce(ok({ open: [], recent: [] }))
+  vi.stubGlobal('fetch', fetchMock)
+
+  await fetchFleet()
+  await fetchCpuHistory({ minutes: 60 })
+  await fetchIncidents({ hours: 24 })
+
+  // Every route, not just the first: the monitor gates all three, so one
+  // unauthenticated call is a section of the page that reads as down.
+  const bearers = fetchMock.mock.calls.map(([, init]) => init.headers.Authorization)
+  expect(bearers).toEqual(['Bearer tok123', 'Bearer tok123', 'Bearer tok123'])
+})
+
+// The page renders behind AdminGate, so a 401 is a lapsed session or an
+// account the monitor does not allowlist - not an unreachable monitor.
+test('a rejected session is named rather than reported as a bare status', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      headers: JSON_HEADERS,
+      json: async () => ({}),
+    }),
+  )
+
+  await expect(fetchCpuHistory({ minutes: 60 })).rejects.toThrow('not allowed to read the fleet')
 })

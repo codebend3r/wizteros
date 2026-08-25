@@ -1,3 +1,5 @@
+import { supabase } from '@/lib/supabaseClient'
+
 export type HostStatus = 'ok' | 'warn' | 'unknown'
 
 /** One container as `/fleet` reports it. `healthy` is meaningless unless
@@ -248,11 +250,28 @@ const isIncidentFeed = (value: unknown): value is IncidentFeed =>
 
 const FLEET_BASE: string = import.meta.env.VITE_FLEET_BASE ?? ''
 
+// The monitor is reachable from the public internet now, so it authorizes
+// every read off the Supabase session exactly as the bridge does: send the
+// signed-in admin's access token as a bearer, read from the client per
+// request so a refreshed session is picked up without a reload.
+const authHeader = async (): Promise<Record<string, string>> => {
+  if (!supabase) return {}
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
 // With VITE_FLEET_BASE unset the monitor call is relative, and /fleet is also
 // this SPA's own route: the host answers it with index.html at 200. Name that
 // instead of letting it surface later as an opaque JSON parse error.
 const requestJson = async (path: string): Promise<unknown> => {
-  const response = await fetch(`${FLEET_BASE}${path}`)
+  const response = await fetch(`${FLEET_BASE}${path}`, { headers: await authHeader() })
+  // The page renders behind AdminGate, so reaching here signed out means the
+  // session lapsed mid-visit or this build points at a monitor that does not
+  // allowlist the account - neither of which "fleet request failed: 401" says.
+  if (response.status === 401) {
+    throw new Error('Not signed in, or this account is not allowed to read the fleet.')
+  }
   if (!response.ok) throw new Error(`fleet request failed: ${response.status}`)
   const contentType = response.headers?.get('content-type') ?? ''
   if (!contentType.includes('json')) {
