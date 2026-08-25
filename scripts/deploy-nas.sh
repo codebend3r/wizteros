@@ -7,6 +7,8 @@
 #   wizarr-data/         - live Wizarr DB lives on the NAS after migration
 #   tautulli-config/     - live Tautulli state
 #   stripe-bridge-data/  - the bridge's SQLite mapping
+#   fleet-monitor-data/  - the monitor's SQLite samples
+#   fleet-monitor-ssh/   - the monitor's ssh key; never leaves the NAS
 #
 # Prereq: mount the share first — Finder > Cmd+K > smb://192.168.50.2 > "docker".
 # Override the destination with:  NAS_MOUNT=/Volumes/docker/stripe-bridge npm run deploy:nas
@@ -35,6 +37,8 @@ rsync -av \
   --exclude 'wizarr-data' \
   --exclude 'tautulli-config' \
   --exclude 'stripe-bridge-data' \
+  --exclude 'fleet-monitor-data' \
+  --exclude 'fleet-monitor-ssh' \
   "$(cd "$(dirname "$0")/.." && pwd)/" \
   "$DEST/"
 

@@ -20,3 +20,47 @@ services:
   # (Synology package), not a container. It serves the host-published ports
   # 5690 (wizarr) and 8000 (stripe-bridge) at https://<node>.<tailnet>.ts.net.
   # See docs/tailscale-funnel.md.
+
+  # The fleet monitor is two processes over one SQLite file: the API the portal
+  # reads, and the collector that fills it. Split because they fail
+  # independently - a collector wedged on a slow box must not take the
+  # dashboard down with it, and restarting either one alone is safe.
+  fleet-monitor:
+    build: ./apps/fleet-monitor
+    image: wizteros-fleet-monitor
+    container_name: fleet-monitor
+    restart: unless-stopped
+    ports:
+      - '8010:8010'
+    env_file:
+      - .env
+    volumes:
+      - ./fleet-monitor-data:/data
+    healthcheck:
+      # /health is the one ungated route, which is what lets this probe run
+      # without a session.
+      test: ['CMD', 'python', '-c', "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  fleet-collector:
+    build: ./apps/fleet-monitor
+    image: wizteros-fleet-monitor
+    container_name: fleet-collector
+    restart: unless-stopped
+    command: ['python', '-m', 'fleet_monitor.collector']
+    env_file:
+      - .env
+    volumes:
+      - ./fleet-monitor-data:/data
+      # The collector reaches all five hosts over ssh as FM_SSH_USER, so it
+      # needs that account's private key and a writable place for the
+      # known_hosts that -oStrictHostKeyChecking=accept-new appends to. Mounted
+      # at the default identity path rather than passed with -i, because the
+      # transport deliberately builds a plain argv.
+      #
+      # This directory is NOT the NAS account's own ~/.ssh. It holds a key
+      # minted for the monitor alone, so revoking the monitor's reach is
+      # deleting one authorized_keys line rather than rotating a human's key.
+      - ./fleet-monitor-ssh:/root/.ssh
