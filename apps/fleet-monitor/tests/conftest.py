@@ -1,7 +1,7 @@
 import pytest
 
+from fleet_monitor import api, incidents, rollups, store
 from fleet_monitor import db as fleet_db
-from fleet_monitor import incidents, rollups, store
 
 
 @pytest.fixture
@@ -27,3 +27,15 @@ def db(db_path):
         rollups.init_db(connection)
         incidents.init_db(connection)
         yield connection
+
+
+@pytest.fixture(autouse=True)
+def _clear_dependency_overrides():
+    """Undo any auth override a test installed on the shared app object.
+
+    `api.app` is module-level, so an override outlives the test that set it and
+    would silently unlock the suite's own auth tests. Cleared here rather than
+    in each test so forgetting cannot be a way to weaken them.
+    """
+    yield
+    api.app.dependency_overrides.clear()

@@ -6,10 +6,11 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
-from fastapi import FastAPI, Query
+from fastapi import Depends, FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from fleet_monitor import collector, config, cpu, db, incidents, store
+from fleet_monitor.auth import require_admin
 from fleet_monitor.incidents import Incident
 from fleet_monitor.probes.docker import ContainerView, from_samples
 
@@ -30,14 +31,23 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title="fleet-monitor", lifespan=lifespan)
 
 # The portal is served from a different origin than this API everywhere it
-# runs (the Vite dev server locally, the deployed portal against
-# vermithor:8010 on the LAN), so without these headers every browser discards
-# the response and the /fleet page reads as down while the API is healthy.
-# Any origin is fine: the API is read-only, LAN-only, and credential-free.
+# runs (the Vite dev server locally, Netlify in production), so without these
+# headers every browser discards the response and the /fleet page reads as
+# down while the API is healthy.
+#
+# Any origin is still fine, but for a different reason than before: the API is
+# no longer LAN-only, so what protects it is the bearer on each read, not the
+# network it sits on. An open origin list without credentialed requests lets
+# any page ASK, and every gated route still answers 401 without a session.
+#
+# `allow_headers` is what makes that bearer reachable: sending Authorization
+# cross-origin triggers a preflight, and a preflight that does not name the
+# header ends the request before it is made.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["GET"],
+    allow_headers=["Authorization"],
 )
 
 # Three missed vitals ticks. Past this the dashboard is showing history, not
@@ -195,7 +205,7 @@ def health() -> HealthView:
     return HealthView(ok=True, heartbeat_age_seconds=age, stale=age is None or age > STALE_AFTER)
 
 
-@app.get("/fleet")
+@app.get("/fleet", dependencies=[Depends(require_admin)])
 def fleet() -> FleetView:
     """Every configured host's latest vitals, plus fleet-wide staleness.
 
@@ -363,7 +373,7 @@ def _host_view(
     )
 
 
-@app.get("/fleet/cpu")
+@app.get("/fleet/cpu", dependencies=[Depends(require_admin)])
 def fleet_cpu(
     minutes: int = Query(default=DEFAULT_CPU_MINUTES, ge=2, le=MAX_CPU_MINUTES),
 ) -> CpuHistoryView:
@@ -398,7 +408,7 @@ def fleet_cpu(
     return CpuHistoryView(window_minutes=minutes, hosts=hosts)
 
 
-@app.get("/incidents")
+@app.get("/incidents", dependencies=[Depends(require_admin)])
 def incident_feed(hours: int = Query(default=24, ge=1, le=MAX_INCIDENT_HOURS)) -> IncidentFeed:
     since = datetime.now(tz=timezone.utc) - timedelta(hours=hours)
     with db.session(config.db_path()) as connection:

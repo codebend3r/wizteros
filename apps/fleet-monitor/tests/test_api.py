@@ -4,13 +4,22 @@ from fastapi.testclient import TestClient
 
 from fleet_monitor import api, collector, incidents, store
 from fleet_monitor import db as fleet_db
+from fleet_monitor.auth import require_admin
 from fleet_monitor.probes.types import Sample
 
 
 def _client(tmp_path, monkeypatch):
+    """A client already past the admin gate.
+
+    What every test below asserts on is the fleet data, not who is allowed to
+    read it, so the session is stood down here rather than minted in each of
+    them. The gate itself - that it is on these routes at all, and what it
+    turns away - is tested for real in test_auth.py.
+    """
     db = str(tmp_path / "fleet.db")
     collector.init_db(db)
     monkeypatch.setenv("FM_DB_PATH", db)
+    api.app.dependency_overrides[require_admin] = lambda: None
     return TestClient(api.app), db
 
 
@@ -84,6 +93,9 @@ def test_the_api_creates_its_own_schema_on_startup(tmp_path, monkeypatch):
     # lifespan inside a `with` block, which is exactly what is under test.
     db = str(tmp_path / "never-initialized.db")
     monkeypatch.setenv("FM_DB_PATH", db)
+    # This one builds its own client rather than going through _client, so it
+    # has to stand the gate down itself. What is under test is the schema.
+    api.app.dependency_overrides[require_admin] = lambda: None
 
     with TestClient(api.app) as client:
         assert client.get("/health").status_code == 200
