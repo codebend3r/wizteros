@@ -91,3 +91,42 @@ def test_busy_series_drops_a_pair_with_no_elapsed_work():
 
 def test_busy_series_is_empty_for_no_input():
     assert cpu.busy_series({}) == ()
+
+
+def test_downsample_leaves_a_short_series_alone():
+    series = tuple((_at(index * 30), 10.0) for index in range(5))
+
+    assert (
+        cpu.downsample(series, since=T0, until=_at(150), max_points=10) == series
+    )
+
+
+def test_downsample_averages_each_bucket_and_dates_it_by_its_last_reading():
+    # 4 readings over 4 seconds into 2 buckets: each point keeps a real
+    # reading's timestamp, and its value is the mean of that bucket
+    series = ((_at(0), 10.0), (_at(1), 20.0), (_at(2), 50.0), (_at(3), 60.0))
+
+    assert cpu.downsample(series, since=T0, until=_at(4), max_points=2) == (
+        (_at(1), 15.0),
+        (_at(3), 55.0),
+    )
+
+
+def test_downsample_drops_empty_buckets_instead_of_filling_them():
+    # a hole wider than a bucket stays a hole: nothing is emitted for the
+    # seconds nothing was read, so the chart still breaks the line there
+    series = ((_at(0), 10.0), (_at(1), 20.0), (_at(8), 30.0), (_at(9), 40.0))
+
+    assert cpu.downsample(series, since=T0, until=_at(10), max_points=3) == (
+        (_at(1), 15.0),
+        (_at(9), 35.0),
+    )
+
+
+def test_downsample_bounds_a_weeks_worth_of_ticks():
+    # a week of 30s ticks is 20k points; whatever the window, the answer stays
+    # small enough for a browser to parse and an svg to draw
+    week = 7 * 24 * 3600
+    series = tuple((_at(index * 30), 10.0) for index in range(week // 30))
+
+    assert len(cpu.downsample(series, since=T0, until=_at(week))) <= cpu.MAX_POINTS

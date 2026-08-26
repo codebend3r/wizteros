@@ -579,3 +579,12 @@ def test_fleet_cpu_rejects_an_out_of_range_window(tmp_path, monkeypatch):
 
     assert client.get("/fleet/cpu?minutes=0").status_code == 422
     assert client.get("/fleet/cpu?minutes=100000").status_code == 422
+
+
+def test_fleet_cpu_accepts_a_week_and_refuses_more(tmp_path, monkeypatch):
+    # raw samples live seven days, so a week is the widest window that can be
+    # answered with readings rather than with silence
+    client, _ = _client(tmp_path, monkeypatch)
+
+    assert client.get("/fleet/cpu?minutes=10080").status_code == 200
+    assert client.get("/fleet/cpu?minutes=10081").status_code == 422

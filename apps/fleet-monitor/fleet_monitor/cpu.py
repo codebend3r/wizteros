@@ -11,6 +11,12 @@ from itertools import pairwise
 
 from fleet_monitor.probes.proc import CPU_FIELDS
 
+# The busy series carries one point per collector tick, so a long window is
+# thousands of them per host: a week at the vitals cadence is 20k points no
+# chart can draw and no browser wants to parse. Anything longer than this is
+# bucketed down instead.
+MAX_POINTS = 720
+
 # What the busy derivation reads back: exactly the aggregate-row metrics
 # parse_stat writes, named from the same field list so the two cannot drift.
 METRICS = tuple(f"cpu.total.{field}" for field in CPU_FIELDS)
@@ -83,3 +89,34 @@ def busy_series(series_by_metric: dict[str, Series]) -> Series:
         for previous, current in pairwise(ticks)
     )
     return tuple((at, value) for at, value in computed if value is not None)
+
+
+def downsample(
+    series: Series,
+    *,
+    since: datetime,
+    until: datetime,
+    max_points: int = MAX_POINTS,
+) -> Series:
+    """The series thinned to at most `max_points` by averaging over fixed
+    buckets. Returned unchanged when it is already short enough.
+
+    Each bucket keeps the timestamp of its own last reading rather than a
+    bucket edge, so every point still names a moment the host was really read,
+    and the value stays what the raw points are: the busy share of the interval
+    ending there. An empty bucket contributes nothing, so a hole longer than a
+    bucket survives as a hole rather than being averaged over - a shorter one
+    does not, which is the trade a week-wide view makes for being drawable at
+    all.
+    """
+    if len(series) <= max_points:
+        return series
+    width = max((until - since).total_seconds() / max_points, 1.0)
+    buckets: dict[int, list[tuple[datetime, float]]] = {}
+    for at, value in series:
+        index = int((at - since).total_seconds() // width)
+        buckets.setdefault(index, []).append((at, value))
+    return tuple(
+        (points[-1][0], round(sum(value for _, value in points) / len(points), 1))
+        for _, points in sorted(buckets.items())
+    )
