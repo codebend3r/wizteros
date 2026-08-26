@@ -182,14 +182,25 @@ const useMeasuredWidth = (): { ref: RefObject<HTMLDivElement | null>; width: num
   return { ref, width }
 }
 
-/** The per-second trail the line is drawn through.
+type Frame = {
+  /** The frame's right edge. */
+  readonly nowMs: number
+  readonly samples: readonly HeldSample[]
+}
+
+/** The moving present and the per-second trail drawn up to it.
+ *
+ * One timer stamps both, which is the whole reason they live together. Read
+ * from two intervals they raced: the newest sample was stamped a hair past the
+ * right edge the other timer had just set, so the frame clipped it and the
+ * line's tip sat a second behind the present for as long as the page was open.
  *
  * The timer owns the cadence and the payload only supplies the values, which
  * is why the plots are read back through a ref: keying the interval on them
  * would restart it on every refetch and shift the phase, so the chart would
  * advance at the poll rate again by the back door.
  */
-const useHeldSamples = ({
+const useFrame = ({
   plots,
   windowMs,
   now,
@@ -197,8 +208,8 @@ const useHeldSamples = ({
   plots: readonly HostPlot[]
   windowMs: number
   now: () => number
-}): readonly HeldSample[] => {
-  const [samples, setSamples] = useState<readonly HeldSample[]>([])
+}): Frame => {
+  const [frame, setFrame] = useState<Frame>(() => ({ nowMs: now(), samples: [] }))
   const latest = useRef(plots)
   useEffect(() => {
     latest.current = plots
@@ -208,17 +219,19 @@ const useHeldSamples = ({
     const timer = setInterval(() => {
       const at = now()
       const sample = heldAt({ plots: latest.current, at })
-      setSamples((previous) => {
+      setFrame((previous) => {
         // trimmed here as well as at draw time, so a tab left open on a wide
         // range holds a bounded trail rather than a week of seconds
-        const kept = previous.filter((entry) => entry.at >= at - Math.min(windowMs, HELD_TRAIL_MS))
-        return sample === null ? kept : [...kept, sample]
+        const kept = previous.samples.filter(
+          (entry) => entry.at >= at - Math.min(windowMs, HELD_TRAIL_MS),
+        )
+        return { nowMs: at, samples: sample === null ? kept : [...kept, sample] }
       })
     }, SAMPLE_EVERY_MS)
     return () => clearInterval(timer)
   }, [now, windowMs])
 
-  return samples
+  return frame
 }
 
 // Module-level so the default is one stable reference: an inline default
@@ -238,17 +251,10 @@ export const CpuChart = ({ hosts, windowMinutes, now = readClock }: CpuChartProp
   const { ref, width } = useMeasuredWidth()
   const [cursor, setCursor] = useState<number | null>(null)
 
-  // The frame's right edge is the present, re-read once a second alongside the
-  // sampling, so the chart slides at the same rate it gains points.
-  const [nowMs, setNowMs] = useState(now)
-  useEffect(() => {
-    const timer = setInterval(() => setNowMs(now()), SAMPLE_EVERY_MS)
-    return () => clearInterval(timer)
-  }, [now])
-
   const plots = useMemo(() => toPlots(hosts), [hosts])
   const span = windowMinutes * 60_000
-  const samples = useHeldSamples({ plots, windowMs: span, now })
+  // The present and the trail drawn up to it advance together, once a second.
+  const { nowMs, samples } = useFrame({ plots, windowMs: span, now })
   const drawn = useMemo(() => withHeld(plots, samples), [plots, samples])
 
   // The drawn frame is [now - window, now]: a reading that ages past the
