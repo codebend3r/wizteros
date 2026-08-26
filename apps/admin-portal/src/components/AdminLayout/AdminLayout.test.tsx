@@ -27,3 +27,18 @@ test('wraps children in the site chrome with a hard refresh button', async () =>
   await userEvent.click(screen.getByRole('button', { name: 'Hard refresh' }))
   expect(invalidate).toHaveBeenCalled()
 })
+
+test('leaves the hard refresh off a page that polls on its own clock', () => {
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <MemoryRouter>
+        <AdminLayout showHardRefresh={false}>
+          <main>page content</main>
+        </AdminLayout>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+
+  expect(screen.getByText('page content')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Hard refresh' })).toBeNull()
+})
