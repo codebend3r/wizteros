@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { expect, test } from '@/test/vi'
 import type { CpuHostSeries } from '@/lib/fleetApi'
 import { CpuChart } from '@/pages/Fleet/CpuChart'
@@ -39,8 +39,11 @@ const vermithor = series({
 // is [NOW - 60min, NOW] and every fixture point sits inside it.
 const NOW = T0 + 390_000
 
+// One sampling tick plus slack, for the cases that assert nothing was added.
+const SAMPLE_WAIT_MS = 1400
+
 const renderChart = (chartHosts: readonly CpuHostSeries[]) =>
-  render(<CpuChart hosts={chartHosts} windowMinutes={60} updateEveryMs={1000} now={() => NOW} />)
+  render(<CpuChart hosts={chartHosts} windowMinutes={60} now={() => NOW} />)
 
 test('CpuChart legend names every host, including one with nothing to draw', () => {
   renderChart([meleys, series({ name: 'caraxes', points: [] })])
@@ -57,7 +60,7 @@ test('CpuChart legend names every host, including one with nothing to draw', () 
 test('CpuChart says so when no host reported at all', () => {
   renderChart([series({ name: 'meleys', points: [] })])
 
-  expect(screen.getByText(/No CPU readings in the last 60 minutes/)).toBeInTheDocument()
+  expect(screen.getByText(/No CPU readings in the last hour/)).toBeInTheDocument()
   expect(screen.queryByRole('table')).toBeNull()
 })
 
@@ -87,13 +90,42 @@ test('CpuChart breaks a line across a gap instead of bridging it', () => {
   expect(container.querySelectorAll('path')).toHaveLength(2)
 })
 
-test('CpuChart counts freshness in tenths only at a sub-second cadence', () => {
-  render(
-    <CpuChart hosts={[meleys]} windowMinutes={60} updateEveryMs={100} now={() => T0 + 90_500} />,
-  )
+test('CpuChart counts freshness in whole seconds, the rate the frame advances', () => {
+  render(<CpuChart hosts={[meleys]} windowMinutes={60} now={() => T0 + 90_500} />)
 
-  // newest reading sits at T0+60s, so a 90.5s present reads 30.5s of age
-  expect(screen.getByText('Newest reading 30.5 s ago.')).toBeInTheDocument()
+  // newest reading sits at T0+60s, so a 90.5s present rounds to 31s of age
+  expect(screen.getByText('Newest reading 31 s ago.')).toBeInTheDocument()
+})
+
+test('CpuChart carries the newest reading forward a point per second', async () => {
+  // a present 10s past the last reading, well inside the 30s cadence, so the
+  // value is held rather than dropped as stale
+  const held = T0 + 70_000
+  const { container } = render(<CpuChart hosts={[meleys]} windowMinutes={60} now={() => held} />)
+
+  const drawn = (): string => container.querySelector('path')?.getAttribute('d') ?? ''
+  // nothing is held before the first tick: the line still ends on the reading
+  expect(drawn()).not.toContain('L264.0 145.0')
+
+  // one tick later the line reaches the right edge (x=264) at the last
+  // reading's 30% (y=145), which is the held second
+  await waitFor(() => expect(drawn()).toContain('L264.0 145.0'), { timeout: 4000 })
+})
+
+test('CpuChart holds nothing once the newest reading has outlived the cadence', async () => {
+  // NOW is 330s past the last reading against a 30s cadence, so there is
+  // nothing fresh enough to carry: the line must end where the readings did
+  const { container } = renderChart([meleys])
+  const drawn = (): string => container.querySelector('path')?.getAttribute('d') ?? ''
+  const before = drawn()
+
+  // act, so the sampling tick that fires during the wait is flushed as React
+  // would flush it in the browser rather than warned about
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, SAMPLE_WAIT_MS))
+  })
+
+  expect(drawn()).toBe(before)
 })
 
 test('CpuChart dates its newest reading against the moving present', () => {

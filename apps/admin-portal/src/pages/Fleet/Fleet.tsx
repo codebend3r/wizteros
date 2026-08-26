@@ -5,18 +5,20 @@ import { AdminLayout } from '@/components/AdminLayout/AdminLayout'
 import { fetchCpuHistory, fetchFleet, fetchIncidents, toHostSummary } from '@/lib/fleetApi'
 import { CpuChart } from '@/pages/Fleet/CpuChart'
 import { HostCard } from '@/pages/Fleet/HostCard'
+import { RangePicker } from '@/pages/Fleet/RangePicker'
 import { seriesClass } from '@/pages/Fleet/seriesPalette'
 import { UpdateRateSlider } from '@/pages/Fleet/UpdateRateSlider'
 import { useFleetPrefsStore } from '@/stores/fleetPrefsStore'
 import styles from '@/pages/Fleet/Fleet.module.scss'
 
 // One vitals tick. Anything slower and the page lags the collector it reports.
-// The chart's own cadence is user-set through the slider instead: polling
+// The CPU query's cadence is user-set through the slider instead: polling
 // faster than a tick buys display latency (a fresh tick shows within the
-// chosen interval), never extra data.
+// chosen interval), never extra data. It does not set the chart's own rate -
+// that one plots a point every second whatever the slider says, holding the
+// last reading in between.
 const REFETCH_MS = 30_000
 const INCIDENT_HOURS = 24
-const CPU_WINDOW_MINUTES = 60
 
 const FALLBACK_ERROR = 'Could not reach the fleet monitor.'
 
@@ -96,14 +98,18 @@ const FleetInner = () => {
   })
   const cpuIntervalMs = useFleetPrefsStore((state) => state.updateIntervalMs)
   const setCpuIntervalMs = useFleetPrefsStore((state) => state.setUpdateIntervalMs)
+  const rangeMinutes = useFleetPrefsStore((state) => state.rangeMinutes)
+  const setRangeMinutes = useFleetPrefsStore((state) => state.setRangeMinutes)
+  // The range is part of the key, so switching back to one already fetched
+  // paints from cache instead of emptying the chart while a week reloads.
   const cpuHistory = useQuery({
-    queryKey: ['fleet-cpu', CPU_WINDOW_MINUTES],
-    queryFn: () => fetchCpuHistory({ minutes: CPU_WINDOW_MINUTES }),
+    queryKey: ['fleet-cpu', rangeMinutes],
+    queryFn: () => fetchCpuHistory({ minutes: rangeMinutes }),
     refetchInterval: cpuIntervalMs,
   })
 
   return (
-    <AdminLayout>
+    <AdminLayout showHardRefresh={false}>
       <main className={styles.page}>
         <header className={styles.header}>
           <h1 className={styles.title}>Fleet</h1>
@@ -128,15 +134,14 @@ const FleetInner = () => {
           query={cpuHistory}
           loadingLabel="Loading CPU history."
           errorSuffix="No CPU history is available."
-          controls={<UpdateRateSlider intervalMs={cpuIntervalMs} onChange={setCpuIntervalMs} />}
+          controls={
+            <div className={styles.controls}>
+              <RangePicker minutes={rangeMinutes} onChange={setRangeMinutes} />
+              <UpdateRateSlider intervalMs={cpuIntervalMs} onChange={setCpuIntervalMs} />
+            </div>
+          }
         >
-          {(data) => (
-            <CpuChart
-              hosts={data.hosts}
-              windowMinutes={data.window_minutes}
-              updateEveryMs={cpuIntervalMs}
-            />
-          )}
+          {(data) => <CpuChart hosts={data.hosts} windowMinutes={data.window_minutes} />}
         </AsyncSection>
 
         <AsyncSection

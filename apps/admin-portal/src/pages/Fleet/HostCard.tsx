@@ -39,6 +39,10 @@ const usage = ({ percent, total }: { percent: number | null; total: number | nul
   return total === null ? `${percent}%` : `${percent}% of ${formatBytes(total)}`
 }
 
+/** How far along its track the bar is drawn. Clamped, so a reading outside the
+    scale stays inside the track instead of overflowing it. */
+const barWidth = (percent: number): string => `${Math.max(0, Math.min(percent, 100))}%`
+
 export const HostCard = ({ summary, className }: HostCardProps) => {
   // A never-collected host is already unqualified-proof: its label is the
   // absence itself. Only a collected host can carry a stale present tense.
@@ -95,9 +99,24 @@ export const HostCard = ({ summary, className }: HostCardProps) => {
           <dt>Memory</dt>
           <dd>{usage({ percent: summary.memoryPercent, total: summary.memoryTotalBytes })}</dd>
         </div>
-        <div className={styles.row}>
+        <div className={`${styles.row} ${styles.diskRow}`}>
           <dt>Disk</dt>
-          <dd>{usage({ percent: summary.diskPercent, total: summary.diskTotalBytes })}</dd>
+          <dd className={styles.diskValue}>
+            {usage({ percent: summary.diskPercent, total: summary.diskTotalBytes })}
+            {/* The bar restates the percentage printed beside it, so it is a
+              second reading of one fact rather than the only one, and it is
+              hidden from the accessibility tree instead of repeating that
+              number there. It carries no judgment of its own either: how full
+              is too full is the monitor's call, not this card's. */}
+            {summary.diskPercent !== null && (
+              <span className={styles.gauge} aria-hidden="true">
+                <span
+                  className={styles.gaugeFill}
+                  style={{ width: barWidth(summary.diskPercent) }}
+                />
+              </span>
+            )}
+          </dd>
         </div>
         {!!summary.hasGpu && (
           <div className={styles.row}>

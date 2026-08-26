@@ -10,13 +10,11 @@ import {
 import type { CpuHostSeries } from '@/lib/fleetApi'
 import styles from '@/pages/Fleet/CpuChart.module.scss'
 import { seriesClass } from '@/pages/Fleet/seriesPalette'
+import { rangeProse } from '@/stores/fleetPrefsStore'
 
 type CpuChartProps = {
   readonly hosts: readonly CpuHostSeries[]
   readonly windowMinutes: number
-  /** How often the frame advances and the freshness readout re-counts; the
-      same cadence the page polls the monitor at. */
-  readonly updateEveryMs: number
   /** The clock, injectable so tests can pin the frame. */
   readonly now?: () => number
 }
@@ -31,6 +29,13 @@ type HostPlot = {
   readonly seriesIndex: number
   readonly points: readonly PlotPoint[]
   readonly byTick: ReadonlyMap<number, number>
+}
+
+/** One second of the drawn line: every host's newest reading carried forward
+    to `at`. */
+type HeldSample = {
+  readonly at: number
+  readonly values: ReadonlyMap<string, number>
 }
 
 // The layout the SVG is drawn into. The bottom margin exists for the x-axis
@@ -53,6 +58,19 @@ const Y_TICKS = [0, 25, 50, 75, 100] as const
 // here; it is inferred from the readings themselves, so a config change on the
 // monitor cannot silently turn real gaps into bridges.
 const GAP_FACTOR = 2.5
+
+// The line advances one point per second, whatever cadence the page polls the
+// monitor at. The collector reads each host far more slowly than that, so the
+// seconds between readings carry the last value forward and the line reads as
+// a stair-step instead of freezing until the next reading lands.
+const SAMPLE_EVERY_MS = 1000
+
+// How much of the trail is kept. It exists to show the seconds between
+// readings, and only at zooms where a second is more than a rounding error: an
+// hour of it already outruns what a week-wide frame can resolve to a pixel.
+// Older than this the line is drawn straight between readings, as it was
+// before the trail existed.
+const HELD_TRAIL_MS = 3_600_000
 
 const toPlots = (hosts: readonly CpuHostSeries[]): readonly HostPlot[] =>
   hosts.map((host, seriesIndex) => {
@@ -95,6 +113,50 @@ const toSegments = (
   return starts.map((start, startIndex) => points.slice(start, starts[startIndex + 1]))
 }
 
+/** How long one host's newest reading may be carried forward, inferred from
+    that host's own spacing. null below two readings: with no observed cadence
+    there is nothing to judge staleness against, so nothing is held. */
+const holdLimit = (points: readonly PlotPoint[]): number | null => {
+  const median = medianDelta(points.map((point) => point.at))
+  return median === null ? null : median * GAP_FACTOR
+}
+
+/** One second's sample, or null when no host has a reading fresh enough to
+    carry. A host whose newest reading has already outlived its hold limit is
+    left out, so a collector that stopped ends the line rather than extending a
+    flat one nothing observed. */
+const heldAt = ({ plots, at }: { plots: readonly HostPlot[]; at: number }): HeldSample | null => {
+  const values = plots.flatMap((plot) => {
+    const newest = plot.points[plot.points.length - 1]
+    const limit = holdLimit(plot.points)
+    return !newest || limit === null || at - newest.at > limit
+      ? []
+      : [[plot.name, newest.busy] as const]
+  })
+  return values.length > 0 ? { at, values: new Map(values) } : null
+}
+
+/** The readings plus the held samples, as one series per host.
+ *
+ * A real reading always wins the instant it lands on: the hold stands in for a
+ * reading that has not arrived, and must never displace one that has.
+ */
+const withHeld = (
+  plots: readonly HostPlot[],
+  samples: readonly HeldSample[],
+): readonly HostPlot[] =>
+  plots.map((plot) => {
+    const held = samples.flatMap((sample) => {
+      const busy = sample.values.get(plot.name)
+      return busy === undefined ? [] : [{ at: sample.at, busy }]
+    })
+    const byTick = new Map([...held, ...plot.points].map((point) => [point.at, point.busy]))
+    const points = [...byTick]
+      .sort(([first], [second]) => first - second)
+      .map(([at, busy]) => ({ at, busy }))
+    return { ...plot, points, byTick }
+  })
+
 const timeShort = (at: number): string =>
   new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
@@ -120,6 +182,45 @@ const useMeasuredWidth = (): { ref: RefObject<HTMLDivElement | null>; width: num
   return { ref, width }
 }
 
+/** The per-second trail the line is drawn through.
+ *
+ * The timer owns the cadence and the payload only supplies the values, which
+ * is why the plots are read back through a ref: keying the interval on them
+ * would restart it on every refetch and shift the phase, so the chart would
+ * advance at the poll rate again by the back door.
+ */
+const useHeldSamples = ({
+  plots,
+  windowMs,
+  now,
+}: {
+  plots: readonly HostPlot[]
+  windowMs: number
+  now: () => number
+}): readonly HeldSample[] => {
+  const [samples, setSamples] = useState<readonly HeldSample[]>([])
+  const latest = useRef(plots)
+  useEffect(() => {
+    latest.current = plots
+  }, [plots])
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const at = now()
+      const sample = heldAt({ plots: latest.current, at })
+      setSamples((previous) => {
+        // trimmed here as well as at draw time, so a tab left open on a wide
+        // range holds a bounded trail rather than a week of seconds
+        const kept = previous.filter((entry) => entry.at >= at - Math.min(windowMs, HELD_TRAIL_MS))
+        return sample === null ? kept : [...kept, sample]
+      })
+    }, SAMPLE_EVERY_MS)
+    return () => clearInterval(timer)
+  }, [now, windowMs])
+
+  return samples
+}
+
 // Module-level so the default is one stable reference: an inline default
 // would be a new function every render and reset the interval effect keyed
 // on it each time.
@@ -133,35 +234,36 @@ type ReadingRow = {
 const isReadingRow = (row: { plot: HostPlot; busy: number | undefined }): row is ReadingRow =>
   row.busy !== undefined
 
-export const CpuChart = ({
-  hosts,
-  windowMinutes,
-  updateEveryMs,
-  now = readClock,
-}: CpuChartProps) => {
+export const CpuChart = ({ hosts, windowMinutes, now = readClock }: CpuChartProps) => {
   const { ref, width } = useMeasuredWidth()
   const [cursor, setCursor] = useState<number | null>(null)
 
-  // The frame's right edge is the present, re-read at the chosen cadence, so
-  // the chart visibly slides instead of freezing between collector ticks.
+  // The frame's right edge is the present, re-read once a second alongside the
+  // sampling, so the chart slides at the same rate it gains points.
   const [nowMs, setNowMs] = useState(now)
   useEffect(() => {
-    const timer = setInterval(() => setNowMs(now()), updateEveryMs)
+    const timer = setInterval(() => setNowMs(now()), SAMPLE_EVERY_MS)
     return () => clearInterval(timer)
-  }, [updateEveryMs, now])
+  }, [now])
 
   const plots = useMemo(() => toPlots(hosts), [hosts])
+  const span = windowMinutes * 60_000
+  const samples = useHeldSamples({ plots, windowMs: span, now })
+  const drawn = useMemo(() => withHeld(plots, samples), [plots, samples])
 
   // The drawn frame is [now - window, now]: a reading that ages past the
   // window slides off the left edge, and the space between the newest reading
   // and the right edge is the honest rendering of "nothing this recent yet".
-  const first = nowMs - windowMinutes * 60_000
-  const span = windowMinutes * 60_000
-  const visiblePlots = plots.map((plot) => ({
-    ...plot,
-    points: plot.points.filter((point) => point.at >= first && point.at <= nowMs),
-  }))
-  const ticks = unionTicks(visiblePlots)
+  const first = nowMs - span
+  const inFrame = (point: PlotPoint): boolean => point.at >= first && point.at <= nowMs
+  const visiblePlots = drawn.map((plot) => ({ ...plot, points: plot.points.filter(inFrame) }))
+  const visibleReadings = plots.map((plot) => ({ ...plot, points: plot.points.filter(inFrame) }))
+
+  // Everything that reports what was observed - the axis of inspectable
+  // moments, the freshness readout, the table, the gap threshold - counts
+  // readings only. The held samples are one second apart by construction, so
+  // letting them into the threshold would turn every real spacing into a gap.
+  const ticks = unionTicks(visibleReadings)
   const median = medianDelta(ticks)
   const maxGap = median === null ? null : median * GAP_FACTOR
 
@@ -223,18 +325,11 @@ export const CpuChart = ({
     (_, index) => first + (span * index) / (xTickCount - 1),
   )
 
-  // Ticks at the chosen update cadence, which is what makes that cadence
-  // visible: the count climbs until a fresh reading resets it. Tenths only
-  // when the cadence is sub-second, so the readout changes exactly as fast as
-  // the page actually updates.
+  // Whole seconds, because the frame now advances in whole seconds: a readout
+  // with more precision than the thing it measures reads as false precision.
   const newestTick = ticks[ticks.length - 1] ?? null
   const ageSeconds = newestTick === null ? null : Math.max(0, (nowMs - newestTick) / 1000)
-  const ageLabel =
-    ageSeconds === null
-      ? null
-      : updateEveryMs < 1000
-        ? `${ageSeconds.toFixed(1)} s`
-        : `${Math.round(ageSeconds)} s`
+  const ageLabel = ageSeconds === null ? null : `${Math.round(ageSeconds)} s`
 
   const cursorLabel =
     cursorTick === null
@@ -246,16 +341,19 @@ export const CpuChart = ({
   return (
     <div className={styles.chart}>
       <p className={styles.subtitle}>
-        Aggregate CPU busy percent per host over the last {windowMinutes} minutes, one reading per
-        collector tick. A gap in a line is a span nothing was observed.
+        Aggregate CPU busy percent per host over the last {rangeProse(windowMinutes)}. The line
+        advances a point every second and holds the last reading between collector ticks, so a flat
+        run means no new reading rather than steady load. A gap in a line is a span nothing was
+        observed. Wide ranges arrive averaged into buckets, so a hole shorter than one bucket is
+        averaged over rather than drawn as a gap.
       </p>
 
       {ageLabel !== null && <p className={styles.freshness}>Newest reading {ageLabel} ago.</p>}
 
       {ticks.length === 0 ? (
         <p className={styles.empty}>
-          No CPU readings in the last {windowMinutes} minutes. The chart fills in as the collector
-          ticks.
+          No CPU readings in the last {rangeProse(windowMinutes)}. The chart fills in as the
+          collector ticks.
         </p>
       ) : (
         <div className={styles.plotWrap} ref={ref}>
@@ -412,7 +510,7 @@ export const CpuChart = ({
       )}
 
       <ul className={styles.legend}>
-        {visiblePlots.map((plot) => (
+        {visibleReadings.map((plot) => (
           <li key={plot.name} className={styles.legendItem}>
             <span
               className={`${styles.seriesKey} ${seriesClass(plot.seriesIndex)}`}
@@ -430,8 +528,9 @@ export const CpuChart = ({
           <div className={styles.tableScroll}>
             <table className={styles.table}>
               <caption>
-                CPU busy percent by host, newest reading first. -- marks a moment a host was not
-                observed.
+                CPU busy percent by host, newest first, as the collector delivered it: the held
+                seconds the line draws between readings are not rows here. -- marks a moment a host
+                was not observed.
               </caption>
               <thead>
                 <tr>

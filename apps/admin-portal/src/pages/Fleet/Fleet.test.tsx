@@ -6,6 +6,11 @@ import type { FleetHost, HostSummary } from '@/lib/fleetApi'
 import { Fleet } from '@/pages/Fleet/Fleet'
 import { HostCard } from '@/pages/Fleet/HostCard'
 import { useAuthStore } from '@/stores/authStore'
+import {
+  DEFAULT_RANGE_MINUTES,
+  DEFAULT_UPDATE_INTERVAL_MS,
+  useFleetPrefsStore,
+} from '@/stores/fleetPrefsStore'
 
 const summary: HostSummary = {
   name: 'vermithor',
@@ -88,6 +93,12 @@ const stubFleetFetch = ({
 
 afterEach(() => {
   vi.restoreAllMocks()
+  // the prefs store is a module singleton shared by every test in the file
+  useFleetPrefsStore.setState({
+    rangeMinutes: DEFAULT_RANGE_MINUTES,
+    updateIntervalMs: DEFAULT_UPDATE_INTERVAL_MS,
+  })
+  localStorage.removeItem('wz-fleet-prefs')
 })
 
 test('HostCard names the host and its status in text, not by color alone', () => {
@@ -451,4 +462,57 @@ test('Fleet lists open incidents by target and reason', async () => {
 
   expect(await screen.findByText('host:caraxes')).toBeInTheDocument()
   expect(screen.getByText('timeout')).toBeInTheDocument()
+})
+
+test('HostCard draws the disk reading as a bar the number beside it already states', () => {
+  const { container } = render(<HostCard summary={{ ...summary, diskPercent: 96 }} />)
+
+  expect(screen.getByText('96% of 94.8 TB')).toBeInTheDocument()
+  // the bar is a second reading of that one fact, so it stays out of the
+  // accessibility tree rather than repeating the number there
+  const fill = container.querySelector('.gaugeFill')
+  expect(fill).toHaveStyle({ width: '96%' })
+  expect(container.querySelector('.gauge')).toHaveAttribute('aria-hidden', 'true')
+})
+
+test('HostCard draws no disk bar where there is no disk reading', () => {
+  // an absent reading is absent, not a bar sitting at zero
+  const { container } = render(
+    <HostCard summary={{ ...summary, diskPercent: null, diskTotalBytes: null }} />,
+  )
+
+  expect(container.querySelector('.gauge')).toBeNull()
+})
+
+test('Fleet asks the monitor for the chosen range, and marks it on the picker', async () => {
+  // the picker's own suite covers the click reaching onChange; what this one
+  // pins is the other half - a chosen range reaching the query, not the
+  // hardcoded hour the page used to ask for
+  // the slowest poll stop too, so the page's own refetch clock cannot fire
+  // mid-test and make this about timing rather than about the range
+  useFleetPrefsStore.setState({ rangeMinutes: 10_080, updateIntervalMs: 10_000 })
+  stubFleetFetch({
+    fleet: { collected_at: '2026-08-15T00:00:00+00:00', stale: false, hosts: [host] },
+    incidents: { open: [], recent: [] },
+  })
+  renderFleet()
+
+  // the CPU query's own result, not the section heading: that heading renders
+  // while all three queries are still in flight, so waiting on it waits for
+  // nothing. The stub echoes the monitor's window_minutes, so the prose here
+  // names the stub's hour rather than the week that was asked for.
+  await screen.findByText(/No CPU readings/)
+  expect(globalThis.fetch).toHaveBeenCalledWith('/fleet/cpu?minutes=10080', expect.anything())
+  expect(screen.getByRole('button', { name: '1 week' })).toHaveAttribute('aria-pressed', 'true')
+})
+
+test('Fleet leaves the hard refresh off, since it polls on its own clock', async () => {
+  stubFleetFetch({
+    fleet: { collected_at: '2026-08-15T00:00:00+00:00', stale: false, hosts: [host] },
+    incidents: { open: [], recent: [] },
+  })
+  renderFleet()
+
+  await screen.findByRole('heading', { name: 'vermithor' })
+  expect(screen.queryByRole('button', { name: 'Hard refresh' })).toBeNull()
 })
