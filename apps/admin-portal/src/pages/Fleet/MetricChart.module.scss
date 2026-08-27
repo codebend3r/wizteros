@@ -9,6 +9,18 @@
   font-size: var(--font-size-sm);
 }
 
+// What one measure means that the others do not. Set apart from the shared
+// description because a GPU frequency ratio drawn on a 0-100 axis is
+// indistinguishable from a utilization percent, and this text is the only
+// thing on the page that says which one it is.
+.caveat {
+  padding: var(--space-1) var(--space-2);
+  border-left: 3px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  font-size: var(--font-size-sm);
+}
+
 .empty {
   color: var(--color-muted);
   font-size: var(--font-size-sm);
@@ -161,54 +173,4 @@
 .legendNote {
   color: var(--color-muted);
   font-size: var(--font-size-xs);
-}
-
-.tableView {
-  font-size: var(--font-size-sm);
-}
-
-.tableSummary {
-  color: var(--color-accent);
-  cursor: pointer;
-}
-
-.tableScroll {
-  overflow-x: auto;
-}
-
-.table {
-  border-collapse: collapse;
-  margin-top: var(--space-1);
-  font-size: var(--font-size-xs);
-
-  caption {
-    padding-bottom: var(--space-1);
-    color: var(--color-muted);
-    text-align: left;
-  }
-
-  th,
-  td {
-    padding: var(--space-1);
-    border-bottom: 1px solid var(--color-border);
-    text-align: right;
-    white-space: nowrap;
-  }
-
-  thead th {
-    color: var(--color-muted);
-    font-weight: 600;
-  }
-
-  th[scope='row'],
-  thead th:first-child {
-    color: var(--color-muted);
-    font-variant-numeric: tabular-nums;
-    font-weight: 400;
-    text-align: left;
-  }
-
-  td {
-    font-variant-numeric: tabular-nums;
-  }
 }

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, expect, test, vi } from '@/test/vi'
@@ -7,6 +7,7 @@ import { Fleet } from '@/pages/Fleet/Fleet'
 import { HostCard } from '@/pages/Fleet/HostCard'
 import { useAuthStore } from '@/stores/authStore'
 import {
+  DEFAULT_CHART_KIND,
   DEFAULT_RANGE_MINUTES,
   DEFAULT_UPDATE_INTERVAL_MS,
   useFleetPrefsStore,
@@ -26,7 +27,8 @@ const summary: HostSummary = {
   diskTotalBytes: 104_258_640_805_888,
   uptimePercent: 100,
   metricsStale: false,
-  oldestMetricAgeSeconds: 12,
+  stalestFamily: 'disk',
+  stalestFamilyAgeSeconds: 12,
   containers: [{ name: 'sonarr', up: true, healthy: true, hasHealthcheck: true }],
 }
 
@@ -45,7 +47,8 @@ const host: FleetHost = {
   disk_total_bytes: 104_258_640_805_888,
   containers: [{ name: 'sonarr', up: true, healthy: true, has_healthcheck: true }],
   metrics_stale: false,
-  oldest_metric_age_seconds: 12,
+  stalest_family: 'disk',
+  stalest_family_age_seconds: 12,
   uptime_percent_24h: 100,
 }
 
@@ -64,15 +67,25 @@ const renderFleet = () => {
   )
 }
 
-const EMPTY_CPU = { window_minutes: 60, hosts: [] }
+// One chart per kind, so an empty history has to be answerable for each of
+// them; the kind has to match the route or the fetcher refuses the payload.
+const CHART_KINDS = ['cpu', 'memory', 'gpu', 'network'] as const
 
-// All three queries go through the same window.fetch, so route the stub by
-// path rather than by call order; /fleet/cpu must be tested before its /fleet
-// prefix.
+const emptyHistory = (kind: string) => ({
+  kind,
+  unit: kind === 'network' ? 'bytes_per_second' : 'percent',
+  window_minutes: 60,
+  hosts: [],
+})
+
+// Every query goes through the same window.fetch, so route the stub by path
+// rather than by call order; the chart routes must be tested before their
+// /fleet prefix. `cpu` overrides only the CPU history: the other three stay
+// empty, which keeps a test about one chart from having to describe four.
 const stubFleetFetch = ({
   fleet,
   incidents,
-  cpu = EMPTY_CPU,
+  cpu,
 }: {
   fleet: unknown
   incidents: unknown
@@ -85,7 +98,9 @@ const stubFleetFetch = ({
       status: 200,
       headers: { get: () => 'application/json' },
       json: async () => {
-        if (url.startsWith('/fleet/cpu')) return cpu
+        if (url.startsWith('/fleet/cpu')) return cpu ?? emptyHistory('cpu')
+        const chart = CHART_KINDS.find((kind) => url.startsWith(`/fleet/${kind}`))
+        if (chart !== undefined) return emptyHistory(chart)
         return url.startsWith('/fleet') ? fleet : incidents
       },
     })),
@@ -97,15 +112,28 @@ afterEach(() => {
   useFleetPrefsStore.setState({
     rangeMinutes: DEFAULT_RANGE_MINUTES,
     updateIntervalMs: DEFAULT_UPDATE_INTERVAL_MS,
+    // the selected tab is persisted too, so a test that switched charts would
+    // otherwise hand the next one a GPU panel
+    chartKind: DEFAULT_CHART_KIND,
   })
   localStorage.removeItem('wz-fleet-prefs')
 })
 
 test('HostCard names the host and its status in text, not by color alone', () => {
+  render(<HostCard summary={{ ...summary, status: 'ok' }} />)
+
+  expect(screen.getByRole('heading', { name: 'vermithor' })).toBeInTheDocument()
+  expect(screen.getByText('Healthy')).toBeInTheDocument()
+})
+
+// A warn host prints no status word at all: the finding is the disk and load
+// figures the monitor judged, not a phrase summarising them over the name.
+test('HostCard prints no status line on a warn host', () => {
   render(<HostCard summary={summary} />)
 
   expect(screen.getByRole('heading', { name: 'vermithor' })).toBeInTheDocument()
-  expect(screen.getByText('Needs attention')).toBeInTheDocument()
+  expect(screen.queryByText(/Needs attention/)).toBeNull()
+  expect(screen.queryByText('Healthy')).toBeNull()
 })
 
 test('HostCard renders an uncollected host as unknown with no fabricated numbers', () => {
@@ -121,7 +149,8 @@ test('HostCard renders an uncollected host as unknown with no fabricated numbers
         diskTotalBytes: null,
         uptimePercent: null,
         metricsStale: true,
-        oldestMetricAgeSeconds: null,
+        stalestFamily: null,
+        stalestFamilyAgeSeconds: null,
         containers: [],
       }}
     />,
@@ -141,15 +170,42 @@ test('HostCard reports an unmeasured 24h uptime as unknown rather than a score',
   expect(screen.queryByText('100%')).toBeNull()
 })
 
-test('HostCard flags week-stale readings while the fast tier still reads fresh', () => {
+test('HostCard names the family that fell silent rather than blaming the slow tier', () => {
+  // it used to print "Disk and temperature refresh every 15 minutes" whatever
+  // had actually stopped, which read as a lie on meleys: both were seven
+  // minutes old and a dead VPN counter was the stale reading
   render(
     <HostCard
-      summary={{ ...summary, status: 'ok', metricsStale: true, oldestMetricAgeSeconds: 604_800 }}
+      summary={{
+        ...summary,
+        status: 'ok',
+        metricsStale: true,
+        stalestFamily: 'temp',
+        stalestFamilyAgeSeconds: 604_800,
+      }}
     />,
   )
 
-  expect(screen.getByText(/Stale readings/)).toBeInTheDocument()
-  expect(screen.getByText(/7 days old/)).toBeInTheDocument()
+  expect(screen.getByText(/temperature has not reported for 7 days/)).toBeInTheDocument()
+  expect(screen.queryByText(/Disk and temperature refresh every 15 minutes/)).toBeNull()
+})
+
+// The monitor grows metrics faster than the label map does, and a family with
+// no friendly name is still a truthful answer to what stopped reporting.
+test('HostCard falls back to the raw family name it was not taught a word for', () => {
+  render(
+    <HostCard
+      summary={{
+        ...summary,
+        status: 'ok',
+        metricsStale: true,
+        stalestFamily: 'cpu2',
+        stalestFamilyAgeSeconds: 3600,
+      }}
+    />,
+  )
+
+  expect(screen.getByText(/cpu2 has not reported for 1 hour/)).toBeInTheDocument()
 })
 
 test('HostCard says stale readings cannot be dated rather than "unknown old"', () => {
@@ -157,7 +213,13 @@ test('HostCard says stale readings cannot be dated rather than "unknown old"', (
   // and when a clock step left a reading stamped ahead of now
   render(
     <HostCard
-      summary={{ ...summary, status: 'ok', metricsStale: true, oldestMetricAgeSeconds: null }}
+      summary={{
+        ...summary,
+        status: 'ok',
+        metricsStale: true,
+        stalestFamily: null,
+        stalestFamilyAgeSeconds: null,
+      }}
     />,
   )
 
@@ -168,22 +230,22 @@ test('HostCard says stale readings cannot be dated rather than "unknown old"', (
 // The status word is derived from disk, which is itself a slow-tier metric: on
 // a host whose slow probe died it is as frozen as the numbers under it. The
 // most prominent text on the card must not claim the present tense.
-test.each([
-  ['ok', 'Healthy'],
-  ['warn', 'Needs attention'],
-] as const)(
-  'HostCard never presents an unqualified %s status when metrics are stale',
-  (status, label) => {
-    render(
-      <HostCard
-        summary={{ ...summary, status, metricsStale: true, oldestMetricAgeSeconds: 604_800 }}
-      />,
-    )
+test('HostCard never presents an unqualified ok status when metrics are stale', () => {
+  render(
+    <HostCard
+      summary={{
+        ...summary,
+        status: 'ok',
+        metricsStale: true,
+        stalestFamily: 'disk',
+        stalestFamilyAgeSeconds: 604_800,
+      }}
+    />,
+  )
 
-    expect(screen.queryByText(label)).toBeNull()
-    expect(screen.getByText(`${label} as of the last reading`)).toBeInTheDocument()
-  },
-)
+  expect(screen.queryByText('Healthy')).toBeNull()
+  expect(screen.getByText('Healthy as of the last reading')).toBeInTheDocument()
+})
 
 test('HostCard leaves the status unqualified when every metric is fresh', () => {
   render(<HostCard summary={{ ...summary, status: 'ok', metricsStale: false }} />)
@@ -334,7 +396,7 @@ test('Fleet surfaces the configuration diagnostic rather than a fixed message', 
   )
   renderFleet()
 
-  // both queries fail the same way, so scope the assertion to the host alert
+  // every query fails the same way, so scope the assertion to the host alert
   expect(
     await screen.findByText(/Expected JSON from \/fleet .*VITE_FLEET_BASE/),
   ).toBeInTheDocument()
@@ -360,9 +422,11 @@ test('Fleet binds each card to the chart colour of the same host position', asyn
     },
     incidents: { open: [], recent: [] },
     cpu: {
+      kind: 'cpu',
+      unit: 'percent',
       window_minutes: 60,
       hosts: [
-        { name: 'vermithor', points: [{ at: '2026-08-15T00:00:00+00:00', busy_percent: 12.5 }] },
+        { name: 'vermithor', points: [{ at: '2026-08-15T00:00:00+00:00', value: 12.5 }] },
         { name: 'caraxes', points: [] },
       ],
     },
@@ -377,11 +441,13 @@ test('Fleet binds each card to the chart colour of the same host position', asyn
   expect(second.closest('article')).toHaveClass('series2')
 })
 
-test('Fleet renders the CPU section with its chart once the payload lands', async () => {
+test('Fleet renders the selected chart in its tab panel once the payload lands', async () => {
   stubFleetFetch({
     fleet: { collected_at: '2026-08-15T00:00:00+00:00', stale: false, hosts: [host] },
     incidents: { open: [], recent: [] },
     cpu: {
+      kind: 'cpu',
+      unit: 'percent',
       window_minutes: 60,
       hosts: [
         {
@@ -389,8 +455,8 @@ test('Fleet renders the CPU section with its chart once the payload lands', asyn
           // recent stamps: the chart's frame is the last hour ending now, and
           // readings outside it are not drawn
           points: [
-            { at: new Date(Date.now() - 60_000).toISOString(), busy_percent: 12.5 },
-            { at: new Date(Date.now() - 30_000).toISOString(), busy_percent: 37.5 },
+            { at: new Date(Date.now() - 60_000).toISOString(), value: 12.5 },
+            { at: new Date(Date.now() - 30_000).toISOString(), value: 37.5 },
           ],
         },
       ],
@@ -398,9 +464,9 @@ test('Fleet renders the CPU section with its chart once the payload lands', asyn
   })
   renderFleet()
 
-  expect(await screen.findByRole('heading', { name: 'CPU' })).toBeInTheDocument()
-  expect(screen.getByRole('slider', { name: 'Reading time' })).toBeInTheDocument()
-  expect(screen.getByText('View as table')).toBeInTheDocument()
+  expect(
+    await screen.findByRole('img', { name: /CPU by host over the last hour/ }),
+  ).toBeInTheDocument()
 })
 
 test('Fleet keeps the update-rate control reachable while the CPU query fails', async () => {
@@ -515,4 +581,67 @@ test('Fleet leaves the hard refresh off, since it polls on its own clock', async
 
   await screen.findByRole('heading', { name: 'vermithor' })
   expect(screen.queryByRole('button', { name: 'Hard refresh' })).toBeNull()
+})
+
+test('Fleet offers one tab per chart and shows only the selected one', async () => {
+  stubFleetFetch({
+    fleet: { collected_at: '2026-08-15T00:00:00+00:00', stale: false, hosts: [host] },
+    incidents: { open: [], recent: [] },
+  })
+  renderFleet()
+
+  const tabs = await screen.findAllByRole('tab')
+  expect(tabs.map((tab) => tab.textContent)).toEqual(['CPU', 'Memory', 'Network', 'GPU'])
+  // exactly one selected, and exactly one panel: the chart nobody is looking at
+  // is the chart whose query never runs
+  expect(tabs.filter((tab) => tab.getAttribute('aria-selected') === 'true')).toHaveLength(1)
+  expect(screen.getAllByRole('tabpanel')).toHaveLength(1)
+  expect(screen.getByText(/No CPU readings/)).toBeInTheDocument()
+})
+
+test('Fleet asks the monitor only for the chart the tab strip selects', async () => {
+  useFleetPrefsStore.setState({ updateIntervalMs: 10_000 })
+  stubFleetFetch({
+    fleet: { collected_at: '2026-08-15T00:00:00+00:00', stale: false, hosts: [host] },
+    incidents: { open: [], recent: [] },
+  })
+  renderFleet()
+  await screen.findByText(/No CPU readings/)
+
+  expect(globalThis.fetch).toHaveBeenCalledWith('/fleet/cpu?minutes=60', expect.anything())
+  expect(globalThis.fetch).not.toHaveBeenCalledWith('/fleet/gpu?minutes=60', expect.anything())
+
+  fireEvent.click(screen.getByRole('tab', { name: 'GPU' }))
+
+  await waitFor(() =>
+    expect(globalThis.fetch).toHaveBeenCalledWith('/fleet/gpu?minutes=60', expect.anything()),
+  )
+  expect(screen.getByRole('tab', { name: 'GPU' })).toHaveAttribute('aria-selected', 'true')
+})
+
+// The ARIA tabs pattern: one tab stop for the strip, arrow keys within it.
+test('Fleet moves between chart tabs with the arrow keys, wrapping at the ends', async () => {
+  stubFleetFetch({
+    fleet: { collected_at: '2026-08-15T00:00:00+00:00', stale: false, hosts: [host] },
+    incidents: { open: [], recent: [] },
+  })
+  renderFleet()
+  await screen.findAllByRole('tab')
+
+  // keys land on the focused tab, the way they do in a browser: the strip
+  // itself is not focusable in this pattern
+  const selected = (): HTMLElement =>
+    screen.getAllByRole('tab').find((tab) => tab.getAttribute('aria-selected') === 'true') ??
+    screen.getAllByRole('tab')[0]!
+
+  fireEvent.keyDown(selected(), { key: 'ArrowRight' })
+  expect(screen.getByRole('tab', { name: 'Memory' })).toHaveAttribute('aria-selected', 'true')
+
+  fireEvent.keyDown(selected(), { key: 'ArrowLeft' })
+  fireEvent.keyDown(selected(), { key: 'ArrowLeft' })
+  // wrapped past the start onto the last tab
+  expect(screen.getByRole('tab', { name: 'GPU' })).toHaveAttribute('aria-selected', 'true')
+
+  fireEvent.keyDown(selected(), { key: 'Home' })
+  expect(screen.getByRole('tab', { name: 'CPU' })).toHaveAttribute('aria-selected', 'true')
 })

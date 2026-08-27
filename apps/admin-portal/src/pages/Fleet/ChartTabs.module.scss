@@ -1,0 +1,68 @@
+.tabs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+}
+
+.strip {
+  display: grid;
+  grid-auto-flow: column;
+  justify-content: start;
+  gap: var(--space-1);
+  overflow-x: auto;
+
+  // Four tabs and a phone: let them wrap into rows rather than grow a
+  // horizontal scrollbar under the chart.
+  @media (max-width: 48rem) {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow-x: visible;
+  }
+}
+
+// Matches the range picker's buttons, because they are the same kind of
+// control sitting a few pixels apart, and two shapes for one idea reads as two
+// ideas.
+.tab {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--color-accent);
+  }
+
+  // The selected tab is stated by aria-selected, so this is the visual half of
+  // a fact the accessibility tree already carries: filled rather than merely
+  // tinted, so it survives being read without colour.
+  &[aria-selected='true'] {
+    border-color: var(--color-accent);
+    background: var(--color-accent);
+    color: var(--color-accent-text);
+    font-weight: 700;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+
+.panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+
+  // The panel takes a tab stop, so it needs a visible focus ring of its own;
+  // without one the focus simply vanishes when it lands here.
+  &:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 4px;
+    border-radius: var(--radius-md);
+  }
+}

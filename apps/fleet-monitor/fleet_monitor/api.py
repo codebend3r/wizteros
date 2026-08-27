@@ -1,6 +1,6 @@
 import re
 import sqlite3
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -9,7 +9,7 @@ from typing import Literal
 from fastapi import Depends, FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from fleet_monitor import collector, config, cpu, db, incidents, store
+from fleet_monitor import collector, config, db, incidents, series, store
 from fleet_monitor.auth import require_admin
 from fleet_monitor.incidents import Incident
 from fleet_monitor.probes.docker import ContainerView, from_samples
@@ -77,14 +77,15 @@ METRIC_AGE_WINDOW = 24 * 3600
 # turns into an unhandled 500 instead of a client error.
 MAX_INCIDENT_HOURS = 24 * 365 * 5
 
-# The CPU history window. The floor is one vitals tick past nothing (a single
-# reading yields no delta, so anything shorter cannot answer); the ceiling is
-# seven days, which is how long raw samples live before rollups.prune takes
-# them, so asking for more could only ever answer with less. Windows past a few
-# hours carry more ticks than a chart can draw, so the series is bucketed on
-# the way out rather than the window being refused.
-DEFAULT_CPU_MINUTES = 60
-MAX_CPU_MINUTES = 7 * 24 * 60
+# The history window every chart shares. The floor is one vitals tick past
+# nothing (a counter-derived series yields no delta from a single reading, so
+# anything shorter cannot answer); the ceiling is seven days, which is how long
+# raw samples live before rollups.prune takes them, so asking for more could
+# only ever answer with less. Windows past a few hours carry more ticks than a
+# chart can draw, so the series is bucketed on the way out rather than the
+# window being refused.
+DEFAULT_HISTORY_MINUTES = 60
+MAX_HISTORY_MINUTES = 7 * 24 * 60
 
 # When a host needs attention. These live here, beside the staleness bands they
 # sit next to, rather than in the SPA: they are judgments about the fleet, and
@@ -98,8 +99,10 @@ LOAD_WARN_PER_CORE = 1.0
 # a browser a wire away from the code that chose the names.
 DISK_PERCENT_METRIC = "disk.volume1.used_percent"
 DISK_TOTAL_METRIC = "disk.volume1.total_bytes"
-MEMORY_TOTAL_METRIC = "mem.total_bytes"
-MEMORY_AVAILABLE_METRIC = "mem.available_bytes"
+# Read from the series module rather than restated here: the card and the
+# memory chart must never disagree about which gauge means "used".
+MEMORY_TOTAL_METRIC = series.MEMORY_TOTAL_METRIC
+MEMORY_AVAILABLE_METRIC = series.MEMORY_AVAILABLE_METRIC
 
 # /proc/stat emits one row per cpu, so the core count is observed every tick
 # rather than declared anywhere. `cpu.total` is the aggregate row and is named
@@ -135,7 +138,10 @@ class HostView:
     # the raw readings behind every field above, kept because this is a monitor
     # and the unreduced numbers are the thing being monitored
     metrics: dict[str, float]
-    oldest_metric_age_seconds: float | None
+    # which family carries the age below, so the page can name what fell
+    # silent instead of guessing at the cause
+    stalest_family: str | None
+    stalest_family_age_seconds: float | None
     metrics_stale: bool
     uptime_percent_24h: float | None
 
@@ -161,21 +167,31 @@ class IncidentFeed:
 
 
 @dataclass(frozen=True, slots=True)
-class CpuPoint:
+class MetricPoint:
     at: datetime
-    busy_percent: float
+    value: float
 
 
 @dataclass(frozen=True, slots=True)
-class CpuHostSeries:
+class MetricHostSeries:
     name: str
-    points: list[CpuPoint]
+    points: list[MetricPoint]
 
 
 @dataclass(frozen=True, slots=True)
-class CpuHistoryView:
+class MetricHistoryView:
+    """One metric family's history for the whole fleet.
+
+    `kind` and `unit` travel with the numbers because the chart that draws them
+    is one component for all four: without the unit it cannot know whether 40
+    means 40 percent of a fixed scale or 40 bytes a second on a scale it has to
+    derive from the data.
+    """
+
+    kind: str
+    unit: str
     window_minutes: int
-    hosts: list[CpuHostSeries]
+    hosts: list[MetricHostSeries]
 
 
 def _age_seconds(*, now: datetime, at: datetime | None) -> float | None:
@@ -191,6 +207,44 @@ def _age_seconds(*, now: datetime, at: datetime | None) -> float | None:
         return None
     age = (now - at).total_seconds()
     return age if age >= 0 else None
+
+
+# A metric name is `family.instance.field` (`net.eth0.rx_bytes`,
+# `disk.volume1.used_percent`, `container.sonarr.up`) or `family.field`
+# (`load.1m`, `uptime.seconds`). The leading segment is the family: everything
+# under it is one probe reading one kind of source, so it is the unit that
+# falls silent together.
+def _family(metric: str) -> str:
+    return metric.split(".", 1)[0]
+
+
+def _stalest_family(ages: Mapping[str, datetime]) -> tuple[str, datetime] | None:
+    """The metric family that has gone longest without any reading at all.
+
+    Freshest member wins inside a family, stalest family wins across them, and
+    that asymmetry is the whole point. A plain `min` over every metric let one
+    vanished source speak for the whole host: a VPN tunnel that existed on
+    meleys for an hour left `net.tun1000.*` frozen, and because
+    METRIC_AGE_WINDOW is a day while METRICS_STALE_AFTER is 45 minutes, those
+    two dead counters reported the host stale for the next 23 hours while
+    `net.eth0.*` beside them updated every 30 seconds.
+
+    A source going away is not the same event as a probe going quiet, and only
+    the second one is worth a banner. Every case the `min` was there to catch
+    still reads as stale, because it takes the whole family down: df failing,
+    the hwmon chip gone, the host unreachable.
+
+    Skipping the vanished source at the parser is the better fix where the name
+    is predictable - see `_SKIP_PREFIXES` - but that list can only name the
+    patterns already met, and this holds for the ones it has not.
+    """
+    freshest = {
+        family: max(at for metric, at in ages.items() if _family(metric) == family)
+        for family in {_family(metric) for metric in ages}
+    }
+    if not freshest:
+        return None
+    return min(freshest.items(), key=lambda pair: pair[1])
 
 
 @app.get("/health")
@@ -213,12 +267,16 @@ def fleet() -> FleetView:
 
     The top-level `stale` is heartbeat-derived, same as `/health`: it proves
     the collector process is alive, nothing about any individual metric. Each
-    host additionally carries `metrics_stale` and `oldest_metric_age_seconds`,
+    host additionally carries `metrics_stale` and `stalest_family_age_seconds`,
     computed from the actual per-metric timestamps in `store`, so a host whose
     fast tier keeps the heartbeat fresh while its slow tier (disk,
     temperatures) has been failing silently is still caught: `collected` is
     true, the top-level `stale` is false, but `metrics_stale` is true because
-    its oldest metric has outlived three slow-tier ticks.
+    one of its metric families has outlived three slow-tier ticks.
+
+    Families, not metrics: `stalest_family` names what fell silent, and a
+    family counts as reporting while any single metric under it does. See
+    `_stalest_family` for why one dead counter must not speak for a host.
 
     That flag can only speak for readings inside METRIC_AGE_WINDOW. Past a day
     a metric is no longer late, it is gone, and `metrics` stops carrying it at
@@ -330,7 +388,8 @@ def _host_view(
     since = now - timedelta(seconds=METRIC_AGE_WINDOW)
     metrics = store.latest(connection, target, since=since)
     ages = store.metric_ages(connection, target, since=since)
-    oldest_age = _age_seconds(now=now, at=min(ages.values())) if ages else None
+    stalest = _stalest_family(ages)
+    stalest_age = _age_seconds(now=now, at=stalest[1]) if stalest else None
 
     cores = core_count(metrics)
     load = metrics.get("load.1m")
@@ -356,8 +415,9 @@ def _host_view(
         disk_total_bytes=metrics.get(DISK_TOTAL_METRIC),
         containers=list(from_samples(metrics)),
         metrics=metrics,
-        oldest_metric_age_seconds=oldest_age,
-        metrics_stale=oldest_age is None or oldest_age > METRICS_STALE_AFTER,
+        stalest_family=stalest[0] if stalest else None,
+        stalest_family_age_seconds=stalest_age,
+        metrics_stale=stalest_age is None or stalest_age > METRICS_STALE_AFTER,
         # a host never checked at all is unknown, not a perfect score - an
         # empty incident history must not read as proven uptime. Neither must
         # hours nothing observed this host for, whether because the collector
@@ -375,39 +435,36 @@ def _host_view(
     )
 
 
-@app.get("/fleet/cpu", dependencies=[Depends(require_admin)])
-def fleet_cpu(
-    minutes: int = Query(default=DEFAULT_CPU_MINUTES, ge=2, le=MAX_CPU_MINUTES),
-) -> CpuHistoryView:
-    """Every configured host's aggregate CPU busy-percent series.
+def _history(kind: str, minutes: int) -> MetricHistoryView:
+    """One metric family's history for every configured host.
 
     Hosts arrive in config.HOSTS order, the same order `/fleet` uses. The
     portal binds one color per host by array position - on the cards from
-    `/fleet`, on the chart from here - so the two responses must never
-    disagree about position.
+    `/fleet`, on the charts from here - so the responses must never disagree
+    about position.
 
-    A host with no counters in the window has an empty series, not zeros: the
-    chart renders that host as a legend entry with no line, which is the
-    honest rendering of "not observed".
+    A host with no readings in the window has an empty series, not zeros: the
+    chart renders that host as a legend entry with no line, which is the honest
+    rendering of "not observed". Three of the five boxes have no render node at
+    all, so on the GPU chart that is the normal case rather than a fault.
 
     A window wide enough to hold more ticks than a chart can draw comes back
-    bucketed - see cpu.downsample. Every host is bucketed against the same
+    bucketed - see series.downsample. Every host is bucketed against the same
     window, so the thinning cannot put two hosts on different time bases.
     """
+    family = series.FAMILIES[kind]
     now = datetime.now(tz=timezone.utc)
     since = now - timedelta(minutes=minutes)
     with db.session(config.db_path()) as connection:
         hosts = [
-            CpuHostSeries(
+            MetricHostSeries(
                 name=host.name,
                 points=[
-                    CpuPoint(at=at, busy_percent=value)
-                    for at, value in cpu.downsample(
-                        cpu.busy_series(
-                            store.metric_series(
-                                connection, f"host:{host.name}", cpu.METRICS, since=since
-                            )
-                        ),
+                    MetricPoint(at=at, value=value)
+                    for at, value in series.history(
+                        connection,
+                        family=family,
+                        target=f"host:{host.name}",
                         since=since,
                         until=now,
                     )
@@ -415,7 +472,46 @@ def fleet_cpu(
             )
             for host in config.HOSTS
         ]
-    return CpuHistoryView(window_minutes=minutes, hosts=hosts)
+    return MetricHistoryView(
+        kind=family.kind, unit=family.unit, window_minutes=minutes, hosts=hosts
+    )
+
+
+@app.get("/fleet/cpu", dependencies=[Depends(require_admin)])
+def fleet_cpu(
+    minutes: int = Query(default=DEFAULT_HISTORY_MINUTES, ge=2, le=MAX_HISTORY_MINUTES),
+) -> MetricHistoryView:
+    """Aggregate CPU busy percent per host, derived from the jiffy counters."""
+    return _history("cpu", minutes)
+
+
+@app.get("/fleet/memory", dependencies=[Depends(require_admin)])
+def fleet_memory(
+    minutes: int = Query(default=DEFAULT_HISTORY_MINUTES, ge=2, le=MAX_HISTORY_MINUTES),
+) -> MetricHistoryView:
+    """Used memory percent per host, judged against MemAvailable."""
+    return _history("memory", minutes)
+
+
+@app.get("/fleet/gpu", dependencies=[Depends(require_admin)])
+def fleet_gpu(
+    minutes: int = Query(default=DEFAULT_HISTORY_MINUTES, ge=2, le=MAX_HISTORY_MINUTES),
+) -> MetricHistoryView:
+    """Intel iGPU frequency as a share of its ceiling, per host.
+
+    A load proxy, not utilization: DSM exposes no true busy percentage. Only
+    vermithor and vhagar have a render node, so the other three are empty here
+    permanently rather than pending a fix.
+    """
+    return _history("gpu", minutes)
+
+
+@app.get("/fleet/network", dependencies=[Depends(require_admin)])
+def fleet_network(
+    minutes: int = Query(default=DEFAULT_HISTORY_MINUTES, ge=2, le=MAX_HISTORY_MINUTES),
+) -> MetricHistoryView:
+    """Total bytes per second per host, received plus sent, every NIC summed."""
+    return _history("network", minutes)
 
 
 @app.get("/incidents", dependencies=[Depends(require_admin)])

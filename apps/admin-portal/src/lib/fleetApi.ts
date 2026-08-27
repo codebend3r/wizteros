@@ -33,10 +33,13 @@ export type FleetHost = {
   readonly disk_percent: number | null
   readonly disk_total_bytes: number | null
   readonly containers: readonly FleetContainer[]
-  /** Derived from the metric timestamps, not the heartbeat: true when at least
-      one reading on this host has outlived even its slowest refresh. */
+  /** Derived from the metric timestamps, not the heartbeat: true when a whole
+      metric family on this host has outlived even its slowest refresh. */
   readonly metrics_stale: boolean
-  readonly oldest_metric_age_seconds: number | null
+  /** Which family fell silent (`disk`, `temp`, `net`, ...), so the card can
+      name it rather than blame whichever probe is slowest in general. */
+  readonly stalest_family: string | null
+  readonly stalest_family_age_seconds: number | null
   /** null when the host has never been collected: unknown, not a perfect score. */
   readonly uptime_percent_24h: number | null
 }
@@ -48,26 +51,40 @@ export type FleetResponse = {
   readonly hosts: readonly FleetHost[]
 }
 
-/** One busy-percent reading as `/fleet/cpu` reports it. Stamped at the later
-    of the two counter readings it was derived from. */
-export type CpuPoint = {
+/** Which history a response carries. One route each, one chart each, all four
+    the same shape on the wire. */
+export type MetricKind = 'cpu' | 'memory' | 'gpu' | 'network'
+
+/** What the numbers mean. The chart cannot pick a y-axis without it: a percent
+    runs against a fixed 0-100, a throughput against a ceiling derived from the
+    readings themselves. */
+export type MetricUnit = 'percent' | 'bytes_per_second'
+
+/** One reading. A counter-derived value (CPU busy, throughput) is stamped at
+    the later of the two readings it came from and describes the interval since
+    the earlier one; a gauge-derived one (memory, GPU) is stamped when it was
+    read. */
+export type MetricPoint = {
   readonly at: string
-  readonly busy_percent: number
+  readonly value: number
 }
 
-/** One host's series. Empty when the host reported no counters in the window:
-    not observed, never zero load. */
-export type CpuHostSeries = {
+/** One host's series. Empty when the host reported nothing in the window: not
+    observed, never zero. Three of the five boxes have no render node at all,
+    so on the GPU chart empty is the permanent and correct answer. */
+export type MetricHostSeries = {
   readonly name: string
-  readonly points: readonly CpuPoint[]
+  readonly points: readonly MetricPoint[]
 }
 
-/** `/fleet/cpu`. Hosts arrive in the same order as `/fleet`, guaranteed and
-    tested server-side, which is what lets position bind a host to its colour
-    on both the chart and the cards. */
-export type CpuHistory = {
+/** A history response. Hosts arrive in the same order as `/fleet`, guaranteed
+    and tested server-side, which is what lets position bind a host to its
+    colour on both the charts and the cards. */
+export type MetricHistory = {
+  readonly kind: MetricKind
+  readonly unit: MetricUnit
   readonly window_minutes: number
-  readonly hosts: readonly CpuHostSeries[]
+  readonly hosts: readonly MetricHostSeries[]
 }
 
 export type Incident = {
@@ -106,7 +123,8 @@ export type HostSummary = {
   readonly diskTotalBytes: number | null
   readonly uptimePercent: number | null
   readonly metricsStale: boolean
-  readonly oldestMetricAgeSeconds: number | null
+  readonly stalestFamily: string | null
+  readonly stalestFamilyAgeSeconds: number | null
   readonly containers: readonly ContainerSummary[]
 }
 
@@ -163,7 +181,8 @@ export const toHostSummary = (host: FleetHost): HostSummary => ({
   diskTotalBytes: host.disk_total_bytes,
   uptimePercent: host.uptime_percent_24h,
   metricsStale: host.metrics_stale,
-  oldestMetricAgeSeconds: host.oldest_metric_age_seconds,
+  stalestFamily: host.stalest_family,
+  stalestFamilyAgeSeconds: host.stalest_family_age_seconds,
   containers: host.containers.map((container) => ({
     name: container.name,
     up: container.up,
@@ -208,7 +227,8 @@ const isFleetHost = (value: unknown): value is FleetHost =>
   Array.isArray(value.containers) &&
   value.containers.every(isFleetContainer) &&
   typeof value.metrics_stale === 'boolean' &&
-  isNumberOrNull(value.oldest_metric_age_seconds) &&
+  isStringOrNull(value.stalest_family) &&
+  isNumberOrNull(value.stalest_family_age_seconds) &&
   isNumberOrNull(value.uptime_percent_24h)
 
 const isFleetResponse = (value: unknown): value is FleetResponse =>
@@ -218,20 +238,28 @@ const isFleetResponse = (value: unknown): value is FleetResponse =>
   Array.isArray(value.hosts) &&
   value.hosts.every(isFleetHost)
 
-const isCpuPoint = (value: unknown): value is CpuPoint =>
-  isRecord(value) && typeof value.at === 'string' && typeof value.busy_percent === 'number'
+const isMetricKind = (value: unknown): value is MetricKind =>
+  value === 'cpu' || value === 'memory' || value === 'gpu' || value === 'network'
 
-const isCpuHostSeries = (value: unknown): value is CpuHostSeries =>
+const isMetricUnit = (value: unknown): value is MetricUnit =>
+  value === 'percent' || value === 'bytes_per_second'
+
+const isMetricPoint = (value: unknown): value is MetricPoint =>
+  isRecord(value) && typeof value.at === 'string' && typeof value.value === 'number'
+
+const isMetricHostSeries = (value: unknown): value is MetricHostSeries =>
   isRecord(value) &&
   typeof value.name === 'string' &&
   Array.isArray(value.points) &&
-  value.points.every(isCpuPoint)
+  value.points.every(isMetricPoint)
 
-const isCpuHistory = (value: unknown): value is CpuHistory =>
+const isMetricHistory = (value: unknown): value is MetricHistory =>
   isRecord(value) &&
+  isMetricKind(value.kind) &&
+  isMetricUnit(value.unit) &&
   typeof value.window_minutes === 'number' &&
   Array.isArray(value.hosts) &&
-  value.hosts.every(isCpuHostSeries)
+  value.hosts.every(isMetricHostSeries)
 
 const isIncident = (value: unknown): value is Incident =>
   isRecord(value) &&
@@ -286,10 +314,23 @@ export const fetchFleet = async (): Promise<FleetResponse> => {
   return data
 }
 
-export const fetchCpuHistory = async ({ minutes }: { minutes: number }): Promise<CpuHistory> => {
-  const data = await requestJson(`/fleet/cpu?minutes=${minutes}`)
-  if (!isCpuHistory(data)) {
-    throw new Error('Unexpected CPU history response from the fleet monitor')
+/** One metric family's history. The kind is the route, so a new chart is a new
+    kind on both sides rather than a second fetcher here. */
+export const fetchMetricHistory = async ({
+  kind,
+  minutes,
+}: {
+  kind: MetricKind
+  minutes: number
+}): Promise<MetricHistory> => {
+  const data = await requestJson(`/fleet/${kind}?minutes=${minutes}`)
+  if (!isMetricHistory(data)) {
+    throw new Error(`Unexpected ${kind} history response from the fleet monitor`)
+  }
+  // A response that answered for a different family would paint one chart with
+  // another's numbers, silently and plausibly.
+  if (data.kind !== kind) {
+    throw new Error(`Asked the fleet monitor for ${kind} history and got ${data.kind}`)
   }
   return data
 }

@@ -48,17 +48,19 @@ const renderFleetRoute = () => {
   )
 }
 
-test('gates /fleet behind the Supabase login when signed out', () => {
+// /fleet is the one lazily-loaded route, so both of these await the chunk
+// rather than asserting on the Suspense fallback that renders first.
+test('gates /fleet behind the Supabase login when signed out', async () => {
   useAuthStore.setState({ enabled: true, status: 'signed-out' })
   renderFleetRoute()
-  expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
+  expect(await screen.findByRole('button', { name: 'Sign in' })).toBeInTheDocument()
   expect(screen.queryByRole('heading', { level: 1, name: 'Fleet' })).toBeNull()
 })
 
-test('serves the fleet overview at /fleet once past the gate', () => {
+test('serves the fleet overview at /fleet once past the gate', async () => {
   useAuthStore.setState({ enabled: false })
   renderFleetRoute()
-  expect(screen.getByRole('heading', { level: 1, name: 'Fleet' })).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { level: 1, name: 'Fleet' })).toBeInTheDocument()
 })
 
 test('serves the single login page at /login', () => {

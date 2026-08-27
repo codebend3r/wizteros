@@ -20,12 +20,21 @@ _MEM_KEYS = {
 
 _SKIP_IFACES = frozenset({"lo", "sit0"})
 
-# Per-container and bridge interfaces. veth is the one that matters: every
-# running container creates a veth<hex> whose name changes on every restart, so
-# each one is written exactly once and never again. Kept out of the samples
-# entirely, because a metric that stops being produced the moment it appears
-# poisons every staleness signal derived from metric timestamps.
-_SKIP_PREFIXES = ("docker", "veth", "br-")
+# Per-container, bridge and tunnel interfaces. veth is the one that matters:
+# every running container creates a veth<hex> whose name changes on every
+# restart, so each one is written exactly once and never again. Kept out of the
+# samples entirely, because a metric that stops being produced the moment it
+# appears poisons every staleness signal derived from metric timestamps.
+#
+# tun/tap/wg are the same class, learned the same way: DSM's VPN Server brought
+# up a tun1000 on meleys for one hour on 2026-08-26, and its two frozen
+# counters then reported the host stale for the rest of the day. They are also
+# double counting even while they live, since tunnelled bytes cross a physical
+# NIC as well, and this section is about what enters and leaves the box.
+#
+# ppp is deliberately not here: on a box speaking PPPoE it is the real uplink,
+# not a tunnel over one.
+_SKIP_PREFIXES = ("docker", "veth", "br-", "tun", "tap", "wg")
 
 # Byte columns in /proc/net/dev after the interface name: receive starts at 0,
 # transmit at 8 (each half is bytes packets errs drop fifo frame compressed

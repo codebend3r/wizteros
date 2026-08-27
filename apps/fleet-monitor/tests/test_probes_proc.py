@@ -77,6 +77,38 @@ def test_parse_net_dev_skips_per_container_interfaces():
     assert got == {"net.eth0.rx_bytes": 100.0, "net.eth0.tx_bytes": 200.0}
 
 
+def test_parse_net_dev_skips_vpn_tunnels():
+    # meleys, 2026-08-26: DSM's VPN Server brought up a tun1000 for one hour,
+    # and its two counters froze the moment it went away. Same class as veth,
+    # and doubly so: tunnelled bytes cross a physical NIC as well, so counting
+    # the tunnel counts them twice while it lives and lies afterwards.
+    text = (
+        "Inter-|   Receive  |  Transmit\n"
+        " face |bytes ...\n"
+        "  eth0: 100 1 0 0 0 0 0 0 200 2 0 0 0 0 0 0\n"
+        "  tun1000: 300 3 0 0 0 0 0 0 400 4 0 0 0 0 0 0\n"
+        "  tap0: 500 5 0 0 0 0 0 0 600 6 0 0 0 0 0 0\n"
+        "  wg0: 700 7 0 0 0 0 0 0 800 8 0 0 0 0 0 0\n"
+    )
+    got = _by_metric(proc.parse_net_dev(text))
+
+    assert got == {"net.eth0.rx_bytes": 100.0, "net.eth0.tx_bytes": 200.0}
+
+
+def test_parse_net_dev_keeps_a_pppoe_uplink():
+    # ppp is deliberately not in the skip list: on a box speaking PPPoE it is
+    # the real uplink, not a tunnel over one, and dropping it would lose the
+    # only interface that carries the box's traffic.
+    text = (
+        "Inter-|   Receive  |  Transmit\n"
+        " face |bytes ...\n"
+        "  ppp0: 100 1 0 0 0 0 0 0 200 2 0 0 0 0 0 0\n"
+    )
+    got = _by_metric(proc.parse_net_dev(text))
+
+    assert got == {"net.ppp0.rx_bytes": 100.0, "net.ppp0.tx_bytes": 200.0}
+
+
 def test_parse_loadavg():
     got = _by_metric(proc.parse_loadavg("0.20 0.18 0.12 1/721 21708\n"))
 

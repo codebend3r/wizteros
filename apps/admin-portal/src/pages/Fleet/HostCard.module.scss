@@ -17,22 +17,17 @@
   &[data-status='unknown'] {
     border-style: dashed;
   }
-
-  &[data-status='warn'] .status {
-    color: var(--color-accent);
-  }
 }
 
+// The name owns a full row at every width, and the status sits under it. They
+// used to share a row, where the status column sized to its own content first:
+// a qualified phrase took the whole card and left the name a few characters
+// wide, which `overflow-wrap: anywhere` then broke down the middle of the
+// hostname, one letter per line.
 .header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: baseline;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-1);
-
-  // The status word and a long host name cannot share a phone-width row.
-  @media (max-width: 48rem) {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 
 .name {
@@ -135,12 +130,40 @@
   gap: var(--space-1);
 }
 
+// The disclosure triangle is the marker; the row beside it is a two-column
+// grid so the tally sits hard right whatever the title wraps to. `list-item`
+// is restated because the grid display would otherwise take the marker away.
+.containersSummary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--space-2);
+  cursor: pointer;
+
+  &::marker {
+    color: var(--color-muted);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+
 .containersTitle {
   color: var(--color-muted);
   font-size: var(--font-size-xs);
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+// Never colour alone: this is the whole finding while the section is shut, so
+// it is stated in words ("2 down", "not collected") and merely tinted.
+.containersTally {
+  color: var(--color-muted);
+  font-size: var(--font-size-xs);
+  text-align: right;
 }
 
 .containerList {

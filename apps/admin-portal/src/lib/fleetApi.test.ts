@@ -1,11 +1,13 @@
 import { afterEach, expect, test, vi } from '@/test/vi'
 import {
-  fetchCpuHistory,
   fetchFleet,
   fetchIncidents,
+  fetchMetricHistory,
   type FleetHost,
   formatAge,
   formatBytes,
+  type MetricHistory,
+  type MetricKind,
   toHostSummary,
 } from '@/lib/fleetApi'
 
@@ -45,7 +47,8 @@ const host: FleetHost = {
   disk_total_bytes: 8_000_000_000_000,
   containers: [{ name: 'sonarr', up: true, healthy: false, has_healthcheck: false }],
   metrics_stale: false,
-  oldest_metric_age_seconds: 12,
+  stalest_family: 'disk',
+  stalest_family_age_seconds: 12,
   uptime_percent_24h: 100,
 }
 
@@ -96,12 +99,18 @@ test('toHostSummary keeps a never-measured uptime null instead of a perfect scor
 })
 
 test('toHostSummary carries per-metric staleness separately from the host status', () => {
-  const summary = toHostSummary({ ...host, metrics_stale: true, oldest_metric_age_seconds: 7200 })
+  const summary = toHostSummary({
+    ...host,
+    metrics_stale: true,
+    stalest_family: 'temp',
+    stalest_family_age_seconds: 7200,
+  })
 
   // a host whose fast tier is current but whose slow tier died is not unhealthy
   expect(summary.status).toBe('ok')
   expect(summary.metricsStale).toBe(true)
-  expect(summary.oldestMetricAgeSeconds).toBe(7200)
+  expect(summary.stalestFamily).toBe('temp')
+  expect(summary.stalestFamilyAgeSeconds).toBe(7200)
 })
 
 test('toHostSummary renames the container fields without reinterpreting them', () => {
@@ -188,27 +197,36 @@ test('fetchFleet names the HTML fallback instead of failing to parse it', async 
   await expect(fetchFleet()).rejects.toThrow('VITE_FLEET_BASE')
 })
 
-test('fetchCpuHistory asks for the requested window and returns the payload', async () => {
-  const payload = {
-    window_minutes: 60,
-    hosts: [
-      {
-        name: 'meleys',
-        points: [{ at: '2026-08-23T12:00:30+00:00', busy_percent: 12.5 }],
-      },
-      { name: 'caraxes', points: [] },
-    ],
-  }
-  const fetchMock = vi
-    .fn()
-    .mockResolvedValue({ ok: true, status: 200, headers: JSON_HEADERS, json: async () => payload })
-  vi.stubGlobal('fetch', fetchMock)
-
-  await expect(fetchCpuHistory({ minutes: 60 })).resolves.toEqual(payload)
-  expect(fetchMock.mock.calls[0][0]).toBe('/fleet/cpu?minutes=60')
+const history = (kind: MetricKind): MetricHistory => ({
+  kind,
+  unit: kind === 'network' ? 'bytes_per_second' : 'percent',
+  window_minutes: 60,
+  hosts: [
+    { name: 'meleys', points: [{ at: '2026-08-23T12:00:30+00:00', value: 12.5 }] },
+    { name: 'caraxes', points: [] },
+  ],
 })
 
-test('fetchCpuHistory rejects a payload that is not a cpu history', async () => {
+// Every chart is the same fetcher with a different kind, so the route each one
+// asks for is the only thing separating them.
+test.each(['cpu', 'memory', 'gpu', 'network'] as const)(
+  'fetchMetricHistory asks the %s route for the requested window',
+  async (kind) => {
+    const payload = history(kind)
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: JSON_HEADERS,
+      json: async () => payload,
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(fetchMetricHistory({ kind, minutes: 60 })).resolves.toEqual(payload)
+    expect(fetchMock.mock.calls[0][0]).toBe(`/fleet/${kind}?minutes=60`)
+  },
+)
+
+test('fetchMetricHistory rejects a payload that is not a history', async () => {
   vi.stubGlobal(
     'fetch',
     vi.fn().mockResolvedValue({
@@ -219,7 +237,27 @@ test('fetchCpuHistory rejects a payload that is not a cpu history', async () => 
     }),
   )
 
-  await expect(fetchCpuHistory({ minutes: 60 })).rejects.toThrow('Unexpected CPU history response')
+  await expect(fetchMetricHistory({ kind: 'cpu', minutes: 60 })).rejects.toThrow(
+    'Unexpected cpu history response',
+  )
+})
+
+// A response answering for a different family would paint one chart with
+// another's numbers, plausibly and without any error anywhere.
+test('fetchMetricHistory refuses a history for a family it did not ask for', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: JSON_HEADERS,
+      json: async () => history('cpu'),
+    }),
+  )
+
+  await expect(fetchMetricHistory({ kind: 'memory', minutes: 60 })).rejects.toThrow(
+    'Asked the fleet monitor for memory history and got cpu',
+  )
 })
 
 test('fetchIncidents asks for the requested window and returns both lists', async () => {
@@ -268,12 +306,12 @@ test('every monitor read carries the signed-in admin as a bearer', async () => {
   const fetchMock = vi
     .fn()
     .mockResolvedValueOnce(ok({ collected_at: null, stale: false, hosts: [] }))
-    .mockResolvedValueOnce(ok({ window_minutes: 60, hosts: [] }))
+    .mockResolvedValueOnce(ok({ kind: 'cpu', unit: 'percent', window_minutes: 60, hosts: [] }))
     .mockResolvedValueOnce(ok({ open: [], recent: [] }))
   vi.stubGlobal('fetch', fetchMock)
 
   await fetchFleet()
-  await fetchCpuHistory({ minutes: 60 })
+  await fetchMetricHistory({ kind: 'cpu', minutes: 60 })
   await fetchIncidents({ hours: 24 })
 
   // Every route, not just the first: the monitor gates all three, so one
@@ -295,5 +333,7 @@ test('a rejected session is named rather than reported as a bare status', async 
     }),
   )
 
-  await expect(fetchCpuHistory({ minutes: 60 })).rejects.toThrow('not allowed to read the fleet')
+  await expect(fetchMetricHistory({ kind: 'cpu', minutes: 60 })).rejects.toThrow(
+    'not allowed to read the fleet',
+  )
 })

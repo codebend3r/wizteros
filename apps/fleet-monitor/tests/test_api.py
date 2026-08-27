@@ -172,7 +172,7 @@ def test_fleet_flags_a_host_whose_slow_tier_metrics_are_stale(tmp_path, monkeypa
     assert body["stale"] is False
     assert caraxes["collected"] is True
     assert caraxes["metrics_stale"] is True
-    assert caraxes["oldest_metric_age_seconds"] > 5 * 3600
+    assert caraxes["stalest_family_age_seconds"] > 5 * 3600
 
 
 def test_fleet_never_reports_a_reading_it_cannot_date(tmp_path, monkeypatch):
@@ -198,7 +198,7 @@ def test_fleet_never_reports_a_reading_it_cannot_date(tmp_path, monkeypatch):
     assert caraxes["metrics"]["load.1m"] == 0.1
     # and what remains really is fresh, so saying so is not a lie
     assert caraxes["metrics_stale"] is False
-    assert caraxes["oldest_metric_age_seconds"] < 60
+    assert caraxes["stalest_family_age_seconds"] < 60
 
 
 def test_fleet_dates_every_reading_it_reports(tmp_path, monkeypatch):
@@ -258,7 +258,7 @@ def test_fleet_marks_a_host_whose_every_reading_aged_out_as_not_collected(
     assert syrax["collected"] is False
     assert syrax["metrics"] == {}
     assert syrax["metrics_stale"] is True
-    assert syrax["oldest_metric_age_seconds"] is None
+    assert syrax["stalest_family_age_seconds"] is None
     assert syrax["uptime_percent_24h"] is None
 
 
@@ -274,7 +274,7 @@ def test_fleet_never_collected_host_has_no_uptime(tmp_path, monkeypatch):
 def test_fleet_drops_a_metric_source_that_stopped_producing(tmp_path, monkeypatch):
     # a veth renamed by a container restart is written once and never again.
     # Counted forever it pins metrics_stale true on a healthy docker host and
-    # walks oldest_metric_age_seconds up to seven days.
+    # walks stalest_family_age_seconds up to seven days.
     client, db = _client(tmp_path, monkeypatch)
     now = datetime.now(tz=timezone.utc)
     _write_heartbeat(db, now)
@@ -287,7 +287,72 @@ def test_fleet_drops_a_metric_source_that_stopped_producing(tmp_path, monkeypatc
     vermithor = next(h for h in body["hosts"] if h["name"] == "vermithor")
 
     assert vermithor["metrics_stale"] is False
-    assert vermithor["oldest_metric_age_seconds"] < 60
+    assert vermithor["stalest_family_age_seconds"] < 60
+
+
+def test_fleet_ignores_a_vanished_source_beside_a_live_sibling(tmp_path, monkeypatch):
+    # meleys, 2026-08-26: DSM brought up a VPN tun1000 for one hour, and its
+    # two counters froze when it went away. The age window is a day and the
+    # stale band is 45 minutes, so under a plain `min` over every metric those
+    # two dead readings reported the host stale for the next 23 hours while
+    # net.eth0.* beside them updated every 30 seconds.
+    client, db = _client(tmp_path, monkeypatch)
+    now = datetime.now(tz=timezone.utc)
+    _write_heartbeat(db, now)
+    _write_samples(
+        db, "host:meleys", now - timedelta(hours=17),
+        [Sample("net.tun1000.rx_bytes", 900.0, "counter")],
+    )
+    _write_samples(
+        db, "host:meleys", now,
+        [Sample("net.eth0.rx_bytes", 12.0, "counter"), Sample("load.1m", 0.4, "gauge")],
+    )
+    meleys = next(h for h in client.get("/fleet").json()["hosts"] if h["name"] == "meleys")
+
+    # the family is reporting, so the host is not stale on the strength of one
+    # source that went away inside it
+    assert meleys["metrics_stale"] is False
+    assert meleys["stalest_family_age_seconds"] < 60
+    # and the dead counter is still a reading the monitor will hand back: it is
+    # excluded from the staleness judgment, not hidden
+    assert meleys["metrics"]["net.tun1000.rx_bytes"] == 900.0
+
+
+def test_fleet_still_flags_a_family_that_went_silent_whole(tmp_path, monkeypatch):
+    # the other half of the same rule. Ignoring a vanished source must not
+    # ignore a probe that stopped: when every metric under `disk` is old, no
+    # sibling is left to vouch for it and the host is stale.
+    client, db = _client(tmp_path, monkeypatch)
+    now = datetime.now(tz=timezone.utc)
+    _write_heartbeat(db, now)
+    _write_samples(
+        db, "host:caraxes", now - timedelta(hours=6),
+        [
+            Sample("disk.volume1.used_percent", 42.0, "gauge"),
+            Sample("disk.volume1.total_bytes", 8.0, "gauge"),
+        ],
+    )
+    _write_samples(db, "host:caraxes", now, [Sample("load.1m", 0.1, "gauge")])
+    caraxes = next(h for h in client.get("/fleet").json()["hosts"] if h["name"] == "caraxes")
+
+    assert caraxes["metrics_stale"] is True
+    assert caraxes["stalest_family_age_seconds"] > 5 * 3600
+
+
+def test_fleet_names_the_family_that_fell_silent(tmp_path, monkeypatch):
+    # the page prints this word. Without it the card blamed disk and
+    # temperature whatever had actually stopped.
+    client, db = _client(tmp_path, monkeypatch)
+    now = datetime.now(tz=timezone.utc)
+    _write_heartbeat(db, now)
+    _write_samples(
+        db, "host:caraxes", now - timedelta(hours=6),
+        [Sample("temp.coretemp.temp1", 44.0, "gauge")],
+    )
+    _write_samples(db, "host:caraxes", now, [Sample("load.1m", 0.1, "gauge")])
+    caraxes = next(h for h in client.get("/fleet").json()["hosts"] if h["name"] == "caraxes")
+
+    assert caraxes["stalest_family"] == "temp"
 
 
 def test_fleet_reports_no_uptime_for_a_window_the_collector_did_not_watch(
@@ -381,7 +446,7 @@ def test_a_future_timestamp_never_reads_as_fresh(tmp_path, monkeypatch):
 
     caraxes = next(h for h in client.get("/fleet").json()["hosts"] if h["name"] == "caraxes")
     assert caraxes["metrics_stale"] is True
-    assert caraxes["oldest_metric_age_seconds"] is None
+    assert caraxes["stalest_family_age_seconds"] is None
 
 
 def test_incidents_rejects_absurdly_large_hours(tmp_path, monkeypatch):
@@ -544,7 +609,9 @@ def test_fleet_cpu_reports_busy_percent_per_host(tmp_path, monkeypatch):
 
     assert payload["window_minutes"] == 60
     by_name = {host["name"]: host["points"] for host in payload["hosts"]}
-    assert [point["busy_percent"] for point in by_name["meleys"]] == [25.0]
+    assert payload["kind"] == "cpu"
+    assert payload["unit"] == "percent"
+    assert [point["value"] for point in by_name["meleys"]] == [25.0]
     # a host with no counters in the window has no points, not zeros
     assert by_name["vermithor"] == []
 
@@ -571,7 +638,7 @@ def test_fleet_cpu_honors_the_requested_window(tmp_path, monkeypatch):
 
     assert narrow["window_minutes"] == 5
     assert [host["points"] for host in narrow["hosts"]] == [[], [], [], [], []]
-    assert [p["busy_percent"] for p in wide["hosts"][0]["points"]] == [25.0]
+    assert [p["value"] for p in wide["hosts"][0]["points"]] == [25.0]
 
 
 def test_fleet_cpu_rejects_an_out_of_range_window(tmp_path, monkeypatch):
@@ -588,3 +655,133 @@ def test_fleet_cpu_accepts_a_week_and_refuses_more(tmp_path, monkeypatch):
 
     assert client.get("/fleet/cpu?minutes=10080").status_code == 200
     assert client.get("/fleet/cpu?minutes=10081").status_code == 422
+
+
+GB = 1024**3
+
+
+def test_fleet_memory_reports_used_percent_per_host(tmp_path, monkeypatch):
+    client, db = _client(tmp_path, monkeypatch)
+    now = datetime.now(tz=timezone.utc)
+    _write_samples(
+        db,
+        "host:meleys",
+        now - timedelta(seconds=30),
+        [
+            Sample("mem.total_bytes", 16.0 * GB, "gauge"),
+            Sample("mem.available_bytes", 4.0 * GB, "gauge"),
+        ],
+    )
+
+    payload = client.get("/fleet/memory").json()
+
+    assert payload["kind"] == "memory"
+    assert payload["unit"] == "percent"
+    by_name = {host["name"]: host["points"] for host in payload["hosts"]}
+    assert [point["value"] for point in by_name["meleys"]] == [75.0]
+    # a host that reported no memory gauges has no points, not zeros
+    assert by_name["vermithor"] == []
+
+
+def test_fleet_gpu_reports_the_frequency_ratio_as_a_percentage(tmp_path, monkeypatch):
+    client, db = _client(tmp_path, monkeypatch)
+    now = datetime.now(tz=timezone.utc)
+    _write_samples(
+        db,
+        "host:vermithor",
+        now - timedelta(seconds=30),
+        [Sample("gpu.freq_ratio", 0.4, "gauge")],
+    )
+
+    payload = client.get("/fleet/gpu").json()
+
+    assert payload["kind"] == "gpu"
+    assert payload["unit"] == "percent"
+    by_name = {host["name"]: host["points"] for host in payload["hosts"]}
+    assert [point["value"] for point in by_name["vermithor"]] == [40.0]
+    # meleys has no render node at all, permanently: empty, never zero
+    assert by_name["meleys"] == []
+
+
+def test_fleet_network_sums_every_interface(tmp_path, monkeypatch):
+    client, db = _client(tmp_path, monkeypatch)
+    now = datetime.now(tz=timezone.utc)
+    _write_samples(
+        db,
+        "host:meleys",
+        now - timedelta(seconds=40),
+        [
+            Sample("net.eth0.rx_bytes", 0.0, "counter"),
+            Sample("net.eth1.tx_bytes", 0.0, "counter"),
+        ],
+    )
+    _write_samples(
+        db,
+        "host:meleys",
+        now - timedelta(seconds=30),
+        [
+            Sample("net.eth0.rx_bytes", 1000.0, "counter"),
+            Sample("net.eth1.tx_bytes", 500.0, "counter"),
+        ],
+    )
+
+    payload = client.get("/fleet/network").json()
+
+    assert payload["kind"] == "network"
+    assert payload["unit"] == "bytes_per_second"
+    by_name = {host["name"]: host["points"] for host in payload["hosts"]}
+    assert [point["value"] for point in by_name["meleys"]] == [150.0]
+
+
+def test_fleet_network_reads_only_this_target_and_only_net_metrics(tmp_path, monkeypatch):
+    # the prefix read is a range scan over the metric column, so a neighbouring
+    # family (or another host's counters) must not fall inside it
+    client, db = _client(tmp_path, monkeypatch)
+    now = datetime.now(tz=timezone.utc)
+    for offset, value in ((40, 0.0), (30, 1000.0)):
+        _write_samples(
+            db,
+            "host:meleys",
+            now - timedelta(seconds=offset),
+            [
+                Sample("net.eth0.rx_bytes", value, "counter"),
+                Sample("mem.total_bytes", 8.0 * GB, "gauge"),
+                Sample("procs.total", 300.0, "gauge"),
+            ],
+        )
+        _write_samples(
+            db,
+            "host:vermithor",
+            now - timedelta(seconds=offset),
+            [Sample("net.eth0.rx_bytes", value * 9, "counter")],
+        )
+
+    by_name = {
+        host["name"]: host["points"] for host in client.get("/fleet/network").json()["hosts"]
+    }
+
+    assert [point["value"] for point in by_name["meleys"]] == [100.0]
+    assert [point["value"] for point in by_name["vermithor"]] == [900.0]
+
+
+def test_every_history_route_lists_hosts_in_the_same_order_as_fleet(tmp_path, monkeypatch):
+    # one colour per host position, bound on the cards from /fleet and on every
+    # chart from these; a route disagreeing would recolour a whole chart
+    client, _ = _client(tmp_path, monkeypatch)
+    fleet_names = [host["name"] for host in client.get("/fleet").json()["hosts"]]
+
+    for path in ("/fleet/cpu", "/fleet/memory", "/fleet/gpu", "/fleet/network"):
+        names = [host["name"] for host in client.get(path).json()["hosts"]]
+        assert names == fleet_names, path
+
+
+def test_every_history_route_shares_one_window_contract(tmp_path, monkeypatch):
+    # the page drives all four from one range picker, so a route with its own
+    # floor or ceiling would fail only at the extremes of that control
+    client, _ = _client(tmp_path, monkeypatch)
+
+    for path in ("/fleet/cpu", "/fleet/memory", "/fleet/gpu", "/fleet/network"):
+        assert client.get(f"{path}?minutes=1").status_code == 422, path
+        assert client.get(f"{path}?minutes=10080").status_code == 200, path
+        assert client.get(f"{path}?minutes=10081").status_code == 422, path
+        assert client.get(path).json()["window_minutes"] == 60, path

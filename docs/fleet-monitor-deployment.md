@@ -27,7 +27,8 @@ container as `/fleet/cpu`.
 
 ## What is exposed, and what protects it
 
-Funnel is the public internet. `/fleet`, `/fleet/cpu` and `/incidents` all
+Funnel is the public internet. `/fleet`, the four history routes (`/fleet/cpu`,
+`/fleet/memory`, `/fleet/gpu`, `/fleet/network`) and `/incidents` all
 require `Authorization: Bearer <supabase jwt>` whose ES256 signature verifies
 against the project's published keys and whose email is in
 `FM_ADMIN_ALLOWED_EMAILS`. Unset config rejects rather than passes: a
@@ -154,6 +155,8 @@ collector a minute after first boot.
 | Symptom | Cause |
 | --- | --- |
 | `Expected JSON from /fleet ... Is VITE_FLEET_BASE set?` | Unset in Netlify, or set but not redeployed. The call went to the SPA's own `/fleet` route and got index.html. |
+| The CPU chart works but Memory, GPU and Network report a failure | The NAS is running a monitor from before those routes existed. Netlify redeploys from `main` on its own and the NAS does not, so `bun run deploy:nas` is the missing step. |
+| The GPU chart draws two flat lines at 13.3% | Correct, and not a fault. That is the i915 idle floor (100 MHz of a 750 MHz ceiling) on the only two boxes with a render node; the line moves when something transcodes. |
 | `Not signed in, or this account is not allowed to read the fleet.` | Session lapsed, or the email is missing from `FM_ADMIN_ALLOWED_EMAILS`. Check the container's env, not just the file. |
 | Cards render, chart legend lists hosts with no lines | Collector is not reaching those hosts. Its ssh key is missing from their `authorized_keys`. |
 | Everything reads as down, browser console shows a CORS error | The Funnel mount is missing, so the request never reached the monitor. |

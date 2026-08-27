@@ -123,9 +123,12 @@ def metric_ages(
     return {row["metric"]: datetime.fromisoformat(row["at"]) for row in rows}
 
 
+Series = tuple[tuple[datetime, float], ...]
+
+
 def series(
     connection: sqlite3.Connection, target: str, metric: str, since: datetime
-) -> tuple[tuple[datetime, float], ...]:
+) -> Series:
     rows = connection.execute(
         "SELECT at, value FROM samples "
         "WHERE target = ? AND metric = ? AND at >= ? ORDER BY at",
@@ -140,7 +143,7 @@ def metric_series(
     metrics: Sequence[str],
     *,
     since: datetime,
-) -> dict[str, tuple[tuple[datetime, float], ...]]:
+) -> dict[str, Series]:
     """Every requested metric's series for one target, in one query.
 
     Companion to `series` for callers that read a family of metrics together -
@@ -161,12 +164,49 @@ def metric_series(
         "ORDER BY metric, at",
         (target, *metrics, since.isoformat()),
     ).fetchall()
+    return _grouped(rows)
+
+
+def _grouped(rows: Iterable[sqlite3.Row]) -> dict[str, Series]:
+    """Rows of (metric, at, value) pivoted into one series per metric."""
     grouped: dict[str, list[tuple[datetime, float]]] = {}
     for row in rows:
         grouped.setdefault(row["metric"], []).append(
             (datetime.fromisoformat(row["at"]), row["value"])
         )
     return {metric: tuple(points) for metric, points in grouped.items()}
+
+
+def _above(prefix: str) -> str:
+    """The first string that sorts past every name starting with `prefix`."""
+    return prefix[:-1] + chr(ord(prefix[-1]) + 1)
+
+
+def metric_series_prefix(
+    connection: sqlite3.Connection, target: str, prefix: str, *, since: datetime
+) -> dict[str, Series]:
+    """Every metric under one name prefix, for one target, in one query.
+
+    Companion to `metric_series` for a family whose members are discovered
+    rather than declared. The network counters are one rx/tx pair per
+    interface, and which interfaces a box has is not knowable from here: meleys
+    carries three and vhagar two, and a NIC added tomorrow has to appear
+    without a code change.
+
+    Matched by a range rather than `LIKE`. SQLite's LIKE is case-insensitive
+    for ASCII by default, so it cannot use the (target, metric, at) index and
+    would scan every sample the target ever wrote; a half-open range on the
+    same column reads the index directly.
+    """
+    if not prefix:
+        return {}
+    rows = connection.execute(
+        "SELECT metric, at, value FROM samples "
+        "WHERE target = ? AND metric >= ? AND metric < ? AND at >= ? "
+        "ORDER BY metric, at",
+        (target, prefix, _above(prefix), since.isoformat()),
+    ).fetchall()
+    return _grouped(rows)
 
 
 def rate(
@@ -186,9 +226,7 @@ def rate(
     return (current_value - previous_value) / elapsed
 
 
-def rate_series(
-    points: Sequence[tuple[datetime, float]],
-) -> tuple[tuple[datetime, float], ...]:
+def rate_series(points: Sequence[tuple[datetime, float]]) -> Series:
     """Convert a counter series into a rate series, dropping reset pairs."""
     computed = (
         (current[0], rate(previous, current)) for previous, current in pairwise(points)
