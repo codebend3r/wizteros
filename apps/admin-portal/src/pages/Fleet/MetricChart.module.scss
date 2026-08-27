@@ -49,45 +49,28 @@
   background: var(--color-surface);
 }
 
-.svg {
-  display: block;
-  max-width: 100%;
+// Horizontal guides only, kept recessive: border-coloured hairlines sit
+// behind the data ink instead of competing with it.
+.grid {
+  line {
+    stroke: var(--color-border);
+  }
 }
 
-// The pointer/keyboard layer over the whole plot: one large hit target, so
-// nobody has to land on a 2px line to get a reading.
-.inspector {
-  position: absolute;
-  inset: 0;
-  border-radius: var(--radius-md);
-}
-
-.gridline {
-  stroke: var(--color-border);
-  stroke-width: 1;
-}
-
-.tickLabel {
-  fill: var(--color-muted);
-  font-family: var(--font-body);
+// Tick text must hold the size the scale's axisWidth budgets for: at the
+// page's body size a "200.0 MB/s" label overruns the axis margin and clips.
+// Tabular figures keep times and rates the same width from tick to tick.
+.axis {
   font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
-}
 
-.line {
-  fill: none;
-  stroke: var(--series-color, var(--color-muted));
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
+  line {
+    stroke: var(--color-border);
+  }
 
-// Readings ride a 2px ring of the surface colour so they stay legible where
-// lines cross; the same mark doubles as each line's endpoint dot.
-.marker {
-  fill: var(--series-color, var(--color-muted));
-  stroke: var(--color-surface);
-  stroke-width: 2;
+  text {
+    fill: var(--color-muted);
+  }
 }
 
 .crosshair {
@@ -95,18 +78,14 @@
   stroke-width: 1;
 }
 
+// Recharts measures this box and pins it beside the crosshair, clamped to
+// the plot, so it must stay in normal flow: positioned absolutely it
+// collapses the measuring wrapper to zero size, the background never paints,
+// and every word wraps onto its own line down the y axis.
 .tooltip {
-  position: absolute;
-  top: var(--space-1);
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-1);
-
-  // max-content, because an absolutely positioned box otherwise shrinks to
-  // whatever sliver of the container remains past its offset and overflows
-  // it; the max keeps it inside the plot on a phone.
-  width: max-content;
-  max-width: calc(100% - var(--space-2));
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);

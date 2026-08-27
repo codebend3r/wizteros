@@ -497,7 +497,16 @@ export const MetricChart = ({
                 // Any host reporting normally has hundreds, and dots at that
                 // density would smear the line into a band.
                 dot={plot.points.length <= 2}
-                activeDot={{ r: 4 }}
+                // The inspected reading wears its series colour ringed in the
+                // surface colour. The class comes along because the active dot
+                // is drawn outside the line's group: without it the colour
+                // variable never resolves and the dot renders bare white.
+                activeDot={{
+                  r: 4,
+                  className: seriesClass(plot.seriesIndex),
+                  stroke: 'var(--color-surface)',
+                  strokeWidth: 2,
+                }}
                 // a span nothing observed stays a hole
                 connectNulls={false}
                 // the chart redraws once a second; an entrance animation would
