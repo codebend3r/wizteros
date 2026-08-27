@@ -50,27 +50,29 @@
 }
 
 // Horizontal guides only, kept recessive: border-coloured hairlines sit
-// behind the data ink instead of competing with it.
+// behind the data ink instead of competing with it. Recharts stamps the
+// class on every gridline element itself, so the stroke sits on the class
+// directly, not on a descendant.
 .grid {
+  stroke: var(--color-border);
+}
+
+// Only the baseline lives inside the classed axis group; the tick text is
+// hoisted into its own layer and classed per element via the tick prop.
+.axis {
   line {
     stroke: var(--color-border);
   }
 }
 
-// Tick text must hold the size the scale's axisWidth budgets for: at the
-// page's body size a "200.0 MB/s" label overruns the axis margin and clips.
-// Tabular figures keep times and rates the same width from tick to tick.
-.axis {
+// Each tick's text element, reached through the axes' tick prop. Sized to
+// what the scale's axisWidth budgets for: at the page's body size a
+// "200.0 MB/s" label overruns the axis margin and clips. Tabular figures
+// keep times and rates the same width from tick to tick.
+.tickLabel {
+  fill: var(--color-muted);
   font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
-
-  line {
-    stroke: var(--color-border);
-  }
-
-  text {
-    fill: var(--color-muted);
-  }
 }
 
 .crosshair {

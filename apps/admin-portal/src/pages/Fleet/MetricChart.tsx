@@ -459,6 +459,10 @@ export const MetricChart = ({
               domain={[first, nowMs]}
               allowDataOverflow
               tickFormatter={timeShort}
+              // the label class rides the tick itself: Recharts hoists tick
+              // text out of the axis group, where the axis class cannot
+              // reach it
+              tick={{ className: styles.tickLabel }}
               tickLine={false}
               minTickGap={width < 480 ? 64 : 40}
               className={styles.axis}
@@ -469,6 +473,7 @@ export const MetricChart = ({
               ticks={[...scale.ticks]}
               tickFormatter={scale.format}
               width={scale.axisWidth}
+              tick={{ className: styles.tickLabel }}
               tickLine={false}
               axisLine={false}
               className={styles.axis}
