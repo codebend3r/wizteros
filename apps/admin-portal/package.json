@@ -14,8 +14,8 @@
     "typecheck": "tsgo --noEmit",
     "lint:ts": "oxlint",
     "lint:ts:fix": "oxlint --fix",
-    "lint:css": "gale \"src/**/*.scss\"",
-    "lint:css:fix": "gale --fix \"src/**/*.scss\"",
+    "lint:css": "stylelint \"src/**/*.scss\"",
+    "lint:css:fix": "stylelint --fix \"src/**/*.scss\"",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "pretest": "node ../../scripts/only-bun.mjs",
@@ -40,7 +40,6 @@
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "20.11.1",
-    "@lyricalstring/gale": "0.1.5",
     "@testing-library/jest-dom": "6.9.1",
     "@testing-library/react": "16.3.2",
     "@testing-library/user-event": "14.6.1",
@@ -54,6 +53,8 @@
     "oxfmt": "0.61.0",
     "oxlint": "1.76.0",
     "sass": "1.101.0",
+    "stylelint": "17.14.1",
+    "stylelint-config-recommended-scss": "17.0.1",
     "typescript": "5.9.3",
     "vite": "5.4.21"
   },
@@ -77,8 +78,5 @@
       "test",
       "test:watch"
     ]
-  },
-  "trustedDependencies": [
-    "@lyricalstring/gale"
-  ]
+  }
 }

@@ -1,4 +1,4 @@
-# Fast gate: oxlint, gale on SCSS, oxfmt --check, tsgo and bun test for
+# Fast gate: oxlint, stylelint on SCSS, oxfmt --check, tsgo and bun test for
 # admin-portal only, via Nx (cached, so a clean rerun is near-instant).
 # Fix with: bun run lint:fix, bun run lint:css:fix, bun run format.
 bun run system-check

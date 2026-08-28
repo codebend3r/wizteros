@@ -52,7 +52,7 @@ wizteros/
 └── package.json                bun workspaces plus thin aliases that delegate to nx
 ```
 
-**admin-portal**, a Vite + React SPA (TypeScript, bun). `index.html`, `vite.config.ts`, `tsconfig.json`, `bunfig.toml`, and the oxlint/oxfmt/gale configs live at the app root. It has no `project.json`: Nx infers targets from the `scripts` in its `package.json`, whitelisted by the `nx.includedScripts` field there. Adding a script that should be runnable as a target means adding it to that list too.
+**admin-portal**, a Vite + React SPA (TypeScript, bun). `index.html`, `vite.config.ts`, `tsconfig.json`, `bunfig.toml`, and the oxlint/oxfmt/stylelint configs live at the app root. It has no `project.json`: Nx infers targets from the `scripts` in its `package.json`, whitelisted by the `nx.includedScripts` field there. Adding a script that should be runnable as a target means adding it to that list too.
 
 **stripe-bridge**, a FastAPI service (Python 3.12). All runtime code lives in the `stripe_bridge/` package: `stripe_wizarr_bridge.py` is the app entrypoint, plus `wizarr.py`, `plex.py`, `store.py`, `tiers.py`, `mailer.py`, `email_template.py`, `admin.py`, `snapshot.py`. Everything else (`tests/`, `scripts/`, `Dockerfile`, `pytest.ini`, `ruff.toml`, `requirements*.txt`, `package.json`, `project.json`) sits at the app root, outside the package.
 
@@ -96,7 +96,7 @@ Three version markers move in lockstep: root `package.json`, `apps/admin-portal/
 
 ## Lint and enforcement
 
-The repo does have linters: oxlint for TS/JS, gale for SCSS, ruff for Python, oxfmt for formatting, tsgo for type checking.
+The repo does have linters: oxlint for TS/JS, stylelint for SCSS, ruff for Python, oxfmt for formatting, tsgo for type checking.
 
 Several conventions below are enforced as lint errors, not just style preferences, in `apps/admin-portal/.oxlintrc.json` under a block marked "Conventions from CLAUDE.md": no default exports, `type` over `interface`, no `any`, no non-null assertions, `eqeqeq`, `prefer-const`, `prefer-array-flat-map`. Turning one of these off to make code pass is not the fix.
 

@@ -63,7 +63,7 @@ jobs:
       - name: 🔍 Lint TS/JS (oxlint)
         run: bunx nx run-many -t lint:ts
 
-      - name: 🎨 Lint SCSS (gale)
+      - name: 🎨 Lint SCSS (stylelint)
         run: bunx nx run-many -t lint:css
 
       - name: 🧹 Lint Python (ruff)

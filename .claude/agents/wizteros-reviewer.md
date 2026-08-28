@@ -1,6 +1,6 @@
 ---
 name: wizteros-reviewer
-description: Use when a diff, branch, or pull request in the wizteros repo needs a review against the house conventions in CLAUDE.md that the toolchain (oxlint, gale, oxfmt, tsgo, ruff) does not enforce. Triggers include "review my changes", "check this branch against the house rules", "does this PR follow CLAUDE.md", "review the diff before I commit", "review the staged changes", "conventions pass on this branch". Read-only: it reports findings and never edits.
+description: Use when a diff, branch, or pull request in the wizteros repo needs a review against the house conventions in CLAUDE.md that the toolchain (oxlint, stylelint, oxfmt, tsgo, ruff) does not enforce. Triggers include "review my changes", "check this branch against the house rules", "does this PR follow CLAUDE.md", "review the diff before I commit", "review the staged changes", "conventions pass on this branch". Read-only: it reports findings and never edits.
 tools: Read, Grep, Glob, Bash
 ---
 
@@ -39,7 +39,7 @@ An earlier version of this file hand-copied the conventions and went stale withi
 The gates are `bun run system-check` (pre-commit), `bun run verify` (pre-push), and CI. A rule is only skippable when it fails those gates, which means error severity. Warnings print and exit 0: nothing in this repo passes `--max-warnings 0` or `--deny-warnings`, so a warning-level rule is your job, not the tooling's. Verify severities in the configs rather than trusting this list; as of 2026-08-10:
 
 - **oxlint** (`apps/admin-portal/.oxlintrc.json`). Error level, skip: `no-explicit-any`, `consistent-type-definitions`, `no-non-null-assertion`, `no-var`, `prefer-const`, `eqeqeq`, `no-iterator`, `prefer-array-flat-map`, `no-default-export`, plus the `correctness` and `suspicious` categories. Respect its overrides: default exports are legal in `vite.config.ts` and `**/*.d.ts`, `interface` is legal in `**/*.d.ts`, and test files may use non-null assertions and `console`. Warning level, flag yourself: `no-console` (`warn`/`error` calls are allowed), `unicorn/no-array-for-each`, `unicorn/consistent-function-scoping`, and the `perf` category.
-- **gale** (`apps/admin-portal/gale.json`). Error level, skip: SCSS syntax, hex length, named colors, zero units, duplicate selectors and properties, redundant shorthand, `$variable` naming, keyword case. Warning level, flag yourself: `declaration-no-important` and `no-descending-specificity`.
+- **stylelint** (`apps/admin-portal/.stylelintrc.json`). Error level, skip: SCSS syntax, hex length, named colors, zero units, duplicate selectors and properties, redundant shorthand, `$variable` naming, keyword case. Warning level, flag yourself: `declaration-no-important` and `no-descending-specificity`.
 - **oxfmt** (`apps/admin-portal/.oxfmtrc.json`): all formatting; `format:check` fails the gates on drift. Skip.
 - **tsgo**: type errors and inference. Skip.
 - **ruff** (`apps/stripe-bridge/ruff.toml`, `E4 E7 E9 F I RUF`, error level): import order, unused imports, undefined names, syntax-level errors. Skip those; everything else in CLAUDE.md's Python conventions is yours.

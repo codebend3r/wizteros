@@ -66,7 +66,7 @@ Two things that are easy to get wrong:
 
 **Tooling**
 
-[Nx](https://nx.dev) as the task runner over bun workspaces, [oxlint](https://oxc.rs) for TS/JS, [gale](https://github.com/LyricalString/gale) for SCSS, [ruff](https://docs.astral.sh/ruff/) for Python, [oxfmt](https://oxc.rs) for formatting, [tsgo](https://www.npmjs.com/package/@typescript/native-preview) for type checking, husky for git hooks.
+[Nx](https://nx.dev) as the task runner over bun workspaces, [oxlint](https://oxc.rs) for TS/JS, [stylelint](https://stylelint.io) for SCSS, [ruff](https://docs.astral.sh/ruff/) for Python, [oxfmt](https://oxc.rs) for formatting, [tsgo](https://www.npmjs.com/package/@typescript/native-preview) for type checking, husky for git hooks.
 
 **Hosting**
 
