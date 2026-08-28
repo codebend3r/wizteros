@@ -212,12 +212,15 @@ const toRows = (plots: readonly HostPlot[]): readonly ChartRow[] => {
     (first, second) => first - second,
   )
   const columns = plots.map((plot) => carryForward({ points: plot.points, times }))
-  return times.map((at, index) => ({
-    [AT_KEY]: at,
-    ...Object.fromEntries(
-      plots.map((plot, column) => [hostKey(plot.name), columns[column]?.[index] ?? null]),
-    ),
-  }))
+  /** Every host's column at one moment, keyed alongside the timestamp itself. */
+  const entriesAt = (at: number, index: number): readonly (readonly [string, number | null])[] => [
+    [AT_KEY, at],
+    ...plots.map((plot, column): readonly [string, number | null] => [
+      hostKey(plot.name),
+      columns[column]?.[index] ?? null,
+    ]),
+  ]
+  return times.map((at, index) => Object.fromEntries(entriesAt(at, index)))
 }
 
 const timeShort = (at: number): string =>
@@ -380,8 +383,15 @@ export const MetricChart = ({
   // right edge is the honest rendering of "nothing this recent yet".
   const first = nowMs - span
   const inFrame = (point: PlotPoint): boolean => point.at >= first && point.at <= nowMs
-  const visiblePlots = drawn.map((plot) => ({ ...plot, points: plot.points.filter(inFrame) }))
-  const visibleReadings = plots.map((plot) => ({ ...plot, points: plot.points.filter(inFrame) }))
+  /** The same host with only the readings the current frame covers. */
+  const clipToFrame = (plot: HostPlot): HostPlot => ({
+    name: plot.name,
+    seriesIndex: plot.seriesIndex,
+    byTick: plot.byTick,
+    points: plot.points.filter(inFrame),
+  })
+  const visiblePlots = drawn.map(clipToFrame)
+  const visibleReadings = plots.map(clipToFrame)
 
   const rows = toRows(visiblePlots)
 
