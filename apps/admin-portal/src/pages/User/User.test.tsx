@@ -1,4 +1,11 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  waitForElementToBeRemoved,
+  within,
+} from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -347,9 +354,7 @@ test('sets the expiry optimistically with a spinner while in flight', async () =
   expect(screen.getByRole('status', { name: 'Updating expiry' })).toBeInTheDocument()
 
   settle({ updated: 1, expires: pickedIso })
-  await waitFor(() =>
-    expect(screen.queryByRole('status', { name: 'Updating expiry' })).not.toBeInTheDocument(),
-  )
+  await waitForElementToBeRemoved(() => screen.queryByRole('status', { name: 'Updating expiry' }))
   expect(screen.getByText(new Date(pickedIso).toLocaleString())).toBeInTheDocument()
 })
 
@@ -402,8 +407,8 @@ test('sets never expire through the confirm modal and clears the expiry row', as
 
   expect(resetExpiry).toHaveBeenCalledWith({ email: 'max@y.com' })
   // the expiry row optimistically flips to the explicit never-expires state
-  await waitFor(() => expect(screen.queryByText(/days left/)).not.toBeInTheDocument())
-  expect(screen.getByText('♾️ Never expires')).toBeInTheDocument()
+  expect(await screen.findByText('♾️ Never expires')).toBeInTheDocument()
+  expect(screen.queryByText(/days left/)).not.toBeInTheDocument()
 })
 
 test('cancelling the never-expire confirmation makes no change', async () => {
@@ -509,9 +514,7 @@ test.skip('shows a loader next to the clicked tag button while the tag saves', a
 
   expect(screen.getByRole('status', { name: 'Updating tag' })).toBeInTheDocument()
   settle({ email: 'max@y.com', tag: 'vip' })
-  await waitFor(() =>
-    expect(screen.queryByRole('status', { name: 'Updating tag' })).not.toBeInTheDocument(),
-  )
+  await waitForElementToBeRemoved(() => screen.queryByRole('status', { name: 'Updating tag' }))
 })
 
 test('shows a loader next to the downloads toggle while it saves', async () => {
@@ -533,8 +536,8 @@ test('shows a loader next to the downloads toggle while it saves', async () => {
 
   expect(screen.getByRole('status', { name: 'Updating downloads' })).toBeInTheDocument()
   settle({ email: 'max@y.com', downloads: false })
-  await waitFor(() =>
-    expect(screen.queryByRole('status', { name: 'Updating downloads' })).not.toBeInTheDocument(),
+  await waitForElementToBeRemoved(() =>
+    screen.queryByRole('status', { name: 'Updating downloads' }),
   )
 })
 
@@ -557,9 +560,7 @@ test('shows a loader next to the Never expire button while the expiry clears', a
 
   expect(screen.getByRole('status', { name: 'Clearing expiry' })).toBeInTheDocument()
   settle({ updated: 2, expires: null })
-  await waitFor(() =>
-    expect(screen.queryByRole('status', { name: 'Clearing expiry' })).not.toBeInTheDocument(),
-  )
+  await waitForElementToBeRemoved(() => screen.queryByRole('status', { name: 'Clearing expiry' }))
 })
 
 test('disables the active tag button and Clear when untagged', async () => {
