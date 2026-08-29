@@ -84,7 +84,7 @@ Both projects source targets from more than one place, so check `nx show project
 
 Anything cacheable is declared in `nx.json` `targetDefaults`. A new target that is safe to cache belongs there; anything that touches Docker or the network must stay `cache: false`.
 
-Gates: pre-commit runs `bun run system-check` (admin-portal only), pre-push runs `bun run verify` (both apps). CI runs the same checks.
+Gates: pre-commit runs `bun run lint:staged` (lint-staged, autofixing just the staged files) then `bun run system-check` (admin-portal only), pre-push runs `bun run verify` (both apps). CI runs the same checks. lint-staged config is per app in `apps/*/.lintstagedrc.json`, and commands there must spell out `node_modules/.bin/<tool>` because bun keeps the bins in the app, not the root.
 
 ## Releases and deploy
 

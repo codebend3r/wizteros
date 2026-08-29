@@ -1,3 +1,8 @@
+# Staged-file pass: oxlint --fix and oxfmt on staged TS, stylelint --fix and
+# oxfmt on staged SCSS, ruff --fix on staged Python. Fixes are written back
+# and re-staged, so the gate below sees the corrected files.
+bun run lint:staged
+
 # Fast gate: oxlint, stylelint on SCSS, oxfmt --check, tsgo and bun test for
 # admin-portal only, via Nx (cached, so a clean rerun is near-instant).
 # Fix with: bun run lint:fix, bun run lint:css:fix, bun run format.

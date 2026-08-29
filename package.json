@@ -29,6 +29,7 @@
     "lint:css:fix": "nx run-many -t lint:css:fix",
     "lint:py": "nx run-many -t lint:py",
     "lint:py:fix": "nx run-many -t lint:py:fix",
+    "lint:staged": "lint-staged",
     "format": "nx run-many -t format",
     "format:check": "nx run-many -t format:check",
     "setup:py": "python3 -m venv apps/stripe-bridge/.venv && apps/stripe-bridge/.venv/bin/pip install -r apps/stripe-bridge/requirements-dev.txt",
@@ -53,6 +54,7 @@
   },
   "devDependencies": {
     "husky": "^9.1.7",
+    "lint-staged": "17.4.1",
     "nx": "^23.1.1"
   }
 }

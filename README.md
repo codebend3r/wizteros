@@ -66,7 +66,7 @@ Two things that are easy to get wrong:
 
 **Tooling**
 
-[Nx](https://nx.dev) as the task runner over bun workspaces, [oxlint](https://oxc.rs) for TS/JS, [stylelint](https://stylelint.io) for SCSS, [ruff](https://docs.astral.sh/ruff/) for Python, [oxfmt](https://oxc.rs) for formatting, [tsgo](https://www.npmjs.com/package/@typescript/native-preview) for type checking, husky for git hooks.
+[Nx](https://nx.dev) as the task runner over bun workspaces, [oxlint](https://oxc.rs) for TS/JS, [stylelint](https://stylelint.io) for SCSS, [ruff](https://docs.astral.sh/ruff/) for Python, [oxfmt](https://oxc.rs) for formatting, [tsgo](https://www.npmjs.com/package/@typescript/native-preview) for type checking, husky for git hooks, [lint-staged](https://github.com/lint-staged/lint-staged) for the staged-file pass.
 
 **Hosting**
 
@@ -111,7 +111,16 @@ bun run verify     # lint, format check, typecheck and tests across both apps
 | Only what changed | `bun run affected` |
 | Deploy the bridge to the NAS | `bun run deploy:nas` |
 
-Hooks run automatically: pre-commit runs `bun run system-check` (lint, SCSS lint, format check, typecheck, and tests for `admin-portal`), pre-push runs `bun run verify` across both apps. CI runs the same `bun run verify` on every push.
+Hooks run automatically. Pre-commit first runs `bun run lint:staged`, which fixes
+only the files in the commit (`oxlint --fix` and `oxfmt` on TS/TSX, `stylelint
+--fix` and `oxfmt` on SCSS, `ruff check --fix` on Python) and re-stages the
+result, then `bun run system-check` (lint, SCSS lint, format check, typecheck,
+and tests for `admin-portal`). Pre-push runs `bun run verify` across both apps.
+CI runs the same `bun run verify` on every push.
+
+lint-staged is configured per app, in `apps/*/.lintstagedrc.json`; the closest
+config to a staged file wins and its tasks run from that app's directory. Files
+outside `apps/` are left alone, since nothing formats them today.
 
 ## Nx
 

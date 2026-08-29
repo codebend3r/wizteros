@@ -1,0 +1,3 @@
+{
+  "*.py": ["bash ../../scripts/lint-staged-py.sh"]
+}

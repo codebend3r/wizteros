@@ -1,0 +1,5 @@
+{
+  "*.{ts,tsx}": ["node_modules/.bin/oxlint --fix", "node_modules/.bin/oxfmt"],
+  "*.scss": ["node_modules/.bin/stylelint --fix", "node_modules/.bin/oxfmt"],
+  "*.{js,jsx,mjs,cjs,json,md,yml,yaml,html,css}": ["node_modules/.bin/oxfmt"]
+}
