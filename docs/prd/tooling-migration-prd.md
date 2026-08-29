@@ -2,13 +2,13 @@
 
 **Status:** Draft
 **Author:** CJ Rivas
-**Last updated:** 2026-07-23
+**Last updated:** 2026-08-28
 
 ---
 
 ## 1. Summary
 
-Replace ESLint, Prettier, and Vitest with a Rust/Go-based toolchain: Oxlint (linting + type-aware rules), Oxfmt (formatting, including SCSS), tsgo (type checking), Gale (SCSS/CSS lint rules), and Bun test (unit testing). The goal is a dramatically faster local feedback loop and CI pipeline with no loss of code-quality coverage.
+Replace ESLint, Prettier, and Vitest with a Rust/Go-based toolchain: Oxlint (linting + type-aware rules), Oxfmt (formatting, including SCSS), tsgo (type checking), and Bun test (unit testing). Stylelint stays as the SCSS/CSS linter and is out of scope for replacement. The goal is a dramatically faster local feedback loop and CI pipeline with no loss of code-quality coverage.
 
 ## 2. Background and Problem Statement
 
@@ -27,7 +27,7 @@ A new generation of tooling written in Rust and Go (Oxc project, TypeScript 7 / 
 2. Reduce full-repo format check time by at least 10x.
 3. Reduce type-check time by at least 5x using tsgo.
 4. Consolidate formatting for JS/TS/JSON/YAML/Markdown/CSS/SCSS under one tool (Oxfmt).
-5. Keep SCSS lint coverage at parity with the current Stylelint ruleset via Gale.
+5. Keep SCSS lint coverage on Stylelint, unchanged by the migration.
 6. Zero net-new lint noise: the migrated ruleset must not introduce a wave of new violations on day one (use suppressions or rule downgrades where needed).
 7. CI pipeline for lint + format + typecheck completes in under 60 seconds on a warm cache.
 
@@ -46,9 +46,9 @@ A new generation of tooling written in Rust and Go (Oxc project, TypeScript 7 / 
 | Type-aware linting | typescript-eslint | oxlint-tsgolint (`oxlint --type-aware`) | Backed by tsgo. |
 | Type checking | tsc | tsgo (`@typescript/native-preview`) | Go port of the TypeScript compiler. Can also run via `oxlint --type-aware --type-check`. |
 | Formatting (all langs) | Prettier | Oxfmt | Rust. Passes 100% of Prettier JS/TS conformance tests. Formats JS/TS/JSX/TSX, JSON, YAML, TOML, HTML, Vue, CSS, SCSS, Less, Markdown, MDX, GraphQL. Tailwind class sorting built in. |
-| SCSS/CSS linting | Stylelint | Gale | Rust. Drop-in Stylelint replacement: reads existing `.stylelintrc`, honors `stylelint-disable` comments, 260+ rules, LSP server. `.sass` (indented) not supported. |
+| SCSS/CSS linting | Stylelint | Stylelint | Not migrated. Stylelint keeps `.stylelintrc.json`, `stylelint-disable` comments, and the `stylelint-config-recommended-scss` rule set. No Rust replacement reached parity, so this concern stays where it is. |
 | Unit testing | Vitest | Bun test | Zig. Jest-compatible API. See risks in Section 10. |
-| Editor integration | ESLint + Prettier extensions | Oxc VS Code extension, Gale LSP | Format-on-save and inline diagnostics. |
+| Editor integration | ESLint + Prettier extensions | Oxc VS Code extension, Stylelint extension | Format-on-save and inline diagnostics. |
 
 ### 5.1 Framework Coverage: React and Next.js
 
@@ -75,7 +75,7 @@ This migration assumes a React/Next.js codebase and the toolchain covers it as f
 **FR-1: Linting**
 - Oxlint replaces ESLint as the required lint gate in CI and pre-commit.
 - Type-aware rules enabled via `oxlint --type-aware` with `oxlint-tsgolint` installed.
-- Rule mapping documented: every currently enforced ESLint rule maps to an Oxlint rule, a Gale rule, or a documented exception.
+- Rule mapping documented: every currently enforced ESLint rule maps to an Oxlint rule, a Stylelint rule, or a documented exception.
 - `oxlint --fix` supported in the pre-commit hook.
 
 **FR-2: Formatting**
@@ -90,8 +90,8 @@ This migration assumes a React/Next.js codebase and the toolchain covers it as f
 - The tsgo version is kept in sync with the tsgolint shim version used by Oxlint.
 
 **FR-4: SCSS linting**
-- Gale runs against all `.scss` files using the existing `.stylelintrc` (unchanged where possible).
-- Any Stylelint plugin rules not covered by Gale are listed with a decision: drop, replace, or keep Stylelint for that subset temporarily.
+- Stylelint keeps running against all `.scss` files using `.stylelintrc.json`; nothing about the SCSS gate changes.
+- `stylelint --fix` covers the fixable subset and runs on staged files through lint-staged in the pre-commit hook.
 
 **FR-5: Testing**
 - Bun test replaces Vitest for unit and component tests.
@@ -119,7 +119,7 @@ This migration assumes a React/Next.js codebase and the toolchain covers it as f
 ### Phase 0: Baseline and audit (0.5 sprint)
 - Record current timings: ESLint full run, Prettier check, tsc, Vitest suite (local and CI).
 - Export the effective ESLint rule set (`eslint --print-config`) for the rule-mapping exercise.
-- Inventory Stylelint plugins and custom ESLint rules in use.
+- Inventory the custom ESLint rules in use.
 - Inventory Vitest-specific APIs in the test suite (`vi.mock`, `vi.useFakeTimers`, inline snapshots, `test.each`, workspace config, setup files).
 - Inventory all mocks of Next.js modules (`next/navigation`, `next/router`, `next/image`, `next/link`, server actions) and count affected test files; this feeds the Bun test go/no-go decision (Open Question 1).
 
@@ -134,8 +134,8 @@ This migration assumes a React/Next.js codebase and the toolchain covers it as f
 - Add Oxlint; run the oxc migration tooling against the existing ESLint config.
 - Complete the rule-mapping doc; enable type-aware rules with oxlint-tsgolint.
 - Run ESLint and Oxlint in parallel in CI for one week (Oxlint blocking, ESLint informational).
-- Add Gale for SCSS using the existing `.stylelintrc`; verify rule parity on a sample of known violations.
-- Remove ESLint, its plugins, and Stylelint (or scope Stylelint down per FR-4).
+- Leave SCSS on Stylelint; no SCSS linter swap is in scope.
+- Remove ESLint and its plugins.
 - Exit criteria: rule-mapping doc approved, one week of parallel runs with no missed high-severity issues.
 
 ### Phase 3: Type checking (0.5 sprint)
@@ -159,10 +159,10 @@ This migration assumes a React/Next.js codebase and the toolchain covers it as f
 
 ## 9. Exception Process
 
-Some capabilities may not have a 1:1 replacement (custom ESLint rules, niche Stylelint plugins, Vitest-only features like in-source testing or browser mode). For each:
+Some capabilities may not have a 1:1 replacement (custom ESLint rules, Vitest-only features like in-source testing or browser mode). For each:
 
 1. File a ticket describing the gap and its current value.
-2. Decide: drop the rule/feature, find an Oxlint/Gale/Bun equivalent, or retain the legacy tool scoped to only that concern with a removal date.
+2. Decide: drop the rule/feature, find an Oxlint or Bun equivalent, or retain the legacy tool scoped to only that concern with a removal date.
 3. No open exceptions without an owner at the end of Phase 5.
 
 ## 10. Risks and Mitigations
@@ -175,7 +175,6 @@ Some capabilities may not have a 1:1 replacement (custom ESLint rules, niche Sty
 | Oxlint missing a rule the team relies on | Medium | Medium | Rule-mapping doc in Phase 2 plus one week of parallel ESLint runs; Oxlint supports custom rules via its plugin system for gaps worth keeping. |
 | tsgo diagnostic differences from tsc | Medium | High | Two-sprint parallel run; tsgo version pinned and synced with tsgolint. |
 | Oxfmt output differs from Prettier in edge cases | Low | Low | Conformance is at 100% for JS/TS; single reformat commit absorbs any drift; report divergences upstream. |
-| Gale gaps versus Stylelint plugins | Medium | Medium | FR-4 inventory; Stylelint can remain scoped to unsupported rules temporarily. |
 | Tool immaturity / breaking changes (Oxfmt is newly out of beta) | Medium | Medium | Pin exact versions with `--save-exact`; upgrade deliberately, not automatically. |
 | Team learning curve and editor setup friction | Low | Low | Committed `.vscode` settings, migration guide, pairing during Phase 2. |
 
@@ -209,7 +208,7 @@ Each phase is independently reversible until Phase 5 cleanup:
 |---|---|---|
 | 0: Baseline and audit | 0.5 sprint | Frontend lead |
 | 1: Formatting (Oxfmt) | 0.5 sprint | TBD |
-| 2: Linting (Oxlint + Gale) | 1 sprint | TBD |
+| 2: Linting (Oxlint) | 1 sprint | TBD |
 | 3: Type checking (tsgo) | 0.5 sprint (plus 2-sprint parallel run) | TBD |
 | 4: Testing (Bun test) | 1 to 2 sprints | TBD |
 | 5: Cleanup and report | 0.5 sprint | Frontend lead |

@@ -62,7 +62,8 @@ Minor: the repository layout changed underneath both apps.
 
 - Mobile-ready pages and a warm admin snapshot (#18)
 - Stripe customer links and a clean test suite (#16)
-- Adopt oxlint, oxfmt, gale and tsgo (#15)
+- Adopt oxlint, oxfmt, gale and tsgo (#15); gale was later dropped and SCSS
+  linting moved back to stylelint
 - Package the bridge, consolidate docs, bump React 19 (#14)
 - Bump Netlify Node to 24 (#13)
 
