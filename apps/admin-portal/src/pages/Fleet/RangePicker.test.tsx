@@ -9,7 +9,15 @@ test('RangePicker offers every range, widest first', () => {
   const group = screen.getByRole('group', { name: 'CPU history range' })
   const labels = screen.getAllByRole('button').map((button) => button.textContent)
   expect(group).toBeInTheDocument()
-  expect(labels).toEqual(['1 week', '3 days', '1 day', '12 hours', '6 hours', '1 hour'])
+  expect(labels).toEqual([
+    '1 week',
+    '3 days',
+    '1 day',
+    '12 hours',
+    '6 hours',
+    '1 hour',
+    '15 minutes',
+  ])
 })
 
 test('RangePicker marks the chosen range pressed, never by colour alone', () => {

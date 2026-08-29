@@ -125,7 +125,7 @@ test('MetricChart breaks a line across a gap instead of bridging it', () => {
   expect(segments(drawn)).toBe(2)
 })
 
-test('MetricChart counts freshness in whole seconds, the rate the frame advances', () => {
+test('MetricChart says nothing about freshness while the readings keep coming', () => {
   render(
     <MetricChart
       hosts={[meleys]}
@@ -136,8 +136,9 @@ test('MetricChart counts freshness in whole seconds, the rate the frame advances
     />,
   )
 
-  // newest reading sits at T0+60s, so a 90.5s present rounds to 31s of age
-  expect(screen.getByText('Newest reading 31 s ago.')).toBeInTheDocument()
+  // the newest reading sits at T0+60s against a 30s cadence, so 30.5s of age is
+  // the ordinary lag between a reading and the frame that drew it, not news
+  expect(screen.queryByText(/Newest reading/)).toBeNull()
 })
 
 test('MetricChart carries the newest reading forward a point per second', async () => {
@@ -182,10 +183,44 @@ test('MetricChart holds nothing once the newest reading has outlived the cadence
   expect(drawn()).toBe(before)
 })
 
-test('MetricChart dates its newest reading against the moving present', () => {
+test('MetricChart reports the age of the newest reading once the collector is late', () => {
+  // 330s past the last reading against a 30s cadence, well past the point the
+  // lines stop advancing, which is the case the readout exists for. Counted in
+  // whole seconds, the rate the frame itself advances at.
   renderChart([meleys, vermithor])
 
   expect(screen.getByText('Newest reading 330 s ago.')).toBeInTheDocument()
+})
+
+// Recharts divides the domain for its own ticks, which labels the present's
+// offset and reshuffles every second as the frame slides.
+test('MetricChart labels the time axis on quarter hours only', () => {
+  const { container } = renderChart([meleys, vermithor])
+
+  // the label group, not the axis group: Recharts hoists tick text out of the
+  // axis it belongs to
+  const labels = [
+    ...container.querySelectorAll(
+      '.recharts-xAxis-tick-labels .recharts-cartesian-axis-tick-value',
+    ),
+  ].map((tick) => tick.textContent ?? '')
+  const minutes = labels.map((label) => Number(label.match(/\d{1,2}:(\d{2})/)?.[1] ?? NaN))
+  expect(minutes.length).toBeGreaterThan(0)
+  expect(minutes.filter((minute) => minute % 15 !== 0)).toEqual([])
+})
+
+test('MetricChart dates the inspected moment, not just its time', () => {
+  const { container } = renderChart([meleys, vermithor])
+
+  const plot = container.querySelector('.recharts-wrapper')
+  if (!plot) throw new Error('no plot to focus')
+  fireEvent.focus(plot)
+  fireEvent.keyDown(plot, { key: 'ArrowRight' })
+
+  // derived rather than written out: the suite runs in whatever zone and locale
+  // the machine is set to, and the assertion is that a date is there at all
+  const day = new Date(T0 + 30_000).toLocaleDateString([], { month: 'short', day: 'numeric' })
+  expect(container.querySelector('.recharts-tooltip-wrapper')).toHaveTextContent(day)
 })
 
 // Recharts' accessibility layer puts the plot on the tab order and walks it

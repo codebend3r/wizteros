@@ -106,6 +106,20 @@ const holdLimit = (points: readonly PlotPoint[]): number | null => {
   return median === null ? null : median * GAP_FACTOR
 }
 
+/** How long the chart may go without a reading before the silence is news.
+ *
+ * The most patient host's own hold limit, so the readout appears exactly when
+ * the lines stop advancing and not a second before. null below two readings
+ * anywhere, where there is no observed cadence to be late against.
+ */
+const stallLimit = (plots: readonly HostPlot[]): number | null => {
+  const limits = plots.flatMap((plot) => {
+    const limit = holdLimit(plot.points)
+    return limit === null ? [] : [limit]
+  })
+  return limits.length > 0 ? Math.max(...limits) : null
+}
+
 /** One second's sample, or null when no host has a reading fresh enough to
     carry. A host whose newest reading has already outlived its hold limit is
     left out, so a collector that stopped ends the line rather than extending a
@@ -226,8 +240,88 @@ const toRows = (plots: readonly HostPlot[]): readonly ChartRow[] => {
 const timeShort = (at: number): string =>
   new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
-const timeExact = (at: number): string =>
-  new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+const dayShort = (at: number): string =>
+  new Date(at).toLocaleDateString([], { month: 'short', day: 'numeric' })
+
+/** The inspected moment, to the second and carrying its date.
+ *
+ * Every range past a day holds each wall-clock time several times over, so a
+ * time alone names a moment the reader cannot place: 07:51 PM on which of the
+ * seven days a week-wide frame is showing?
+ */
+const stampExact = (at: number): string =>
+  new Date(at).toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
+
+const QUARTER_HOUR_MS = 900_000
+const HOUR_MS = 3_600_000
+const DAY_MS = 86_400_000
+const WIDEST_TICK_STEP_MS = 7 * DAY_MS
+
+/** The spacings the x axis may label at, narrowest first.
+ *
+ * Every one is a whole number of quarter hours, which is what keeps a tick on
+ * :00, :15, :30 or :45 rather than on whatever second the frame happened to
+ * start at. Recharts' own tick picker divides the domain instead, so it labels
+ * the moving present's offset - 07:23, 07:38 - and the labels shuffle every
+ * second as the frame slides.
+ */
+const TICK_STEPS_MS = [
+  QUARTER_HOUR_MS,
+  2 * QUARTER_HOUR_MS,
+  HOUR_MS,
+  2 * HOUR_MS,
+  3 * HOUR_MS,
+  6 * HOUR_MS,
+  12 * HOUR_MS,
+  DAY_MS,
+  2 * DAY_MS,
+  WIDEST_TICK_STEP_MS,
+] as const
+
+/** What one label needs across, its text plus the space that keeps two labels
+    from touching. */
+const TICK_LABEL_PX = 76
+
+/** The narrowest allowed spacing whose labels still fit the measured box, so a
+    phone drops to hourly ticks where a desktop can carry quarter hours. */
+const tickStep = ({ span, width }: { span: number; width: number }): number => {
+  const budget = Math.max(2, Math.floor(width / TICK_LABEL_PX))
+  return TICK_STEPS_MS.find((step) => span / step + 1 <= budget) ?? WIDEST_TICK_STEP_MS
+}
+
+/** Every boundary of the chosen spacing that falls inside the frame.
+ *
+ * Aligned against local midnight rather than the epoch, which is UTC midnight:
+ * in a zone offset by a half hour the epoch's hours land on :30, and the axis
+ * would promise quarter hours while labelling :07 and :22. Stepping on from
+ * the first aligned tick keeps the rest aligned through a daylight-saving
+ * shift too, because every zone shifts by a whole number of quarter hours.
+ */
+const axisTicks = ({
+  first,
+  last,
+  step,
+}: {
+  first: number
+  last: number
+  step: number
+}): readonly number[] => {
+  const offset = new Date(first).getTimezoneOffset() * 60_000
+  const start = Math.ceil((first - offset) / step) * step + offset
+  const count = Math.max(0, Math.floor((last - start) / step) + 1)
+  return Array.from({ length: count }, (_, index) => start + index * step)
+}
+
+/** A tick's label: the date once the ticks stand a day or more apart, where
+    every one of them would otherwise read midnight. */
+const axisLabel = ({ at, step }: { at: number; step: number }): string =>
+  step >= DAY_MS ? dayShort(at) : timeShort(at)
 
 /** The rendered width of the chart's box, tracked so the chart draws in real
     pixels: hairlines stay hairlines and label text never scales with a viewBox.
@@ -346,7 +440,7 @@ const ReadingTooltip = ({ scale, plots, active, label }: ReadingTooltipProps) =>
   if (active !== true || at === null || rows.length === 0) return null
   return (
     <div className={styles.tooltip}>
-      <p className={styles.tooltipTime}>{timeExact(at)}</p>
+      <p className={styles.tooltipTime}>{stampExact(at)}</p>
       <ul className={styles.tooltipRows}>
         {rows.map((row) => (
           <li key={row.name} className={styles.tooltipRow}>
@@ -393,6 +487,12 @@ export const MetricChart = ({
   const visiblePlots = drawn.map(clipToFrame)
   const visibleReadings = plots.map(clipToFrame)
 
+  // Labelled at quarter-hour boundaries rather than wherever the domain
+  // divides, so the ticks name round times and stay put while the frame slides
+  // under them. The spacing widens with the range and narrows with the box.
+  const step = tickStep({ span, width })
+  const quarterHours = axisTicks({ first, last: nowMs, step })
+
   const rows = toRows(visiblePlots)
 
   // The axis is sized from what is on screen, not from the whole payload: a
@@ -410,11 +510,21 @@ export const MetricChart = ({
   // construction and would report a cadence nothing collected at.
   const ticks = unionTicks(visibleReadings)
 
+  // Only worth saying once the collector is late. Readings land every few
+  // seconds, so an always-on readout spends its life reporting the ordinary lag
+  // between a reading and the frame that drew it - a number that reads as a
+  // fault and is not one. Past the stall limit it is the opposite: the lines
+  // have stopped, and this is the only thing on the page that says so.
+  //
   // Whole seconds, because the frame advances in whole seconds: a readout with
   // more precision than the thing it measures reads as false precision.
   const newestTick = ticks[ticks.length - 1] ?? null
-  const ageSeconds = newestTick === null ? null : Math.max(0, (nowMs - newestTick) / 1000)
-  const ageLabel = ageSeconds === null ? null : `${Math.round(ageSeconds)} s`
+  const ageMs = newestTick === null ? null : Math.max(0, nowMs - newestTick)
+  const stallAfterMs = stallLimit(visibleReadings)
+  const ageLabel =
+    ageMs !== null && stallAfterMs !== null && ageMs > stallAfterMs
+      ? `${Math.round(ageMs / 1000)} s`
+      : null
 
   return (
     <div className={styles.chart}>
@@ -458,7 +568,8 @@ export const MetricChart = ({
               // rather than stretching to fill it
               domain={[first, nowMs]}
               allowDataOverflow
-              tickFormatter={timeShort}
+              ticks={[...quarterHours]}
+              tickFormatter={(at: number) => axisLabel({ at, step })}
               // the label class rides the tick itself: Recharts hoists tick
               // text out of the axis group, where the axis class cannot
               // reach it

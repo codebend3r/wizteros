@@ -59,10 +59,10 @@ test('a stale persisted value rehydrates as the default, never an arbitrary rate
   expect(useFleetPrefsStore.getState().updateIntervalMs).toBe(DEFAULT_UPDATE_INTERVAL_MS)
 })
 
-test('the ranges run from a week down to an hour, widest first', () => {
+test('the ranges run from a week down to a quarter hour, widest first', () => {
   // a week is the monitor's own ceiling: raw samples are pruned at seven days,
   // so anything wider could only answer with less
-  expect(CPU_RANGES.map((range) => range.minutes)).toEqual([10_080, 4320, 1440, 720, 360, 60])
+  expect(CPU_RANGES.map((range) => range.minutes)).toEqual([10_080, 4320, 1440, 720, 360, 60, 15])
   expect(DEFAULT_RANGE_MINUTES).toBe(60)
 })
 

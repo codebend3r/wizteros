@@ -23,6 +23,7 @@ export const CPU_RANGES = [
   { minutes: 720, label: '12 hours', prose: '12 hours' },
   { minutes: 360, label: '6 hours', prose: '6 hours' },
   { minutes: 60, label: '1 hour', prose: 'hour' },
+  { minutes: 15, label: '15 minutes', prose: '15 minutes' },
 ] as const
 
 export const DEFAULT_RANGE_MINUTES = 60
