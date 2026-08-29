@@ -1,10 +1,17 @@
+// Three bands, each owning its own padding so the rules between them run the
+// full width of the card. An inset rule reads as decoration; a full-bleed one
+// reads as a division, which is what these are: identity, readings, inventory.
 .card {
   display: grid;
-  align-content: start;
+  overflow: hidden;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-2);
+
+  // The readings band takes the slack, so the inventory band sits on the same
+  // baseline across a row of cards whatever each host reports. A third
+  // implicit row is created only when a footer is actually rendered, so a
+  // host with neither GPU nor Docker leaves no empty track behind.
+  grid-template-rows: auto 1fr;
   height: 100%;
-  padding: var(--space-3);
 
   // The border carries the host's identity, matching its line on the CPU
   // chart; identity is still stated by the name, never by colour alone.
@@ -19,38 +26,34 @@
   }
 }
 
-// The name owns a full row at every width, and the status sits under it. They
-// used to share a row, where the status column sized to its own content first:
-// a qualified phrase took the whole card and left the name a few characters
-// wide, which `overflow-wrap: anywhere` then broke down the middle of the
-// hostname, one letter per line.
+// The name band wears the host's colour at a tenth strength: enough to bind
+// the card to its chart line at a glance, faint enough that muted text still
+// clears 4.5:1 over every slot in the palette. Where color-mix is
+// unsupported the declaration drops and the band is plain surface, which is
+// the border-only card this replaced.
 .header {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-1);
+  gap: var(--space-0);
+  padding: var(--space-2) var(--space-3);
+  border-block-end: 1px solid var(--color-border);
+  background: color-mix(in oklab, var(--series-color, transparent) 10%, var(--color-surface));
 }
 
+// The name owns a full row at every width, and everything else sits under it.
+// It used to share a row with the status, where the status column sized to its
+// own content first: a qualified phrase took the whole card and left the name
+// a few characters wide, which `overflow-wrap: anywhere` then broke down the
+// middle of the hostname, one letter per line.
 .name {
   font-family: var(--font-display);
   font-size: var(--font-size-lg);
   font-weight: 700;
+  letter-spacing: -0.01em;
   overflow-wrap: anywhere;
 }
 
-.status {
-  font-size: var(--font-size-xs);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-// The qualified form is a phrase, not a micro-label: uppercase tracking at
-// that length is unreadable, so drop it while keeping the same position.
-.statusStale {
-  font-size: var(--font-size-sm);
-  letter-spacing: normal;
-  text-transform: none;
-}
-
+// Mono, like every other machine-reported figure on the card.
 .ip {
   color: var(--color-muted);
   font-family: var(--font-mono);
@@ -58,54 +61,97 @@
   overflow-wrap: anywhere;
 }
 
-.note {
-  padding: var(--space-1) var(--space-2);
-  border-left: 3px solid var(--color-accent);
+// Hugs its own text rather than spanning the band, so a one-word status reads
+// as a token and a phrase can still wrap to a second line.
+.status {
+  justify-self: start;
+  padding: var(--space-0) var(--space-1);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-bg);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+// The qualified form is a phrase, not a micro-label: uppercase tracking at
+// that length is unreadable, so drop it while keeping the same position.
+.statusStale {
+  font-weight: 400;
+  font-size: var(--font-size-sm);
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.body {
+  display: grid;
+  align-content: start;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+
+// A rail rather than a filled box: these notes qualify the readings beside
+// them and should not outweigh them.
+.note {
+  padding-inline-start: var(--space-1);
+  border-inline-start: 2px solid var(--color-accent);
+  color: var(--color-muted);
   font-size: var(--font-size-sm);
 }
 
-.metrics {
+// Two columns at every width. The cells are short enough to hold a label and
+// a figure down to a 320px viewport, and collapsing to one column there would
+// double the card's height for no gain in legibility.
+.stats {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-1);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
   margin: 0;
 }
 
-.row {
+.stat {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: baseline;
-  gap: var(--space-2);
-  font-size: var(--font-size-sm);
-
-  dt {
-    color: var(--color-muted);
-  }
-
-  dd {
-    margin: 0;
-    font-variant-numeric: tabular-nums;
-    overflow-wrap: anywhere;
-    text-align: right;
-  }
+  align-content: start;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-0);
 }
 
-// The value keeps the right edge every other row lines up on, but the bar
-// under it needs the width the `auto` column would deny it, so this row hands
-// the spare space to the value instead of the label.
-.diskRow {
-  grid-template-columns: auto minmax(0, 1fr);
+.statLabel {
+  color: var(--color-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-.diskValue {
+.statValue {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-1);
+  gap: var(--space-0);
+  margin: 0;
 }
 
-.gauge {
+// The figure is the thing the eye lands on, so it takes the weight, the size,
+// and the mono face every machine-reported number on this page is set in.
+.figure {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.qualifier {
+  color: var(--color-muted);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.meter {
   display: block;
   overflow: hidden;
   height: 0.375rem;
@@ -117,11 +163,56 @@
 // The host's own colour, the one its card border and chart line already wear:
 // the bar says how much, never what it means, so it needs no scale of its own.
 // Every series colour clears 3:1 against the track it sits in.
-.gaugeFill {
+.meterFill {
   display: block;
   height: 100%;
   border-radius: inherit;
   background: var(--series-color, var(--color-accent));
+}
+
+.footer {
+  // Shared by the chevron and by the spacer that reserves its column, so the
+  // two footer rows cannot drift out of alignment with each other.
+  --chevron-size: 0.375rem;
+
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-block-start: 1px solid var(--color-border);
+}
+
+// The GPU line and the containers line are the same kind of statement - what
+// this host has - so they take the same three-column track and read as a pair.
+.meta {
+  display: grid;
+  align-items: center;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--space-1) var(--space-2);
+
+  // Holds the chevron's column open on the row that has no chevron, so both
+  // labels start at the same x instead of one sitting a marker's width in.
+  &::before {
+    content: '';
+    width: var(--chevron-size);
+  }
+}
+
+.metaLabel {
+  color: var(--color-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+// Never colour alone: on the collapsed roster this is the whole finding, so it
+// is stated in words ("2 down", "not collected") and merely set quietly.
+.metaValue {
+  color: var(--color-muted);
+  font-size: var(--font-size-xs);
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .containers {
@@ -130,18 +221,33 @@
   gap: var(--space-1);
 }
 
-// The disclosure triangle is the marker; the row beside it is a two-column
-// grid so the tally sits hard right whatever the title wraps to. `list-item`
-// is restated because the grid display would otherwise take the marker away.
+// The chevron is drawn rather than left to the native marker: `display: grid`
+// takes a summary's own triangle away, so the row that reads as expandable
+// used to be indistinguishable from the GPU line above it. Three columns -
+// chevron, label, tally - so the tally sits hard right whatever the label
+// wraps to.
 .containersSummary {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: baseline;
-  gap: var(--space-2);
+  align-items: center;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--space-1) var(--space-2);
   cursor: pointer;
+  list-style: none;
 
-  &::marker {
-    color: var(--color-muted);
+  &::-webkit-details-marker {
+    display: none;
+  }
+
+  &::before {
+    content: '';
+    width: var(--chevron-size);
+    height: var(--chevron-size);
+    border-right: 2px solid var(--color-muted);
+    border-bottom: 2px solid var(--color-muted);
+
+    // Pointing down while shut, up while open. Snapped rather than tweened:
+    // a 6px mark is too small for the motion to read as anything but flicker.
+    transform: rotate(45deg);
   }
 
   &:focus-visible {
@@ -150,20 +256,8 @@
   }
 }
 
-.containersTitle {
-  color: var(--color-muted);
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-// Never colour alone: this is the whole finding while the section is shut, so
-// it is stated in words ("2 down", "not collected") and merely tinted.
-.containersTally {
-  color: var(--color-muted);
-  font-size: var(--font-size-xs);
-  text-align: right;
+.containers[open] > .containersSummary::before {
+  transform: rotate(-135deg);
 }
 
 .containerList {
