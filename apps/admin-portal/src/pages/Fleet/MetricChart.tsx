@@ -536,8 +536,6 @@ export const MetricChart = ({
         drawn as a gap.
       </p>
 
-      {copy.note.length > 0 && <p className={styles.caveat}>{copy.note}</p>}
-
       {ageLabel !== null && <p className={styles.freshness}>Newest reading {ageLabel} ago.</p>}
 
       {ticks.length === 0 ? (
