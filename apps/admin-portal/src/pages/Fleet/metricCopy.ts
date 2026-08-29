@@ -1,4 +1,5 @@
 import type { MetricKind } from '@/lib/fleetApi'
+import { rangeProse } from '@/stores/fleetPrefsStore'
 
 /** The words one chart needs that the other three do not.
  *
@@ -36,3 +37,18 @@ export const METRIC_COPY: Record<MetricKind, MetricCopy> = {
     reading: 'network',
   },
 }
+
+/** The sentence under a chart, describing what it draws and how to read it.
+ *
+ * Shared with the placeholder that stands in while a chart loads: the caption
+ * is knowable before any reading is, so the placeholder can say the same thing
+ * in the same space and the prose does not reflow when the lines arrive.
+ */
+export const chartCaption = ({
+  copy,
+  windowMinutes,
+}: {
+  copy: MetricCopy
+  windowMinutes: number
+}): string =>
+  `${copy.measure} over the last ${rangeProse(windowMinutes)}. The line advances a point every second and holds the last reading between collector ticks, so a flat run means no new reading rather than steady load. A gap in a line is a span nothing was observed. Wide ranges arrive averaged into buckets, so a hole shorter than one bucket is averaged over rather than drawn as a gap.`

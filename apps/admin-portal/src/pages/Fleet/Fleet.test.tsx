@@ -670,3 +670,69 @@ test('Fleet moves between chart tabs with the arrow keys, wrapping at the ends',
   fireEvent.keyDown(selected(), { key: 'Home' })
   expect(screen.getByRole('tab', { name: 'CPU' })).toHaveAttribute('aria-selected', 'true')
 })
+
+// Every kind and every range is its own query key, so most presses land on a
+// payload that is not in cache. The panel used to empty for that moment, which
+// dropped the chart's ~300px and jumped everything below it up the page.
+const stubStalledChart = ({ stalled }: { stalled: string }) =>
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      if (url.startsWith(`/fleet/${stalled}`)) return await new Promise(() => {})
+      const chart = CHART_KINDS.find((kind) => url.startsWith(`/fleet/${kind}`))
+      const json = async () => {
+        if (chart !== undefined) return emptyHistory(chart)
+        if (url.startsWith('/fleet'))
+          return { collected_at: '2026-08-15T00:00:00+00:00', stale: false, hosts: [host] }
+        return { open: [], recent: [] }
+      }
+      return { ok: true, status: 200, headers: { get: () => 'application/json' }, json }
+    }),
+  )
+
+test('Fleet holds the chart shape while its first payload is in flight', async () => {
+  stubStalledChart({ stalled: 'cpu' })
+  renderFleet()
+
+  // the caption is knowable before any reading is, so it stands in the same
+  // words and the same space rather than being replaced by a one-line notice
+  expect(
+    await screen.findByText(/Aggregate CPU busy percent per host over the last hour/),
+  ).toBeInTheDocument()
+  expect(screen.getByRole('status')).toHaveTextContent(/Loading CPU readings for the last hour/)
+  // the placeholder owns the loading state, so the section adds no second copy
+  expect(screen.queryByText('Loading CPU history.')).toBeNull()
+})
+
+test('Fleet keeps the chart shape while an uncached tab loads', async () => {
+  stubStalledChart({ stalled: 'gpu' })
+  renderFleet()
+  await screen.findByText(/No CPU readings/)
+
+  fireEvent.click(screen.getByRole('tab', { name: 'GPU' }))
+
+  expect(await screen.findByRole('status')).toHaveTextContent(/Loading GPU readings/)
+  expect(
+    screen.getByText(/Intel iGPU frequency as a share of its own ceiling, per host/),
+  ).toBeInTheDocument()
+})
+
+// A spinner over a chart that already failed reads as a request still running,
+// and the error beneath it as history. Only one of the two can be true.
+test('Fleet drops the chart placeholder once the history request fails', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      if (url.startsWith('/fleet/cpu')) throw new Error('monitor down')
+      const json = async () =>
+        url.startsWith('/fleet')
+          ? { collected_at: '2026-08-15T00:00:00+00:00', stale: false, hosts: [host] }
+          : { open: [], recent: [] }
+      return { ok: true, status: 200, headers: { get: () => 'application/json' }, json }
+    }),
+  )
+  renderFleet()
+
+  expect(await screen.findByText(/No CPU history is available/)).toBeInTheDocument()
+  expect(screen.queryByText(/Loading CPU readings/)).toBeNull()
+})
