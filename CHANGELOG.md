@@ -12,6 +12,26 @@ the version recorded in the tree at that commit. That was not always true; the
 history was rewritten on 2026-08-08 to make it so. See
 [The 2026-08-08 history rewrite](#the-2026-08-08-history-rewrite).
 
+## v0.3.1 (2026-08-28)
+
+- Chart the fleet over time: the collector now serves per-host CPU busy history
+  (up to a week), and the `/fleet` page renders it per second across pickable
+  ranges with per-host colours, an update-rate slider, and preferences persisted
+  in a zustand store
+- Add memory, GPU, and network charts beside CPU, selected by tabs, with
+  per-metric scaling and copy
+- Gate the fleet API behind the admin Supabase session: the collector verifies
+  the session itself, the portal sends it with every read, and cross-origin
+  reads are allowed so the Netlify-hosted portal can reach the NAS
+- Deploy the fleet monitor beside the bridge on the NAS via `docker-compose.yml`
+  and `scripts/deploy-nas.sh`
+- Let an admin page opt out of the hard refresh, so the fleet page keeps its
+  chart state
+- Widen the fleet grid with a new wide max-width token, and fix the chart
+  tooltip box and axis typography
+- Replace gale with stylelint for SCSS linting, and run lint-staged against the
+  files in the commit with per-app configs
+
 ## v0.3.0 (2026-08-23)
 
 - Add the fleet-monitor app and fleet overview page (#46): a new Python service
