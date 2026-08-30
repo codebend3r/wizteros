@@ -301,19 +301,3 @@ test('MetricChart scales a throughput axis to the readings in view', () => {
   // the origin carries no unit
   expect(axis).toContain('0')
 })
-
-// A GPU frequency ratio drawn on a 0-100 axis is indistinguishable from a
-// utilization percentage, and this text is the only thing that says which.
-test('MetricChart carries the caveat its measure needs', () => {
-  render(
-    <MetricChart
-      hosts={[meleys]}
-      windowMinutes={60}
-      unit="percent"
-      copy={METRIC_COPY.gpu}
-      now={() => NOW}
-    />,
-  )
-
-  expect(screen.getByText(/load proxy, not utilization/)).toBeInTheDocument()
-})

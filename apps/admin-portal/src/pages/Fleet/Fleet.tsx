@@ -7,6 +7,7 @@ import { ChartTabs } from '@/pages/Fleet/ChartTabs'
 import { HostCard } from '@/pages/Fleet/HostCard'
 import { METRIC_COPY } from '@/pages/Fleet/metricCopy'
 import { MetricChart } from '@/pages/Fleet/MetricChart'
+import { MetricChartSkeleton } from '@/pages/Fleet/MetricChartSkeleton'
 import { RangePicker } from '@/pages/Fleet/RangePicker'
 import { seriesClass } from '@/pages/Fleet/seriesPalette'
 import { UpdateRateSlider } from '@/pages/Fleet/UpdateRateSlider'
@@ -44,7 +45,11 @@ type AsyncSectionProps<T> = {
   readonly id: string
   readonly title: string
   readonly query: UseQueryResult<T>
-  readonly loadingLabel: string
+  /** What the section says while the query is in flight. Omitted by a section
+      whose own body holds the loading state - the charts stand in a
+      placeholder shaped like the chart, and a line of text under it would be
+      the same news twice. */
+  readonly loadingLabel?: string
   readonly errorSuffix: string
   /** Rendered under the title in every query state: a control that tunes the
       query must stay reachable while that query is loading or failing. */
@@ -73,7 +78,7 @@ const AsyncSection = <T,>({
       {title}
     </h2>
     {controls}
-    {!!query.isPending && (
+    {!!query.isPending && loadingLabel !== undefined && (
       <p className={styles.muted} aria-live="polite">
         {loadingLabel}
       </p>
@@ -117,6 +122,10 @@ const FleetInner = () => {
     refetchInterval: chartIntervalMs,
   })
   const chartCopy = METRIC_COPY[chartKind]
+  // Known from the fleet query, which is not the one being switched: the
+  // placeholder can name the hosts its legend row will list, so that row takes
+  // the height it will still take once the readings land.
+  const hostNames = fleet.data?.hosts.map((host) => host.name) ?? []
 
   return (
     <AdminLayout showHardRefresh={false}>
@@ -159,7 +168,6 @@ const FleetInner = () => {
           id="fleet-charts"
           title="Charts"
           query={chart}
-          loadingLabel={`Loading ${chartCopy.reading} history.`}
           errorSuffix={`No ${chartCopy.reading} history is available.`}
           controls={
             <ChartTabs kinds={CHART_KINDS} active={chartKind} onSelect={setChartKind}>
@@ -173,6 +181,17 @@ const FleetInner = () => {
                   windowMinutes={chart.data.window_minutes}
                   unit={chart.data.unit}
                   copy={chartCopy}
+                />
+              )}
+              {/* No data for this tab and range yet, and no error to explain
+                why: hold the chart's shape rather than collapsing the page and
+                pushing everything below it up for a moment. A cached kind or
+                range paints straight from cache and never lands here. */}
+              {!chart.data && !chart.isError && (
+                <MetricChartSkeleton
+                  copy={chartCopy}
+                  windowMinutes={rangeMinutes}
+                  hostNames={hostNames}
                 />
               )}
             </ChartTabs>

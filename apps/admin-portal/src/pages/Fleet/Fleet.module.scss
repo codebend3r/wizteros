@@ -27,9 +27,12 @@
   font-weight: 700;
 }
 
+// Tabular, so a timestamp that reprints every thirty seconds does not jitter
+// its own width as the digits change.
 .heartbeat {
   color: var(--color-muted);
   font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
 
@@ -41,6 +44,8 @@
   font-size: var(--font-size-sm);
 }
 
+// Sections sit --space-4 apart and their own parts --space-2, so proximity
+// alone groups a heading with what it heads.
 .section {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -48,18 +53,38 @@
 }
 
 // The two chart knobs, stacked on a phone and side by side once there is room
-// for both without either wrapping mid-control.
+// for both without either wrapping mid-control. Boxed, so they read as one
+// toolbar governing the charts below rather than as two loose controls.
 .controls {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-1) var(--space-3);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
 }
 
+// The rule runs from the end of the title to the edge of the page, so each
+// section opens on a visible boundary instead of another line of text at the
+// same weight as the one above it. It is drawn, not marked up: a divider is
+// not a thing a screen reader should have to announce.
 .sectionTitle {
+  display: grid;
+  align-items: center;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-2);
   font-family: var(--font-display);
   font-size: var(--font-size-lg);
   font-weight: 700;
+  letter-spacing: -0.01em;
+
+  &::after {
+    content: '';
+    height: 1px;
+    background: var(--color-border);
+  }
 }
 
 .muted {
@@ -90,13 +115,21 @@
   list-style: none;
 }
 
+// The rail is what makes a row of open incidents read as a list of faults at
+// a glance. It never carries the meaning on its own: the target, the reason,
+// and the time it opened are all stated in words beside it.
 .incident {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+
+  // The target sizes to itself so the reason starts right beside it. Split
+  // evenly the reason began at the halfway mark, a column of empty page
+  // between an incident and what it says.
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: baseline;
   gap: var(--space-2);
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--color-border);
+  border-inline-start: 3px solid var(--color-youth);
   border-radius: var(--radius-md);
   background: var(--color-surface);
   font-size: var(--font-size-sm);
@@ -109,6 +142,7 @@
 
 .incidentTarget {
   font-family: var(--font-mono);
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 
@@ -119,5 +153,6 @@
 .incidentTime {
   color: var(--color-muted);
   font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }

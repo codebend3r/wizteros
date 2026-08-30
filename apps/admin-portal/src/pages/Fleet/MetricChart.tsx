@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { CartesianGrid, Line, LineChart, Tooltip, XAxis, YAxis } from 'recharts'
 import type { MetricHostSeries, MetricUnit } from '@/lib/fleetApi'
-import type { MetricCopy } from '@/pages/Fleet/metricCopy'
+import { CHART_HEIGHT } from '@/pages/Fleet/chartFrame'
+import { chartCaption, type MetricCopy } from '@/pages/Fleet/metricCopy'
 import { metricScale, type MetricScale } from '@/pages/Fleet/metricScale'
 import styles from '@/pages/Fleet/MetricChart.module.scss'
 import { seriesClass } from '@/pages/Fleet/seriesPalette'
@@ -47,7 +48,6 @@ const AT_KEY = 'at'
 const hostKey = (name: string): string => `host:${name}`
 
 const MARGIN = { top: 12, right: 16, bottom: 4, left: 0 } as const
-const CHART_HEIGHT = 230
 
 // Phone-safe on purpose. A wide fallback inflates the layout on a narrow
 // screen before ResizeObserver runs, and the observer then measures the box
@@ -528,15 +528,7 @@ export const MetricChart = ({
 
   return (
     <div className={styles.chart}>
-      <p className={styles.subtitle}>
-        {copy.measure} over the last {rangeProse(windowMinutes)}. The line advances a point every
-        second and holds the last reading between collector ticks, so a flat run means no new
-        reading rather than steady load. A gap in a line is a span nothing was observed. Wide ranges
-        arrive averaged into buckets, so a hole shorter than one bucket is averaged over rather than
-        drawn as a gap.
-      </p>
-
-      {copy.note.length > 0 && <p className={styles.caveat}>{copy.note}</p>}
+      <p className={styles.subtitle}>{chartCaption({ copy, windowMinutes })}</p>
 
       {ageLabel !== null && <p className={styles.freshness}>Newest reading {ageLabel} ago.</p>}
 
