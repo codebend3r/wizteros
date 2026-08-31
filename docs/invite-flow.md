@@ -39,4 +39,5 @@ The bridge plays no part in redemption — it finds out when `/api/users` next s
 - The 35-day clock starts at **redemption**, not at invite creation or payment.
 - A tier change that drops a server (Gold → Youth) still uses disable-first with an access gap — that's the fail-closed fallback, not a bug.
 - If the member's Plex email differs from their Stripe email, the checkout path can't evaluate server coverage and also falls back to disable-first.
+- The hourly reconcile sweep stamps the paid expiry on records that joined without one, matching by email first; when the Plex email differs from the Stripe email it finds the records through the invite's `used_by` instead. The invite email tells new members to create their Plex account with the address it was sent to, so the mismatch should stay rare.
 - Deployed-Wizarr API surface (why all this shape exists): user mutations are only delete / disable / enable / extend / reset-password / update-expiry — no per-user library endpoint, no per-server unshare.

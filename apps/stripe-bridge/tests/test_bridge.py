@@ -292,6 +292,50 @@ def test_reconcile_never_stamps_a_date_already_in_the_past(bridge, monkeypatch):
     bridge.client.set_expiry.assert_not_called()
 
 
+def test_reconcile_falls_back_to_invite_code_when_plex_email_differs(bridge):
+    # A brand-new member may create their Plex account under a different email
+    # (relay addresses, Google/Apple sign-up), so the email join finds nothing
+    # and their records would otherwise never get an expiry. The sweep must
+    # then locate the records through the invite the member redeemed.
+    from stripe_bridge import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "stripe@x.com", "abc", tier="bronze")
+    bridge.client.list_users.return_value = [
+        {"id": 300, "email": "relay@privaterelay.example", "server": "Meleys", "expires": None},
+        {"id": 9, "email": "other@x.com", "server": "Meleys", "expires": None},
+    ]
+    bridge.client.find_user_ids_by_invite.return_value = [300]
+    assert bridge.reconcile_pending_expiries() == 1
+    bridge.client.find_user_ids_by_invite.assert_called_once_with("abc")
+    calls = bridge.client.set_expiry.call_args_list
+    assert [c.args[0] for c in calls] == [300]
+    events = store.events_for_email(bridge.MAP_DB_PATH, "stripe@x.com")
+    assert events[0]["action"] == "Expiry stamped"
+
+
+def test_reconcile_skips_invite_lookup_when_email_matches_stamped_records(bridge):
+    # An email-resolvable member whose records already carry an expiry needs no
+    # fallback; the invite lookup costs live Wizarr calls per member per sweep.
+    from stripe_bridge import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "paid@x.com", "abc")
+    bridge.client.list_users.return_value = [
+        {"id": 2, "email": "paid@x.com", "server": "Meleys", "expires": "2099-01-01T00:00:00"},
+    ]
+    assert bridge.reconcile_pending_expiries() == 0
+    bridge.client.find_user_ids_by_invite.assert_not_called()
+    bridge.client.set_expiry.assert_not_called()
+
+
+def test_reconcile_invite_fallback_on_unredeemed_invite_stamps_nothing(bridge):
+    # Paid but not yet redeemed: no records exist anywhere, and the invite has
+    # no used_by yet, so the sweep must leave everything alone until next time.
+    from stripe_bridge import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "pending@x.com", "abc")
+    bridge.client.list_users.return_value = []
+    bridge.client.find_user_ids_by_invite.return_value = []
+    assert bridge.reconcile_pending_expiries() == 0
+    bridge.client.set_expiry.assert_not_called()
+
+
 def test_duplicate_event_is_ignored(bridge):
     from stripe_bridge import store
     store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "a@x.com", "abc")
@@ -625,6 +669,10 @@ def test_send_invite_email_sends_via_smtp_starttls(monkeypatch):
     assert "http://inv.test/j/abc" in plain
     assert 'href="http://inv.test/j/abc"' in html
     assert "Set up your account" in html
+    # both parts steer a brand-new member to create their Plex account with
+    # the address the email was delivered to, so the bridge's email joins hold
+    assert "Plex account" in plain
+    assert "same email address" in plain
 
 
 def test_retry_after_a_mid_handler_failure_reuses_the_invite(bridge):

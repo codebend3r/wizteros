@@ -53,8 +53,11 @@ def send_invite_email(to_addr: str, invite_url: str) -> None:
     msg.set_content(
         f"""Thanks for contributing to server costs!
 
-Click the link below to set up your account. The invite expires in {INVITE_DAYS} days,
-so please complete signup soon.
+Click the link below to set up your account. You'll sign in with a Plex account;
+if you don't have one yet, create it with this same email address so your access
+stays linked to your contribution.
+
+The invite expires in {INVITE_DAYS} days, so please complete signup soon.
 
   {invite_url}
 

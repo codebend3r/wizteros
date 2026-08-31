@@ -90,6 +90,12 @@ def reconcile_pending_expiries() -> int:
     window) on any of their records still unlimited. Records that already
     carry an expiry are never touched, and a computed date already in the past
     is skipped rather than letting a background job revoke access.
+
+    A member whose Plex email differs from the Stripe email (common for
+    brand-new members, who create the Plex account at redemption) matches no
+    record by email; their records are found through the invite they redeemed
+    instead. The fallback only runs when the email matches nothing at all, so
+    already-stamped members cost no extra Wizarr calls.
     """
     customers = store.all_customer_rows(MAP_DB_PATH)
     tags = store.all_member_tags(MAP_DB_PATH)
@@ -103,8 +109,13 @@ def reconcile_pending_expiries() -> int:
     now = datetime.now(timezone.utc)
     stamped = 0
     for email, row in pending.items():
-        records = [u for u in users
-                   if (u.get("email") or "").lower() == email and not u.get("expires")]
+        matched = [u for u in users if (u.get("email") or "").lower() == email]
+        if matched:
+            records = [u for u in matched if not u.get("expires")]
+        else:
+            ids = (set(client.find_user_ids_by_invite(row["invite_code"]))
+                   if row["invite_code"] else set())
+            records = [u for u in users if u["id"] in ids and not u.get("expires")]
         if not records:
             continue
         expiry = datetime.fromisoformat(row["invited_at"]) + timedelta(days=int(ACCESS_DURATION))

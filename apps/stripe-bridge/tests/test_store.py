@@ -131,6 +131,18 @@ def test_init_db_adds_subscribed_column_to_legacy_table(tmp_path):
     assert store.all_customer_rows(db)["old@x.com"]["subscribed"] is False
 
 
+def test_all_customer_rows_exposes_invite_code(tmp_path):
+    # The reconcile sweep's invite-code fallback (Plex email differs from the
+    # Stripe email) reads the code straight off the row.
+    db = str(tmp_path / "bridge.db")
+    store.init_db(db)
+    store.upsert_pending(db, "cus_1", "a@x.com", "abc", tier="gold")
+    store.stamp_invited(db, "manual@x.com")  # no bridge-issued code
+    rows = store.all_customer_rows(db)
+    assert rows["a@x.com"]["invite_code"] == "abc"
+    assert rows["manual@x.com"]["invite_code"] is None
+
+
 def test_stamp_invited_inserts_placeholder_without_tier_or_payment(tmp_path):
     db = str(tmp_path / "bridge.db")
     store.init_db(db)

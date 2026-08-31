@@ -20,6 +20,16 @@ def test_render_keeps_infrastructure_framing_copy():
     assert "access will be removed" in html
 
 
+def test_render_tells_new_members_to_reuse_their_checkout_email():
+    # Brand-new members create their Plex account at redemption, and every
+    # bridge join (expiry stamping, renewal, cancel, the admin roster) keys on
+    # the email, so the invite email must steer them to sign up with the same
+    # address it was delivered to.
+    html = render_invite_email(invite_url="http://inv.test/j/abc", expires_days=7)
+    assert "Plex account" in html
+    assert "same email address" in html
+
+
 def test_render_uses_inline_styles_only():
     # Gmail strips <style> blocks in some contexts; everything must be inline.
     html = render_invite_email(invite_url="http://inv.test/j/abc", expires_days=7)

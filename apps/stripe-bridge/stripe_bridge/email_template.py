@@ -19,9 +19,14 @@ _TEMPLATE = """\
               <td style="padding:40px 40px 32px;font-family:{font};">
                 <p style="margin:0 0 28px;font-size:14px;font-weight:700;letter-spacing:6px;color:#0b0d12;">WESTEROZ</p>
                 <h1 style="margin:0 0 12px;font-size:24px;font-weight:700;color:#0b0d12;">You&rsquo;re in.</h1>
-                <p style="margin:0 0 28px;font-size:16px;line-height:1.6;color:#3f4653;">
+                <p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#3f4653;">
                   Thanks for contributing to server costs. Your access is ready &mdash;
                   set up your account to get started.
+                </p>
+                <p style="margin:0 0 28px;font-size:14px;line-height:1.6;color:#3f4653;">
+                  You&rsquo;ll sign in with a Plex account. If you don&rsquo;t have one yet,
+                  create it with this same email address so your access stays linked to
+                  your contribution.
                 </p>
                 <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 28px;">
                   <tr>
