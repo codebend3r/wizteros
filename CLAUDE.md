@@ -23,12 +23,13 @@ A self-hosted stack that gates Plex access behind a recurring Stripe "server-cos
 | **Tautulli** | Usage analytics |
 | **stripe-bridge** (`apps/stripe-bridge/`) | Small FastAPI service that converts Stripe webhooks (`checkout.session.completed`, `customer.subscription.deleted`) into Wizarr API calls |
 | **admin-portal** (`apps/admin-portal/`) | Landing page plus the gated admin pages |
+| **fleet-monitor** (`apps/fleet-monitor/`) | FastAPI service that SSH-probes the NAS fleet and serves host metrics to the admin portal's Fleet page, behind the same Supabase auth as the bridge |
 
 The contribution framing is deliberate: Plex TOS prohibits selling access, and Stripe TOS prohibits selling rights you don't own. When suggesting copy, product descriptions, or UX text, lean toward infrastructure/hosting language. Never reference content, libraries, or titles in user-facing payment surfaces. The `copy-compliance` skill audits this.
 
 ## Structure
 
-An Nx monorepo over bun workspaces (`workspaces: ["apps/*"]`), with two apps and no shared libs yet.
+An Nx monorepo over bun workspaces (`workspaces: ["apps/*"]`), with three apps and no shared libs yet.
 
 ```
 wizteros/
@@ -36,6 +37,10 @@ wizteros/
 │   ├── admin-portal/           Nx project `admin-portal`
 │   │   ├── public/
 │   │   └── src/                components/ pages/ lib/ stores/ styles/ test/
+│   ├── fleet-monitor/          Nx project `fleet-monitor`
+│   │   ├── fleet_monitor/      all runtime code
+│   │   ├── scripts/            lint and test entrypoints
+│   │   └── tests/              pytest suite
 │   └── stripe-bridge/          Nx project `stripe-bridge`
 │       ├── stripe_bridge/      all runtime code
 │       ├── scripts/            lint, test, and e2e entrypoints
@@ -58,7 +63,7 @@ wizteros/
 
 Import rules, which tooling does not catch:
 
-- Bridge modules import package-absolute: `from stripe_bridge import store`, `from stripe_bridge.wizarr import WizarrClient`. New modules go inside `stripe_bridge/` and need no Dockerfile change, since the image copies the whole package.
+- Bridge modules import package-absolute: `from stripe_bridge import store`, `from stripe_bridge.wizarr import WizarrClient`. New modules go inside `stripe_bridge/` and need no Dockerfile change, since the image copies the whole package. fleet-monitor follows the same rule with its `fleet_monitor/` package.
 - Web modules import via the `@/` alias, never parent-relative `../`. Same-directory `./` imports (co-located styles, tests) are fine. The alias maps to `apps/admin-portal/src/*` and is declared in both `apps/admin-portal/tsconfig.json` and `apps/admin-portal/vite.config.ts`, so a new alias must be added in both.
 - Unqualified paths below (`styles/globals.scss`, `lib/foo.ts`) are relative to `apps/admin-portal/src/`.
 
@@ -75,11 +80,12 @@ bunx nx show project stripe-bridge     # a project's real target list
 
 The root `bun run <script>` aliases (`dev`, `build`, `verify`, `system-check`, `lint`, `test:web`, `test:bridge`, `bridge:*`, `release:*`, `deploy:nas`) are kept for muscle memory and all delegate to Nx.
 
-Both projects source targets from more than one place, so check `nx show project` rather than assuming from a single file:
+All three projects source targets from more than one place, so check `nx show project` rather than assuming from a single file:
 
 | Project | Targets come from |
 | --- | --- |
 | `admin-portal` | `package.json` scripts only, gated by `nx.includedScripts` |
+| `fleet-monitor` | `package.json` scripts (`test`, `lint:py`) gated by `nx.includedScripts`, plus `project.json` for `docker-build` |
 | `stripe-bridge` | `package.json` scripts (`test`, `lint:py`, `test:e2e`, `test:e2e:tiers`, `refresh:libraries`) gated by `nx.includedScripts`, **plus** `project.json` for the Docker targets (`docker-build`, `serve`, `stop`, `logs`, `test-docker`), declared as `nx:run-commands` with `cwd: {workspaceRoot}` |
 
 Anything cacheable is declared in `nx.json` `targetDefaults`. A new target that is safe to cache belongs there; anything that touches Docker or the network must stay `cache: false`.
@@ -121,8 +127,8 @@ Everything else here is convention, and the import-alias rule in particular has 
 ## Python
 
 - Ruff is pinned to `target-version = "py312"` with `select = ["E4", "E7", "E9", "F", "I", "RUF"]`, so import order (`I`) is enforced. Run `bun run lint:py`, fix with `bun run lint:py:fix`
-- Tests live in `apps/stripe-bridge/tests/`, outside the `stripe_bridge/` package, and run under pytest via `bun run test:bridge`
-- `bun run setup:py` creates the local venv the test suite expects
+- Tests live in `apps/stripe-bridge/tests/` and `apps/fleet-monitor/tests/`, outside their runtime packages, and run under pytest via `bun run test:bridge` and `bun run test:monitor`
+- `bun run setup:py` creates the local venv the bridge test suite expects; `bun run setup:py:monitor` does the same for fleet-monitor
 
 ## CSS
 
