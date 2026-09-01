@@ -189,8 +189,16 @@ const wizarrSection = async ({ inviteCode }) => {
 
   const invitations = (await wz('/api/invitations')).invitations ?? []
   const usernames = new Set(users.map((u) => u.username).filter(Boolean))
+  const userIds = new Set(users.map((u) => u.id))
+  // Wizarr serializes used_by as a Python repr like "<User 281>", not a
+  // username; only the exact repr shape is read as an id (a username that
+  // merely contains digits stays a username). See sales-agent's sources.mjs.
+  const redeemedByMember = (raw) => {
+    const repr = /^\s*<User (\d+)>\s*$/.exec(raw ?? '')
+    return repr ? userIds.has(Number(repr[1])) : usernames.has(raw)
+  }
   const mine = invitations.filter(
-    (inv) => (!!inviteCode && inv.code === inviteCode) || usernames.has(inv.used_by),
+    (inv) => (!!inviteCode && inv.code === inviteCode) || redeemedByMember(inv.used_by),
   )
   if (!mine.length) {
     bullet(`invitations: ${NONE} (no code recorded for this email, and none redeemed by them)`)

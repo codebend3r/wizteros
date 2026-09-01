@@ -390,8 +390,23 @@ async function main() {
   }
 
   // Stripe email -> Plex username, for members whose Plex account uses another
-  // address. Mirrors WizarrClient.find_user_ids_by_invite.
-  const usedBy = new Map(invitations.filter((i) => i.used_by).map((i) => [i.code, i.used_by]))
+  // address. Mirrors WizarrClient.find_user_ids_by_invite. Wizarr serializes
+  // used_by as a Python repr like "<User 281>", not a username, so the repr id
+  // resolves through the user list first; only the exact repr shape is read as
+  // an id (a username that merely contains digits stays a username).
+  const usernameById = new Map(users.map((u) => [u.id, u.username]))
+  const usedByUsername = (raw) => {
+    const repr = /^\s*<User (\d+)>\s*$/.exec(raw ?? '')
+    return repr ? (usernameById.get(Number(repr[1])) ?? null) : raw
+  }
+  const usedBy = new Map(
+    invitations
+      .filter((i) => i.used_by)
+      .flatMap((i) => {
+        const username = usedByUsername(i.used_by)
+        return username ? [[i.code, username]] : []
+      }),
+  )
   const byUsername = new Map([...people.values()].map((p) => [p.member.toLowerCase(), p]))
   const storeRows = store.ok ? store.rows : new Map()
   const tags = store.ok ? store.tags : new Map()
@@ -408,7 +423,12 @@ async function main() {
   // address is not reported twice: once as a payer with no access, once as a
   // freeloader with no payment.
   const codeByUsername = new Map(
-    invitations.filter((i) => i.used_by).map((i) => [i.used_by.toLowerCase(), i.code]),
+    invitations
+      .filter((i) => i.used_by)
+      .flatMap((i) => {
+        const username = usedByUsername(i.used_by)
+        return username ? [[username.toLowerCase(), i.code]] : []
+      }),
   )
   const emailByCode = new Map(
     [...storeRows.values()].filter((r) => r.inviteCode).map((r) => [r.inviteCode, (r.email ?? '').toLowerCase()]),

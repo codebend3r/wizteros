@@ -1,3 +1,5 @@
+import re
+
 import requests
 
 # Per-user writes reconcile with the Plex server the record lives on, so they
@@ -123,7 +125,24 @@ class WizarrClient:
                 break
         if not used_by:
             return []
-        return [u["id"] for u in self._users({"username": used_by})]
+        # Wizarr marshals used_by as fields.String over a User relationship
+        # with no __str__, so the live API returns the repr "<User 281>". The
+        # number is the redeeming record's id; resolve it to that record's
+        # email so sibling-server records are covered too. The username path
+        # stays for a Wizarr that one day serializes a real username.
+        repr_match = re.fullmatch(r"\s*<User (\d+)>\s*", used_by) if isinstance(used_by, str) else None
+        if not repr_match:
+            return [u["id"] for u in self._users({"username": used_by})]
+        record_id = int(repr_match.group(1))
+        users = self._users({})
+        record = next((u for u in users if u.get("id") == record_id), None)
+        if record is None:
+            return []
+        email = record.get("email")
+        if not email:
+            return [record_id]
+        return [u["id"] for u in users
+                if (u.get("email") or "").lower() == email.lower()]
 
     def set_expiry(self, user_id: int, expires_iso: str | None) -> None:
         """Set a record's expiry to an absolute ISO datetime, or None to clear it.

@@ -1,4 +1,5 @@
 import json
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 import requests
@@ -94,6 +95,73 @@ def test_find_user_ids_by_invite_walks_used_by_returns_all():
     responses.reset()
     responses.get(f"{BASE}/api/invitations",
                   json={"invitations": [{"code": "abc123", "used_by": None}]})
+    assert client().find_user_ids_by_invite("abc123") == []
+
+
+def _users_like_wizarr(users):
+    """Mock /api/users with Wizarr's server-side username filtering.
+
+    Live Wizarr filters on a username query param; a repr string like
+    "<User 281>" matches no username and comes back empty. The mock has to
+    reproduce that or a username lookup on the repr looks like it works.
+    """
+    def respond(request):
+        wanted = parse_qs(urlparse(request.url).query).get("username")
+        out = [u for u in users if not wanted or u["username"] == wanted[0]]
+        return (200, {}, json.dumps({"users": out}))
+    responses.add_callback(responses.GET, f"{BASE}/api/users", callback=respond)
+
+
+@responses.activate
+def test_find_user_ids_by_invite_resolves_user_repr_to_all_records():
+    # The live Wizarr serializes used_by through fields.String over a User
+    # relationship with no __str__, so the API returns "<User 281>", not a
+    # username. The number is the redeeming record's id; matching it as a
+    # username can never succeed.
+    responses.get(f"{BASE}/api/invitations",
+                  json={"invitations": [{"code": "abc123", "used_by": "<User 281>"}]})
+    _users_like_wizarr([
+        {"id": 281, "username": "cj", "email": "a@x.com", "server": "Meleys"},
+        {"id": 300, "username": "cj", "email": "A@x.com", "server": "Vhagar"},
+        {"id": 3, "username": "other", "email": "other@x.com", "server": "Meleys"},
+    ])
+    assert client().find_user_ids_by_invite("abc123") == [281, 300]
+
+
+@responses.activate
+def test_find_user_ids_by_invite_repr_without_email_returns_that_record():
+    # A record with no email can't fan out to sibling servers; still time-box
+    # the one record that redeemed the invite.
+    responses.get(f"{BASE}/api/invitations",
+                  json={"invitations": [{"code": "abc123", "used_by": "<User 281>"}]})
+    _users_like_wizarr([
+        {"id": 281, "username": "cj", "email": None, "server": "Meleys"},
+    ])
+    assert client().find_user_ids_by_invite("abc123") == [281]
+
+
+@responses.activate
+def test_find_user_ids_by_invite_tolerates_padded_repr():
+    # The JS mirrors (sales-agent, member-triage, stripe-reconcile) accept the
+    # repr with surrounding whitespace; the bridge is the enforcement path and
+    # must classify the same strings the same way.
+    responses.get(f"{BASE}/api/invitations",
+                  json={"invitations": [{"code": "abc123", "used_by": " <User 281> "}]})
+    _users_like_wizarr([
+        {"id": 281, "username": "cj", "email": "a@x.com", "server": "Meleys"},
+    ])
+    assert client().find_user_ids_by_invite("abc123") == [281]
+
+
+@responses.activate
+def test_find_user_ids_by_invite_repr_for_missing_record_returns_nothing():
+    # The redeeming record can vanish (member removed); a dead id must not be
+    # handed to set_expiry, and no other member's record may stand in for it.
+    responses.get(f"{BASE}/api/invitations",
+                  json={"invitations": [{"code": "abc123", "used_by": "<User 281>"}]})
+    _users_like_wizarr([
+        {"id": 3, "username": "other", "email": "other@x.com", "server": "Meleys"},
+    ])
     assert client().find_user_ids_by_invite("abc123") == []
 
 
