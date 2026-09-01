@@ -94,15 +94,21 @@ async function libraries() {
 }
 
 // The expected scope per tier, derived from the live library list the same way
-// tiers.py derives it. Kept deliberately independent of the Python so a bug in
-// one is not mirrored by the other.
+// tiers.py derives it. The share-server filter, the 9X exclusion, and the 4K
+// rule are re-derived independently of the Python so a bug in one is not
+// mirrored by the other; the youth allow-list and its prefix strip
+// deliberately mirror tiers.py, since the titles ARE the contract. Youth
+// matches on the title with the "NN. " ordering prefix stripped: regrouping
+// the Plex libraries renumbers them without changing what they hold.
+const libraryTitle = (name) => name.replace(/^\d+\.\s*/, '')
+
 function expectedNames({ tier, libs }) {
   const onShare = libs.filter(
     (l) => l.enabled && l.server_name === SHARE_SERVER && !/^9\d\./.test(l.name),
   )
   if (tier === 'youth') {
-    const allow = new Set(['03. Family Movies', '04. 4K Family Movies', '14. Kid Shows'])
-    return onShare.filter((l) => allow.has(l.name)).map((l) => l.name).sort()
+    const allow = new Set(['Family Movies', '4K Family Movies', 'Kid Shows'])
+    return onShare.filter((l) => allow.has(libraryTitle(l.name))).map((l) => l.name).sort()
   }
   if (tier === 'bronze') {
     return onShare
