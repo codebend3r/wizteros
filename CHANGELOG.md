@@ -12,6 +12,23 @@ the version recorded in the tree at that commit. That was not always true; the
 history was rewritten on 2026-08-08 to make it so. See
 [The 2026-08-08 history rewrite](#the-2026-08-08-history-rewrite).
 
+## v0.3.2 (2026-08-30)
+
+- Rebuild the fleet host card: band it into identity, readings, and inventory,
+  tint the name band with the host's series colour, meter the capacity
+  readings, and move GPU and containers into a footer so every card shows the
+  same four readings
+- Hold the chart panel's shape while a kind or range has no cached payload, so
+  switching tabs or ranges no longer collapses the panel and jumps the page
+- Read the fleet chart against the clock: a 15 minute range, quarter-hour x
+  axis labels, a dated tooltip, and the newest reading's age reported only
+  once the collector is actually late
+
+This tag was cut by a bare `npm version` outside `scripts/release.sh`, so it
+sits on a commit that bumped only the root marker and predates this section;
+the admin-portal and bridge markers caught up in a follow-up commit. It is the
+one exception to the tag invariant above.
+
 ## v0.3.1 (2026-08-28)
 
 - Chart the fleet over time: the collector now serves per-host CPU busy history
