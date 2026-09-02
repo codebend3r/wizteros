@@ -1,6 +1,7 @@
 import importlib
 import json
 import os
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -52,6 +53,13 @@ def admin_db(tmp_path, monkeypatch):
     admin.client = MagicMock()
     admin.client.list_users.return_value = USERS
     admin.client.list_libraries.return_value = LIBRARIES
+    # No redeemed invites by default, so no Stripe/Plex email linkage.
+    admin.client.list_invitations.return_value = []
+    # The member page asks Stripe for a customer id the store does not have.
+    # Default to "no such customer" so no test reaches the network; the tests
+    # that exercise the lookup set their own return value.
+    monkeypatch.setattr(admin.stripe.Customer, "search",
+                        MagicMock(return_value=SimpleNamespace(data=[])))
     return admin, dbp
 
 
@@ -221,11 +229,13 @@ def test_list_members_includes_subscribers_not_yet_joined(admin_db):
     assert mx["tier"] == "youth"
     assert mx["downloads"] is True    # derived from youth
     assert mx["subscribed"] is True   # checkout completed -> confirmed payment
-    # They have not joined yet, but their tier is known — so the libraries it
-    # grants are too. Showing them is what the member gets on redeeming, and
-    # without it the member page renders no servers and no libraries at all.
-    assert mx["servers"] == ["Meleys"]
-    assert mx["libraries"] == {"Meleys": ["03. Family Movies", "14. Kid Shows"]}
+    # They have not joined yet, so they hold nothing: servers and libraries are
+    # what a member can actually watch, and inventing them from the tier is how
+    # a locked-out member reads as fully served on /manage. What redeeming
+    # would grant them is carried separately, in entitled.
+    assert mx["servers"] == []
+    assert mx["libraries"] == {}
+    assert mx["entitled"] == {"Meleys": ["03. Family Movies", "14. Kid Shows"]}
     assert mx["invited_at"] is not None  # upsert stamped the grace clock
 
 
@@ -234,10 +244,12 @@ def test_pending_subscriber_libraries_follow_their_tier(admin_db):
     store.upsert_pending(dbp, "cus_g", "gold@x.com", "INV1", tier="gold")
     store.upsert_pending(dbp, "cus_y", "youth@x.com", "INV2", tier="youth")
     by_email = {m["email"].lower(): m for m in a.list_members()}
-    assert by_email["gold@x.com"]["libraries"] == {
+    # entitled is the tier-derived set; libraries stays empty until they join
+    assert by_email["gold@x.com"]["entitled"] == {
         "Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"]}
-    assert by_email["youth@x.com"]["libraries"] == {
+    assert by_email["youth@x.com"]["entitled"] == {
         "Meleys": ["03. Family Movies", "14. Kid Shows"]}
+    assert by_email["gold@x.com"]["libraries"] == {}
 
 
 def test_pending_subscriber_with_an_unknown_tier_shows_nothing(admin_db):
@@ -262,8 +274,11 @@ def test_get_member_pending_subscriber_shows_tier_libraries(admin_db):
     a, dbp = admin_db
     store.upsert_pending(dbp, "cus_g", "gold@x.com", "INV1", tier="gold")
     m = a.get_member("gold@x.com")
-    assert m["servers"] == ["Meleys"]
-    assert m["libraries"] == {"Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"]}
+    # entitled drives the member page's Servers section; holding nothing yet is
+    # reported as holding nothing.
+    assert m["entitled"] == {"Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"]}
+    assert m["servers"] == []
+    assert m["libraries"] == {}
 
 
 def test_get_member_falls_back_to_subscriber(admin_db):
@@ -290,7 +305,37 @@ def test_member_payloads_carry_the_stripe_customer_id(admin_db):
     assert by_email["nora@x.com"]["customer_id"] is None  # no customer_map row at all
 
     assert a.get_member("a@x.com")["customer_id"] == "cus_1"       # joined member
-    assert a.get_member("max@x.com")["customer_id"] is None        # pending subscriber
+    assert a.get_member("max@x.com")["customer_id"] is None        # nothing at Stripe either
+
+
+def test_member_page_finds_a_stripe_customer_the_store_never_recorded(admin_db):
+    """An admin-invited member still links to Stripe when a customer exists there.
+
+    customer_map only holds a real cus_ for members the bridge put there via a
+    checkout; everyone else carries an "admin:<email>" placeholder. Concluding
+    from that placeholder that they have no Stripe record is how a paying
+    member's billing history became unreachable from their own page.
+    """
+    a, dbp = admin_db
+    store.upsert_pending_by_email(dbp, "max@x.com", "INV1", tier="youth")
+    a.stripe.Customer.search.return_value = SimpleNamespace(data=[{"id": "cus_real"}])
+    assert a.get_member("max@x.com")["customer_id"] == "cus_real"
+    a.stripe.Customer.search.assert_called_once()
+
+
+def test_member_page_survives_a_stripe_lookup_failure(admin_db):
+    a, dbp = admin_db
+    store.upsert_pending_by_email(dbp, "max@x.com", "INV1", tier="youth")
+    a.stripe.Customer.search.side_effect = RuntimeError("stripe is down")
+    assert a.get_member("max@x.com")["customer_id"] is None  # page still renders
+
+
+def test_members_list_never_pays_for_a_stripe_lookup(admin_db):
+    """The list is one row per member; a per-row Stripe search would crawl."""
+    a, dbp = admin_db
+    store.upsert_pending_by_email(dbp, "max@x.com", "INV1", tier="youth")
+    a.list_members()
+    a.stripe.Customer.search.assert_not_called()
 
 
 # Reissue scope comes from the share server alone; the Vermithor row is a
@@ -789,8 +834,86 @@ def test_get_member_carries_entitlement_too(admin_db):
     assert m["entitled"] == {"Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"]}
 
 
-def test_pending_subscriber_entitlement_matches_its_libraries(admin_db):
+def test_pending_subscriber_entitlement_is_the_tier_not_what_they_hold(admin_db):
+    # The two must not be conflated: entitled is what the tier grants on
+    # redeeming, libraries is what they can watch right now.
     a, dbp = admin_db
     store.upsert_pending(dbp, "cus_g", "gold@x.com", "INV1", tier="gold")
     mx = {m["email"].lower(): m for m in a.list_members()}["gold@x.com"]
-    assert mx["entitled"] == mx["libraries"]
+    assert mx["entitled"] == {"Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"]}
+    assert mx["libraries"] == {}
+
+
+def test_a_member_paying_under_another_address_is_one_row_not_two(admin_db):
+    """The Stripe email and the Plex email are two addresses for one person.
+
+    Someone can check out with one address and create their Plex account with
+    another. Keyed on email alone that is two members: one "subscribed" row
+    holding no access and one Plex row that never paid. The invite is what ties
+    them together, because whoever redeemed it is the person who paid for it.
+    """
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_1", "stripe-only@x.com", "INV1", tier="gold")
+    a.client.list_invitations.return_value = [
+        {"code": "INV1", "used_by": "<User 3>"},  # redeemed by nora@x.com
+    ]
+    a.members_snapshot.clear()
+
+    by_email = {m["email"].lower(): m for m in a.list_members()}
+    # one row, under the Plex address they actually watch with
+    assert "nora@x.com" in by_email
+    assert "stripe-only@x.com" not in by_email
+    nora = by_email["nora@x.com"]
+    assert nora["stripe_email"] == "stripe-only@x.com"
+    assert nora["tier"] == "gold"          # the tier they pay for
+    assert nora["subscribed"] is True      # the payment follows the person
+    assert nora["customer_id"] == "cus_1"
+
+
+def test_matching_addresses_carry_no_separate_stripe_email(admin_db):
+    """The common case must not render the same string twice."""
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_1", "a@x.com", "INV1", tier="gold")
+    a.client.list_invitations.return_value = [{"code": "INV1", "used_by": "<User 1>"}]
+    a.members_snapshot.clear()
+    by_email = {m["email"].lower(): m for m in a.list_members()}
+    assert by_email["a@x.com"]["stripe_email"] is None
+
+
+def test_an_unredeemed_invite_links_nothing(admin_db):
+    """Until someone redeems it, the bridge has no basis to merge two rows."""
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_1", "stripe-only@x.com", "INV1", tier="gold")
+    a.client.list_invitations.return_value = [{"code": "INV1", "used_by": None}]
+    a.members_snapshot.clear()
+    by_email = {m["email"].lower(): m for m in a.list_members()}
+    assert "stripe-only@x.com" in by_email          # still stands on its own
+    assert by_email["stripe-only@x.com"]["stripe_email"] is None
+    assert by_email["nora@x.com"]["subscribed"] is False
+
+
+def test_used_by_resolves_a_plain_username_too(admin_db):
+    """Wizarr returns a repr today; a real username must keep working."""
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_1", "stripe-only@x.com", "INV1", tier="gold")
+    a.client.list_invitations.return_value = [{"code": "INV1", "used_by": "nora"}]
+    a.members_snapshot.clear()
+    by_email = {m["email"].lower(): m for m in a.list_members()}
+    assert by_email["nora@x.com"]["stripe_email"] == "stripe-only@x.com"
+
+
+def test_get_member_shows_the_stripe_address_on_the_member_page(admin_db):
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_1", "stripe-only@x.com", "INV1", tier="gold")
+    a.client.list_invitations.return_value = [{"code": "INV1", "used_by": "<User 3>"}]
+    m = a.get_member("nora@x.com")
+    assert m["stripe_email"] == "stripe-only@x.com"
+    assert m["customer_id"] == "cus_1"
+
+
+def test_member_page_survives_wizarr_refusing_the_invitation_list(admin_db):
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_1", "stripe-only@x.com", "INV1", tier="gold")
+    a.client.list_invitations.side_effect = RuntimeError("wizarr is down")
+    m = a.get_member("nora@x.com")
+    assert m["stripe_email"] is None  # linkage lost, page still renders

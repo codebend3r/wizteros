@@ -105,6 +105,21 @@ def _ensure_subscribed_column(c: sqlite3.Connection) -> None:
         c.execute("ALTER TABLE customer_map ADD COLUMN subscribed INTEGER NOT NULL DEFAULT 0")
 
 
+def _ensure_payment_state_column(c: sqlite3.Connection) -> None:
+    """Add customer_map.payment_state to a pre-dunning prod DB; no-op once present.
+
+    Stripe keeps charging a failed subscription for weeks before it gives up
+    and deletes it. Until this column existed the bridge heard nothing in
+    between: `subscribed` stayed 1 from the last good payment, the member read
+    "Subscribed Monthly" in the admin UI, and the first visible sign of trouble
+    was their access expiring out from under them. NULL means "no problem
+    known"; "past_due" means Stripe has a failed charge outstanding.
+    """
+    cols = [row["name"] for row in c.execute("PRAGMA table_info(customer_map)")]
+    if "payment_state" not in cols:
+        c.execute("ALTER TABLE customer_map ADD COLUMN payment_state TEXT")
+
+
 def init_db(path: str) -> None:
     """Create the tables if missing and backfill the tier column; safe every startup."""
     with _conn(path) as c:
@@ -119,6 +134,7 @@ def init_db(path: str) -> None:
         _ensure_tier_column(c)
         _ensure_invited_at_column(c)
         _ensure_subscribed_column(c)
+        _ensure_payment_state_column(c)
 
 
 _ADMIN_KEY_PREFIX = "admin:"
@@ -234,6 +250,22 @@ def set_subscribed(path: str, email: str, value: bool) -> None:
         c.execute(
             "UPDATE customer_map SET subscribed = ? WHERE lower(email) = lower(?)",
             (int(value), email),
+        )
+
+
+def set_payment_state(path: str, email: str, state: str | None) -> None:
+    """Record (or clear) an outstanding Stripe payment problem for an email.
+
+    "past_due" is written by invoice.payment_failed and by a subscription that
+    Stripe moves to past_due/unpaid; None is written the moment an invoice for
+    them is paid. Deliberately separate from `subscribed`: a member in dunning
+    has still paid for the period they are in, so their access is untouched.
+    What changes is that the admin UI stops calling them healthy.
+    """
+    with _conn(path) as c:
+        c.execute(
+            "UPDATE customer_map SET payment_state = ? WHERE lower(email) = lower(?)",
+            (state, email),
         )
 
 
@@ -471,8 +503,8 @@ def all_customer_rows(path: str) -> dict[str, dict]:
     """
     with _conn(path) as c:
         rows = c.execute(
-            "SELECT stripe_customer_id, email, invite_code, tier, invited_at, subscribed "
-            "FROM customer_map WHERE email IS NOT NULL"
+            "SELECT stripe_customer_id, email, invite_code, tier, invited_at, subscribed, "
+            "payment_state FROM customer_map WHERE email IS NOT NULL"
         ).fetchall()
     return {
         row["email"].lower(): {
@@ -482,6 +514,7 @@ def all_customer_rows(path: str) -> dict[str, dict]:
             "tier": row["tier"],
             "invited_at": row["invited_at"],
             "subscribed": bool(row["subscribed"]),
+            "payment_state": row["payment_state"],
         }
         for row in rows
     }

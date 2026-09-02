@@ -260,6 +260,80 @@ def resolve_user_ids(client, store_path: str, customer_id: str, email: str | Non
     return ids
 
 
+def resolve_tier_scope(tier: str, *, context: str) -> dict:
+    """The tier's live library scope, or raise so the delivery is retried.
+
+    An empty scope means the tier's library names no longer match anything on
+    the server (a rename, a disabled library). Issuing the invite anyway would
+    hand the member an invite that grants nothing, so the handler raises and
+    leaves the Stripe event unmarked for redelivery.
+    """
+    access = tiers.resolve_tier_access(tier=tier, libraries=client.list_libraries())
+    if not access["library_ids"]:
+        log.error("no libraries resolved for %s tier %s; aborting for retry", tier, context)
+        raise RuntimeError(f"no libraries resolved for tier {tier!r} on {context!r}")
+    return access
+
+
+def create_tier_invite(*, access: dict, tier: str) -> str:
+    """Create one tier-scoped Wizarr invite and return its code."""
+    code = client.create_invite(
+        access["server_ids"], INVITE_DAYS, ACCESS_DURATION,
+        library_ids=access["library_ids"],
+        allow_downloads=access["allow_downloads"],
+    )["code"]
+    log.info("created %s invite (%d libraries, servers %s)",
+             tier, len(access["library_ids"]), access["server_ids"])
+    return code
+
+
+def restore_access(*, email: str, customer_id: str | None, tier: str | None) -> bool:
+    """Re-invite a paid-up member who holds no Wizarr records; True when one was sent.
+
+    A payment landing on a member with nothing to extend is the shape of the
+    worst failure this bridge has: they are paid, they are locked out, and the
+    only trace used to be one WARNING line nobody reads. Their records can be
+    gone because a lapsed window expired them out while an earlier invoice sat
+    unpaid, or because the payment arrived on a second Stripe customer whose
+    email never had records of its own. Either way the remedy is the same one
+    an admin would press by hand (issue a tier-scoped invite and mail it), so
+    the bridge does it itself and tells the operator it happened.
+    """
+    resolved = tiers.normalize_tier(tier)
+    access = resolve_tier_scope(resolved, context=f"access recovery for {email}")
+    code = create_tier_invite(access=access, tier=resolved)
+    if customer_id:
+        store.upsert_pending(MAP_DB_PATH, customer_id, email, code, tier=resolved)
+    else:
+        store.upsert_pending_by_email(MAP_DB_PATH, email, code, tier=resolved)
+    send_invite_email(email, f"{PUBLIC_INVITE_BASE}/j/{code}")
+    log.error("payment for %s found no records; reissued %s invite %s", email, resolved, code)
+    store.record_event(MAP_DB_PATH, email, "Access restored",
+                       f"paid with no active records; {resolved} invite reissued")
+    try:
+        send_alert_email(
+            f"reissued access for {email}",
+            f"{email} paid but held no Wizarr records, so the bridge issued a fresh "
+            f"{resolved} invite and emailed it.\n\n"
+            f"They are locked out until they open that link. If they were paying under "
+            f"a second Stripe customer or a different Plex address, reconcile the two "
+            f"before the next renewal.\n",
+        )
+    except Exception:
+        log.exception("access recovery alert email failed for %s", email)
+    return True
+
+
+def sync_payment_state(*, email: str | None, status: str) -> None:
+    """Mirror a Stripe subscription status onto the member's dunning flag."""
+    if not email:
+        return
+    if status in ("past_due", "unpaid"):
+        store.set_payment_state(MAP_DB_PATH, email, "past_due")
+    elif status in ("active", "trialing"):
+        store.set_payment_state(MAP_DB_PATH, email, None)
+
+
 def handle_event(event: dict) -> None:
     """Act on one Stripe event: checkout -> invite, renewal -> extend, cancel -> disable.
 
@@ -294,11 +368,7 @@ def _dispatch(etype: str, obj: dict) -> None:
             return
         session_id = obj.get("id")
         tier = tiers.normalize_tier((obj.get("metadata") or {}).get("tier"))
-        access = tiers.resolve_tier_access(tier=tier, libraries=client.list_libraries())
-        if not access["library_ids"]:
-            log.error("no libraries resolved for %s tier checkout %s; aborting for retry",
-                      tier, session_id)
-            raise RuntimeError(f"no libraries resolved for tier {tier!r} on session {session_id!r}")
+        access = resolve_tier_scope(tier, context=f"checkout {session_id}")
         # Everything below the invite can raise (a slow Wizarr write, SMTP), and
         # a raise leaves the event unmarked so Stripe retries the whole handler.
         # The session -> invite binding is what stops that retry from minting a
@@ -308,17 +378,13 @@ def _dispatch(etype: str, obj: dict) -> None:
             code = issued["invite_code"]
             log.info("checkout %s already has invite %s; reusing it", session_id, code)
         else:
-            code = client.create_invite(
-                access["server_ids"], INVITE_DAYS, ACCESS_DURATION,
-                library_ids=access["library_ids"],
-                allow_downloads=access["allow_downloads"],
-            )["code"]
-            log.info("created %s invite (%d libraries, servers %s)",
-                     tier, len(access["library_ids"]), access["server_ids"])
+            code = create_tier_invite(access=access, tier=tier)
             if session_id:
                 store.record_session_invite(MAP_DB_PATH, session_id, code)
         if customer_id:
             store.upsert_pending(MAP_DB_PATH, customer_id, email, code, tier=tier)
+        # A completed checkout settles whatever failed on the previous cycle.
+        store.set_payment_state(MAP_DB_PATH, email, None)
         if not (issued and issued["emailed"]):
             send_invite_email(email, f"{PUBLIC_INVITE_BASE}/j/{code}")
             log.info("sent invite to %s", email)
@@ -362,11 +428,16 @@ def _dispatch(etype: str, obj: dict) -> None:
                      expires, len(surviving), email)
 
     elif etype == "invoice.paid":
+        customer_id = obj["customer"]
+        email = obj.get("customer_email") or customer_email(customer_id)
+        # A paid invoice settles any dunning, including the signup one that is
+        # otherwise skipped below. A retry that finally succeeds is exactly
+        # the case this flag exists to close out.
+        if email:
+            store.set_payment_state(MAP_DB_PATH, email, None)
         if obj.get("billing_reason") == "subscription_create":
             log.info("skipping first (signup) invoice for %s", obj.get("customer"))
             return
-        customer_id = obj["customer"]
-        email = obj.get("customer_email") or customer_email(customer_id)
         if email:
             store.set_subscribed(MAP_DB_PATH, email, True)
         # VIP access is never time-boxed — acknowledge the payment, leave expiry alone.
@@ -383,8 +454,36 @@ def _dispatch(etype: str, obj: dict) -> None:
             log.info("renewed %d record(s) for %s (expires %s)", len(ids), email, expires)
             store.record_event(MAP_DB_PATH, email, "Payment received",
                                f"access extended to {expires[:10]}")
+        elif email:
+            # Paid, but nothing to extend. Never leave this as a log line: the
+            # member is locked out right now and only a new invite fixes it.
+            row = store.all_customer_rows(MAP_DB_PATH).get(email.lower()) or {}
+            restore_access(email=email, customer_id=customer_id, tier=row.get("tier"))
         else:
             log.warning("renewal: no wizarr user for %s / %s", customer_id, email)
+
+    elif etype == "invoice.payment_failed":
+        # Stripe retries a failed charge for weeks before giving up. Access is
+        # deliberately untouched for that whole window (they have paid for the
+        # period they are in), but the admin UI stops calling them healthy, so
+        # a member in dunning is visible before their window runs out.
+        customer_id = obj.get("customer")
+        email = obj.get("customer_email") or customer_email(customer_id)
+        if not email:
+            log.warning("payment failed for %s with no resolvable email", customer_id)
+            return
+        store.set_payment_state(MAP_DB_PATH, email, "past_due")
+        log.warning("payment failed for %s (invoice %s)", email, obj.get("id"))
+        store.record_event(MAP_DB_PATH, email, "Payment failed",
+                           "Stripe charge declined; access held while it retries")
+
+    elif etype == "customer.subscription.updated":
+        customer_id = obj.get("customer")
+        status = obj.get("status") or ""
+        m = store.get_mapping(MAP_DB_PATH, customer_id) if customer_id else None
+        email = (m and m["email"]) or (customer_email(customer_id) if customer_id else None)
+        sync_payment_state(email=email, status=status)
+        log.info("subscription for %s is %s", email, status)
 
     elif etype == "customer.subscription.deleted":
         customer_id = obj["customer"]

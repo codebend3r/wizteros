@@ -485,15 +485,158 @@ def test_checkout_falls_back_to_customer_email_field(bridge):
     bridge.send_invite_email.assert_called_once_with("b@x.com", "http://inv.test/j/abc")
 
 
-def test_invoice_paid_renewal_with_no_records_is_noop(bridge):
+def test_invoice_paid_with_no_records_reissues_an_invite(bridge, monkeypatch):
+    # The failure this exists to stop: a member pays, holds no Wizarr records
+    # (their window lapsed while an earlier invoice went unpaid, or the payment
+    # landed on a second Stripe customer), and the bridge shrugs. They stay
+    # locked out with money taken. A paid invoice with nothing to extend must
+    # put a fresh tier-scoped invite in their inbox.
+    from stripe_bridge import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_lapsed", "lapsed@x.com", "old", tier="bronze")
+    bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
+    bridge.client.create_invite.return_value = {"code": "new1", "url": "http://x/j/new1"}
     bridge.client.find_user_ids_by_email.return_value = []
+    bridge.client.find_user_ids_by_invite.return_value = []
+    monkeypatch.setattr(bridge, "send_alert_email", MagicMock())
     bridge.handle_event({
         "type": "invoice.paid",
         "id": "evt_inv_orphan",
-        "data": {"object": {"customer": "cus_missing", "customer_email": "ghost@x.com",
+        "data": {"object": {"customer": "cus_lapsed", "customer_email": "lapsed@x.com",
                             "billing_reason": "subscription_cycle"}},
     })
+    # re-invited at the tier they pay for, and told about it
+    bridge.client.create_invite.assert_called_once_with(
+        [2], 14, "35", library_ids=[17, 22, 24], allow_downloads=False)
+    bridge.send_invite_email.assert_called_once_with("lapsed@x.com", "http://inv.test/j/new1")
+    bridge.send_alert_email.assert_called_once()
+    # nothing to extend, so no expiry write, and the new code is the stored one
     bridge.client.set_expiry.assert_not_called()
+    assert store.get_mapping(bridge.MAP_DB_PATH, "cus_lapsed")["invite_code"] == "new1"
+    actions = [e["action"] for e in store.events_for_email(bridge.MAP_DB_PATH, "lapsed@x.com")]
+    assert "Access restored" in actions
+
+
+def test_invoice_paid_with_no_records_still_recovers_an_unmapped_member(bridge, monkeypatch):
+    # No customer_map row at all (an admin-invited member, or a brand-new
+    # second customer): recovery must not depend on the bridge already knowing
+    # them, and an unrecorded tier falls back to bronze rather than nothing.
+    from stripe_bridge import store
+    bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
+    bridge.client.create_invite.return_value = {"code": "new2", "url": "http://x/j/new2"}
+    bridge.client.find_user_ids_by_email.return_value = []
+    monkeypatch.setattr(bridge, "send_alert_email", MagicMock())
+    bridge.handle_event({
+        "type": "invoice.paid",
+        "id": "evt_inv_unmapped",
+        "data": {"object": {"customer": "cus_new", "customer_email": "second@x.com",
+                            "billing_reason": "subscription_cycle"}},
+    })
+    bridge.send_invite_email.assert_called_once_with("second@x.com", "http://inv.test/j/new2")
+    assert store.all_customer_rows(bridge.MAP_DB_PATH)["second@x.com"]["tier"] == "bronze"
+
+
+def test_invoice_paid_recovery_never_touches_a_vip(bridge, monkeypatch):
+    from stripe_bridge import store
+    store.set_member_tag(bridge.MAP_DB_PATH, "vip@x.com", "vip")
+    bridge.client.find_user_ids_by_email.return_value = []
+    monkeypatch.setattr(bridge, "send_alert_email", MagicMock())
+    bridge.handle_event({
+        "type": "invoice.paid",
+        "id": "evt_inv_vip_orphan",
+        "data": {"object": {"customer": "cus_vip", "customer_email": "vip@x.com",
+                            "billing_reason": "subscription_cycle"}},
+    })
+    bridge.client.create_invite.assert_not_called()
+    bridge.send_invite_email.assert_not_called()
+
+
+def test_payment_failed_flags_dunning_without_touching_access(bridge):
+    # Stripe retries a declined charge for weeks. The member keeps the period
+    # they paid for, but must stop reading as healthy in the admin UI.
+    from stripe_bridge import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "a@x.com", "abc", tier="bronze")
+    bridge.handle_event({
+        "type": "invoice.payment_failed",
+        "id": "evt_failed_1",
+        "data": {"object": {"id": "in_1", "customer": "cus_1", "customer_email": "a@x.com"}},
+    })
+    rows = store.all_customer_rows(bridge.MAP_DB_PATH)
+    assert rows["a@x.com"]["payment_state"] == "past_due"
+    assert rows["a@x.com"]["subscribed"] is True  # still paid up for this period
+    bridge.client.disable_user.assert_not_called()
+    bridge.client.set_expiry.assert_not_called()
+    actions = [e["action"] for e in store.events_for_email(bridge.MAP_DB_PATH, "a@x.com")]
+    assert "Payment failed" in actions
+
+
+def test_successful_retry_clears_the_dunning_flag(bridge):
+    # The exact sequence that lost a member their library: charge fails, then
+    # the retry succeeds. The success has to undo the failure.
+    from stripe_bridge import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "a@x.com", "abc", tier="bronze")
+    bridge.client.find_user_ids_by_email.return_value = [9]
+    bridge.handle_event({
+        "type": "invoice.payment_failed",
+        "id": "evt_failed_2",
+        "data": {"object": {"id": "in_2", "customer": "cus_1", "customer_email": "a@x.com"}},
+    })
+    bridge.handle_event({
+        "type": "invoice.paid",
+        "id": "evt_retry_ok",
+        "data": {"object": {"customer": "cus_1", "customer_email": "a@x.com",
+                            "billing_reason": "subscription_cycle"}},
+    })
+    assert store.all_customer_rows(bridge.MAP_DB_PATH)["a@x.com"]["payment_state"] is None
+    bridge.client.set_expiry.assert_called_once()  # and the window was extended
+
+
+def test_signup_invoice_clears_dunning_even_though_it_is_skipped(bridge):
+    from stripe_bridge import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "a@x.com", "abc", tier="bronze")
+    store.set_payment_state(bridge.MAP_DB_PATH, "a@x.com", "past_due")
+    bridge.handle_event({
+        "type": "invoice.paid",
+        "id": "evt_signup_paid",
+        "data": {"object": {"customer": "cus_1", "customer_email": "a@x.com",
+                            "billing_reason": "subscription_create"}},
+    })
+    assert store.all_customer_rows(bridge.MAP_DB_PATH)["a@x.com"]["payment_state"] is None
+    bridge.client.set_expiry.assert_not_called()  # signup expiry is the checkout's job
+
+
+def test_subscription_updated_syncs_the_dunning_flag_both_ways(bridge):
+    from stripe_bridge import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "a@x.com", "abc", tier="bronze")
+    bridge.handle_event({
+        "type": "customer.subscription.updated",
+        "id": "evt_sub_past_due",
+        "data": {"object": {"customer": "cus_1", "status": "past_due"}},
+    })
+    assert store.all_customer_rows(bridge.MAP_DB_PATH)["a@x.com"]["payment_state"] == "past_due"
+    bridge.handle_event({
+        "type": "customer.subscription.updated",
+        "id": "evt_sub_active",
+        "data": {"object": {"customer": "cus_1", "status": "active"}},
+    })
+    assert store.all_customer_rows(bridge.MAP_DB_PATH)["a@x.com"]["payment_state"] is None
+
+
+def test_checkout_clears_a_dunning_flag_left_by_the_previous_cycle(bridge):
+    from stripe_bridge import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "a@x.com", "abc", tier="bronze")
+    store.set_payment_state(bridge.MAP_DB_PATH, "a@x.com", "past_due")
+    bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
+    bridge.client.create_invite.return_value = {"code": "abc2", "url": "http://x/j/abc2"}
+    bridge.client.find_users_by_email.return_value = []
+    bridge.client.find_user_ids_by_email.return_value = []
+    bridge.handle_event({
+        "type": "checkout.session.completed",
+        "id": "evt_checkout_after_dunning",
+        "data": {"object": {"id": "cs_9", "customer": "cus_1",
+                            "customer_details": {"email": "a@x.com"},
+                            "metadata": {"tier": "bronze"}}},
+    })
+    assert store.all_customer_rows(bridge.MAP_DB_PATH)["a@x.com"]["payment_state"] is None
 
 
 def test_cancel_with_no_records_is_noop(bridge, monkeypatch):

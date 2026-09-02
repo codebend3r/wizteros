@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -50,13 +51,15 @@ def _fetch_upstream() -> dict:
     """
     users = client.list_users()
     libraries = client.list_libraries()
+    invitations = client.list_invitations()
     plex_access = None
     if plex.PLEX_TOKEN:
         try:
             plex_access = plex.shared_access_all()
         except requests.RequestException as exc:
             log.error("plex.tv bulk lookup failed; falling back to tier access: %s", exc)
-    return {"users": users, "libraries": libraries, "plex_access": plex_access}
+    return {"users": users, "libraries": libraries, "invitations": invitations,
+            "plex_access": plex_access}
 
 
 # Wizarr's users list alone takes ~15s, so /admin/members serves the last
@@ -94,7 +97,55 @@ def require_admin(authorization: str = Header(default="")) -> None:
         raise HTTPException(status_code=401, detail="unauthorized")
 
 
-def _dedupe_members(users: list, customers: dict, libraries: list) -> list[dict]:
+# Wizarr marshals an invitation's used_by over a User relationship with no
+# __str__, so the live API returns the repr "<User 281>" rather than a name.
+_USED_BY_REPR = re.compile(r"\s*<User (\d+)>\s*")
+
+
+def _plex_email_by_invite(*, invitations: list, users: list) -> dict[str, str]:
+    """Invite code -> the Plex account email that redeemed it, both lowercased.
+
+    This is the only link between a Stripe customer and a member who signed up
+    to Plex under a different address. The bridge issues the invite against the
+    checkout email; whoever redeems it is the person paying, whatever their
+    Plex account is called.
+    """
+    by_id = {u.get("id"): (u.get("email") or "").lower() for u in users}
+    by_username = {(u.get("username") or "").lower(): (u.get("email") or "").lower()
+                   for u in users}
+    resolved: dict[str, str] = {}
+    for invitation in invitations:
+        code = (invitation.get("code") or "").lower()
+        used_by = invitation.get("used_by")
+        if not code or not isinstance(used_by, str) or not used_by:
+            continue
+        match = _USED_BY_REPR.fullmatch(used_by)
+        email = (by_id.get(int(match.group(1))) if match
+                 else by_username.get(used_by.lower()))
+        if email:
+            resolved[code] = email
+    return resolved
+
+
+def _customer_by_plex_email(*, customers: dict, plex_email_by_invite: dict) -> dict[str, dict]:
+    """Plex email -> the Stripe customer row belonging to that person.
+
+    Only rows whose email differs from the Plex email they resolve to are
+    returned: a matching pair needs no linking, and keeping the map to real
+    mismatches means the caller can treat a hit as "these are two addresses for
+    one person" without re-comparing.
+    """
+    linked: dict[str, dict] = {}
+    for customer_email, row in customers.items():
+        code = (row.get("invite_code") or "").lower()
+        plex_email = plex_email_by_invite.get(code) if code else None
+        if plex_email and plex_email != customer_email:
+            linked[plex_email] = {**row, "stripe_email": customer_email}
+    return linked
+
+
+def _dedupe_members(users: list, customers: dict, libraries: list,
+                    linked: dict | None = None) -> list[dict]:
     """Collapse per-server Wizarr records into one entry per person.
 
     Key is the lowercased email (falling back to username). Aggregates the
@@ -121,7 +172,10 @@ def _dedupe_members(users: list, customers: dict, libraries: list) -> list[dict]
 
     members = []
     for person in people.values():
-        row = (customers.get(person["email"].lower()) if person["email"] else None) or {}
+        key = person["email"].lower() if person["email"] else ""
+        # Their own address first; the invite linkage only answers for members
+        # whose Plex account is under a different email than they pay with.
+        row = customers.get(key) or (linked or {}).get(key) or {}
         tier = tiers.canonical_tier(row.get("tier")) or "unknown"
         downloads = tiers.TIER_DOWNLOADS.get(tier) if tier != "unknown" else None
         servers = sorted(person["servers"])
@@ -140,8 +194,13 @@ def _dedupe_members(users: list, customers: dict, libraries: list) -> list[dict]
             # "entitled to" apart from "actually sharing".
             "entitled": tier_libraries,
             "subscribed": bool(row.get("subscribed")),
+            "payment_state": row.get("payment_state"),
             "invited_at": row.get("invited_at"),
             "customer_id": row.get("customer_id"),
+            # Only set when the member pays under a different address than
+            # their Plex account uses. Equal addresses are the norm and would
+            # just be the same string twice in the UI.
+            "stripe_email": row.get("stripe_email"),
         })
     members.sort(key=lambda m: m["member"].lower())
     return members
@@ -150,11 +209,14 @@ def _dedupe_members(users: list, customers: dict, libraries: list) -> list[dict]
 def _member_from_customer(email: str, row: dict, libraries: list) -> dict:
     """A table row for a subscriber the bridge knows who hasn't joined Wizarr yet.
 
-    They hold no Wizarr record and no plex.tv share, but their tier is known —
-    so the libraries it grants are known too, and that is what they get the
-    moment they redeem. Deriving them here is what stops the member page
-    rendering an empty Servers section for anyone mid-invite. An unrecorded
-    tier derives nothing: with no tier there is no basis to claim any access.
+    Their tier is known, so `entitled` (what redeeming would grant them) is
+    known too and the member page can render a real Servers section instead of
+    an empty one. `servers` and `libraries` stay empty on purpose: this member
+    holds no Wizarr record, and the only other thing that could give them
+    access is a live plex.tv share, which _with_plex_access unions in
+    afterwards. Filling them from the tier instead is how a locked-out member
+    came to read "1 server, 19 libraries" on /manage while they could not
+    watch anything at all.
     """
     resolved = tiers.canonical_tier(row.get("tier")) or "unknown"
     tier_libraries = tiers.tier_server_libraries(tier=resolved, libraries=libraries)
@@ -164,12 +226,16 @@ def _member_from_customer(email: str, row: dict, libraries: list) -> dict:
         "tier": resolved,
         "downloads": tiers.TIER_DOWNLOADS.get(resolved) if resolved != "unknown" else None,
         "expires": None,
-        "servers": sorted(tier_libraries),
-        "libraries": tier_libraries,
+        "servers": [],
+        "libraries": {},
         "entitled": tier_libraries,
         "subscribed": bool(row.get("subscribed")),
+        "payment_state": row.get("payment_state"),
         "invited_at": row.get("invited_at"),
         "customer_id": row.get("customer_id"),
+        # Nothing to contrast with: this row IS the Stripe address, and no
+        # Plex account has claimed it yet.
+        "stripe_email": None,
     }
 
 
@@ -233,16 +299,51 @@ def list_members() -> list[dict]:
     """
     snap = members_snapshot.get()
     customers = store.all_customer_rows(MAP_DB_PATH)
-    members = _dedupe_members(snap["users"], customers, snap["libraries"])
+    linked = _customer_by_plex_email(
+        customers=customers,
+        plex_email_by_invite=_plex_email_by_invite(
+            invitations=snap.get("invitations") or [], users=snap["users"]),
+    )
+    members = _dedupe_members(snap["users"], customers, snap["libraries"], linked=linked)
     joined = {m["email"].lower() for m in members if m["email"]}
+    # A customer already shown as someone's Stripe address must not also stand
+    # as its own row: that is the "two entries for one person" the linkage
+    # exists to collapse.
+    claimed = {m["stripe_email"] for m in members if m.get("stripe_email")}
     pending = [
         _member_from_customer(email, row, snap["libraries"])
         for email, row in customers.items()
-        if email not in joined
+        if email not in joined and email not in claimed
     ]
     return sorted(
         _with_overrides(_with_plex_access(members + pending, access=snap["plex_access"])),
         key=lambda m: m["member"].lower())
+
+
+def _stripe_customer_id_for(email: str) -> str | None:
+    """The member's Stripe customer id, looked up live when the store has none.
+
+    customer_map only holds a real `cus_...` for members the bridge itself put
+    there through a checkout. Anyone invited by an admin, or carried over in
+    the baseline backfill, gets an "admin:<email>" placeholder instead, and the
+    member page then showed no Stripe link at all even when a real customer
+    existed at that exact address. Ask Stripe rather than concluding from our
+    own row that they never paid.
+    """
+    try:
+        found = stripe.Customer.search(query=f"email:'{email}'", limit=1)
+    except Exception:
+        log.exception("stripe customer lookup failed for %s", email)
+        return None
+    data = getattr(found, "data", None) or []
+    return data[0]["id"] if data else None
+
+
+def _with_stripe_customer(member: dict) -> dict:
+    """Fill in a missing customer_id from Stripe; leaves a known one alone."""
+    if member.get("customer_id") or not member.get("email"):
+        return member
+    return {**member, "customer_id": _stripe_customer_id_for(member["email"])}
 
 
 @router.get("/admin/member", dependencies=[Depends(require_admin)])
@@ -250,16 +351,29 @@ def get_member(email: str) -> dict:
     """A member by email: a Wizarr user, or a Stripe subscriber not yet joined; else 404."""
     customers = store.all_customer_rows(MAP_DB_PATH)
     libraries = client.list_libraries()
+    users = client.list_users()
+    # Best effort: a Wizarr that will not list invitations costs the member
+    # page its Stripe-email row, not the page itself.
+    try:
+        invitations = client.list_invitations()
+    except Exception:
+        log.exception("could not read invitations while resolving %s", email)
+        invitations = []
+    linked = _customer_by_plex_email(
+        customers=customers,
+        plex_email_by_invite=_plex_email_by_invite(invitations=invitations, users=users),
+    )
     matches = _dedupe_members(
-        [u for u in client.list_users() if (u.get("email") or "").lower() == email.lower()],
+        [u for u in users if (u.get("email") or "").lower() == email.lower()],
         customers,
         libraries,
+        linked=linked,
     )
     if matches:
-        return _with_overrides(matches)[0]
+        return _with_stripe_customer(_with_overrides(matches)[0])
     if email.lower() in customers:
-        return _with_overrides(
-            [_member_from_customer(email, customers[email.lower()], libraries)])[0]
+        return _with_stripe_customer(_with_overrides(
+            [_member_from_customer(email, customers[email.lower()], libraries)])[0])
     raise HTTPException(status_code=404, detail="no member for that email")
 
 
