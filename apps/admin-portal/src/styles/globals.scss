@@ -16,6 +16,8 @@
   --color-state-shared: #9ed4a4;
   --color-state-not-shared: #f7b32b;
   --color-state-not-entitled: #e69a9a;
+  /* Dunning: 6.1:1 on --color-bg, 5.3:1 on --color-surface. */
+  --color-state-payment-failed: #f2a25c;
 
   /* Chart series identity, one slot per fleet host, always paired with the
      host's name in text. The order is the colourblind-safety mechanism, not a

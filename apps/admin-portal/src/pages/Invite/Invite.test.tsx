@@ -175,9 +175,11 @@ const existing: Member = {
   libraries: {},
   entitled: {},
   subscribed: false,
+  payment_state: null,
   invited_at: null,
   tag: null,
   customer_id: null,
+  stripe_email: null,
 }
 
 test('blocks an email that already belongs to a member', async () => {

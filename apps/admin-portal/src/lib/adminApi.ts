@@ -15,9 +15,25 @@ export type Member = {
   /** What the member's tier grants, independent of what Plex is actually sharing. */
   entitled: Record<string, string[]>
   subscribed: boolean
+  /**
+   * Stripe has a failed charge outstanding for this member ('past_due'), or
+   * null when nothing is wrong. Separate from `subscribed`: a member in
+   * dunning has still paid for the period they are in, so they keep access
+   * while Stripe retries. It exists so the retry window is visible instead of
+   * the first sign being their access lapsing.
+   */
+  payment_state: 'past_due' | null
   invited_at: string | null
   tag: MemberTag | null
   customer_id: string | null
+  /**
+   * The address on their Stripe customer, set ONLY when it differs from
+   * `email` (their Plex account). A member can check out with one address and
+   * create their Plex account with another; the invite they redeemed is what
+   * ties the two together. Null is the normal case, meaning one address for
+   * both, so the UI has nothing extra to show.
+   */
+  stripe_email: string | null
 }
 
 export type PlexServerAccess = {

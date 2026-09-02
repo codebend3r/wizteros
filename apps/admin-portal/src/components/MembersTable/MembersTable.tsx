@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { Member, PaidTier } from '@/lib/adminApi'
 import { isPaidTier, PAID_TIERS, TIER_LABELS } from '@/lib/inviteRules'
-import { deriveStatus } from '@/lib/memberStatus'
+import { STATUS_EMOJI, deriveStatus, type MemberStatus } from '@/lib/memberStatus'
+import { findDuplicateEmails } from '@/lib/duplicateMembers'
 import { TierIcon } from '@/components/TierIcon/TierIcon'
 import styles from '@/components/MembersTable/MembersTable.module.scss'
 
@@ -30,6 +31,20 @@ const formatExpiry = (expires: string | null): string => {
 // before the bridge sent libraries, so the map can be missing entirely.
 const countLibraries = (libraries: Member['libraries']): number =>
   Object.values(libraries ?? {}).reduce((total, names) => total + names.length, 0)
+
+// A member already holding access gets "Re-invite"; one in dunning still holds
+// theirs, so the failed charge must not relabel their action button.
+const HOLDS_ACCESS: ReadonlySet<MemberStatus> = new Set<MemberStatus>([
+  'Subscribed Monthly',
+  'Payment Failed',
+])
+
+const STATUS_CLASS: Partial<Record<MemberStatus, string>> = {
+  'Subscribed Monthly': styles.subscribed,
+  'Payment Failed': styles.paymentFailed,
+}
+
+const statusClass = (status: MemberStatus): string => STATUS_CLASS[status] ?? ''
 
 const accessLabel = ({ servers, libraries }: { servers: number; libraries: number }): string =>
   `${servers} ${servers === 1 ? 'server' : 'servers'}, ` +
@@ -109,6 +124,11 @@ export const MembersTable = ({ members, onSelectTier, invitingEmail }: MembersTa
   const [pageSize, setPageSize] = useState<number>(25)
   const [sort, setSort] = useState<SortState | null>(null)
   const [menuEmail, setMenuEmail] = useState<string | null>(null)
+
+  // Two live customers for one person bill twice and heal neither: the new
+  // payment cannot rescue the old address's access. Flag the pair so it is
+  // reconciled in Stripe rather than read as two healthy members.
+  const duplicates = useMemo(() => findDuplicateEmails({ members }), [members])
 
   const sorted = useMemo(() => {
     if (!sort) {
@@ -198,6 +218,22 @@ export const MembersTable = ({ members, onSelectTier, invitingEmail }: MembersTa
                     >
                       {member.email}
                     </Link>
+                    {!!member.stripe_email && (
+                      <span
+                        className={styles.stripeEmail}
+                        title={`Pays under ${member.stripe_email}; watches as ${member.email}`}
+                      >
+                        pays as {member.stripe_email}
+                      </span>
+                    )}
+                    {duplicates.has(member.email.toLowerCase()) && (
+                      <span
+                        className={styles.duplicate}
+                        title="Another member has a nearly identical address. Check Stripe for two customers billing one person."
+                      >
+                        possible duplicate
+                      </span>
+                    )}
                   </td>
                   <td>
                     <span className={styles.tierCell}>
@@ -230,9 +266,10 @@ export const MembersTable = ({ members, onSelectTier, invitingEmail }: MembersTa
                       )}
                       {status === 'VIP' && <span aria-hidden="true">💎</span>}
                       {status === 'Invited' && <span aria-hidden="true">✉️</span>}
-                      <span className={status === 'Subscribed Monthly' ? styles.subscribed : ''}>
-                        {status}
-                      </span>
+                      {status === 'Payment Failed' && (
+                        <span aria-hidden="true">{STATUS_EMOJI[status]}</span>
+                      )}
+                      <span className={statusClass(status)}>{status}</span>
                     </span>
                   </td>
                   <td className={menuEmail === member.email ? styles.menuOpen : undefined}>
@@ -250,7 +287,7 @@ export const MembersTable = ({ members, onSelectTier, invitingEmail }: MembersTa
                       >
                         {invitingEmail === member.email
                           ? 'Inviting…'
-                          : status === 'Subscribed Monthly'
+                          : HOLDS_ACCESS.has(status)
                             ? 'Re-invite'
                             : 'Invite'}
                       </button>

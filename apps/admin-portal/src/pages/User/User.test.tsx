@@ -28,9 +28,11 @@ const member: Member = {
     Meleys: ['01. Movies', '03. 4K TV Shows'],
   },
   subscribed: true,
+  payment_state: null,
   invited_at: null,
   tag: null,
   customer_id: 'cus_123',
+  stripe_email: null,
 }
 
 import * as adminApiOriginal from '@/lib/adminApi'
@@ -820,4 +822,23 @@ test('shows a dash on the Stripe row for a member with no customer id', async ()
 
   await screen.findByRole('heading', { name: 'max' })
   expect(detailValue('Stripe')).toBe('—')
+})
+
+test('shows the Stripe address when the member pays under a different email', async () => {
+  // Their Plex account and their Stripe customer are two addresses for one
+  // person; the page must say so rather than look like a mismatch.
+  vi.mocked(fetchMember).mockResolvedValue({ ...member, stripe_email: 'pays@elsewhere.com' })
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  expect(screen.getByText('Stripe email')).toBeInTheDocument()
+  expect(screen.getByText('pays@elsewhere.com')).toBeInTheDocument()
+})
+
+test('omits the Stripe address row when both addresses match', async () => {
+  vi.mocked(fetchMember).mockResolvedValue({ ...member, stripe_email: null })
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  expect(screen.queryByText('Stripe email')).not.toBeInTheDocument()
 })

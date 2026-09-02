@@ -25,9 +25,11 @@ const makeMember = (email: string): Member => ({
   libraries: {},
   entitled: {},
   subscribed: false,
+  payment_state: null,
   invited_at: null,
   tag: null,
   customer_id: null,
+  stripe_email: null,
 })
 
 const renderEmail = () => {

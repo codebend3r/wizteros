@@ -6,6 +6,7 @@ export type MemberStatus =
   | 'Invited'
   | 'Declined Invite'
   | 'Subscribed Monthly'
+  | 'Payment Failed'
   | 'VIP'
   | 'Expired Member'
 
@@ -15,6 +16,7 @@ const GRACE_MS = INVITE_GRACE_DAYS * 24 * 60 * 60 * 1000
 // the members table, the member page, and the design reference.
 export const STATUS_EMOJI: Record<MemberStatus, string> = {
   'Subscribed Monthly': '🟢',
+  'Payment Failed': '🟠',
   'Expired Member': '🔴',
   Invited: '✉️',
   'Declined Invite': '🚫',
@@ -27,6 +29,10 @@ export const STATUS_EMOJI: Record<MemberStatus, string> = {
  *
  * - VIP: the admin's manual tag — overrides every derived status. VIP members
  *   keep access with no expiry and are never subject to the invite lifecycle.
+ * - Payment Failed: Stripe has a declined charge outstanding. Ranked above
+ *   Subscribed Monthly because it is the same member, in trouble: they keep
+ *   access while Stripe retries, but showing them as healthy is what let a
+ *   member's window lapse with nobody watching.
  * - Subscribed Monthly / Expired Member: gated on `subscribed`, the bridge's
  *   confirmed-payment flag — NOT the presence of an expiry. This lets a member
  *   carry an expiry (a manual access deadline) without reading as a subscriber.
@@ -43,6 +49,9 @@ export const deriveStatus = ({ member }: { member: Member }): MemberStatus => {
   }
   const expiresAt = member.expires ? new Date(member.expires).getTime() : null
   const isExpired = expiresAt !== null && !Number.isNaN(expiresAt) && expiresAt < Date.now()
+  if (member.payment_state === 'past_due' && !isExpired) {
+    return 'Payment Failed'
+  }
   if (member.subscribed) {
     return isExpired ? 'Expired Member' : 'Subscribed Monthly'
   }

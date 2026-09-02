@@ -37,9 +37,11 @@ const member: Member = {
   libraries: { Meleys: ['01. Movies'] },
   entitled: { Meleys: ['01. Movies'] },
   subscribed: true,
+  payment_state: null,
   invited_at: '2026-07-01T00:00:00+00:00',
   tag: null,
   customer_id: 'cus_1',
+  stripe_email: null,
 }
 
 afterEach(() => {

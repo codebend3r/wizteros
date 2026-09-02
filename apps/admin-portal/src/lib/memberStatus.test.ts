@@ -14,9 +14,11 @@ const makeMember = (overrides: Partial<Member>): Member => ({
   libraries: {},
   entitled: {},
   subscribed: false,
+  payment_state: null,
   invited_at: null,
   tag: null,
   customer_id: null,
+  stripe_email: null,
   ...overrides,
 })
 
@@ -113,4 +115,32 @@ test('an hvu tag is administrative and does not override the lifecycle status', 
   const invitedAt = new Date(Date.now() - 1 * DAY_MS).toISOString()
   const invited = makeMember({ servers: [], invited_at: invitedAt, tag: 'hvu' })
   expect(deriveStatus({ member: invited })).toBe('Invited')
+})
+
+test('a subscriber with a failed charge reads as Payment Failed, not Subscribed', () => {
+  // The gap that let a paying member lapse unnoticed: Stripe spent weeks
+  // retrying a declined charge while the admin UI called them healthy.
+  const member = makeMember({ subscribed: true, payment_state: 'past_due' })
+  expect(deriveStatus({ member })).toBe('Payment Failed')
+})
+
+test('a member in dunning whose window already lapsed still reads as Expired', () => {
+  // Expiry is the harder fact: they cannot watch anything, so the dunning
+  // label must not soften it.
+  const member = makeMember({
+    subscribed: true,
+    payment_state: 'past_due',
+    expires: '2020-01-01T00:00:00+00:00',
+  })
+  expect(deriveStatus({ member })).toBe('Expired Member')
+})
+
+test('a VIP is never relabelled by a failed charge', () => {
+  const member = makeMember({ subscribed: true, payment_state: 'past_due', tag: 'vip' })
+  expect(deriveStatus({ member })).toBe('VIP')
+})
+
+test('clearing the dunning flag returns a member to Subscribed Monthly', () => {
+  const member = makeMember({ subscribed: true, payment_state: null })
+  expect(deriveStatus({ member })).toBe('Subscribed Monthly')
 })

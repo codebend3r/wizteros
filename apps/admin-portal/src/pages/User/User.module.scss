@@ -150,6 +150,22 @@
   font-size: var(--font-size-sm);
 }
 
+// Shown only when the member pays under a different address than their Plex
+// account uses, so the two are never mistaken for two people.
+.stripeEmail {
+  display: grid;
+  gap: calc(var(--space-1) / 2);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.stripeEmailHint {
+  color: var(--color-muted);
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
+}
+
 .daysLeft {
   color: var(--color-muted);
 }

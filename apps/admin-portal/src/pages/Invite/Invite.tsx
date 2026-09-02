@@ -84,9 +84,11 @@ const InviteInner = () => {
         libraries: {},
         entitled: {},
         subscribed: false,
+        payment_state: null,
         invited_at: new Date().toISOString(),
         tag: null,
         customer_id: null,
+        stripe_email: null,
       }
       queryClient.setQueryData<Member[]>(MEMBERS_QUERY_KEY, (old) => {
         if (!old) {

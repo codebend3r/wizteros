@@ -171,6 +171,17 @@ const MemberDetails = ({
       </dd>
       <dt>Tag</dt>
       <dd>{member.tag ? TAG_LABELS[member.tag] : '—'}</dd>
+      {!!member.stripe_email && (
+        <>
+          <dt>Stripe email</dt>
+          <dd className={styles.stripeEmail}>
+            <span>{member.stripe_email}</span>
+            <span className={styles.stripeEmailHint}>
+              pays under this address; watches as {member.email}
+            </span>
+          </dd>
+        </>
+      )}
       <dt>Stripe</dt>
       <dd>
         {member.customer_id && siteConfig.stripeDashboardUrl ? (

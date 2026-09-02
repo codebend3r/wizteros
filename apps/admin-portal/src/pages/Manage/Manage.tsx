@@ -31,6 +31,7 @@ type PendingInvite = {
 // with its live count, in the order the lifecycle moves.
 const STATUS_FILTERS: ReadonlyArray<{ status: MemberStatus; label: string }> = [
   { status: 'Subscribed Monthly', label: 'Subscribed' },
+  { status: 'Payment Failed', label: 'Payment failed' },
   { status: 'VIP', label: 'VIP' },
   { status: 'Invited', label: 'Invited' },
   { status: 'Declined Invite', label: 'Declined' },
@@ -40,6 +41,7 @@ const STATUS_FILTERS: ReadonlyArray<{ status: MemberStatus; label: string }> = [
 
 const EMPTY_COUNTS: Record<MemberStatus, number> = {
   'Subscribed Monthly': 0,
+  'Payment Failed': 0,
   'Expired Member': 0,
   Invited: 0,
   'Declined Invite': 0,

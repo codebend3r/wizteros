@@ -15,9 +15,11 @@ const makeMember = (overrides: Partial<Member>): Member => ({
   libraries: {},
   entitled: {},
   subscribed: false,
+  payment_state: null,
   invited_at: null,
   tag: null,
   customer_id: null,
+  stripe_email: null,
   ...overrides,
 })
 
@@ -428,4 +430,104 @@ test('Servers/Libs shows — for a member with no access at all', () => {
     </MemoryRouter>,
   )
   expect(screen.queryByLabelText(/server/)).not.toBeInTheDocument()
+})
+
+test('flags two subscribers whose addresses are one character apart', () => {
+  // One person, two Stripe customers: the second payment cannot restore the
+  // first address's access, and both rows otherwise read as healthy.
+  render(
+    <MemoryRouter>
+      <MembersTable
+        members={[
+          makeMember({ member: 'jimmyvo767', email: 'jimmyvo767@gmail.com', subscribed: true }),
+          makeMember({ member: 'jimmyvo768', email: 'jimmyvo768@gmail.com', subscribed: true }),
+          makeMember({ member: 'other', email: 'other@gmail.com', subscribed: true }),
+        ]}
+        onSelectTier={() => {}}
+        invitingEmail={null}
+      />
+    </MemoryRouter>,
+  )
+  expect(screen.getAllByText('possible duplicate')).toHaveLength(2)
+})
+
+test('a member with a failed charge is labelled Payment Failed, not Subscribed', () => {
+  render(
+    <MemoryRouter>
+      <MembersTable
+        members={[
+          makeMember({
+            member: 'jim',
+            email: 'jim@x.com',
+            subscribed: true,
+            payment_state: 'past_due',
+          }),
+        ]}
+        onSelectTier={() => {}}
+        invitingEmail={null}
+      />
+    </MemoryRouter>,
+  )
+  expect(screen.getByText('Payment Failed')).toBeInTheDocument()
+  expect(screen.queryByText('Subscribed Monthly')).not.toBeInTheDocument()
+})
+
+test('a member holding no records shows no servers rather than their tier scope', () => {
+  // The lie that hid a locked-out member: tier-derived counts rendered as
+  // though they were access.
+  render(
+    <MemoryRouter>
+      <MembersTable
+        members={[
+          makeMember({
+            member: 'jim',
+            email: 'jim@x.com',
+            subscribed: true,
+            servers: [],
+            libraries: {},
+            entitled: { Meleys: ['04. Movies'] },
+          }),
+        ]}
+        onSelectTier={() => {}}
+        invitingEmail={null}
+      />
+    </MemoryRouter>,
+  )
+  // the servers cell carries an aria-label only when there is access to name
+  expect(screen.queryByLabelText(/librar/)).not.toBeInTheDocument()
+})
+
+test('shows the Stripe address on a member who pays under a different email', () => {
+  render(
+    <MemoryRouter>
+      <MembersTable
+        members={[
+          makeMember({
+            member: 'jimmyvo768',
+            email: 'jimmyvo768@gmail.com',
+            stripe_email: 'jimmyvo767@gmail.com',
+            subscribed: true,
+          }),
+        ]}
+        onSelectTier={() => {}}
+        invitingEmail={null}
+      />
+    </MemoryRouter>,
+  )
+  expect(screen.getByText('jimmyvo768@gmail.com')).toBeInTheDocument()
+  expect(screen.getByText('pays as jimmyvo767@gmail.com')).toBeInTheDocument()
+})
+
+test('a member whose addresses match shows only the one address', () => {
+  render(
+    <MemoryRouter>
+      <MembersTable
+        members={[makeMember({ member: 'jim', email: 'jim@x.com', subscribed: true })]}
+        onSelectTier={() => {}}
+        invitingEmail={null}
+      />
+    </MemoryRouter>,
+  )
+  expect(screen.getByText('jim@x.com')).toBeInTheDocument()
+  expect(screen.queryByText(/pays as/)).not.toBeInTheDocument()
 })
