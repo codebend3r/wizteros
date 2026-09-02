@@ -201,6 +201,7 @@ Subagents under `.claude/agents/` are scoped to this repo the same way.
 | Topic | Where |
 | --- | --- |
 | Tiers and the invite/renewal/cancel flow | `docs/invite-flow.md` |
+| Failed payments, dunning, and duplicate customers | `docs/billing-failures.md` |
 | NAS deployment | `docs/nas-deployment.md` |
 | The *arr media stacks on the NAS | `docs/arr-stack.md` |
 | Webhook ingress | `docs/tailscale-funnel.md` |

@@ -69,11 +69,29 @@ the Wizarr, store, and log sections; being off the LAN leaves you Stripe and Wiz
   ones that do not (tier scope, unresolved tiers, tracebacks).
 
 Status vocabulary (`apps/admin-portal/src/lib/memberStatus.ts`): **VIP** beats everything
-(the `hvu` tag changes nothing); **Subscribed Monthly** and **Expired Member** are gated
-on `subscribed`, never on the presence of an expiry, and split on whether that expiry is
-past; **Invited** and **Declined Invite** are `invited_at` inside or past the 14 day grace
-(`INVITE_GRACE_DAYS` in `lib/inviteRules.ts`); **Uninvited** is known to the bridge with
-no payment and no invite.
+(the `hvu` tag changes nothing); **Payment Failed** is `payment_state = past_due`, a
+Stripe charge failing right now on a member who still holds access; **Subscribed Monthly**
+and **Expired Member** are gated on `subscribed`, never on the presence of an expiry, and
+split on whether that expiry is past; **Invited** and **Declined Invite** are `invited_at`
+inside or past the 14 day grace (`INVITE_GRACE_DAYS` in `lib/inviteRules.ts`);
+**Uninvited** is known to the bridge with no payment and no invite.
+
+`servers` and `libraries` on a member payload are what they can actually watch (Wizarr
+records unioned with the live plex.tv share); `entitled` is what their tier *would* grant.
+A row reading `—` under Servers/Libs holds nothing, whatever its tier says.
+
+A **Stripe email** row on the member page (and `pays as <address>` on `/manage`) means
+they check out under one address and watch under another. That is a normal household
+shape, not an error: `email` is the Plex account, `stripe_email` is the card. The two are
+joined through the invite they redeemed (`used_by`), so the join only exists once a
+**bridge-issued** invite has been redeemed. An invite created straight against the Wizarr
+API links nothing.
+
+A **possible duplicate** badge is the weaker signal: another member's address is one edit
+away, or the same Gmail mailbox written with dots or a `+tag`, and nothing proves they are
+the same person. That is usually one person with two Stripe customers. Check both in
+Stripe before concluding anything about either, and never assume the older or
+better-looking address is the one holding the money.
 
 The grace is 14 days but the deployed bridge runs `INVITE_EXPIRES_DAYS=7`, so a member can
 read **Invited** for a week after their link stopped working. Trust the invitation's
@@ -198,8 +216,10 @@ now plus `ACCESS_DURATION` (35 days), absolutely, not additively, and logs `rene
 record(s) for <email>`. The handler skips exactly `billing_reason=subscription_create`, so
 a `subscription_update` or a one-off invoice renews too.
 
-- `renewal: no wizarr user for <customer> / <email>`: there was nothing to extend. Their
-  Plex account email differs from the Stripe email, or their records are gone.
+- `payment for <email> found no records; reissued <tier> invite <code>`: there was nothing
+  to extend, so the bridge issued a fresh invite and mailed it rather than leaving them
+  locked out. Their records are gone, or the payment arrived on a second Stripe customer.
+  That is case 7, and the remedy has already run.
 - VIP: the log says VIP and the event reads "Payment received". Expiry is deliberately
   untouched. Not a bug, do not correct it.
 - `skipping first (signup) invoice`: by design. The checkout already stamped the window.
@@ -218,7 +238,45 @@ the customer's email in the Stripe dashboard so the next `invoice.paid` resolves
 reissue an invite so the store row and the Plex account line up. Setting the expiry alone
 buys 35 days and nothing else.
 
-## Case 6: member wants to cancel
+## Case 6: charge failed, member still has access
+
+Dossier: Stripe `status=past_due` with `delinquent=true` and a latest invoice still
+`open`; store `payment_state=past_due`, `subscribed` still 1; Wizarr records present with
+an expiry that has not yet passed. The UI reads **🟠 Payment Failed**.
+
+Nothing is broken. Stripe retries a declined charge for weeks and the member keeps the
+period they paid for, so the bridge deliberately leaves access alone. What matters is the
+deadline: **their expiry is not extended until an invoice is actually paid**, so if the
+retries never succeed, the window runs out and Wizarr expires their records away. That is
+how a member ends up locked out with a live-looking subscription.
+
+- **Remedy:** none in the admin UI. Tell the member their card is failing and point them
+  at the billing portal to update it. Do not extend the expiry to paper over it, and do
+  not cancel on their behalf.
+- **Watch the date.** If the expiry lands before Stripe gives up, they will lose access
+  mid-dunning. `POST /admin/reset-expiry` is the one legitimate use of Set expiry here,
+  and only to hold them to the end of the period they already paid for.
+- **If the retry succeeds**, `invoice.paid` clears the flag and extends the expiry on its
+  own. If their records are already gone by then, the bridge issues a fresh invite and
+  mails it (an **Access restored** event, plus an operator alert). Check for a second
+  Stripe customer before assuming that invite is the whole fix.
+
+## Case 7: paid, and the payment found nothing to extend
+
+Dossier: Stripe shows a paid invoice; the member history carries **Access restored**; an
+operator alert went out; Wizarr records still `none found` until they redeem.
+
+The bridge already did the remedy. Do not reissue again on top of it, that only repoints
+the store row at a newer code and restarts the grace clock. Two causes to separate:
+
+- **Their window lapsed while an earlier invoice went unpaid** (case 6 that ran out of
+  road). The reissued invite is the fix; they need to open it.
+- **The payment landed on a second Stripe customer.** Look for a "possible duplicate"
+  badge, or search Stripe by the near-miss address. Both subscriptions are billing one
+  person and only one of them will keep working. Cancel the one they do not want (case 8)
+  and, if the failed one was charged, refund it in the Stripe dashboard.
+
+## Case 8: member wants to cancel
 
 Only on the member's own request.
 
