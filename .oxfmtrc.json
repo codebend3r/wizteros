@@ -1,0 +1,21 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 100,
+  "semi": false,
+  "singleQuote": true,
+  "jsxSingleQuote": false,
+  "trailingComma": "all",
+  "arrowParens": "always",
+  "bracketSpacing": true,
+  "endOfLine": "lf",
+  "insertFinalNewline": true,
+  "ignorePatterns": [
+    "apps",
+    "dist",
+    "node_modules",
+    ".nx",
+    ".claude/worktrees",
+    "graphify-out",
+    "bun.lock"
+  ]
+}
