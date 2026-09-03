@@ -1,11 +1,32 @@
+import logging
 import re
 
 import requests
+
+log = logging.getLogger("bridge.wizarr")
 
 # Per-user writes reconcile with the Plex server the record lives on, so they
 # are as slow as /api/users itself. A 10s ceiling used to time out mid-loop and
 # leave a checkout half-applied while the write still landed server-side.
 USER_WRITE_TIMEOUT = 45
+
+# Wizarr does not take an arbitrary expiry. Its API routes expires_in_days
+# through a fixed lookup ({1: "day", 7: "week", 30: "month"} in
+# app/blueprints/api/api_routes.py) and falls back to "never" for anything
+# else. So an unhonored number does not shorten the invite, it removes the
+# expiry altogether, and the link stays redeemable for good.
+EXPIRY_DAYS_HONORED = (1, 7, 30)
+
+
+def honored_expiry_days(days: int) -> int:
+    """The shortest expiry Wizarr honors that is still no shorter than `days`.
+
+    Snapping up rather than down: a window that is too short can kill a paying
+    member's invite before they ever redeem it, whereas one that is too long
+    only delays the backstop. Past the largest honored value there is no finite
+    choice left, so that one is used instead of decaying into "never".
+    """
+    return next((d for d in EXPIRY_DAYS_HONORED if d >= days), EXPIRY_DAYS_HONORED[-1])
 
 
 class WizarrClient:
@@ -37,10 +58,21 @@ class WizarrClient:
 
         library_ids=None leaves scoping to Wizarr's defaults; a list scopes the
         invite to exactly those libraries.
+
+        expires_in_days is snapped to a value Wizarr honors before it is sent,
+        because the API turns every other number into an invite that never
+        expires rather than rejecting it.
         """
+        expires = honored_expiry_days(expires_in_days)
+        if expires != expires_in_days:
+            log.warning(
+                "wizarr honors an expiry of %s days only, so %d was snapped up to "
+                "%d; the invite expires rather than living forever",
+                ", ".join(str(d) for d in EXPIRY_DAYS_HONORED),
+                expires_in_days, expires)
         payload = {
             "server_ids": list(server_ids),
-            "expires_in_days": expires_in_days,
+            "expires_in_days": expires,
             "duration": duration,
             "unlimited": unlimited,
             "allow_downloads": allow_downloads,
