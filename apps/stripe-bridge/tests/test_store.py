@@ -291,3 +291,60 @@ def test_one_person_can_pay_under_several_addresses(tmp_path):
     store.set_member_link(dbp, stripe_email="a@x.com", plex_email="one@x.com")
     store.set_member_link(dbp, stripe_email="b@x.com", plex_email="one@x.com")
     assert store.all_member_links(dbp) == {"a@x.com": "one@x.com", "b@x.com": "one@x.com"}
+
+
+def test_duplicate_rows_for_one_email_resolve_to_the_newest_real_customer(tmp_path):
+    """Several customers can share an email; which one answers must not be luck.
+
+    The map is keyed on the Stripe customer id, so a member who checked out
+    more than once has a row per attempt. Collapsing them by email with no
+    ordering let whichever row SQLite happened to return last decide the
+    member's tier, invite code, and the customer id behind their Stripe link.
+
+    subscribed and invited_at cannot break the tie: both are written across
+    every row sharing the email. The newest checkout is the live one, so
+    insertion order is the signal that actually distinguishes them.
+    """
+    dbp = str(tmp_path / "b.db")
+    store.init_db(dbp)
+    store.upsert_pending(dbp, "cus_old", "dupe@x.com", "OLD", tier="bronze")
+    store.upsert_pending(dbp, "cus_mid", "dupe@x.com", "MID", tier="gold")
+    store.upsert_pending(dbp, "cus_newest", "dupe@x.com", "NEWEST", tier="silver")
+
+    row = store.all_customer_rows(dbp)["dupe@x.com"]
+    assert row["customer_id"] == "cus_newest"
+    assert row["invite_code"] == "NEWEST"
+    assert row["tier"] == "silver"
+    # One entry per email either way; this is about which one, not how many.
+    assert len(store.all_customer_rows(dbp)) == 1
+
+
+def test_a_real_customer_outranks_an_admin_placeholder(tmp_path):
+    """An "admin:<email>" row carries no Stripe identity; a cus_ row does.
+
+    Recency loses to that: a placeholder added after a real checkout would
+    otherwise blank the member's customer id and their Stripe link with it.
+    """
+    import sqlite3
+
+    dbp = str(tmp_path / "b.db")
+    store.init_db(dbp)
+    store.upsert_pending(dbp, "cus_real", "both@x.com", "REAL", tier="gold")
+    with sqlite3.connect(dbp) as c:  # a later placeholder, higher rowid
+        c.execute(
+            "INSERT INTO customer_map (stripe_customer_id, email, invite_code, tier) "
+            "VALUES ('admin:both@x.com', 'both@x.com', 'ADMIN', 'bronze')")
+
+    row = store.all_customer_rows(dbp)["both@x.com"]
+    assert row["customer_id"] == "cus_real"
+    assert row["invite_code"] == "REAL"
+
+
+def test_one_row_per_email_is_unaffected(tmp_path):
+    dbp = str(tmp_path / "b.db")
+    store.init_db(dbp)
+    store.upsert_pending(dbp, "cus_1", "solo@x.com", "ONE", tier="silver")
+    rows = store.all_customer_rows(dbp)
+    assert len(rows) == 1
+    assert rows["solo@x.com"]["customer_id"] == "cus_1"
+    assert rows["solo@x.com"]["invite_code"] == "ONE"

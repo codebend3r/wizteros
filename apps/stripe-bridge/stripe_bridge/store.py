@@ -546,6 +546,9 @@ def all_customer_tiers(path: str) -> dict[str, str | None]:
 def all_customer_rows(path: str) -> dict[str, dict]:
     """Every customer's lowercased email -> {"customer_id", "invite_code", "tier", "invited_at", "subscribed"}.
 
+    Exactly one entry per email: when several customer rows share one, the
+    newest real Stripe customer wins (see the ordering below).
+
     invite_code, tier, and invited_at may be None. The invited_at stamp lets
     the admin UI age a pending invite into the "Declined Invite" status once
     the grace period lapses; subscribed is the confirmed-payment flag that
@@ -555,10 +558,19 @@ def all_customer_rows(path: str) -> dict[str, dict]:
     (cus_...) or None; admin-issued placeholder rows are keyed
     "admin:<email>" and must never leak as a customer id.
     """
+    # One entry per email, and WHICH row answers must not depend on SQLite's
+    # unordered scan. A member who checked out more than once has a row per
+    # attempt, all sharing an email. subscribed and invited_at cannot break the
+    # tie (both are written across every row for the email), so order by what
+    # does vary: a real cus_ row outranks an "admin:<email>" placeholder, and
+    # among real ones the newest checkout is the live one. Best row sorts last,
+    # which is the one the comprehension below keeps.
     with _conn(path) as c:
         rows = c.execute(
             "SELECT stripe_customer_id, email, invite_code, tier, invited_at, subscribed, "
-            "payment_state FROM customer_map WHERE email IS NOT NULL"
+            "payment_state FROM customer_map WHERE email IS NOT NULL "
+            "ORDER BY (CASE WHEN stripe_customer_id LIKE 'cus\\_%' ESCAPE '\\' "
+            "          THEN 1 ELSE 0 END) ASC, rowid ASC"
         ).fetchall()
     return {
         row["email"].lower(): {
