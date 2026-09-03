@@ -276,10 +276,16 @@ def test_reconcile_ignores_unsubscribed_members(bridge):
     bridge.client.list_users.assert_not_called()
 
 
-def test_reconcile_never_stamps_a_date_already_in_the_past(bridge, monkeypatch):
-    # A stale subscribed row (e.g. expiry manually cleared long after signup)
-    # must not let a background sweep revoke access with a past-dated expiry.
+def test_reconcile_never_stamps_a_date_already_in_the_past(bridge):
+    """A stale signup anchor must not revoke access, and must not be ignored either.
+
+    Skipping these rows outright is what left a paying member with no expiry
+    at all: their signup is older than the access window, so the computed date
+    is always past and the sweep passed over them forever. Re-anchor at the
+    sweep instead, which is the same window every payment grants.
+    """
     import sqlite3
+    from datetime import datetime, timedelta, timezone
 
     from stripe_bridge import store
     store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "old@x.com", "abc")
@@ -287,6 +293,57 @@ def test_reconcile_never_stamps_a_date_already_in_the_past(bridge, monkeypatch):
         c.execute("UPDATE customer_map SET invited_at = '2020-01-01T00:00:00+00:00'")
     bridge.client.list_users.return_value = [
         {"id": 1, "email": "old@x.com", "server": "Vermithor", "expires": None},
+    ]
+    before = datetime.now(timezone.utc)
+
+    assert bridge.reconcile_pending_expiries() == 1
+
+    stamped = datetime.fromisoformat(bridge.client.set_expiry.call_args.args[1])
+    assert stamped > before, "the sweep must never stamp a date that is already past"
+    assert stamped <= datetime.now(timezone.utc) + timedelta(days=35)
+    events = store.events_for_email(bridge.MAP_DB_PATH, "old@x.com")
+    assert events[0]["action"] == "Expiry stamped"
+    assert "signup window had already lapsed" in events[0]["detail"]
+
+
+def test_reconcile_stamps_a_linked_member_under_their_plex_address(bridge):
+    """The payer is the subscribed row; the records live under the other address.
+
+    Neither existing path reaches them: nothing matches the Stripe email, and
+    the invite their checkout issued was never redeemed, so the invite
+    fallback finds nothing either. Without the link they keep unbounded access.
+    """
+    from datetime import datetime, timedelta
+
+    from stripe_bridge import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_live", "pays@x.com", "INVNEW", tier="bronze")
+    store.set_member_link(bridge.MAP_DB_PATH, stripe_email="pays@x.com",
+                          plex_email="watches@x.com")
+    bridge.client.list_users.return_value = [
+        {"id": 287, "email": "watches@x.com", "server": "Vermithor", "expires": None},
+        {"id": 288, "email": "watches@x.com", "server": "Meleys", "expires": None},
+    ]
+    bridge.client.find_user_ids_by_invite.return_value = []  # unredeemed
+
+    assert bridge.reconcile_pending_expiries() == 2
+
+    calls = bridge.client.set_expiry.call_args_list
+    assert sorted(c.args[0] for c in calls) == [287, 288]
+    invited_at = datetime.fromisoformat(
+        store.all_customer_rows(bridge.MAP_DB_PATH)["pays@x.com"]["invited_at"])
+    assert all(datetime.fromisoformat(c.args[1]) == invited_at + timedelta(days=35)
+               for c in calls)
+
+
+def test_reconcile_leaves_a_linked_members_stamped_records_alone(bridge):
+    """Resolving through the link must not re-stamp what already has an expiry."""
+    from stripe_bridge import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_live", "pays@x.com", "INVNEW")
+    store.set_member_link(bridge.MAP_DB_PATH, stripe_email="pays@x.com",
+                          plex_email="watches@x.com")
+    bridge.client.list_users.return_value = [
+        {"id": 287, "email": "watches@x.com", "server": "Vermithor",
+         "expires": "2099-01-01T00:00:00"},
     ]
     assert bridge.reconcile_pending_expiries() == 0
     bridge.client.set_expiry.assert_not_called()

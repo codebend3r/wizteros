@@ -88,8 +88,10 @@ def reconcile_pending_expiries() -> int:
     webhook fires at redemption to correct it. Sweep every subscribed, non-VIP
     member and stamp invited_at + ACCESS_DURATION (the signup date anchors the
     window) on any of their records still unlimited. Records that already
-    carry an expiry are never touched, and a computed date already in the past
-    is skipped rather than letting a background job revoke access.
+    carry an expiry are never touched. When the signup anchor is old enough
+    that the window has already closed, the expiry is re-anchored at the sweep
+    rather than stamped in the past: a background job must never revoke a
+    paying member's access, and must never leave it unbounded either.
 
     A member whose Plex email differs from the Stripe email (common for
     brand-new members, who create the Plex account at redemption) matches no
@@ -99,6 +101,7 @@ def reconcile_pending_expiries() -> int:
     """
     customers = store.all_customer_rows(MAP_DB_PATH)
     tags = store.all_member_tags(MAP_DB_PATH)
+    links = store.all_member_links(MAP_DB_PATH)
     pending = {
         email: row for email, row in customers.items()
         if row["subscribed"] and row["invited_at"] and tags.get(email) != "vip"
@@ -110,6 +113,11 @@ def reconcile_pending_expiries() -> int:
     stamped = 0
     for email, row in pending.items():
         matched = [u for u in users if (u.get("email") or "").lower() == email]
+        if not matched and links.get(email):
+            # They pay under this address and watch under another. The invite
+            # fallback below cannot reach them: a member who re-subscribed
+            # while already holding access never redeems the new invite.
+            matched = [u for u in users if (u.get("email") or "").lower() == links[email]]
         if matched:
             records = [u for u in matched if not u.get("expires")]
         else:
@@ -118,18 +126,27 @@ def reconcile_pending_expiries() -> int:
             records = [u for u in users if u["id"] in ids and not u.get("expires")]
         if not records:
             continue
-        expiry = datetime.fromisoformat(row["invited_at"]) + timedelta(days=int(ACCESS_DURATION))
-        if expiry <= now:
-            log.warning("reconcile: computed expiry %s for %s is already past; skipping",
-                        expiry.isoformat(), email)
-            continue
+        window = timedelta(days=int(ACCESS_DURATION))
+        anchored = datetime.fromisoformat(row["invited_at"]) + window
+        # A signup older than the access window computes a past date on every
+        # sweep. Stamping it would let a background job revoke a paying
+        # member's access; skipping it, which is what used to happen, left
+        # them with no expiry at all and so no time-box whatsoever. Re-anchor
+        # at the sweep instead: the same window any payment grants, and their
+        # next renewal re-stamps it from the payment date.
+        lapsed = anchored <= now
+        expiry = now + window if lapsed else anchored
         for u in records:
             client.set_expiry(u["id"], expiry.isoformat())
         stamped += len(records)
-        log.info("reconcile: stamped expiry %s on %d record(s) for %s",
-                 expiry.isoformat(), len(records), email)
-        store.record_event(MAP_DB_PATH, email, "Expiry stamped",
-                           f"joined with no expiry — set to {expiry.isoformat()[:10]}")
+        log.info("reconcile: stamped expiry %s on %d record(s) for %s%s",
+                 expiry.isoformat(), len(records), email,
+                 " (signup window had lapsed)" if lapsed else "")
+        store.record_event(
+            MAP_DB_PATH, email, "Expiry stamped",
+            (f"signup window had already lapsed; re-anchored to {expiry.isoformat()[:10]}"
+             if lapsed else
+             f"joined with no expiry, set to {expiry.isoformat()[:10]}"))
     return stamped
 
 
