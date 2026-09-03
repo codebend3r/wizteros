@@ -109,6 +109,7 @@ bun run verify     # lint, format check, typecheck and tests across both apps
 | Test one app                 | `bun run test:web`, `bun run test:bridge`         |
 | Bridge container             | `bun run bridge:up`, `bridge:down`, `bridge:logs` |
 | Only what changed            | `bun run affected`                                |
+| Re-run the pre-commit gate   | `bun run system-check:no-cache`                   |
 | Deploy the bridge to the NAS | `bun run deploy:nas`                              |
 
 Hooks run automatically. Pre-commit first runs `bun run lint:staged`, which fixes
@@ -117,6 +118,13 @@ only the files in the commit (`oxlint --fix` and `oxfmt` on TS/TSX, `stylelint
 result, then `bun run system-check` (lint, SCSS lint, format check, typecheck,
 and tests for `admin-portal`). Pre-push runs `bun run verify` across both apps.
 CI runs the same `bun run verify` on every push.
+
+`system-check` reads the Nx cache, so a rerun with nothing changed reports a hit
+without executing anything. `bun run system-check:no-cache` runs the identical
+five targets with `--skip-nx-cache`, forcing every one to execute and skipping
+both the local and the remote cache. Reach for it when a cached pass looks
+wrong, when a tool was upgraded outside the hashed inputs, or when timing the
+real cost of the gate.
 
 lint-staged is configured per app, in `apps/*/.lintstagedrc.json`, plus
 `.lintstagedrc.json` at the root for everything outside `apps/`; the closest

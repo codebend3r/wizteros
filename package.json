@@ -14,6 +14,7 @@
     "build": "nx run admin-portal:build",
     "preview": "nx run admin-portal:preview",
     "system-check": "nx run-many -t lint:ts lint:css format:check typecheck test -p admin-portal",
+    "system-check:no-cache": "nx run-many -t lint:ts lint:css format:check typecheck test -p admin-portal --skip-nx-cache",
     "verify": "bun run lint:root && bun run format:check:root && nx run-many -t lint:ts lint:css lint:py format:check typecheck test",
     "affected": "nx affected -t lint:ts lint:css lint:py format:check typecheck test",
     "graph": "nx graph",

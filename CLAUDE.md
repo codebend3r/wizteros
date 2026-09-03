@@ -83,6 +83,8 @@ bunx nx show project stripe-bridge     # a project's real target list
 
 The root `bun run <script>` aliases (`dev`, `build`, `verify`, `system-check`, `lint`, `test:web`, `test:bridge`, `bridge:*`, `release:*`, `deploy:nas`) are kept for muscle memory and all delegate to Nx.
 
+`bun run system-check:no-cache` is `system-check` plus `--skip-nx-cache`: the same five admin-portal targets, but every one actually executes instead of reporting a cache hit. Use it to confirm a cached green is real.
+
 All three projects source targets from more than one place, so check `nx show project` rather than assuming from a single file:
 
 | Project         | Targets come from                                                                                                                                                                                                                                                                               |
