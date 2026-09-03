@@ -94,11 +94,41 @@
 }
 
 .duplicate {
-  display: block;
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: start;
+  align-items: center;
+  gap: var(--space-1);
   color: var(--color-state-payment-failed);
   font-size: var(--font-size-xs);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+// Stating the pair is one member, right where the pair is flagged. Underlined
+// rather than coloured alone: the badge beside it is already the only warm
+// colour in the cell, so colour cannot be what marks this as the actionable
+// half.
+.linkButton {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-accent);
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+
+  &:disabled {
+    color: var(--color-muted);
+    cursor: default;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
 }
 
 .paymentFailed {

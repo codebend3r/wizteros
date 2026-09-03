@@ -89,6 +89,11 @@ export type SetTagResult = {
   tag: MemberTag | null
 }
 
+export type LinkAddressResult = {
+  stripe_email: string
+  plex_email: string | null
+}
+
 export type SetDownloadsResult = {
   email: string
   downloads: boolean
@@ -282,6 +287,11 @@ const isSetTagResult = (value: unknown): value is SetTagResult =>
   isRecord(value) &&
   typeof value.email === 'string' &&
   (value.tag === null || isMemberTag(value.tag))
+
+const isLinkAddressResult = (value: unknown): value is LinkAddressResult =>
+  isRecord(value) &&
+  typeof value.stripe_email === 'string' &&
+  (value.plex_email === null || typeof value.plex_email === 'string')
 
 const isSetDownloadsResult = (value: unknown): value is SetDownloadsResult =>
   isRecord(value) && typeof value.email === 'string' && typeof value.downloads === 'boolean'
@@ -486,6 +496,28 @@ export const setMemberTag = async ({
   })
   if (!isSetTagResult(data)) {
     throw new Error('Unexpected set-tag response')
+  }
+  return data
+}
+
+/**
+ * Declare that one address bills for the member watching under another, so the
+ * two stop reading as two members. `plexEmail: null` undoes it.
+ */
+export const linkMemberAddress = async ({
+  stripeEmail,
+  plexEmail,
+}: {
+  stripeEmail: string
+  plexEmail: string | null
+}): Promise<LinkAddressResult> => {
+  const data = await requestJson({
+    path: '/admin/link-address',
+    method: 'POST',
+    body: { stripe_email: stripeEmail, plex_email: plexEmail },
+  })
+  if (!isLinkAddressResult(data)) {
+    throw new Error('Unexpected link-address response')
   }
   return data
 }

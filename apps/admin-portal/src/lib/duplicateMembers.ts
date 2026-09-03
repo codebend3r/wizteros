@@ -63,17 +63,18 @@ const isOneEditApart = (a: string, b: string): boolean => {
 }
 
 /**
- * The emails (lowercased) that look like a duplicate of another member's.
+ * Each flagged email (lowercased) mapped to the addresses it looks like a
+ * duplicate of.
  *
  * Only members the bridge has a payment signal for are compared. Declined and
  * uninvited rows are mostly stale addresses that never became anyone, and
  * pairing them produces noise that trains the reader to ignore the badge.
  */
-export const findDuplicateEmails = ({
+export const findDuplicateTwins = ({
   members,
 }: {
   members: ReadonlyArray<Member>
-}): ReadonlySet<string> => {
+}): ReadonlyMap<string, ReadonlyArray<string>> => {
   const candidates = members
     .filter((member) => !!member.email && (member.subscribed || member.tag === 'vip'))
     .map((member) => ({
@@ -81,15 +82,22 @@ export const findDuplicateEmails = ({
       canonical: canonicalize(member.email),
     }))
 
-  return candidates.reduce<Set<string>>((duplicates, member, index) => {
-    const twins = candidates.filter(
-      (other, otherIndex) =>
-        otherIndex !== index &&
-        (other.canonical === member.canonical || isOneEditApart(other.canonical, member.canonical)),
-    )
-    if (twins.length) {
-      duplicates.add(member.email)
-    }
-    return duplicates
-  }, new Set<string>())
+  return candidates.reduce<Map<string, ReadonlyArray<string>>>((twins, member, index) => {
+    const matches = candidates
+      .filter(
+        (other, otherIndex) =>
+          otherIndex !== index &&
+          (other.canonical === member.canonical ||
+            isOneEditApart(other.canonical, member.canonical)),
+      )
+      .map((other) => other.email)
+    return matches.length ? twins.set(member.email, matches) : twins
+  }, new Map<string, ReadonlyArray<string>>())
 }
+
+/** The emails (lowercased) flagged above, when only the fact matters. */
+export const findDuplicateEmails = ({
+  members,
+}: {
+  members: ReadonlyArray<Member>
+}): ReadonlySet<string> => new Set(findDuplicateTwins({ members }).keys())

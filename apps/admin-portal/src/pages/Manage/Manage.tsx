@@ -10,6 +10,7 @@ import { Preloader } from '@/components/Preloader/Preloader'
 import {
   AdminAuthError,
   fetchMembers,
+  linkMemberAddress,
   loadErrorMessage,
   reissueInvite,
   type InviteResult,
@@ -57,6 +58,7 @@ const ManageInner = () => {
   const [pendingInvite, setPendingInvite] = useState<PendingInvite | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [inviteResult, setInviteResult] = useState<InviteResult | null>(null)
+  const [linkingEmail, setLinkingEmail] = useState<string | null>(null)
 
   const {
     data: members,
@@ -125,6 +127,28 @@ const ManageInner = () => {
         return
       }
       setActionError('Could not create invite.')
+    },
+  })
+
+  // Stating that two rows are one member changes which customer the merged row
+  // reads its billing from, so the list is refetched rather than patched.
+  const linkMutation = useMutation({
+    mutationFn: ({ stripeEmail, plexEmail }: { stripeEmail: string; plexEmail: string }) =>
+      linkMemberAddress({ stripeEmail, plexEmail }),
+    onMutate: ({ stripeEmail }) => {
+      setActionError(null)
+      setLinkingEmail(stripeEmail)
+    },
+    onSettled: () => setLinkingEmail(null),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: MEMBERS_QUERY_KEY })
+    },
+    onError: (cause) => {
+      if (cause instanceof AdminAuthError) {
+        deauthenticate()
+        return
+      }
+      setActionError('Could not link those addresses.')
     },
   })
 
@@ -223,6 +247,8 @@ const ManageInner = () => {
               invitingEmail={
                 inviteMutation.isPending ? (inviteMutation.variables?.member.email ?? null) : null
               }
+              onLinkAddresses={(link) => linkMutation.mutate(link)}
+              linkingEmail={linkingEmail}
             />
           </>
         )}

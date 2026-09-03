@@ -451,6 +451,81 @@ test('flags two subscribers whose addresses are one character apart', () => {
   expect(screen.getAllByText('possible duplicate')).toHaveLength(2)
 })
 
+test('offers to link a flagged pair when only one of the two holds access', async () => {
+  const onLinkAddresses = vi.fn()
+  render(
+    <MemoryRouter>
+      <MembersTable
+        members={[
+          makeMember({
+            member: 'Jimmy Vo',
+            email: 'jimmyvo768@gmail.com',
+            subscribed: true,
+            servers: ['Meleys', 'Vermithor'],
+          }),
+          makeMember({
+            member: 'jimmyvo767',
+            email: 'jimmyvo767@gmail.com',
+            subscribed: true,
+            servers: [],
+          }),
+        ]}
+        onSelectTier={() => {}}
+        invitingEmail={null}
+        onLinkAddresses={onLinkAddresses}
+      />
+    </MemoryRouter>,
+  )
+
+  await userEvent.click(screen.getAllByRole('button', { name: /one member/ })[0]!)
+
+  // The address holding no Wizarr records is the one that pays.
+  expect(onLinkAddresses).toHaveBeenCalledWith({
+    stripeEmail: 'jimmyvo767@gmail.com',
+    plexEmail: 'jimmyvo768@gmail.com',
+  })
+})
+
+test('two flagged members who both hold access stay a hint, with nothing to click', () => {
+  render(
+    <MemoryRouter>
+      <MembersTable
+        members={[
+          makeMember({ email: 'jimmyvo767@gmail.com', subscribed: true, servers: ['Meleys'] }),
+          makeMember({ email: 'jimmyvo768@gmail.com', subscribed: true, servers: ['Meleys'] }),
+        ]}
+        onSelectTier={() => {}}
+        invitingEmail={null}
+        onLinkAddresses={() => {}}
+      />
+    </MemoryRouter>,
+  )
+  expect(screen.getAllByText('possible duplicate')).toHaveLength(2)
+  expect(screen.queryByRole('button', { name: /one member/ })).toBeNull()
+})
+
+test('an already linked member offers no second link', () => {
+  render(
+    <MemoryRouter>
+      <MembersTable
+        members={[
+          makeMember({
+            email: 'jimmyvo768@gmail.com',
+            subscribed: true,
+            servers: ['Meleys'],
+            stripe_email: 'jimmyvo767@gmail.com',
+          }),
+          makeMember({ email: 'jimmyvo767@gmail.com', subscribed: true, servers: [] }),
+        ]}
+        onSelectTier={() => {}}
+        invitingEmail={null}
+        onLinkAddresses={() => {}}
+      />
+    </MemoryRouter>,
+  )
+  expect(screen.queryByRole('button', { name: /one member/ })).toBeNull()
+})
+
 test('a member with a failed charge is labelled Payment Failed, not Subscribed', () => {
   render(
     <MemoryRouter>

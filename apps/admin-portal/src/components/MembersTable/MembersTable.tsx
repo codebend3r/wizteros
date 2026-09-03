@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import type { Member, PaidTier } from '@/lib/adminApi'
 import { isPaidTier, PAID_TIERS, TIER_LABELS } from '@/lib/inviteRules'
 import { STATUS_EMOJI, deriveStatus, type MemberStatus } from '@/lib/memberStatus'
-import { findDuplicateEmails } from '@/lib/duplicateMembers'
+import { findDuplicateTwins } from '@/lib/duplicateMembers'
 import { TierIcon } from '@/components/TierIcon/TierIcon'
 import styles from '@/components/MembersTable/MembersTable.module.scss'
 
@@ -17,6 +17,8 @@ type MembersTableProps = {
   members: ReadonlyArray<Member>
   onSelectTier: (selection: { member: Member; tier: PaidTier }) => void
   invitingEmail: string | null
+  onLinkAddresses?: (link: { stripeEmail: string; plexEmail: string }) => void
+  linkingEmail?: string | null
 }
 
 const formatExpiry = (expires: string | null): string => {
@@ -55,6 +57,40 @@ const formatDownloads = (downloads: boolean | null): string => {
     return '—'
   }
   return downloads ? '✓' : '✗'
+}
+
+/**
+ * The pair a "same person" link can be stated for, or null when it cannot.
+ *
+ * Only one shape is unambiguous: exactly one twin, and exactly one of the two
+ * holding Wizarr records. That one is the Plex account; the other is the
+ * address the money arrives at. Two members who both hold access are two
+ * people until someone says otherwise, and two who hold none say nothing
+ * about which way the link points; both stay a hint only.
+ */
+const linkableTwin = ({
+  member,
+  twins,
+  byEmail,
+}: {
+  member: Member
+  twins: ReadonlyArray<string>
+  byEmail: ReadonlyMap<string, Member>
+}): { stripeEmail: string; plexEmail: string } | null => {
+  if (twins.length !== 1) {
+    return null
+  }
+  const twin = byEmail.get(twins[0] ?? '')
+  if (!twin || !!member.stripe_email || !!twin.stripe_email) {
+    return null
+  }
+  const holders = [member, twin].filter((row) => row.servers.length > 0)
+  if (holders.length !== 1) {
+    return null
+  }
+  const plex = holders[0]
+  const payer = [member, twin].find((row) => row !== plex)
+  return !!plex && !!payer ? { stripeEmail: payer.email, plexEmail: plex.email } : null
 }
 
 const sortValue = ({ member, column }: { member: Member; column: SortColumn }): string =>
@@ -119,7 +155,13 @@ const Pager = ({ current, pageCount, onPageChange, pageSize, onPageSizeChange }:
   </div>
 )
 
-export const MembersTable = ({ members, onSelectTier, invitingEmail }: MembersTableProps) => {
+export const MembersTable = ({
+  members,
+  onSelectTier,
+  invitingEmail,
+  onLinkAddresses,
+  linkingEmail,
+}: MembersTableProps) => {
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState<number>(25)
   const [sort, setSort] = useState<SortState | null>(null)
@@ -128,7 +170,12 @@ export const MembersTable = ({ members, onSelectTier, invitingEmail }: MembersTa
   // Two live customers for one person bill twice and heal neither: the new
   // payment cannot rescue the old address's access. Flag the pair so it is
   // reconciled in Stripe rather than read as two healthy members.
-  const duplicates = useMemo(() => findDuplicateEmails({ members }), [members])
+  const duplicates = useMemo(() => findDuplicateTwins({ members }), [members])
+
+  const byEmail = useMemo(
+    () => new Map(members.map((member) => [member.email.toLowerCase(), member])),
+    [members],
+  )
 
   const sorted = useMemo(() => {
     if (!sort) {
@@ -208,6 +255,8 @@ export const MembersTable = ({ members, onSelectTier, invitingEmail }: MembersTa
             {visible.map((member) => {
               const status = deriveStatus({ member })
               const libraryCount = countLibraries(member.libraries)
+              const twins = duplicates.get(member.email.toLowerCase()) ?? []
+              const link = twins.length ? linkableTwin({ member, twins, byEmail }) : null
               return (
                 <tr key={`${member.email}-${member.member}`}>
                   <td>{member.member}</td>
@@ -226,12 +275,23 @@ export const MembersTable = ({ members, onSelectTier, invitingEmail }: MembersTa
                         pays as {member.stripe_email}
                       </span>
                     )}
-                    {duplicates.has(member.email.toLowerCase()) && (
-                      <span
-                        className={styles.duplicate}
-                        title="Another member has a nearly identical address. Check Stripe for two customers billing one person."
-                      >
-                        possible duplicate
+                    {!!twins.length && (
+                      <span className={styles.duplicate}>
+                        <span title="Another member has a nearly identical address. Check Stripe for two customers billing one person.">
+                          possible duplicate
+                        </span>
+                        {!!link && !!onLinkAddresses && (
+                          <button
+                            className={styles.linkButton}
+                            type="button"
+                            disabled={linkingEmail === link.stripeEmail}
+                            title={`Record ${link.stripeEmail} as the address ${link.plexEmail} pays under. Nothing in Stripe changes.`}
+                            aria-label={`Mark ${member.email} and ${twins[0]} as one member`}
+                            onClick={() => onLinkAddresses(link)}
+                          >
+                            {linkingEmail === link.stripeEmail ? 'linking…' : 'same person'}
+                          </button>
+                        )}
                       </span>
                     )}
                   </td>
