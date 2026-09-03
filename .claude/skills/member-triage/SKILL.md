@@ -61,7 +61,7 @@ the Wizarr, store, and log sections; being off the LAN leaves you Stripe and Wiz
   means a lapsed window. The user list is cached for ten minutes, so a record disabled
   seconds ago can still show.
 - **Bridge store** is the bridge's memory. `tier` drives the displayed tier, the
-  downloads default, and the scope of the *next* invite. `subscribed` is the
+  downloads default, and the scope of the _next_ invite. `subscribed` is the
   confirmed-payment flag written by the webhooks, and status keys off it, not off the
   expiry. `invited_at` starts the grace clock. `invite_code` is the last invite issued.
   Events are the audit trail.
@@ -77,7 +77,7 @@ inside or past the 14 day grace (`INVITE_GRACE_DAYS` in `lib/inviteRules.ts`);
 **Uninvited** is known to the bridge with no payment and no invite.
 
 `servers` and `libraries` on a member payload are what they can actually watch (Wizarr
-records unioned with the live plex.tv share); `entitled` is what their tier *would* grant.
+records unioned with the live plex.tv share); `entitled` is what their tier _would_ grant.
 A row reading `—` under Servers/Libs holds nothing, whatever its tier says.
 
 A **Stripe email** row on the member page (and `pays as <address>` on `/manage`) means
@@ -161,7 +161,7 @@ Expect Wizarr `records: none found`. There is no "disabled" record to look at.
   still `pending`, `subscribed=1`. A tier change that dropped one of their servers forces
   disable-first, because Wizarr has no per-server unshare. They are mid-migration, not
   disabled. Resend the pending link. Only the checkout path logs this (`reset N existing
-  record(s) for <email> pending re-join`); an admin reissue disables silently and reports
+record(s) for <email> pending re-join`); an admin reissue disables silently and reports
   the count as `disabled: N` in its own response, so the store event is the evidence, not
   the log.
 - **Window lapsed.** That shows up as a record with a past `expires`, not as a missing
@@ -185,7 +185,7 @@ defaulting to bronze` and the member silently lands on bronze. Legacy `kids` map
 `youth` and is not a bug.
 
 - Record only: `/user`, **Hard reset tier** (`POST /admin/reset-tier`). Rewrites the
-  displayed tier, the downloads default, and the scope of their *next* invite. It does
+  displayed tier, the downloads default, and the scope of their _next_ invite. It does
   not touch their current Plex share.
 - Actual access: `/user`, **Invite** with the right tier (`POST /admin/reissue-invite`),
   and the member must open the link. Redemption is where the share is re-scoped in place.
@@ -229,7 +229,7 @@ a `subscription_update` or a one-off invoice renews too.
   touching anything. A missing expiry usually heals itself; a wrong one never does. It
   will not heal for a VIP, for a member with no `invited_at`, or when `invited_at` plus 35
   days is already past, which logs `reconcile: computed expiry ... is already past;
-  skipping` rather than letting a background job revoke anyone. Those are the ones that
+skipping` rather than letting a background job revoke anyone. Those are the ones that
   need Set expiry.
 
 **Remedy.** `/user`, **Set expiry** to the paid date plus 35 days
@@ -298,17 +298,17 @@ by hand, outside the event log.
 
 ## Where each remedy happens
 
-| Remedy | Where | Endpoint behind it |
-|---|---|---|
-| Issue or reissue a tier-scoped invite | `/user` **Invite / Re-invite**, or `/reset-user` tier buttons | `POST /admin/reissue-invite` |
-| Set or clear an expiry | `/user` **Set expiry** / **Never expire** | `POST /admin/reset-expiry` |
-| Correct the recorded tier only | `/user` **Hard reset tier** | `POST /admin/reset-tier` |
-| VIP / HVU label | `/user` **Tag** | `POST /admin/set-tag` |
-| Downloads override | `/user` downloads toggle | `POST /admin/set-downloads` |
-| Schedule a cancel at period end | `/user` **Cancel subscription** | `POST /admin/cancel-subscription` |
-| Confirm webhook delivery, fix a customer email, add `metadata.tier`, refund | Stripe dashboard | none |
-| Delete a stale invitation, inspect a record | Wizarr API with `X-API-Key`, or the Wizarr UI | `/api/invitations`, `/api/users` |
-| Fix a tier's library set | `tiers.py` plus the Plex library names, then deploy | none |
+| Remedy                                                                      | Where                                                         | Endpoint behind it                |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------- | --------------------------------- |
+| Issue or reissue a tier-scoped invite                                       | `/user` **Invite / Re-invite**, or `/reset-user` tier buttons | `POST /admin/reissue-invite`      |
+| Set or clear an expiry                                                      | `/user` **Set expiry** / **Never expire**                     | `POST /admin/reset-expiry`        |
+| Correct the recorded tier only                                              | `/user` **Hard reset tier**                                   | `POST /admin/reset-tier`          |
+| VIP / HVU label                                                             | `/user` **Tag**                                               | `POST /admin/set-tag`             |
+| Downloads override                                                          | `/user` downloads toggle                                      | `POST /admin/set-downloads`       |
+| Schedule a cancel at period end                                             | `/user` **Cancel subscription**                               | `POST /admin/cancel-subscription` |
+| Confirm webhook delivery, fix a customer email, add `metadata.tier`, refund | Stripe dashboard                                              | none                              |
+| Delete a stale invitation, inspect a record                                 | Wizarr API with `X-API-Key`, or the Wizarr UI                 | `/api/invitations`, `/api/users`  |
+| Fix a tier's library set                                                    | `tiers.py` plus the Plex library names, then deploy           | none                              |
 
 ## Reporting back
 

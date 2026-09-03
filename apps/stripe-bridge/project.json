@@ -4,6 +4,13 @@
   "projectType": "application",
   "sourceRoot": "apps/stripe-bridge/stripe_bridge",
   "tags": ["scope:bridge", "lang:python"],
+  "namedInputs": {
+    "pyToolchain": [
+      {
+        "runtime": "apps/stripe-bridge/.venv/bin/ruff --version 2>/dev/null || ruff --version 2>/dev/null || echo 'ruff missing'"
+      }
+    ]
+  },
   "targets": {
     "test-docker": {
       "executor": "nx:run-commands",

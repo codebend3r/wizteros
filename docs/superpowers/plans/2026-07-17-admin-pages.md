@@ -19,7 +19,7 @@ Every task's requirements implicitly include these.
 - **Python (bridge):** match existing style — small functions with one-line docstrings, list comprehensions / small loops (the JS for-loop ban does NOT apply to Python).
 - **Fail-closed rule:** never share a `9X.` library. Reuse `tiers.resolve_tier_access` — never hand-roll library selection.
 - **Bridge packaging:** any new `.py` module MUST be added to the Dockerfile `COPY` line.
-- **Commits:** subject starts with `WZ:`; concise bullet body. Husky + lint-staged auto-runs prettier/eslint on commit.
+- **Commits:** subject starts with `WZ:`; concise bullet body. Husky + lint-staged auto-runs oxlint and oxfmt on commit.
 - **Secrets:** never hardcode the Wizarr key or admin password in web code. The password lives only on the bridge (`ADMIN_PASSWORD`).
 
 ---
@@ -2161,7 +2161,7 @@ Run each; all must pass:
 cd web && npm run test          # full vitest suite (existing + new)
 cd web && npm run typecheck     # tsc, no errors
 cd web && npm run build         # tsc && vite build succeeds
-cd .. && npx eslint web/src     # lint clean (no `any`/`as`/relative-import violations)
+cd .. && bunx oxlint web/src    # lint clean (no `any`/`as`/relative-import violations)
 cd stripe-bridge && python -m pytest tests/ -v   # full bridge suite
 ```
 

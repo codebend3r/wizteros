@@ -31,9 +31,9 @@ The script resolves the repo root from its own location, so it runs from any clo
 worktree (`WZ_REPO` overrides). It is read-only, has no dependencies, and always exits 0
 when it runs, whatever it finds. Hits are candidates, not build failures.
 
-| Flag | Meaning |
-|---|---|
-| (none) | Print only lines matching a risk term, grouped payment surfaces first |
+| Flag    | Meaning                                                                                             |
+| ------- | --------------------------------------------------------------------------------------------------- |
+| (none)  | Print only lines matching a risk term, grouped payment surfaces first                               |
 | `--all` | Dump every extracted string, unfiltered. Use it when auditing new copy the term list has never seen |
 
 If a configured path no longer resolves, the script prints an `INCOMPLETE RUN` warning
@@ -51,17 +51,17 @@ block), `comment` (a code comment, always exempt, shown so nothing is dropped si
 These are payment surfaces. A member reads them while deciding to pay, while paying, or
 right after paying. No content nouns, no titles, no catalog language, at all.
 
-| Surface | Path |
-|---|---|
-| Landing page composition | `apps/admin-portal/src/App.tsx` |
-| Tier cards, tier names, summaries, feature rows, tagline, support items | `apps/admin-portal/src/site.config.ts` |
-| Pricing section chrome | `apps/admin-portal/src/components/Pricing/Pricing.tsx` |
-| Hero | `apps/admin-portal/src/components/Hero/Hero.tsx` |
-| What the contribution funds | `apps/admin-portal/src/components/Support/Support.tsx` |
-| Member links and the disclaimer | `apps/admin-portal/src/components/Footer/Footer.tsx` |
-| Document title (search results, browser tab) | `apps/admin-portal/index.html` |
-| Invite email, HTML body | `apps/stripe-bridge/stripe_bridge/email_template.py` |
-| Invite email, subject and plain-text body | `apps/stripe-bridge/stripe_bridge/mailer.py` |
+| Surface                                                                 | Path                                                   |
+| ----------------------------------------------------------------------- | ------------------------------------------------------ |
+| Landing page composition                                                | `apps/admin-portal/src/App.tsx`                        |
+| Tier cards, tier names, summaries, feature rows, tagline, support items | `apps/admin-portal/src/site.config.ts`                 |
+| Pricing section chrome                                                  | `apps/admin-portal/src/components/Pricing/Pricing.tsx` |
+| Hero                                                                    | `apps/admin-portal/src/components/Hero/Hero.tsx`       |
+| What the contribution funds                                             | `apps/admin-portal/src/components/Support/Support.tsx` |
+| Member links and the disclaimer                                         | `apps/admin-portal/src/components/Footer/Footer.tsx`   |
+| Document title (search results, browser tab)                            | `apps/admin-portal/index.html`                         |
+| Invite email, HTML body                                                 | `apps/stripe-bridge/stripe_bridge/email_template.py`   |
+| Invite email, subject and plain-text body                               | `apps/stripe-bridge/stripe_bridge/mailer.py`           |
 
 `App.tsx` and `Support.tsx` are surfaces without copy of their own: both render text
 passed down from `site.config.ts`, so the extractor correctly reports no rows for them.
@@ -99,29 +99,29 @@ content sale.
 
 ### Models, all real copy in this repo
 
-| Copy | Why it works |
-|---|---|
-| `'A community-run media server. Contribute to the cost of keeping it online.'` (`site.config.ts:85`) | Names the thing being funded (a server), and the verb is contribute, not buy |
-| `'A monthly contribution toward hosting, storage, and bandwidth.'` (`Pricing.tsx:17`) | Three infrastructure line items. Zero content nouns |
-| `'A contribution toward hosting and infrastructure costs, not a purchase of content.'` (`Footer.tsx:6`) | The disclaimer. It says the quiet part out loud, which is exactly why it is safe |
-| `'Server hardware'` / `'Storage & bandwidth'` / `'Maintenance & uptime'` (`site.config.ts:41-54`) | The support section is the framing in miniature. Copy this register |
-| `'Thanks for contributing to server costs.'` (`email_template.py:23`, `mailer.py:54`) | First line a paying member reads, and it names costs, not content |
-| `'If you cancel your contribution, access will be removed at the end of the current billing cycle.'` (`email_template.py:45`) | Access is a consequence of contributing, never the thing purchased |
-| `'Already contributing? Access your account'` (`Footer.tsx:3`) | Identifies members by what they contribute, not what they watch |
-| The `<title>` ending in `media server hosting` (`apps/admin-portal/index.html:7`) | The title tag is copy too, and it says hosting |
+| Copy                                                                                                                          | Why it works                                                                     |
+| ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `'A community-run media server. Contribute to the cost of keeping it online.'` (`site.config.ts:85`)                          | Names the thing being funded (a server), and the verb is contribute, not buy     |
+| `'A monthly contribution toward hosting, storage, and bandwidth.'` (`Pricing.tsx:17`)                                         | Three infrastructure line items. Zero content nouns                              |
+| `'A contribution toward hosting and infrastructure costs, not a purchase of content.'` (`Footer.tsx:6`)                       | The disclaimer. It says the quiet part out loud, which is exactly why it is safe |
+| `'Server hardware'` / `'Storage & bandwidth'` / `'Maintenance & uptime'` (`site.config.ts:41-54`)                             | The support section is the framing in miniature. Copy this register              |
+| `'Thanks for contributing to server costs.'` (`email_template.py:23`, `mailer.py:54`)                                         | First line a paying member reads, and it names costs, not content                |
+| `'If you cancel your contribution, access will be removed at the end of the current billing cycle.'` (`email_template.py:45`) | Access is a consequence of contributing, never the thing purchased               |
+| `'Already contributing? Access your account'` (`Footer.tsx:3`)                                                                | Identifies members by what they contribute, not what they watch                  |
+| The `<title>` ending in `media server hosting` (`apps/admin-portal/index.html:7`)                                             | The title tag is copy too, and it says hosting                                   |
 
 ### Risky, with the rewrite that keeps the page reading well
 
-| Risky | Problem | Rewrite |
-|---|---|---|
-| `'Request any show or movie'` | The worst line on the page. An unbounded promise to obtain specific titles, on a payment surface, next to a price | `'Request additions to the server'` |
-| `'The full catalog in 4K.'` | "Catalog" is an inventory of content. It says the money buys a library | `'Full server access, 4K capable.'` |
-| `'Access to all youth 1080p tv shows and movies'` | Names content types outright | `'Access to all youth-scoped 1080p shares'` |
-| `'Access to all 4K youth movies'` | Same | `'Access to the youth-scoped 4K share'` |
-| `'Access to all 1080p libraries'` / `'Access to all 4K libraries'` | "Libraries" is Plex's content noun. Milder than "movies", still content inventory | `'Access to all 1080p shares'` / `'Access to all 4K shares'` |
-| `'Access to Lossless Music Library'` | Same, and it names a format tier of content | `'Access to the lossless audio share'` |
-| `'A family plan curated for youth.'` | "Curated" claims editorial selection of content | `'A youth-scoped share for family households.'` |
-| `'The essentials to get streaming.'` | Borderline. Sells the consumption, not the contribution | `'The entry-level contribution.'` |
+| Risky                                                              | Problem                                                                                                           | Rewrite                                                      |
+| ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `'Request any show or movie'`                                      | The worst line on the page. An unbounded promise to obtain specific titles, on a payment surface, next to a price | `'Request additions to the server'`                          |
+| `'The full catalog in 4K.'`                                        | "Catalog" is an inventory of content. It says the money buys a library                                            | `'Full server access, 4K capable.'`                          |
+| `'Access to all youth 1080p tv shows and movies'`                  | Names content types outright                                                                                      | `'Access to all youth-scoped 1080p shares'`                  |
+| `'Access to all 4K youth movies'`                                  | Same                                                                                                              | `'Access to the youth-scoped 4K share'`                      |
+| `'Access to all 1080p libraries'` / `'Access to all 4K libraries'` | "Libraries" is Plex's content noun. Milder than "movies", still content inventory                                 | `'Access to all 1080p shares'` / `'Access to all 4K shares'` |
+| `'Access to Lossless Music Library'`                               | Same, and it names a format tier of content                                                                       | `'Access to the lossless audio share'`                       |
+| `'A family plan curated for youth.'`                               | "Curated" claims editorial selection of content                                                                   | `'A youth-scoped share for family households.'`              |
+| `'The essentials to get streaming.'`                               | Borderline. Sells the consumption, not the contribution                                                           | `'The entry-level contribution.'`                            |
 
 Resolution words (`4K`, `1080p`) are the one judgment call worth stating: they are
 acceptable **attached to server capability** ("4K capable", "4K shares"), because that
@@ -177,22 +177,22 @@ The framing decision on each is the repo owner's.
 
 Violations, all on the landing page, all in `apps/admin-portal/src/site.config.ts`:
 
-| Line(s) | Copy | Call |
-|---|---|---|
-| 61, 71, 102, 119, 137, 154 | `'Request any show or movie'` | Violation. Appears on all four tier cards. An unbounded promise of specific titles in exchange for a monthly payment |
-| 112 | `'The full catalog in 4K.'` | Violation. Silver's summary sells a content catalog |
-| 67, 151 | `'Access to all youth 1080p tv shows and movies'` | Violation. Names content types on a priced card |
-| 68, 152 | `'Access to all 4K youth movies'` | Violation. Same |
+| Line(s)                    | Copy                                              | Call                                                                                                                 |
+| -------------------------- | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| 61, 71, 102, 119, 137, 154 | `'Request any show or movie'`                     | Violation. Appears on all four tier cards. An unbounded promise of specific titles in exchange for a monthly payment |
+| 112                        | `'The full catalog in 4K.'`                       | Violation. Silver's summary sells a content catalog                                                                  |
+| 67, 151                    | `'Access to all youth 1080p tv shows and movies'` | Violation. Names content types on a priced card                                                                      |
+| 68, 152                    | `'Access to all 4K youth movies'`                 | Violation. Same                                                                                                      |
 
 Borderline, same file, worth a decision rather than a reflex:
 
-| Line(s) | Copy | Call |
-|---|---|---|
-| 57, 58, 100, 116, 117, 133, 134 | `'Access to all 1080p libraries'`, `'Access to all 4K libraries'` | Borderline. "Libraries" names Plex objects rather than titles, but it reads as content inventory next to a price |
-| 59, 69, 101, 118, 135 | `'Access to Lossless Music Library'` | Borderline, same shape, plus it prices an audio format |
-| 147 | `'A family plan curated for youth.'` | Borderline. "Curated" implies editorial selection of content |
-| 96 | `'The essentials to get streaming.'` | Borderline. Sells consumption, though it names no content |
-| 129 | `'Everything the server offers.'` | Acceptable as written. "Everything" is scoped to the server, not to a catalog. Watch it if it ever gets more specific |
+| Line(s)                         | Copy                                                              | Call                                                                                                                  |
+| ------------------------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| 57, 58, 100, 116, 117, 133, 134 | `'Access to all 1080p libraries'`, `'Access to all 4K libraries'` | Borderline. "Libraries" names Plex objects rather than titles, but it reads as content inventory next to a price      |
+| 59, 69, 101, 118, 135           | `'Access to Lossless Music Library'`                              | Borderline, same shape, plus it prices an audio format                                                                |
+| 147                             | `'A family plan curated for youth.'`                              | Borderline. "Curated" implies editorial selection of content                                                          |
+| 96                              | `'The essentials to get streaming.'`                              | Borderline. Sells consumption, though it names no content                                                             |
+| 129                             | `'Everything the server offers.'`                                 | Acceptable as written. "Everything" is scoped to the server, not to a catalog. Watch it if it ever gets more specific |
 
 Clean, no action: the invite email (`email_template.py`, `mailer.py`) is entirely
 contribution-framed and mentions nothing a member can watch. `Footer.tsx`,

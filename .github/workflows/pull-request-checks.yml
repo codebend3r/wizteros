@@ -60,6 +60,15 @@ jobs:
       # caches across steps, so the split costs one process per target, not one
       # rerun. Colon targets go through `run-many`, since `nx run <p>:lint:css`
       # would read the second colon as a configuration name.
+
+      # Everything outside apps/ is not an Nx project, so its oxlint and oxfmt
+      # pass is a plain script and `run-many` below would never reach it.
+      - name: 🔍 Lint root (oxlint)
+        run: bun run lint:root
+
+      - name: 💅 Check root formatting (oxfmt)
+        run: bun run format:check:root
+
       - name: 🔍 Lint TS/JS (oxlint)
         run: bunx nx run-many -t lint:ts
 

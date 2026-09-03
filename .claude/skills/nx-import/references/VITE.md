@@ -1,6 +1,6 @@
 ## Vite
 
-Vite-specific guidance for `nx import`. For generic import issues (pnpm globs, root deps, project references, name collisions, ESLint, frontend tsconfig base settings, `@nx/react` typings, Jest preset, non-Nx source handling), see `SKILL.md`.
+Vite-specific guidance for `nx import`. For generic import issues (pnpm globs, root deps, project references, name collisions, lint and format setup, frontend tsconfig base settings, `@nx/react` typings, Jest preset, non-Nx source handling), see `SKILL.md`. For converting the imported project onto oxlint and oxfmt, see `OXLINT.md`.
 
 ---
 
@@ -114,25 +114,22 @@ These are not covered by `dist` or `build`.
 
 **Production:** `react`, `react-dom`
 **Dev:** `@types/react`, `@types/react-dom`, `@vitejs/plugin-react`, `@testing-library/react`, `@testing-library/jest-dom`, `jsdom`
-**ESLint (Nx sources):** `eslint-plugin-import`, `eslint-plugin-jsx-a11y`, `eslint-plugin-react`, `eslint-plugin-react-hooks`
-**ESLint (`create-vite`):** `eslint-plugin-react-refresh`, `eslint-plugin-react-hooks` — self-contained flat configs can be left as-is
-**Nx plugins:** `@nx/react` (generators), `@nx/vite`, `@nx/vitest`, `@nx/eslint`
+**Lint and format:** `oxlint`, `oxfmt` — no linter plugin packages of any kind. Oxlint's `react`, `jsx-a11y`, and `import` plugins are built in; enable them in `.oxlintrc.json` `"plugins"`.
+**Nx plugins:** `@nx/react` (generators), `@nx/vite`, `@nx/vitest`
 
 ### React TypeScript Configuration
 
 Add `"jsx": "react-jsx"` — in `tsconfig.base.json` for single-framework workspaces, per-project for mixed (see Mixed section).
 
-### React ESLint Config
+### React Lint Config
 
-```js
-import nx from '@nx/eslint-plugin';
-import baseConfig from '../../eslint.config.mjs';
-export default [
-  ...baseConfig,
-  ...nx.configs['flat/react'],
-  { files: ['**/*.ts', '**/*.tsx'], rules: {} },
-];
+Copy `apps/admin-portal/.oxlintrc.json` — it is already a React 19 + Vite config. The plugin list is the whole of the React setup:
+
+```jsonc
+"plugins": ["typescript", "oxc", "unicorn", "react", "jsx-a11y", "import", "promise"]
 ```
+
+There is no root config to extend: the repo root `.oxlintrc.json` ignores `apps` outright, so every app's config stands alone.
 
 ### React Version Conflicts
 
@@ -150,8 +147,8 @@ If source used Jest: change import to `@testing-library/jest-dom/vitest` in test
 
 **Production:** `vue` (plus `vue-router`, `pinia` if used)
 **Dev:** `@vitejs/plugin-vue`, `vue-tsc`, `@vue/test-utils`, `jsdom`
-**ESLint:** `eslint-plugin-vue`, `vue-eslint-parser`, `@vue/eslint-config-typescript`, `@vue/eslint-config-prettier`
-**Nx plugins:** `@nx/vue` (generators), `@nx/vite`, `@nx/vitest`, `@nx/eslint` (install AFTER deps — see below)
+**Lint and format:** `oxlint`, `oxfmt`. Oxlint has a built-in `vue` plugin (`--vue-plugin`, or `"vue"` in `"plugins"`); no parser or config packages are needed.
+**Nx plugins:** `@nx/vue` (generators), `@nx/vite`, `@nx/vitest`
 
 ### Vue TypeScript Configuration
 
@@ -167,9 +164,9 @@ Vue SFC files need a type declaration. Usually exists in each project's `src/` a
 
 ```ts
 declare module '*.vue' {
-  import { defineComponent } from 'vue';
-  const component: ReturnType<typeof defineComponent>;
-  export default component;
+  import { defineComponent } from 'vue'
+  const component: ReturnType<typeof defineComponent>
+  export default component
 }
 ```
 
@@ -177,42 +174,22 @@ declare module '*.vue' {
 
 Both `@nx/js/typescript` and `@nx/vite/plugin` auto-detect `vue-tsc` when installed — no manual config needed. Remove source scripts like `"typecheck": "vue-tsc --noEmit"`.
 
-### ESLint Plugin Installation Order (Critical)
+### Vue Lint Config Pattern
 
-`@nx/eslint` init **crashes** if Vue ESLint deps aren't installed first (it loads all config files).
+No install order to get right and no parser package to wire up — oxlint parses `.vue` itself once the plugin is on:
 
-**Correct order:**
-
-1. `pnpm add -wD eslint@^9 eslint-plugin-vue vue-eslint-parser @vue/eslint-config-typescript @typescript-eslint/parser @nx/eslint-plugin typescript-eslint`
-2. Create root `eslint.config.mjs`
-3. Then `npx nx add @nx/eslint`
-
-### Vue ESLint Config Pattern
-
-```js
-import vue from 'eslint-plugin-vue';
-import vueParser from 'vue-eslint-parser';
-import tsParser from '@typescript-eslint/parser';
-import baseConfig from '../../eslint.config.mjs';
-export default [
-  ...baseConfig,
-  ...vue.configs['flat/recommended'],
-  {
-    files: ['**/*.vue'],
-    languageOptions: { parser: vueParser, parserOptions: { parser: tsParser } },
+```jsonc
+// apps/<app>/.oxlintrc.json
+{
+  "plugins": ["typescript", "oxc", "unicorn", "vue", "import", "promise"],
+  "rules": {
+    // Vue SFCs here are routed pages; the filename already carries the context.
+    "vue/multi-word-component-names": "off",
   },
-  {
-    files: ['**/*.ts', '**/*.tsx', '**/*.js', '**/*.jsx', '**/*.vue'],
-    rules: { 'vue/multi-word-component-names': 'off' },
-  },
-];
+}
 ```
 
-**Important**: `vue-eslint-parser` override must come **AFTER** base config — `flat/typescript` sets the TS parser globally without a `files` filter, breaking `.vue` parsing.
-
-`vue-eslint-parser` must be an explicit pnpm dependency (strict resolution prevents transitive import).
-
-**Known issue**: Some generated Vue ESLint configs omit `vue-eslint-parser`. Use the pattern above instead.
+Delete whatever parser, config, and plugin packages the source shipped — none of them have a role once oxlint owns the pass.
 
 ---
 
@@ -233,7 +210,6 @@ When both frameworks coexist, several settings become per-project.
 ```json
 {
   "plugins": [
-    { "plugin": "@nx/eslint/plugin", "options": { "targetName": "lint" } },
     {
       "plugin": "@nx/vite/plugin",
       "options": {
@@ -248,13 +224,14 @@ When both frameworks coexist, several settings become per-project.
 
 Remove `@nx/js/typescript` if all projects use Vite. Keep it (renamed to `"tsc-typecheck"`) only for non-Vite pure TS libs.
 
-### ESLint — Three-Tier Config
+### Lint — Per-App Config, No Sharing
 
-1. **Root**: Base rules only, no framework-specific rules
-2. **React projects**: Extend root + `nx.configs['flat/react']`
-3. **Vue projects**: Extend root + `vue.configs['flat/recommended']` + `vue-eslint-parser`
+There is no tiering to design. Each app carries its own `.oxlintrc.json` and differs only in the `"plugins"` array:
 
-**Required packages**: Shared (`eslint@^9`, `@nx/eslint-plugin`, `typescript-eslint`, `@typescript-eslint/parser`), React (`eslint-plugin-import`, `eslint-plugin-jsx-a11y`, `eslint-plugin-react`, `eslint-plugin-react-hooks`), Vue (`eslint-plugin-vue`, `vue-eslint-parser`)
+- **React projects**: `["typescript", "oxc", "unicorn", "react", "jsx-a11y", "import", "promise"]`
+- **Vue projects**: `["typescript", "oxc", "unicorn", "vue", "import", "promise"]`
+
+**Required packages**: `oxlint` and `oxfmt` per app, on the same pinned versions as the rest of the repo. Nothing framework-specific — every plugin above ships inside oxlint.
 
 `@nx/react`/`@nx/vue` are for generators only — no target conflicts.
 
@@ -273,7 +250,7 @@ Remove the following scripts — every one is redundant:
 | `dev: vite`                   | `@nx/vite/plugin` → `dev`                                                    |
 | `build: tsc -b && vite build` | `@nx/vite/plugin` → `build`; `typecheck` via `@nx/js/typescript` handles tsc |
 | `preview: vite preview`       | `@nx/vite/plugin` → `preview`                                                |
-| `lint: eslint .`              | `@nx/eslint/plugin` → `eslint:lint`                                          |
+| `lint: <source linter>`       | Deleted; replaced by a `lint:ts` script running `oxlint` (see `OXLINT.md`)   |
 
 ### TanStack Start
 
@@ -303,21 +280,21 @@ Do **not** remove React Router 7 scripts. They use the framework CLI (`react-rou
 1. Generic fixes from SKILL.md (pnpm globs, root deps, executor paths, frontend tsconfig base settings, `@nx/react` typings)
 2. Configure `@nx/vite/plugin` typecheck target
 3. **React**: `jsx: "react-jsx"` (root or per-project)
-4. **Vue**: `jsx: "preserve"` + `jsxImportSource: "vue"`; verify `vue-shims.d.ts`; install ESLint deps before `@nx/eslint`
+4. **Vue**: `jsx: "preserve"` + `jsxImportSource: "vue"`; verify `vue-shims.d.ts`; add `"vue"` to `.oxlintrc.json` `"plugins"`
 5. **Mixed**: `jsx` per-project; remove/rename `@nx/js/typescript`
 6. `nx sync --yes && nx reset && nx run-many -t typecheck,build,test,lint`
 
 ### Non-Nx Source (additional steps)
 
 0. Import into `apps/<name>` (see SKILL.md: "Application vs Library Detection")
-1. Generic fixes from SKILL.md (stale files cleanup, pnpm globs, rewritten scripts, target name prefixing, noEmit→composite, ESLint handling)
+1. Generic fixes from SKILL.md (stale files cleanup, pnpm globs, rewritten scripts, target name prefixing, noEmit→composite, lint and format handling)
 2. Fix `noEmit` in **all** tsconfigs (app, node, etc. — non-Nx projects often have multiple)
 3. Add `extends` to solution-style tsconfigs so root settings apply
 4. Fix `resolve.alias` / `__dirname` / `baseUrl`
 5. Ensure `types` include `vite/client` and `node`
 6. Install `@nx/vite` manually if it failed during import
 7. Remove redundant npm scripts so `@nx/vite/plugin` infers them natively (see "Redundant npm Scripts" section)
-8. **Vue**: Add `outDir` + `**/*.vue.d.ts` to ESLint ignores
+8. **Vue**: Add `outDir` + `**/*.vue.d.ts` to `.oxlintrc.json` `ignorePatterns`
 9. Full verification
 
 ### Multiple-Source Imports
@@ -348,15 +325,15 @@ See SKILL.md for generic multi-import (name collisions, dep refs). Vite-specific
 
 ### Quick Reference: React vs Vue
 
-| Aspect        | React                    | Vue                                       |
-| ------------- | ------------------------ | ----------------------------------------- |
-| Vite plugin   | `@vitejs/plugin-react`   | `@vitejs/plugin-vue`                      |
-| Type checker  | `tsc`                    | `vue-tsc` (auto-detected)                 |
-| SFC support   | N/A                      | `vue-shims.d.ts` needed                   |
-| tsconfig jsx  | `"react-jsx"`            | `"preserve"` + `"jsxImportSource": "vue"` |
-| ESLint parser | Standard TS              | `vue-eslint-parser` + TS sub-parser       |
-| ESLint setup  | Straightforward          | Must install deps before `@nx/eslint`     |
-| Test utils    | `@testing-library/react` | `@vue/test-utils`                         |
+| Aspect       | React                    | Vue                                       |
+| ------------ | ------------------------ | ----------------------------------------- |
+| Vite plugin  | `@vitejs/plugin-react`   | `@vitejs/plugin-vue`                      |
+| Type checker | `tsc`                    | `vue-tsc` (auto-detected)                 |
+| SFC support  | N/A                      | `vue-shims.d.ts` needed                   |
+| tsconfig jsx | `"react-jsx"`            | `"preserve"` + `"jsxImportSource": "vue"` |
+| Lint plugins | `react`, `jsx-a11y`      | `vue`                                     |
+| Lint setup   | Copy `admin-portal`      | Copy `admin-portal`, swap the plugin list |
+| Test utils   | `@testing-library/react` | `@vue/test-utils`                         |
 
 ### Quick Reference: Vite-Based React Frameworks
 
@@ -383,7 +360,7 @@ See SKILL.md for generic multi-import (name collisions, dep refs). Vite-specific
   2. `git init && git add . && git commit` in Vite app (no git at all)
   3. `git add . && git commit` in TanStack app (git init'd but no commits)
 - Import: `npm exec nx -- import <source> packages/<name> --source=. --ref=main --no-interactive`
-  - Next.js import auto-installed `@nx/eslint`, `@nx/next`
+  - Next.js import auto-installed `@nx/next` (its lint plugin offer was declined)
   - React Router 7 import auto-installed `@nx/vite`, `@nx/react`, `@nx/docker` (Dockerfile present)
   - TanStack import auto-installed `@nx/vitest`
 - Post-import fixes:

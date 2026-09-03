@@ -151,10 +151,10 @@ Generators provide a starting point. Modify the output as needed to:
 Format all generated/modified files:
 
 ```bash
-nx format --fix
+bun run format
 ```
 
-This example is for built-in nx formatting with prettier. There might be other formatting tools for this workspace, use these when appropriate.
+This workspace formats with oxfmt, not the built-in `nx format`/prettier pass: the root `.oxfmtrc.json` covers everything outside `apps/`, and each app carries its own. `bun run format` runs the root pass and then fans out to the projects; `nx run <project>:format` formats one app on its own. Never reach for prettier or `nx format` here.
 
 Then verify the generated code works. Keep in mind that the changes you make with a generator or subsequent modifications might impact various projects so it's usually not enough to only run targets for the artifact you just created.
 

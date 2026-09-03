@@ -39,7 +39,13 @@ services:
     healthcheck:
       # /health is the one ungated route, which is what lets this probe run
       # without a session.
-      test: ['CMD', 'python', '-c', "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/health')"]
+      test:
+        [
+          'CMD',
+          'python',
+          '-c',
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/health')",
+        ]
       interval: 30s
       timeout: 5s
       retries: 3

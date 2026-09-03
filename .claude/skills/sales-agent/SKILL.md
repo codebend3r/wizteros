@@ -63,13 +63,13 @@ stops with an error rather than resolving a relative path: relative would land t
 under whatever directory the script was run from, which is exactly the repo-tree outcome
 the location is chosen to avoid.
 
-| Flag | Meaning |
-|---|---|
-| `--play=declined\|backfill\|lapsed\|uninvited` | Restrict to one play. No flag runs all three sellable plays: `lapsed`, `backfill`, `declined`. `uninvited` is a valid selection that produces no play block at all, only a triage listing: uninvited members are never pitched, so there is nothing to draft |
-| `--json` | Machine-readable output, `{ plays, bulkDates, triage, selfFiltered, sources }`, for the agent to parse |
-| `--no-store` | Skip the NAS bridge-store read. The member list itself is built by iterating the store's rows, so this does not just drop a field, it drops every member: expect an empty report, not a degraded one. Useful only for checking that Stripe and Wizarr answer, never for a real run |
-| `--record <email> <play>` | Append one contact to the ledger. `<play>` must be `declined`, `backfill`, or `lapsed`. Anything else, including `uninvited`, is rejected before any write happens: uninvited members are never pitched, so recording a contact against that play would itself be corrupt state |
-| `--opt-out <email>` | Set the permanent exclusion flag for an email. Missing the email argument is rejected the same way, before any write |
+| Flag                                           | Meaning                                                                                                                                                                                                                                                                            |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--play=declined\|backfill\|lapsed\|uninvited` | Restrict to one play. No flag runs all three sellable plays: `lapsed`, `backfill`, `declined`. `uninvited` is a valid selection that produces no play block at all, only a triage listing: uninvited members are never pitched, so there is nothing to draft                       |
+| `--json`                                       | Machine-readable output, `{ plays, bulkDates, triage, selfFiltered, sources }`, for the agent to parse                                                                                                                                                                             |
+| `--no-store`                                   | Skip the NAS bridge-store read. The member list itself is built by iterating the store's rows, so this does not just drop a field, it drops every member: expect an empty report, not a degraded one. Useful only for checking that Stripe and Wizarr answer, never for a real run |
+| `--record <email> <play>`                      | Append one contact to the ledger. `<play>` must be `declined`, `backfill`, or `lapsed`. Anything else, including `uninvited`, is rejected before any write happens: uninvited members are never pitched, so recording a contact against that play would itself be corrupt state    |
+| `--opt-out <email>`                            | Set the permanent exclusion flag for an email. Missing the email argument is rejected the same way, before any write                                                                                                                                                               |
 
 Both `--record` and `--opt-out` also reject a value that is itself flag shaped. `--opt-out
 --json` is a missing argument, not an opt-out for someone named `--json`, and writing that
@@ -102,12 +102,12 @@ means the read failed, not that the week was quiet.
 
 ## The plays
 
-| Play | Membership | Cooldown |
-|---|---|---|
-| `declined` | `subscribed=0`, an `invited_at` is present, past the 14-day invite grace, and `invited_at`'s calendar date is not a bulk invite date | 45 days |
-| `backfill` | Same as `declined`, except `invited_at`'s calendar date is a bulk invite date | 45 days |
-| `lapsed` | `subscribed=1` with a past `expires`, or a Stripe status of `canceled` | 60 days |
-| `uninvited` | known to the bridge, no confirmed payment, no invite stamp | not pitched, triage only |
+| Play        | Membership                                                                                                                           | Cooldown                 |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------ |
+| `declined`  | `subscribed=0`, an `invited_at` is present, past the 14-day invite grace, and `invited_at`'s calendar date is not a bulk invite date | 45 days                  |
+| `backfill`  | Same as `declined`, except `invited_at`'s calendar date is a bulk invite date                                                        | 45 days                  |
+| `lapsed`    | `subscribed=1` with a past `expires`, or a Stripe status of `canceled`                                                               | 60 days                  |
+| `uninvited` | known to the bridge, no confirmed payment, no invite stamp                                                                           | not pitched, triage only |
 
 ### Bulk invite detection
 
@@ -115,7 +115,7 @@ A live run once listed 45 "declined" leads that had never actually declined anyt
 they were existing members stamped `invited_at` during a one-time migration backfill, all
 on the same day. A win-back email telling them they declined an invitation would have been
 false. `bulkInviteDates` in `classify.mjs` catches this without hardcoding a date: any
-calendar date (UTC) on which `BULK_INVITE_THRESHOLD` (10) or more *distinct* members were
+calendar date (UTC) on which `BULK_INVITE_THRESHOLD` (10) or more _distinct_ members were
 invited is a bulk stamp, counted by member, never by row, so one person with several store
 rows cannot manufacture a bulk date on their own. Organic invites run at one or two a day,
 comfortably below the threshold; a genuine day of ten or more organic signups would be
@@ -142,7 +142,7 @@ Cohort assignment **extends** `deriveStatus` in `apps/admin-portal/src/lib/membe
 rather than mirroring it, and it is scoped to `customer_map` rather than to everyone the
 admin UI lists. It does share the 14-day grace constant, read from
 `apps/admin-portal/src/lib/inviteRules.ts` and pinned by a test on both sides. That grace
-decides which *status badge* a pending invite shows; it is a different number from
+decides which _status badge_ a pending invite shows; it is a different number from
 `INVITE_EXPIRES_DAYS` (7, deployed), which is how long the invite link itself stays
 redeemable.
 
@@ -193,7 +193,7 @@ operator:
 2. **Lifetime cap of three contacts, across all plays.** Checked before the cooldown on
    purpose: an expired cooldown must not revive someone who has already ignored three
    emails, regardless of which plays those three contacts were under.
-3. **Cooldown**, per the table above, counted from the most recent contact of *any*
+3. **Cooldown**, per the table above, counted from the most recent contact of _any_
    play. A `lapsed` contact three days ago still blocks a `declined` or `backfill` pitch
    today; no play can double up on one person by using its own clock.
 
@@ -243,11 +243,11 @@ The one place this gets subtle is the one-stop pitch, the argument that one cont
 here replaces several other subscriptions. It is permitted as a cost argument and banned
 as a content argument:
 
-| Allowed | Banned |
-|---|---|
-| "One contribution instead of several subscriptions" | "Everything you're paying elsewhere for" |
-| "One login for the whole household" | "Cancel your subscriptions, this covers it" |
-| "A single monthly contribution toward hosting" | Any named commercial streaming service, ever, including "replace Netflix" |
+| Allowed                                             | Banned                                                                    |
+| --------------------------------------------------- | ------------------------------------------------------------------------- |
+| "One contribution instead of several subscriptions" | "Everything you're paying elsewhere for"                                  |
+| "One login for the whole household"                 | "Cancel your subscriptions, this covers it"                               |
+| "A single monthly contribution toward hosting"      | Any named commercial streaming service, ever, including "replace Netflix" |
 
 Use `copy-compliance`'s own test: does the sentence describe what the money keeps
 running, or what the member gets to consume? Consolidating spend across services is a
@@ -331,7 +331,7 @@ steps, and steps 3 and 5 are the only writes anywhere in this whole path:
    spam filtering.
 4. The operator reviews it inside Gmail itself and sends it by hand.
 5. Only after that send actually happens does the main session run `--record <email>
-   <play>` for each recipient (and `--opt-out <email>` for anyone whose reply asks to
+<play>` for each recipient (and `--opt-out <email>` for anyone whose reply asks to
    stop). Recording before a send actually goes out would start a cooldown clock for
    outreach that never happened.
 
@@ -358,7 +358,7 @@ layer on top of that structure per play: why now (what the data actually shows, 
 guess), the ranked leads, the draft in full, the excluded summary, and a one-line call
 on whether to send.
 
-The footer prints "Nothing to send" only when every play's contactable count is zero *and*
+The footer prints "Nothing to send" only when every play's contactable count is zero _and_
 `TRIAGE` is empty, so it never appears above a triage list naming real people who still
 need `member-triage`.
 

@@ -26,19 +26,19 @@ Every task's requirements implicitly include this section.
 
 ## File Structure
 
-| File | Responsibility |
-| --- | --- |
-| `.claude/skills/sales-agent/scripts/ledger.mjs` | Outreach ledger: read, write, cooldown and cap and opt-out suppression |
-| `.claude/skills/sales-agent/scripts/ledger.test.mjs` | Tests for the above |
-| `.claude/skills/sales-agent/scripts/classify.mjs` | Pure cohort assignment and lead ranking |
-| `.claude/skills/sales-agent/scripts/classify.test.mjs` | Tests for the above |
-| `.claude/skills/sales-agent/scripts/sources.mjs` | Stripe, Wizarr, and NAS store reads plus the per-person join |
-| `.claude/skills/sales-agent/scripts/sources.test.mjs` | Tests for the pure join and normalization helpers |
-| `.claude/skills/sales-agent/scripts/cohorts.mjs` | CLI entry: flag parsing, orchestration, rendering, exit codes |
-| `.claude/skills/sales-agent/scripts/cohorts.test.mjs` | Tests for flag parsing and rendering |
-| `.claude/skills/sales-agent/SKILL.md` | The runbook: judgment, compliance gate, handoff, red flags |
-| `.claude/agents/sales-agent.md` | Thin read-only dispatcher |
-| `README.md` | Add `sales-agent` to the skills and agents tables |
+| File                                                   | Responsibility                                                         |
+| ------------------------------------------------------ | ---------------------------------------------------------------------- |
+| `.claude/skills/sales-agent/scripts/ledger.mjs`        | Outreach ledger: read, write, cooldown and cap and opt-out suppression |
+| `.claude/skills/sales-agent/scripts/ledger.test.mjs`   | Tests for the above                                                    |
+| `.claude/skills/sales-agent/scripts/classify.mjs`      | Pure cohort assignment and lead ranking                                |
+| `.claude/skills/sales-agent/scripts/classify.test.mjs` | Tests for the above                                                    |
+| `.claude/skills/sales-agent/scripts/sources.mjs`       | Stripe, Wizarr, and NAS store reads plus the per-person join           |
+| `.claude/skills/sales-agent/scripts/sources.test.mjs`  | Tests for the pure join and normalization helpers                      |
+| `.claude/skills/sales-agent/scripts/cohorts.mjs`       | CLI entry: flag parsing, orchestration, rendering, exit codes          |
+| `.claude/skills/sales-agent/scripts/cohorts.test.mjs`  | Tests for flag parsing and rendering                                   |
+| `.claude/skills/sales-agent/SKILL.md`                  | The runbook: judgment, compliance gate, handoff, red flags             |
+| `.claude/agents/sales-agent.md`                        | Thin read-only dispatcher                                              |
+| `README.md`                                            | Add `sales-agent` to the skills and agents tables                      |
 
 Splitting into four modules is a deliberate deviation from `reconcile.mjs` (one 603 line file). The reason is testability: cohort assignment and suppression are the logic most likely to be wrong and most cheaply verified, and they can only be unit tested if they are importable and free of upstream I/O.
 
@@ -55,10 +55,12 @@ These tests are deliberately **not** wired into `bun run verify`, `nx`, or `pack
 ### Task 1: Outreach ledger
 
 **Files:**
+
 - Create: `.claude/skills/sales-agent/scripts/ledger.mjs`
 - Test: `.claude/skills/sales-agent/scripts/ledger.test.mjs`
 
 **Interfaces:**
+
 - Consumes: nothing (this is the foundation task)
 - Produces:
   - `COOLDOWN_DAYS` = `{ declined: 45, lapsed: 60 }`
@@ -117,7 +119,9 @@ test('readLedger returns an empty object when the file is missing', () => {
 test('writeLedger then readLedger round-trips', () => {
   const dir = mkdtempSync(join(tmpdir(), 'wz-ledger-'))
   try {
-    const ledger = { 'a@example.com': { contacts: [{ at: daysAgo(1), play: 'declined' }], optedOut: false } }
+    const ledger = {
+      'a@example.com': { contacts: [{ at: daysAgo(1), play: 'declined' }], optedOut: false },
+    }
     writeLedger({ dir, ledger })
     assert.deepEqual(readLedger({ dir }), ledger)
   } finally {
@@ -245,10 +249,7 @@ export const suppression = ({ record, play, now }) => {
   if (contacts.length >= LIFETIME_CAP) {
     return { reason: 'lifetime-cap', detail: `${contacts.length} lifetime contacts` }
   }
-  const latest = contacts.reduce(
-    (acc, contact) => Math.max(acc, Date.parse(contact.at) || 0),
-    0,
-  )
+  const latest = contacts.reduce((acc, contact) => Math.max(acc, Date.parse(contact.at) || 0), 0)
   if (!latest) {
     return null
   }
@@ -301,10 +302,12 @@ git commit -m "WZ: Add the sales-agent outreach ledger
 ### Task 2: Cohort assignment and lead ranking
 
 **Files:**
+
 - Create: `.claude/skills/sales-agent/scripts/classify.mjs`
 - Test: `.claude/skills/sales-agent/scripts/classify.test.mjs`
 
 **Interfaces:**
+
 - Consumes: nothing from Task 1 (kept independent so cohort logic can be tested without touching the filesystem)
 - Produces:
   - `INVITE_GRACE_DAYS` = `14`
@@ -494,9 +497,7 @@ export const rankLeads = ({ leads }) =>
    */
   [...leads].sort((a, b) => {
     const warmth = (WARMTH[b.cohort] ?? 0) - (WARMTH[a.cohort] ?? 0)
-    return warmth !== 0
-      ? warmth
-      : (parseTime(b.lastEventAt) ?? 0) - (parseTime(a.lastEventAt) ?? 0)
+    return warmth !== 0 ? warmth : (parseTime(b.lastEventAt) ?? 0) - (parseTime(a.lastEventAt) ?? 0)
   })
 ```
 
@@ -526,11 +527,13 @@ git commit -m "WZ: Add sales-agent cohort assignment and ranking
 ### Task 3: Upstream reads and the per-person join
 
 **Files:**
+
 - Create: `.claude/skills/sales-agent/scripts/sources.mjs`
 - Test: `.claude/skills/sales-agent/scripts/sources.test.mjs`
 - Read for reference: `.claude/skills/stripe-reconcile/scripts/reconcile.mjs`
 
 **Interfaces:**
+
 - Consumes: nothing from Tasks 1 and 2
 - Produces:
   - `requireConfig({ env })` returns `{ stripeKey, wizarrBase, wizarrKey }` or throws `Error` naming every missing variable
@@ -608,7 +611,14 @@ test('stripeByEmail keeps the paying status when a customer has two subscription
 test('joinMembers carries store flags onto the member', () => {
   const members = joinMembers({
     storeRows: [
-      { email: 'a@example.com', tier: 'bronze', invited_at: '2026-07-01T00:00:00Z', subscribed: 1, tag: null, invite_code: null },
+      {
+        email: 'a@example.com',
+        tier: 'bronze',
+        invited_at: '2026-07-01T00:00:00Z',
+        subscribed: 1,
+        tag: null,
+        invite_code: null,
+      },
     ],
     people: [],
     stripe: {},
@@ -622,7 +632,16 @@ test('joinMembers carries store flags onto the member', () => {
 
 test('joinMembers attaches the Wizarr expiry to the matching store row', () => {
   const members = joinMembers({
-    storeRows: [{ email: 'a@example.com', tier: null, invited_at: null, subscribed: 1, tag: null, invite_code: null }],
+    storeRows: [
+      {
+        email: 'a@example.com',
+        tier: null,
+        invited_at: null,
+        subscribed: 1,
+        tag: null,
+        invite_code: null,
+      },
+    ],
     people: [{ email: 'a@example.com', username: 'alex', expires: '2026-09-01T00:00:00Z' }],
     stripe: {},
     invitations: [],
@@ -632,18 +651,36 @@ test('joinMembers attaches the Wizarr expiry to the matching store row', () => {
 
 test('joinMembers matches through the invite code when the Plex email differs', () => {
   const members = joinMembers({
-    storeRows: [{ email: 'billing@example.com', tier: null, invited_at: null, subscribed: 1, tag: null, invite_code: 'ABC123' }],
+    storeRows: [
+      {
+        email: 'billing@example.com',
+        tier: null,
+        invited_at: null,
+        subscribed: 1,
+        tag: null,
+        invite_code: 'ABC123',
+      },
+    ],
     people: [{ email: 'plex@example.com', username: 'alex', expires: '2026-09-01T00:00:00Z' }],
     stripe: {},
     invitations: [{ code: 'ABC123', used_by: 'alex' }],
-    })
+  })
   assert.equal(members.length, 1)
   assert.equal(members[0].expires, '2026-09-01T00:00:00Z')
 })
 
 test('joinMembers attaches the Stripe status', () => {
   const members = joinMembers({
-    storeRows: [{ email: 'a@example.com', tier: null, invited_at: null, subscribed: 0, tag: null, invite_code: null }],
+    storeRows: [
+      {
+        email: 'a@example.com',
+        tier: null,
+        invited_at: null,
+        subscribed: 0,
+        tag: null,
+        invite_code: null,
+      },
+    ],
     people: [],
     stripe: { 'a@example.com': { status: 'canceled', customerId: 'cus_1' } },
     invitations: [],
@@ -653,7 +690,16 @@ test('joinMembers attaches the Stripe status', () => {
 
 test('joinMembers reads the vip tag', () => {
   const members = joinMembers({
-    storeRows: [{ email: 'a@example.com', tier: null, invited_at: null, subscribed: 1, tag: 'vip', invite_code: null }],
+    storeRows: [
+      {
+        email: 'a@example.com',
+        tier: null,
+        invited_at: null,
+        subscribed: 1,
+        tag: 'vip',
+        invite_code: null,
+      },
+    ],
     people: [],
     stripe: {},
     invitations: [],
@@ -757,9 +803,10 @@ export const peopleFrom = ({ users }) =>
         return acc
       }
       const current = acc[key]
-      const expires = current && (current.expires === null || user.expires === null)
-        ? null
-        : [current?.expires, user.expires].filter(Boolean).sort().at(-1) ?? null
+      const expires =
+        current && (current.expires === null || user.expires === null)
+          ? null
+          : ([current?.expires, user.expires].filter(Boolean).sort().at(-1) ?? null)
       return {
         ...acc,
         [key]: {
@@ -781,12 +828,17 @@ const readStore = () => {
   try {
     execFileSync(
       'sh',
-      ['-c', `ssh ${SSH_OPTS} ${NAS_HOST} "cat ${NAS_PATH}/stripe-bridge-data/bridge.db" > ${join(dir, 'bridge.db')}`],
+      [
+        '-c',
+        `ssh ${SSH_OPTS} ${NAS_HOST} "cat ${NAS_PATH}/stripe-bridge-data/bridge.db" > ${join(dir, 'bridge.db')}`,
+      ],
       { stdio: ['ignore', 'ignore', 'pipe'] },
     )
     const db = join(dir, 'bridge.db')
     const columns = JSON.parse(
-      execFileSync('sqlite3', ['-readonly', '-json', db, 'PRAGMA table_info(customer_map)'], { encoding: 'utf8' }) || '[]',
+      execFileSync('sqlite3', ['-readonly', '-json', db, 'PRAGMA table_info(customer_map)'], {
+        encoding: 'utf8',
+      }) || '[]',
     ).map((row) => row.name)
     const pick = (name) => (columns.includes(name) ? name : `NULL AS ${name}`)
     const sql = `SELECT c.email, ${pick('tier')}, ${pick('invited_at')}, ${pick('subscribed')}, c.invite_code, t.tag
@@ -812,13 +864,17 @@ export const joinMembers = ({ storeRows, people, stripe, invitations }) => {
    * whose Plex email differs from their Stripe email keeps their real expiry
    * instead of reading as someone who never had access.
    */
-  const byEmail = people.reduce((acc, person) => (person.email ? { ...acc, [person.email]: person } : acc), {})
+  const byEmail = people.reduce(
+    (acc, person) => (person.email ? { ...acc, [person.email]: person } : acc),
+    {},
+  )
   const byUsername = people.reduce(
     (acc, person) => (person.username ? { ...acc, [person.username.toLowerCase()]: person } : acc),
     {},
   )
   const redeemedBy = invitations.reduce(
-    (acc, invite) => (invite.code && invite.used_by ? { ...acc, [invite.code]: invite.used_by.toLowerCase() } : acc),
+    (acc, invite) =>
+      invite.code && invite.used_by ? { ...acc, [invite.code]: invite.used_by.toLowerCase() } : acc,
     {},
   )
   return storeRows.map((row) => {
@@ -883,10 +939,12 @@ git commit -m "WZ: Add sales-agent upstream reads and per-person join
 ### Task 4: CLI entry point
 
 **Files:**
+
 - Create: `.claude/skills/sales-agent/scripts/cohorts.mjs`
 - Test: `.claude/skills/sales-agent/scripts/cohorts.test.mjs`
 
 **Interfaces:**
+
 - Consumes: everything exported by `ledger.mjs`, `classify.mjs`, and `sources.mjs`
 - Produces:
   - `parseArgs({ argv })` returns `{ play, all, json, record, optOut }` or throws on an unknown flag
@@ -960,7 +1018,9 @@ test('a suppressed person is counted as excluded, never dropped', () => {
       member({ email: 'fresh@example.com', invitedAt: daysAgo(30) }),
       member({ email: 'recent@example.com', invitedAt: daysAgo(30) }),
     ],
-    ledger: { 'recent@example.com': { contacts: [{ at: daysAgo(2), play: 'declined' }], optedOut: false } },
+    ledger: {
+      'recent@example.com': { contacts: [{ at: daysAgo(2), play: 'declined' }], optedOut: false },
+    },
     now: NOW,
     play: 'declined',
   })
@@ -989,13 +1049,23 @@ test('contactable plus excluded always reconciles with the cohort size', () => {
 
 test('billing failures land in triage and never in a play', () => {
   const report = buildReport({
-    members: [member({ email: 'card@example.com', subscribed: true, stripeStatus: 'past_due', expires: daysAgo(1) })],
+    members: [
+      member({
+        email: 'card@example.com',
+        subscribed: true,
+        stripeStatus: 'past_due',
+        expires: daysAgo(1),
+      }),
+    ],
     ledger: {},
     now: NOW,
     play: null,
   })
   assert.equal(report.triage.length, 1)
-  assert.equal(report.plays.every((entry) => entry.leads.length === 0), true)
+  assert.equal(
+    report.plays.every((entry) => entry.leads.length === 0),
+    true,
+  )
 })
 
 test('uninvited people are listed for triage, never drafted for', () => {
@@ -1023,7 +1093,9 @@ test('the rendered report names the excluded reasons', () => {
 })
 
 test('an empty result renders as a real answer, not a blank page', () => {
-  const text = renderReport({ report: buildReport({ members: [], ledger: {}, now: NOW, play: null }) })
+  const text = renderReport({
+    report: buildReport({ members: [], ledger: {}, now: NOW, play: null }),
+  })
   assert.match(text, /nothing to send/i)
 })
 ```
@@ -1067,7 +1139,9 @@ export const parseArgs = ({ argv }) => {
       '--no-store',
       recordAt >= 0 ? ['--record', argv[recordAt + 1], argv[recordAt + 2]] : [],
       optOutAt >= 0 ? ['--opt-out', argv[optOutAt + 1]] : [],
-    ].flat().filter(Boolean),
+    ]
+      .flat()
+      .filter(Boolean),
   )
   const unknown = argv.filter((arg) => !consumed.has(arg))
   if (unknown.length) {
@@ -1107,7 +1181,9 @@ export const buildReport = ({ members, ledger, now, play }) => {
       play: name,
       cohortSize: cohort.length,
       contactable: withSuppression.filter((entry) => !entry.suppressed).length,
-      leads: rankLeads({ leads: withSuppression.filter((entry) => !entry.suppressed).map((entry) => entry.member) }),
+      leads: rankLeads({
+        leads: withSuppression.filter((entry) => !entry.suppressed).map((entry) => entry.member),
+      }),
       excluded: withSuppression
         .filter((entry) => entry.suppressed)
         .map((entry) => ({ email: entry.member.email, ...entry.suppressed })),
@@ -1125,7 +1201,10 @@ export const renderReport = ({ report }) => {
   /** Human readable report; the agent consumes --json instead. */
   const blocks = report.plays.map((entry) => {
     const leads = entry.leads
-      .map((lead) => `          ${lead.email}  ${lead.cohort}  tier=${lead.tier ?? 'none'}  last=${(lead.lastEventAt ?? 'unknown').slice(0, 10)}`)
+      .map(
+        (lead) =>
+          `          ${lead.email}  ${lead.cohort}  tier=${lead.tier ?? 'none'}  last=${(lead.lastEventAt ?? 'unknown').slice(0, 10)}`,
+      )
       .join('\n')
     const excluded = entry.excluded.map((item) => `${item.email} (${item.reason})`).join(', ')
     return [
@@ -1167,11 +1246,18 @@ const main = async () => {
   }
   const config = requireConfig({})
   const { members, sources } = await fetchAll({ config, skipStore: args.skipStore })
-  const report = buildReport({ members, ledger: readLedger({ dir }), now: Date.now(), play: args.play })
+  const report = buildReport({
+    members,
+    ledger: readLedger({ dir }),
+    now: Date.now(),
+    play: args.play,
+  })
   process.stdout.write(
     args.json
       ? `${JSON.stringify({ ...report, sources }, null, 2)}\n`
-      : `sources: ${Object.entries(sources).map(([k, v]) => `${k} ${v}`).join(', ')}\n\n${renderReport({ report })}\n`,
+      : `sources: ${Object.entries(sources)
+          .map(([k, v]) => `${k} ${v}`)
+          .join(', ')}\n\n${renderReport({ report })}\n`,
   )
   return 0
 }
@@ -1218,10 +1304,12 @@ git commit -m "WZ: Add the sales-agent cohorts CLI
 ### Task 5: The runbook
 
 **Files:**
+
 - Create: `.claude/skills/sales-agent/SKILL.md`
 - Read for reference: `.claude/skills/member-triage/SKILL.md`, `.claude/skills/copy-compliance/SKILL.md`, `.claude/skills/stack-health/SKILL.md`
 
 **Interfaces:**
+
 - Consumes: the CLI from Task 4
 - Produces: the runbook the agent in Task 6 reads
 
@@ -1275,10 +1363,12 @@ git commit -m "WZ: Add the sales-agent runbook
 ### Task 6: The subagent
 
 **Files:**
+
 - Create: `.claude/agents/sales-agent.md`
 - Read for reference: `.claude/agents/wizteros-reviewer.md`
 
 **Interfaces:**
+
 - Consumes: the runbook from Task 5
 - Produces: nothing other tasks depend on
 
@@ -1324,9 +1414,11 @@ git commit -m "WZ: Add the sales-agent subagent
 ### Task 7: README and live verification
 
 **Files:**
+
 - Modify: `README.md` (the `## Claude skills` "Repo workflow" table and the `## Claude agents` table)
 
 **Interfaces:**
+
 - Consumes: everything above
 - Produces: nothing
 

@@ -22,13 +22,13 @@ project only.
 
 Constants used throughout:
 
-| Thing | Value |
-|---|---|
-| SSH target | `crivas@192.168.50.2` |
-| Compose project dir | `/volume1/docker/westeroz` |
-| Docker binary | `sudo -n /usr/local/bin/docker` (literal path, see Hard-Won Details) |
-| Wizarr URL | `http://192.168.50.2:5690` |
-| Bridge URL | `http://192.168.50.2:8000` (separate project, `/volume1/docker/stripe-bridge`) |
+| Thing               | Value                                                                          |
+| ------------------- | ------------------------------------------------------------------------------ |
+| SSH target          | `crivas@192.168.50.2`                                                          |
+| Compose project dir | `/volume1/docker/westeroz`                                                     |
+| Docker binary       | `sudo -n /usr/local/bin/docker` (literal path, see Hard-Won Details)           |
+| Wizarr URL          | `http://192.168.50.2:5690`                                                     |
+| Bridge URL          | `http://192.168.50.2:8000` (separate project, `/volume1/docker/stripe-bridge`) |
 
 Work through the steps in order. Do not reorder, and do not start at step 4 because the
 upgrade "looks routine".
@@ -57,7 +57,7 @@ makes the step 3 backup and the step 6 restore ordinary filesystem operations on
 you can `ls`. It also means `docker volume` commands will not find it, so do not go
 looking for it there.
 
-Then record the rollback coordinates from the *running container*, which is the only
+Then record the rollback coordinates from the _running container_, which is the only
 place the currently-deployed bytes are identified:
 
 ```bash
@@ -111,7 +111,7 @@ neither the NAS nor the local image store.
   run step 4 to "confirm", and do not take a backup you do not need.
 - **Digest differs**: there is a new build. Now go read the release notes between the
   running version and the latest tag (github.com/wizarrrr/wizarr/releases) and judge it
-  with step 6's migration test *before* you upgrade, not after. Any release naming a
+  with step 6's migration test _before_ you upgrade, not after. Any release naming a
   migration, a schema change, or alembic makes the step 3 backup the difference between an
   inconvenience and a rebuild.
 
@@ -139,7 +139,7 @@ ssh crivas@192.168.50.2 'curl -s -o /dev/null -m 10 -w "bridge %{http_code}\n" h
 
 Expected: all three containers `running`, Wizarr answers `200` (following its redirect to
 login or setup), bridge answers `401`. The bridge has no `/health` route; `401` from the
-admin router is the liveness probe, and `200` there would mean auth is *not* wired.
+admin router is the liveness probe, and `200` there would mean auth is _not_ wired.
 
 Also read the tier-scope state before you change anything (step 5 compares against it):
 
@@ -159,7 +159,7 @@ come along for free and are cheap insurance.
 first boot, and the migration is one-way. There is no downgrade path in Wizarr. Once a
 newer schema is written into `wizarr-data`, the previous image can no longer open it, so
 re-pointing the compose file at the old digest fixes nothing. The step 3 backup is the
-only road back, and it has to exist *before* the new image starts.
+only road back, and it has to exist _before_ the new image starts.
 
 If nas-state-backup is unavailable, this is the minimum acceptable substitute. It stops
 Wizarr so SQLite is not copied mid-write, and it tars through a throwaway container
@@ -308,7 +308,7 @@ First decide which rollback you need. They are not the same size.
 
 Scope the log read to the **current boot**, and only the current boot. A bare
 `docker logs wizarr` replays every boot the container has ever had, and Wizarr prints
-`Applying alembic migrations` plus `Database library migration` on *every* start whether
+`Applying alembic migrations` plus `Database library migration` on _every_ start whether
 or not anything actually moved. Grepping the full history therefore always "finds"
 migrations, including from boots months ago:
 
@@ -390,7 +390,7 @@ ssh crivas@192.168.50.2 'cd /volume1/docker/westeroz && mkdir -p wizarr-data && 
 ```
 
 Name the archive explicitly. Do not glob it: the newest `wizarr-data-*.tar.gz` may be one
-you took *after* the bad upgrade. Then confirm the database file is actually back before
+you took _after_ the bad upgrade. Then confirm the database file is actually back before
 starting anything:
 
 ```bash

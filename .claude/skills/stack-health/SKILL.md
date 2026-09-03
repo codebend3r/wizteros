@@ -33,10 +33,10 @@ The script resolves the repo root from its own location, so it works from any cl
 worktree with no path editing. Run it as a single Bash invocation so the user sees the
 whole transcript. It is safe to run at any time, on any branch, with a dirty tree.
 
-| Flag | Meaning |
-|---|---|
-| `--quick` | Skip check 4 (public ingress) and check 8 (env drift). The two checks that reach off the LAN or need a local `.env`. |
-| `-h`, `--help` | Print usage and exit 0. |
+| Flag           | Meaning                                                                                                              |
+| -------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `--quick`      | Skip check 4 (public ingress) and check 8 (env drift). The two checks that reach off the LAN or need a local `.env`. |
+| `-h`, `--help` | Print usage and exit 0.                                                                                              |
 
 Nothing else is accepted. An unrecognized flag exits 2 rather than guessing, and the
 error names the reason: there are no mutating flags to guess at.
@@ -50,16 +50,16 @@ Useful overrides, all `WZ_*` env vars matching `deploy-nas.sh`: `WZ_NAS_HOST`,
 
 ## The Checks
 
-| # | Check | Reads |
-|---|---|---|
-| 1 | NAS reachable over SSH | `ssh crivas@192.168.50.2 true` |
-| 2 | Bridge container `running`, `GET :8000/admin/members` returns `401` | `docker inspect`, curl from this machine |
-| 3 | Westeroz `compose ps`, wizarr + tautulli `running`, Wizarr answers on `:5690` | `compose ps` in `/volume1/docker/westeroz`, `docker inspect`, curl |
-| 4 | Funnel reachable, `POST <base>/stripe/webhook` returns exactly `400` | curl to `PUBLIC_INVITE_BASE` |
-| 5 | `.deployed-sha` vs `origin/main`, including divergence | `cat`, `git fetch`, `git rev-list`, `git merge-base` |
-| 6 | Recent bridge logs: tier-scope alarm and Python tracebacks | `docker logs --tail 200` |
-| 7 | `/volume1` disk usage | `df -Pk` |
-| 8 | Key names in `.env.example` vs the NAS `.env` | `cat`, key names only |
+| #   | Check                                                                         | Reads                                                              |
+| --- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| 1   | NAS reachable over SSH                                                        | `ssh crivas@192.168.50.2 true`                                     |
+| 2   | Bridge container `running`, `GET :8000/admin/members` returns `401`           | `docker inspect`, curl from this machine                           |
+| 3   | Westeroz `compose ps`, wizarr + tautulli `running`, Wizarr answers on `:5690` | `compose ps` in `/volume1/docker/westeroz`, `docker inspect`, curl |
+| 4   | Funnel reachable, `POST <base>/stripe/webhook` returns exactly `400`          | curl to `PUBLIC_INVITE_BASE`                                       |
+| 5   | `.deployed-sha` vs `origin/main`, including divergence                        | `cat`, `git fetch`, `git rev-list`, `git merge-base`               |
+| 6   | Recent bridge logs: tier-scope alarm and Python tracebacks                    | `docker logs --tail 200`                                           |
+| 7   | `/volume1` disk usage                                                         | `df -Pk`                                                           |
+| 8   | Key names in `.env.example` vs the NAS `.env`                                 | `cat`, key names only                                              |
 
 Exit `0` when every check passed, `1` when any check failed. **Warnings do not fail the
 run** and never change the exit code: a warning means "working, but worth knowing" (the
@@ -127,12 +127,12 @@ Accepting any 4xx would report that exact failure as a healthy mount.
 
 Report the diagnosis, then hand off. Do not start fixing from inside this one.
 
-| Finding | Next step |
-|---|---|
-| NAS behind or diverged from `origin/main` (check 5) | the `deploy-nas` skill |
-| Funnel or webhook route failing (check 4) | `docs/tailscale-funnel.md` to re-check the mounts, then Stripe's webhook-attempts log for failed deliveries |
-| Tier-scope alarm (check 6) | line the Plex and Wizarr library names back up; once they match, `bun run refresh:libraries` re-records the list the tier tests assert against |
-| Bridge down (check 2) or wizarr/tautulli down (check 3) | read `docker logs` on the NAS for the reason before restarting anything |
+| Finding                                                  | Next step                                                                                                                                               |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| NAS behind or diverged from `origin/main` (check 5)      | the `deploy-nas` skill                                                                                                                                  |
+| Funnel or webhook route failing (check 4)                | `docs/tailscale-funnel.md` to re-check the mounts, then Stripe's webhook-attempts log for failed deliveries                                             |
+| Tier-scope alarm (check 6)                               | line the Plex and Wizarr library names back up; once they match, `bun run refresh:libraries` re-records the list the tier tests assert against          |
+| Bridge down (check 2) or wizarr/tautulli down (check 3)  | read `docker logs` on the NAS for the reason before restarting anything                                                                                 |
 | One member paid and has no access, everything else green | not this skill: this probe reads infrastructure, not a member's row. Check that member in the admin portal's member list and against Stripe's dashboard |
 
 ## Reporting Back

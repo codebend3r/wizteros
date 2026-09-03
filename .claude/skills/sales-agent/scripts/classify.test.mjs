@@ -10,7 +10,10 @@ import {
   rankLeads,
 } from './classify.mjs'
 
-const INVITE_RULES = new URL('../../../../apps/admin-portal/src/lib/inviteRules.ts', import.meta.url)
+const INVITE_RULES = new URL(
+  '../../../../apps/admin-portal/src/lib/inviteRules.ts',
+  import.meta.url,
+)
 
 const DAY = 86_400_000
 const NOW = Date.parse('2026-08-10T00:00:00Z')
@@ -188,7 +191,12 @@ test('a VIP on a bulk date is still vip', () => {
 test('a subscribed member on a bulk date is still active', () => {
   const day = daysAgo(20).slice(0, 10)
   const bulkDates = new Set([day])
-  const m = member({ subscribed: true, expires: inDays(20), stripeStatus: 'active', invitedAt: daysAgo(20) })
+  const m = member({
+    subscribed: true,
+    expires: inDays(20),
+    stripeStatus: 'active',
+    invitedAt: daysAgo(20),
+  })
   assert.equal(assignCohort({ member: m, now: NOW, bulkDates }), 'active')
 })
 

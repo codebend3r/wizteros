@@ -9,7 +9,7 @@
 Turborepo monorepos ship with internal workspace packages that share configuration:
 
 - **`@repo/typescript-config`** (or similar) — tsconfig files (`base.json`, `nextjs.json`, `react-library.json`, etc.)
-- **`@repo/eslint-config`** (or similar) — ESLint config files and all ESLint plugin dependencies
+- **`@repo/lint-config`** (or similar) — the source's linter and formatter config files plus all their plugin dependencies
 
 These are not code libraries. They distribute config via Node module resolution (e.g., `"extends": "@repo/typescript-config/nextjs.json"`). This is the **default** Turborepo pattern — expect it in virtually every Turborepo import. Package names vary — check `package.json` files to identify the actual names.
 
@@ -17,10 +17,10 @@ These are not code libraries. They distribute config via Node module resolution 
 
 **Before doing any config merging, check whether the destination workspace uses shared root configuration.** This decides how to handle the config packages.
 
-- If the workspace has a root `tsconfig.base.json` and/or root `eslint.config.mjs` that projects extend, merge the config packages into these root configs (see steps below).
-- If the workspace does NOT have root config files — each project manages its own configuration independently (similar to Turborepo). In this case, **do not create root config files or merge into them**. Just remove turbo-specific parts (`turbo.json`, `eslint-plugin-turbo`) and leave the config packages in place, or ask the user how they want to handle them.
+- **TypeScript**: if the workspace has a root `tsconfig.base.json` that projects extend, merge the config package into it (see steps below).
+- **Lint and format**: this workspace never shares those from the root — `.oxlintrc.json` and `.oxfmtrc.json` at the repo root ignore `apps` outright, and each app owns its own pair. There is nothing to merge into; the source's config package is deleted and the imported project gets its own configs per `OXLINT.md`.
 
-If unclear, check for the presence of `tsconfig.base.json` at the root or ask the user.
+If unclear about the TypeScript side, check for the presence of `tsconfig.base.json` at the root or ask the user.
 
 ## Merging TypeScript Config (Only When Root tsconfig.base.json Exists)
 
@@ -34,28 +34,26 @@ The config package contains a hierarchy of tsconfig files. Each project extends 
    - Preserve project-specific settings (`outDir`, `include`, `exclude`, etc.).
 4. **Delete the config package** and remove it from all `devDependencies`.
 
-## Merging ESLint Config (Only When Root eslint.config Exists)
+## Replacing the Lint Config Package
 
-The config package centralizes ESLint plugin dependencies and exports composable flat configs.
+The config package centralizes the source's linter and formatter plugins and exports composable configs. None of it survives; it is replaced, not merged.
 
-1. **Read the config package** — identify exported configs, plugin dependencies, and inheritance.
-2. **Update root `eslint.config.mjs`** — absorb base rules (JS recommended, TypeScript-ESLint, Prettier, etc.). Drop `eslint-plugin-turbo`.
-3. **Update each project's `eslint.config.mjs`** — switch from importing `@repo/eslint-config/<variant>` to extending the root config, adding framework-specific plugins inline.
-4. **Move ESLint plugin dependencies** from the config package to root `devDependencies`.
-5. If `@nx/eslint` plugin is configured with inferred targets, remove `"lint"` scripts from project `package.json` files.
-6. **Delete the config package** and remove it from all `devDependencies`.
+1. **Read the config package** — note which rules the source actually enforced, so the ones worth keeping can be ported by hand.
+2. **Give each imported project its own `.oxlintrc.json` and `.oxfmtrc.json`** at its root, modelled on `apps/admin-portal/`. Port the rules that still matter; drop the rest with a comment.
+3. **Add `lint:ts`, `lint:ts:fix`, `format`, and `format:check` scripts** to each project's `package.json` and list them in `nx.includedScripts` so Nx infers the targets. See `OXLINT.md`.
+4. **Delete the config package** and remove it, and every plugin dependency it carried, from all `devDependencies`.
 
 ## General Cleanup
 
-- Remove turbo-specific dependencies: `turbo`, `eslint-plugin-turbo`.
+- Remove turbo-specific dependencies: `turbo`, plus any turbo linter plugin the source installed.
 - Delete all `turbo.json` files (root and per-package).
-- Run workspace validation (`nx run-many -t build lint test typecheck`) to confirm nothing broke.
+- Run workspace validation (`bun run verify`) to confirm nothing broke.
 
 ## Key Pitfalls
 
 - **Trace the full inheritance chain** before inlining — check what each variant inherits from the base.
 - **Module resolution changes** — from Node package resolution (`@repo/...`) to relative paths (`../../tsconfig.base.json`).
-- **ESLint configs are JavaScript, not JSON** — handle JS imports, array spreading, and plugin objects when merging.
+- **The source's lint config is probably JavaScript, `.oxlintrc.json` is JSON** — rules have to be read out and rewritten by hand, not spread or imported.
 
 Helpful docs:
 

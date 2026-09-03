@@ -17,12 +17,12 @@ These override any inference from the code. Ask first, every time:
 
 A self-hosted stack that gates Plex access behind a recurring Stripe "server-cost contribution":
 
-| Piece | Role |
-| --- | --- |
-| **Wizarr** | Invite-based onboarding for Plex users |
-| **Tautulli** | Usage analytics |
-| **stripe-bridge** (`apps/stripe-bridge/`) | Small FastAPI service that converts Stripe webhooks (`checkout.session.completed`, `customer.subscription.deleted`) into Wizarr API calls |
-| **admin-portal** (`apps/admin-portal/`) | Landing page plus the gated admin pages |
+| Piece                                     | Role                                                                                                                                                |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Wizarr**                                | Invite-based onboarding for Plex users                                                                                                              |
+| **Tautulli**                              | Usage analytics                                                                                                                                     |
+| **stripe-bridge** (`apps/stripe-bridge/`) | Small FastAPI service that converts Stripe webhooks (`checkout.session.completed`, `customer.subscription.deleted`) into Wizarr API calls           |
+| **admin-portal** (`apps/admin-portal/`)   | Landing page plus the gated admin pages                                                                                                             |
 | **fleet-monitor** (`apps/fleet-monitor/`) | FastAPI service that SSH-probes the NAS fleet and serves host metrics to the admin portal's Fleet page, behind the same Supabase auth as the bridge |
 
 The contribution framing is deliberate: Plex TOS prohibits selling access, and Stripe TOS prohibits selling rights you don't own. When suggesting copy, product descriptions, or UX text, lean toward infrastructure/hosting language. Never reference content, libraries, or titles in user-facing payment surfaces. The `copy-compliance` skill audits this.
@@ -54,6 +54,9 @@ wizteros/
 ├── docker-compose.yml          builds ./apps/stripe-bridge, bridge only
 ├── netlify.toml                builds admin-portal, publishes apps/admin-portal/dist
 ├── nx.json                     target defaults, cacheable targets, named inputs
+├── .oxlintrc.json              oxlint for everything outside apps/
+├── .oxfmtrc.json               oxfmt for everything outside apps/
+├── .lintstagedrc.json          staged-file pass for everything outside apps/
 └── package.json                bun workspaces plus thin aliases that delegate to nx
 ```
 
@@ -80,15 +83,19 @@ bunx nx show project stripe-bridge     # a project's real target list
 
 The root `bun run <script>` aliases (`dev`, `build`, `verify`, `system-check`, `lint`, `test:web`, `test:bridge`, `bridge:*`, `release:*`, `deploy:nas`) are kept for muscle memory and all delegate to Nx.
 
+`bun run system-check:no-cache` is `system-check` plus `--skip-nx-cache`: the same five admin-portal targets, but every one actually executes instead of reporting a cache hit. Use it to confirm a cached green is real.
+
 All three projects source targets from more than one place, so check `nx show project` rather than assuming from a single file:
 
-| Project | Targets come from |
-| --- | --- |
-| `admin-portal` | `package.json` scripts only, gated by `nx.includedScripts` |
-| `fleet-monitor` | `package.json` scripts (`test`, `lint:py`) gated by `nx.includedScripts`, plus `project.json` for `docker-build` |
+| Project         | Targets come from                                                                                                                                                                                                                                                                               |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `admin-portal`  | `package.json` scripts only, gated by `nx.includedScripts`                                                                                                                                                                                                                                      |
+| `fleet-monitor` | `package.json` scripts (`test`, `lint:py`) gated by `nx.includedScripts`, plus `project.json` for `docker-build`                                                                                                                                                                                |
 | `stripe-bridge` | `package.json` scripts (`test`, `lint:py`, `test:e2e`, `test:e2e:tiers`, `refresh:libraries`) gated by `nx.includedScripts`, **plus** `project.json` for the Docker targets (`docker-build`, `serve`, `stop`, `logs`, `test-docker`), declared as `nx:run-commands` with `cwd: {workspaceRoot}` |
 
 Anything cacheable is declared in `nx.json` `targetDefaults`. A new target that is safe to cache belongs there; anything that touches Docker or the network must stay `cache: false`.
+
+A cacheable target has to declare every input that can change its result, including the tool that runs it. `lint:py` is the one that bites: ruff lives in each app's gitignored `.venv`, so it is invisible to the `{projectRoot}/**/*` file glob, and a missing or upgraded ruff used to flip the outcome under an identical hash, which is what Nx reported as a flaky task. Each Python project therefore defines a `pyToolchain` named input in its own `project.json`, a `runtime` command that prints the resolved ruff version (or `ruff missing`), and `targetDefaults.lint:py` composes it as `["default", "pyToolchain"]`. Two constraints forced that shape: `{projectRoot}` is **not** interpolated inside a `runtime` input, so the venv path has to be spelled out per project rather than shared in `nx.json`, and runtime commands run from the workspace root, so the path is workspace-relative. Ruff is pinned in both `requirements-dev.txt` so the version cannot drift underneath the pin.
 
 Gates: pre-commit runs `bun run lint:staged` (lint-staged, autofixing just the staged files) then `bun run system-check` (admin-portal only), pre-push runs `bun run verify` (both apps). CI runs the same checks. lint-staged config is per app in `apps/*/.lintstagedrc.json`, and commands there must spell out `node_modules/.bin/<tool>` because bun keeps the bins in the app, not the root.
 
@@ -105,6 +112,8 @@ Three version markers move in lockstep: root `package.json`, `apps/admin-portal/
 The repo does have linters: oxlint for TS/JS, stylelint for SCSS, ruff for Python, oxfmt for formatting, tsgo for type checking.
 
 Several conventions below are enforced as lint errors, not just style preferences, in `apps/admin-portal/.oxlintrc.json` under a block marked "Conventions from CLAUDE.md": no default exports, `type` over `interface`, no `any`, no non-null assertions, `eqeqeq`, `prefer-const`, `prefer-array-flat-map`. Turning one of these off to make code pass is not the fix.
+
+There is a second oxlint and oxfmt pair at the repo root, `.oxlintrc.json` and `.oxfmtrc.json`, covering everything outside `apps/`: the `.mjs` tooling under `scripts/` and `.claude/skills/**`, the docs, and the root config files. It ignores `apps` outright, since each app owns its own config, and it is a plain script rather than an Nx target because the repo root is not an Nx project. `bun run lint`, `format`, `format:check` and `verify` run it first and then fan out to the projects; `bun run lint:root`, `lint:root:fix`, `format:root` and `format:check:root` run only that pass. The root config disables four rules whose suggested fix contradicts the house style (`for…of` over `forEach`, mutating a `reduce` accumulator, mutating a mapped object, `toSorted` on an array that is already a fresh copy); each carries a comment saying so.
 
 Everything else here is convention, and the import-alias rule in particular has no lint rule behind it.
 

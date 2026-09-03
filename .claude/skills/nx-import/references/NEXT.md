@@ -1,6 +1,6 @@
 ## Next.js
 
-Next.js-specific guidance for `nx import`. For generic import issues (pnpm globs, root deps, project references, name collisions, ESLint, frontend tsconfig base settings, `@nx/react` typings, Jest preset, target name prefixing, non-Nx source handling), see `SKILL.md`.
+Next.js-specific guidance for `nx import`. For generic import issues (pnpm globs, root deps, project references, name collisions, lint and format setup, frontend tsconfig base settings, `@nx/react` typings, Jest preset, target name prefixing, non-Nx source handling), see `SKILL.md`. For converting the imported project onto oxlint and oxfmt, see `OXLINT.md`.
 
 ---
 
@@ -27,9 +27,9 @@ Nx-generated Next.js projects use `composePlugins(withNx)` from `@nx/next`. This
 Beyond the generic root deps issue (see SKILL.md), Next.js projects typically need:
 
 **Core**: `react`, `react-dom`, `@types/react`, `@types/react-dom`, `@types/node`, `@nx/react` (see SKILL.md for `@nx/react` typings)
-**Nx plugins**: `@nx/next` (auto-installed by import), `@nx/eslint`, `@nx/jest`
+**Nx plugins**: `@nx/next` (auto-installed by import), `@nx/jest`
 **Testing**: see SKILL.md "Jest Preset Missing" section
-**ESLint**: `@next/eslint-plugin-next` (in addition to generic ESLint deps from SKILL.md)
+**Lint and format**: `oxlint` and `oxfmt` in the project's own `devDependencies` — see `OXLINT.md`. Do not install `@nx/eslint`.
 
 ### Next.js Auto-Installing Dependencies via Wrong Package Manager
 
@@ -52,7 +52,7 @@ Next.js app tsconfigs have unique patterns compared to Vite:
 
 ### `next.config.js` Lint Warning
 
-Imported Next.js configs may have `// eslint-disable-next-line @typescript-eslint/no-var-requires` but the project ESLint config enables different rule sets. This produces `Unused eslint-disable directive` warnings. Harmless — remove the comment or ignore.
+Imported Next.js configs often carry suppression comments written for whatever linter the source used, naming rules oxlint does not have. Delete them, then re-run `nx run <app>:lint:ts` and add an `oxlint-disable-next-line` only where oxlint actually complains.
 
 ### `@nx/next:init` Rewrites All npm Scripts (Whole-Repo Import)
 
@@ -84,9 +84,9 @@ nx import /path/to/source apps/web --ref=main --source=. --no-interactive
 
 `next build` auto-generates `next-env.d.ts` at the project root. Add `next-env.d.ts` to the dest root `.gitignore` — it is framework-generated and should not be committed.
 
-### ESLint: Self-Contained `eslint-config-next`
+### Lint Config from `create-next-app`
 
-`create-next-app` generates a flat ESLint config using `eslint-config-next` (which bundles its own plugins). This is **self-contained** — no root `eslint.config.mjs` needed, no `@nx/eslint-plugin` dependency. The `@nx/eslint/plugin` detects it and creates a lint target.
+`create-next-app` scaffolds its own self-contained lint config and bundled plugin set. Self-contained or not, it does not survive the import: delete the config and its deps, then give the project `.oxlintrc.json` and `.oxfmtrc.json` per `OXLINT.md`. Oxlint's `nextjs` plugin covers the Next.js rule set — add `"nextjs"` to `"plugins"`.
 
 ### TypeScript: No Changes Needed
 
@@ -143,8 +143,8 @@ No naming conflicts between frameworks.
 
 1. Import Next.js apps into `apps/<name>` (see SKILL.md: "Application vs Library Detection")
 2. Generic fixes from SKILL.md (pnpm globs, root deps, `.gitkeep` removal, frontend tsconfig base settings, `@nx/react` typings)
-3. Install Next.js-specific deps: `pnpm add -wD @next/eslint-plugin-next`
-4. ESLint setup (see SKILL.md: "Root ESLint Config Missing")
+3. Install Next.js-specific deps (framework only — no linter plugins)
+4. Lint and format setup (see `OXLINT.md`; add the `nextjs` plugin to `.oxlintrc.json`)
 5. Jest setup (see SKILL.md: "Jest Preset Missing")
 6. `nx reset && nx sync --yes && nx run-many -t typecheck,build,test,lint`
 
@@ -153,7 +153,7 @@ No naming conflicts between frameworks.
 1. Import into `apps/<name>` (see SKILL.md: "Application vs Library Detection")
 2. Generic fixes from SKILL.md (pnpm globs, stale files cleanup, script rewriting, target name prefixing)
 3. (Optional) If app needs to export types for other workspace projects: fix `noEmit` → `composite` (see SKILL.md)
-4. `nx reset && nx run-many -t next:build,eslint:lint` (or unprefixed names if renamed)
+4. `nx reset && nx run-many -t next:build,lint:ts` (or the prefixed build name if it was not renamed)
 
 ---
 
@@ -170,13 +170,13 @@ No naming conflicts between frameworks.
   3. Missing `@nx/react` (for CSS module/image type defs in lib)
   4. Missing `@types/react`, `@types/react-dom`, `@types/node`
   5. Next.js trying `yarn add @types/react` — fixed by installing at root
-  6. Missing `@nx/eslint`, root `eslint.config.mjs`, ESLint plugins
+  6. Missing per-project `.oxlintrc.json` and `.oxfmtrc.json`
   7. Missing `@nx/jest`, `jest.preset.js`, `jest-environment-jsdom`, `ts-jest`
 - All targets green: typecheck, build, test, lint
 
 ### Scenario 3: Non-Nx create-next-app (App Router + Tailwind) → TS preset (PASS)
 
-- Source: `create-next-app@latest` (Next.js 16.1.6, App Router, Tailwind v4, flat ESLint config)
+- Source: `create-next-app@latest` (Next.js 16.1.6, App Router, Tailwind v4)
 - Dest: CNW ts preset (Nx 23)
 - Import: whole-repo into `apps/web`
 - Errors found & fixed:
@@ -184,9 +184,9 @@ No naming conflicts between frameworks.
   2. Stale files: `node_modules/`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `.gitignore` — deleted
   3. Nx-rewritten npm scripts (`"build": "nx next:build"`, etc.) — removed
 - No tsconfig changes needed — self-contained config with `noEmit: true`
-- ESLint self-contained via `eslint-config-next` — no root config needed
+- Source lint config and deps deleted; project moved onto its own `.oxlintrc.json`/`.oxfmtrc.json`
 - No test setup (create-next-app doesn't include tests)
-- All targets green: next:build, eslint:lint
+- All targets green: next:build, lint:ts
 
 ### Scenario 4: Non-Nx create-next-app (alongside Vite, React Router 7, TanStack, CRA) → TS preset (PASS)
 
@@ -194,9 +194,9 @@ No naming conflicts between frameworks.
 - Next.js-specific findings:
   1. `@nx/next:init` rewrote all scripts to `nx next:*` format — removed all rewritten scripts
   2. Stale files: `node_modules/`, `package-lock.json`, `.gitignore` — deleted (npm workspace, no pnpm files)
-  3. ESLint self-contained via `eslint-config-next` — no root config needed
+  3. Source lint config and deps deleted; project moved onto its own `.oxlintrc.json`/`.oxfmtrc.json`
   4. No tsconfig changes needed — `noEmit: true` stays; `next build` handles type checking
-- Targets: `next:build`, `next:dev`, `next:start`, `eslint:lint`
+- Targets: `next:build`, `next:dev`, `next:start`, `lint:ts`
 
 ### Scenario 5: Mixed Next.js (Nx) + Vite React (standalone) → TS preset (PASS)
 
@@ -207,7 +207,7 @@ No naming conflicts between frameworks.
   1. All Scenario 1 fixes for the Next.js app
   2. Stale files from Vite source: `node_modules/`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `.gitignore`, `nx.json`
   3. Removed rewritten scripts from Vite app's `package.json`
-  4. ESLint 8 vs 9 conflict — `@nx/eslint` peer on ESLint 8 resolved wrong version. Fixed with `pnpm.overrides`
+  4. Two linter versions resolving at once across the two sources. Fixed by deleting both and standardising on the repo's pinned `oxlint`
   5. Vite tsconfigs missing `composite: true`, `declaration: true` — needed for `tsc --build --emitDeclarationOnly`
   6. Vite `tsconfig.spec.json` `include` missing source files — specs import app code
   7. Vite tsconfig `moduleResolution: "node"` → `"bundler"`, added `extends: "../../tsconfig.base.json"`

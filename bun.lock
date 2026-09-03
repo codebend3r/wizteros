@@ -8,11 +8,13 @@
         "husky": "^9.1.7",
         "lint-staged": "17.4.1",
         "nx": "^23.1.1",
+        "oxfmt": "0.61.0",
+        "oxlint": "1.76.0",
       },
     },
     "apps/admin-portal": {
       "name": "admin-portal",
-      "version": "0.3.1",
+      "version": "0.3.2",
       "dependencies": {
         "@fontsource-variable/bricolage-grotesque": "5.2.10",
         "@fontsource-variable/instrument-sans": "5.2.8",

@@ -12,10 +12,10 @@ The repo owns only `stripe-bridge`; see [`nas-deployment.md`](./nas-deployment.m
 
 Only two of the five NASes run docker at all.
 
-| Host | IP | Compose project | Directory |
-|---|---|---|---|
-| Meleys | `192.168.50.2` | `westeroz` | `/volume1/docker/westeroz` |
-| Vermithor | `192.168.50.3` | `essoz` | `/volume1/docker/essoz` |
+| Host      | IP             | Compose project | Directory                  |
+| --------- | -------------- | --------------- | -------------------------- |
+| Meleys    | `192.168.50.2` | `westeroz`      | `/volume1/docker/westeroz` |
+| Vermithor | `192.168.50.3` | `essoz`         | `/volume1/docker/essoz`    |
 
 Meleys additionally runs the `stripe-bridge` project from
 `/volume1/docker/stripe-bridge`, which is this repo's deploy target and is never
@@ -23,27 +23,27 @@ touched by an *arr update.
 
 ### Meleys — `westeroz`
 
-| Service | Image | Host port | Config volume |
-|---|---|---|---|
-| `sonarr` | `lscr.io/linuxserver/sonarr:latest` | 27021 → 8989 | `westeroz/Sonarr/config` |
-| `radarr` | `lscr.io/linuxserver/radarr:latest` | 7878 | `westeroz/Radarr/config` |
-| `sabnzbd` | `lscr.io/linuxserver/sabnzbd:latest` | 27020 → 8080 | `westeroz/SABnzbd/config` |
-| `wizarr` | `ghcr.io/wizarrrr/wizarr:latest` | 5690 | `westeroz/wizarr-data` |
-| `tautulli` | `ghcr.io/tautulli/tautulli:latest` | 8181 | `westeroz/tautulli-config` |
+| Service    | Image                                | Host port    | Config volume              |
+| ---------- | ------------------------------------ | ------------ | -------------------------- |
+| `sonarr`   | `lscr.io/linuxserver/sonarr:latest`  | 27021 → 8989 | `westeroz/Sonarr/config`   |
+| `radarr`   | `lscr.io/linuxserver/radarr:latest`  | 7878         | `westeroz/Radarr/config`   |
+| `sabnzbd`  | `lscr.io/linuxserver/sabnzbd:latest` | 27020 → 8080 | `westeroz/SABnzbd/config`  |
+| `wizarr`   | `ghcr.io/wizarrrr/wizarr:latest`     | 5690         | `westeroz/wizarr-data`     |
+| `tautulli` | `ghcr.io/tautulli/tautulli:latest`   | 8181         | `westeroz/tautulli-config` |
 
 ### Vermithor — `essoz`
 
-| Service | Image | Host port | Config volume |
-|---|---|---|---|
-| `sonarr` | `lscr.io/linuxserver/sonarr:latest` | 27021 → 8989 | `essoz/Sonarr/config` |
-| `radarr` | `lscr.io/linuxserver/radarr:latest` | 7878 | `essoz/Radarr/config` |
-| `lidarr` | `lscr.io/linuxserver/lidarr:latest` | 8686 | `essoz/Lidarr/config` |
-| `prowlarr` | `lscr.io/linuxserver/prowlarr:latest` | 9696 | `essoz/Prowlarr/config` |
-| `sabnzbd` | `lscr.io/linuxserver/sabnzbd:latest` | 27020 → 8080 | `essoz/SABnzbd/config` |
-| `seerr` | `ghcr.io/seerr-team/seerr:latest` | 5055 | `essoz/Overseerr/config` |
-| `bookshelf` | `ghcr.io/pennydreadful/bookshelf:hardcover` | 8787 | `essoz/Bookshelf/config` |
-| `audiobookshelf` | `ghcr.io/advplyr/audiobookshelf:latest` | 13378 → 80 | `essoz/Audiobookshelf/config` |
-| `tautulli` | `lscr.io/linuxserver/tautulli:latest` | 27022 → 8181 | `essoz/Tautulli/config` |
+| Service          | Image                                       | Host port    | Config volume                 |
+| ---------------- | ------------------------------------------- | ------------ | ----------------------------- |
+| `sonarr`         | `lscr.io/linuxserver/sonarr:latest`         | 27021 → 8989 | `essoz/Sonarr/config`         |
+| `radarr`         | `lscr.io/linuxserver/radarr:latest`         | 7878         | `essoz/Radarr/config`         |
+| `lidarr`         | `lscr.io/linuxserver/lidarr:latest`         | 8686         | `essoz/Lidarr/config`         |
+| `prowlarr`       | `lscr.io/linuxserver/prowlarr:latest`       | 9696         | `essoz/Prowlarr/config`       |
+| `sabnzbd`        | `lscr.io/linuxserver/sabnzbd:latest`        | 27020 → 8080 | `essoz/SABnzbd/config`        |
+| `seerr`          | `ghcr.io/seerr-team/seerr:latest`           | 5055         | `essoz/Overseerr/config`      |
+| `bookshelf`      | `ghcr.io/pennydreadful/bookshelf:hardcover` | 8787         | `essoz/Bookshelf/config`      |
+| `audiobookshelf` | `ghcr.io/advplyr/audiobookshelf:latest`     | 13378 → 80   | `essoz/Audiobookshelf/config` |
+| `tautulli`       | `lscr.io/linuxserver/tautulli:latest`       | 27022 → 8181 | `essoz/Tautulli/config`       |
 
 Both hosts run a `sonarr`, a `radarr` and a `sabnzbd`, on the same host ports.
 **Always name the host.** "Restart sonarr" is ambiguous and has been acted on against
@@ -119,11 +119,11 @@ only once the update is confirmed good.
 
 ## Troubleshooting
 
-| Symptom | Cause | Fix |
-|---|---|---|
-| `docker: command not found` over SSH | Not on the non-interactive `PATH` | Use `/usr/local/bin/docker` |
-| `sudo: no password was provided` | Vermithor has no NOPASSWD rule, or the stored password is wrong for that box | `nas setpw vermithor` — passwords are per-NAS |
-| Service answers `302` or `401` after an update | Normal. Sonarr redirects to its login, some apps 401 unauth'd | Not a failure |
-| A container restarts in a loop after an update | Usually a config schema the new major rejects | Read `docker logs`, then roll back image **and** config |
-| SABnzbd queue looks stalled after a recreate | It resumes from the bind-mounted config, but a long download may need a nudge | Check the queue is moving; re-queue if not |
-| Update says "already current" but the app shows an older version | The tag has not moved upstream yet; linuxserver rebuilds trail upstream releases | Wait, or pin a specific tag deliberately |
+| Symptom                                                          | Cause                                                                            | Fix                                                     |
+| ---------------------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| `docker: command not found` over SSH                             | Not on the non-interactive `PATH`                                                | Use `/usr/local/bin/docker`                             |
+| `sudo: no password was provided`                                 | Vermithor has no NOPASSWD rule, or the stored password is wrong for that box     | `nas setpw vermithor` — passwords are per-NAS           |
+| Service answers `302` or `401` after an update                   | Normal. Sonarr redirects to its login, some apps 401 unauth'd                    | Not a failure                                           |
+| A container restarts in a loop after an update                   | Usually a config schema the new major rejects                                    | Read `docker logs`, then roll back image **and** config |
+| SABnzbd queue looks stalled after a recreate                     | It resumes from the bind-mounted config, but a long download may need a nudge    | Check the queue is moving; re-queue if not              |
+| Update says "already current" but the app shows an older version | The tag has not moved upstream yet; linuxserver rebuilds trail upstream releases | Wait, or pin a specific tag deliberately                |

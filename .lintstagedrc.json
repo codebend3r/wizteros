@@ -1,0 +1,4 @@
+{
+  "*.{js,mjs,cjs}": ["node_modules/.bin/oxlint --fix", "node_modules/.bin/oxfmt"],
+  "*.{json,jsonc,md,yml,yaml,toml,html,css}": ["node_modules/.bin/oxfmt"]
+}

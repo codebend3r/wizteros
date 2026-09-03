@@ -17,10 +17,10 @@ judgment and never hand-edits a version field.
 
 The three markers, which must always agree:
 
-| Marker | Why |
-|---|---|
-| `package.json` | Workspace root, the source of truth |
-| `apps/admin-portal/package.json` | The SPA |
+| Marker                                         | Why                                                       |
+| ---------------------------------------------- | --------------------------------------------------------- |
+| `package.json`                                 | Workspace root, the source of truth                       |
+| `apps/admin-portal/package.json`               | The SPA                                                   |
 | `apps/stripe-bridge/stripe_bridge/__init__.py` | `__version__`, the only marker that reaches the container |
 
 `release.sh` hard-fails when they disagree, both before and after the bump, so a
@@ -105,11 +105,11 @@ House calibration, not textbook semver. History: 0.1.4 swallowed the admin login
 and the new admin pages; 0.1.5 swallowed the React 19 upgrade and the mobile-ready
 pages. Features and fixes both land as patch here.
 
-| Level | When |
-|---|---|
-| patch | The routine release: any mix of fixes, features, upgrades, UI work. Default when torn. |
+| Level | When                                                                                                                                                                                                                                                                               |
+| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| patch | The routine release: any mix of fixes, features, upgrades, UI work. Default when torn.                                                                                                                                                                                             |
 | minor | A deliberate milestone the admin must notice: payment-flow change, a store migration that needs admin action, auth overhaul, a new app surface. Additive schema (auto-created tables, `IF NOT EXISTS` columns) is routine and stays patch. Minor is a statement; use it sparingly. |
-| major | 1.0 graduation, or a compatibility break with live NAS state or Stripe data. Flag it loudly and say why. |
+| major | 1.0 graduation, or a compatibility break with live NAS state or Stripe data. Flag it loudly and say why.                                                                                                                                                                           |
 
 ## The recommendation
 

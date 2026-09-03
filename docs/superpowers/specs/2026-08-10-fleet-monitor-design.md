@@ -17,13 +17,13 @@ Everything else is manual: SSH into a box, run `df`, read `docker ps`, guess.
 
 Measured on 2026-08-10, not assumed. This table is the constraint the design has to respect.
 
-| Host | IP | CPU | Cores | RAM | `/dev/dri` | Docker | `/volume1` |
-|---|---|---|---|---|---|---|---|
-| `vermithor` | .3 | Celeron J3455 | 4 | 15.8 GB | yes (i915) | yes | 93T / 95T (**99%**) |
-| `meleys` | .2 | Ryzen Embedded R1600 | 2c/4t | 32.1 GB | no | yes | 80T / 84T (95%) |
-| `syrax` | .5 | Atom C3538 | 4 | 32.1 GB | no | no | 37T / 41T (92%) |
-| `vhagar` | .6 | Celeron J4125 | 4 | 7.8 GB | yes (i915) | yes | 34T / 37T (93%) |
-| `caraxes` | .4 | ARMv8 | 4 | **1.6 GB** | no | no | 23T / 27T (88%) |
+| Host        | IP  | CPU                  | Cores | RAM        | `/dev/dri` | Docker | `/volume1`          |
+| ----------- | --- | -------------------- | ----- | ---------- | ---------- | ------ | ------------------- |
+| `vermithor` | .3  | Celeron J3455        | 4     | 15.8 GB    | yes (i915) | yes    | 93T / 95T (**99%**) |
+| `meleys`    | .2  | Ryzen Embedded R1600 | 2c/4t | 32.1 GB    | no         | yes    | 80T / 84T (95%)     |
+| `syrax`     | .5  | Atom C3538           | 4     | 32.1 GB    | no         | no     | 37T / 41T (92%)     |
+| `vhagar`    | .6  | Celeron J4125        | 4     | 7.8 GB     | yes (i915) | yes    | 34T / 37T (93%)     |
+| `caraxes`   | .4  | ARMv8                | 4     | **1.6 GB** | no         | no     | 23T / 27T (88%)     |
 
 Docker is installable on any x86_64 box, so the Docker column is current state, not a
 constraint. `vhagar` gained Container Manager 24.0.2 on 2026-08-11 when Jellyfin was
@@ -52,23 +52,23 @@ gaining or losing Docker is a one-line config change rather than a redesign.
 
 ### Per-signal feasibility
 
-| Signal | Source | Availability |
-|---|---|---|
-| CPU per-core and aggregate | `/proc/stat` | all 5 |
-| Load average | `/proc/loadavg` | all 5 |
-| Memory | `/proc/meminfo` | all 5 |
-| Network per NIC | `/proc/net/dev` | all 5 |
-| Disk I/O | `/proc/diskstats` | all 5 |
-| Volume usage | `df -Pk` | all 5 |
-| CPU temperature | `/sys/class/hwmon/*/temp*_input` | all 5 |
-| SMART, drive temps, NVMe wear | `smartctl`, `/usr/sbin/nvme` | all 5, **needs sudo** |
-| GPU | `/sys/class/drm/card0/gt_*_freq_mhz` | **2 of 5 only** |
-| Container state and restarts | Docker API | vermithor, meleys |
-| Container CPU/mem/net | Docker API stats | vermithor, meleys |
-| Plex sessions and transcode mode | Plex HTTP API | all 5 |
-| *arr app health warnings | Sonarr/Radarr/Lidarr/Prowlarr HTTP API | vermithor, meleys |
-| Download queue state | SABnzbd HTTP API | vermithor, meleys |
-| Bridge and Wizarr | HTTP, as `stack-health` already does | meleys |
+| Signal                           | Source                                 | Availability          |
+| -------------------------------- | -------------------------------------- | --------------------- |
+| CPU per-core and aggregate       | `/proc/stat`                           | all 5                 |
+| Load average                     | `/proc/loadavg`                        | all 5                 |
+| Memory                           | `/proc/meminfo`                        | all 5                 |
+| Network per NIC                  | `/proc/net/dev`                        | all 5                 |
+| Disk I/O                         | `/proc/diskstats`                      | all 5                 |
+| Volume usage                     | `df -Pk`                               | all 5                 |
+| CPU temperature                  | `/sys/class/hwmon/*/temp*_input`       | all 5                 |
+| SMART, drive temps, NVMe wear    | `smartctl`, `/usr/sbin/nvme`           | all 5, **needs sudo** |
+| GPU                              | `/sys/class/drm/card0/gt_*_freq_mhz`   | **2 of 5 only**       |
+| Container state and restarts     | Docker API                             | vermithor, meleys     |
+| Container CPU/mem/net            | Docker API stats                       | vermithor, meleys     |
+| Plex sessions and transcode mode | Plex HTTP API                          | all 5                 |
+| *arr app health warnings         | Sonarr/Radarr/Lidarr/Prowlarr HTTP API | vermithor, meleys     |
+| Download queue state             | SABnzbd HTTP API                       | vermithor, meleys     |
+| Bridge and Wizarr                | HTTP, as `stack-health` already does   | meleys                |
 
 ### The GPU caveat, stated plainly
 
@@ -100,10 +100,10 @@ cores, not 4. `syrax` (Atom C3538, Denverton) has no iGPU at all, and `caraxes` 
 **Jellyfin was installed on `vhagar` (DS920+, J4125) on 2026-08-11**, the best iGPU in the
 fleet. Measured there against a real 4K HEVC 10-bit HDR file:
 
-| Path | Speed | Concurrent streams |
-|---|---|---|
-| 4K HEVC to 1080p H.264, no tone mapping | 2.65x realtime, 64 fps | about 2 |
-| 4K HDR to 1080p SDR, `tonemap_vaapi` | **1.19x realtime, 29 fps** | **about 1** |
+| Path                                    | Speed                      | Concurrent streams |
+| --------------------------------------- | -------------------------- | ------------------ |
+| 4K HEVC to 1080p H.264, no tone mapping | 2.65x realtime, 64 fps     | about 2            |
+| 4K HDR to 1080p SDR, `tonemap_vaapi`    | **1.19x realtime, 29 fps** | **about 1**        |
 
 The tone-mapped number is the one that matters for an HDR library, and it is the honest
 ceiling: barely real time, so a single 4K HDR transcode saturates the iGPU and a second
@@ -135,7 +135,7 @@ Recommended, for four reasons:
 1. **Nothing to install on DSM.** No agent to survive a DSM update, no ARM build for
    caraxes, no memory footprint on the 1.6 GB box. The blast radius of the monitor is one
    container on one host.
-2. **It can speak the *arr stack natively.** `GET /api/v3/health` on Sonarr returns real
+2. *_It can speak the *arr stack natively.*_ `GET /api/v3/health` on Sonarr returns real
    warnings (indexer unavailable, download client unreachable, root folder missing). No
    generic exporter surfaces that. This is the difference between a dashboard and a
    management tool.
@@ -212,11 +212,11 @@ without a re-collection.
 
 **Cadence tiers**, because not everything moves at the same speed:
 
-| Tier | Interval | What |
-|---|---|---|
-| Vitals | 30s | CPU, memory, network, load, container state |
-| Application | 60s | arr health, Plex sessions, queue depth, HTTP up/down |
-| Slow hardware | 15min | SMART, drive temps, NVMe wear, `df` |
+| Tier          | Interval | What                                                 |
+| ------------- | -------- | ---------------------------------------------------- |
+| Vitals        | 30s      | CPU, memory, network, load, container state          |
+| Application   | 60s      | arr health, Plex sessions, queue depth, HTTP up/down |
+| Slow hardware | 15min    | SMART, drive temps, NVMe wear, `df`                  |
 
 **Docker access without storing sudo passwords.** The collector runs on vermithor with
 `/var/run/docker.sock` mounted read-only, so local containers need no credentials. Meleys
@@ -270,17 +270,17 @@ inherent to self-hosted monitoring and the design does not pretend otherwise:
 This is the part that makes it a management tool rather than a chart viewer. Each rule
 reads history and emits a recommendation with the evidence behind it.
 
-| Rule | Emits |
-|---|---|
-| Disk runway | Linear fit on `df` history: "vermithor `/volume1` fills in ~N days at the current rate" |
-| Transcode pressure | Sessions transcoding on a host with no render node: "CPU transcode on meleys, 2 physical cores, no iGPU" |
-| Competing media servers | Plex and Jellyfin transcoding on the same host at the same time |
-| Restart loops | `restart_count` delta over 24h per container |
-| arr health | Warnings surfaced verbatim from `/api/v3/health` |
-| Queue stalls | SABnzbd queue depth flat while a download is nominally active |
-| Drive wear | Reallocated sector trend, NVMe `percentage_used` |
-| Memory pressure | Sustained low available memory, which caraxes is a standing candidate for |
-| Inotify headroom | Watch and instance usage against the ceiling, which two media servers scanning the same libraries push twice as hard |
+| Rule                    | Emits                                                                                                                |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Disk runway             | Linear fit on `df` history: "vermithor `/volume1` fills in ~N days at the current rate"                              |
+| Transcode pressure      | Sessions transcoding on a host with no render node: "CPU transcode on meleys, 2 physical cores, no iGPU"             |
+| Competing media servers | Plex and Jellyfin transcoding on the same host at the same time                                                      |
+| Restart loops           | `restart_count` delta over 24h per container                                                                         |
+| arr health              | Warnings surfaced verbatim from `/api/v3/health`                                                                     |
+| Queue stalls            | SABnzbd queue depth flat while a download is nominally active                                                        |
+| Drive wear              | Reallocated sector trend, NVMe `percentage_used`                                                                     |
+| Memory pressure         | Sustained low available memory, which caraxes is a standing candidate for                                            |
+| Inotify headroom        | Watch and instance usage against the ceiling, which two media servers scanning the same libraries push twice as hard |
 
 The disk runway rule would have flagged vermithor at 99% before it became urgent, which is
 the whole argument for building this.

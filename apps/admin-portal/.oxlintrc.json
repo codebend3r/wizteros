@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["eslint", "typescript", "oxc", "unicorn", "react", "jsx-a11y", "import", "promise"],
+  "plugins": ["typescript", "oxc", "unicorn", "react", "jsx-a11y", "import", "promise"],
   "categories": {
     "correctness": "error",
     "suspicious": "error",
@@ -25,7 +25,7 @@
     // already copy with [...arr] before sorting, so nothing is mutated.
     "unicorn/no-array-sort": "off",
     // The house style is `!!value` for boolean conversion, including in guards.
-    "eslint/no-extra-boolean-cast": "off",
+    "no-extra-boolean-cast": "off",
     // Fetch chains here exist for their setState side effects, not to pass values on.
     "promise/always-return": "off",
     "unicorn/consistent-function-scoping": "warn",
@@ -34,11 +34,11 @@
     "typescript/no-explicit-any": "error",
     "typescript/consistent-type-definitions": ["error", "type"],
     "typescript/no-non-null-assertion": "error",
-    "eslint/no-var": "error",
-    "eslint/prefer-const": "error",
-    "eslint/eqeqeq": ["error", "always", { "null": "ignore" }],
-    "eslint/no-console": ["warn", { "allow": ["warn", "error"] }],
-    "eslint/no-iterator": "error",
+    "no-var": "error",
+    "prefer-const": "error",
+    "eqeqeq": ["error", "always", { "null": "ignore" }],
+    "no-console": ["warn", { "allow": ["warn", "error"] }],
+    "no-iterator": "error",
     "unicorn/prefer-array-flat-map": "error",
     "unicorn/no-array-for-each": "warn",
     "import/no-default-export": "error"
@@ -62,7 +62,7 @@
     {
       "files": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/test/**", "src/test-setup.ts"],
       "rules": {
-        "eslint/no-console": "off",
+        "no-console": "off",
         "typescript/no-non-null-assertion": "off",
         "unicorn/consistent-function-scoping": "off"
       }

@@ -42,11 +42,11 @@ wizteros/
 └── package.json                bun workspaces plus aliases that delegate to Nx
 ```
 
-| Path | What lives there |
-| --- | --- |
-| `apps/admin-portal/src/` | Public landing page and the password-gated admin pages. The `@/*` import alias maps here |
+| Path                                | What lives there                                                                                                                                                         |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `apps/admin-portal/src/`            | Public landing page and the password-gated admin pages. The `@/*` import alias maps here                                                                                 |
 | `apps/stripe-bridge/stripe_bridge/` | Bridge runtime: `stripe_wizarr_bridge.py` (entrypoint), plus `wizarr.py`, `plex.py`, `store.py`, `tiers.py`, `mailer.py`, `email_template.py`, `admin.py`, `snapshot.py` |
-| `apps/*/` roots | Per-app config: `vite.config.ts`, `tsconfig.json`, `bunfig.toml`, `pytest.ini`, `ruff.toml`, `Dockerfile`, lint and format configs |
+| `apps/*/` roots                     | Per-app config: `vite.config.ts`, `tsconfig.json`, `bunfig.toml`, `pytest.ini`, `ruff.toml`, `Dockerfile`, lint and format configs                                       |
 
 Two things that are easy to get wrong:
 
@@ -57,12 +57,12 @@ Two things that are easy to get wrong:
 
 **Services**
 
-| Component | Role |
-| --- | --- |
-| [Wizarr](https://github.com/wizarrrr/wizarr) | Invite-based user onboarding |
-| [Tautulli](https://github.com/Tautulli/Tautulli) | Usage monitoring and analytics |
-| `apps/stripe-bridge/` | FastAPI (Python 3.12): turns Stripe webhooks into Wizarr API calls and serves the admin API. Tested with pytest |
-| `apps/admin-portal/` | Vite + React 19 SPA (TypeScript, SCSS modules, zustand, TanStack Query). Tested with bun test |
+| Component                                        | Role                                                                                                            |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| [Wizarr](https://github.com/wizarrrr/wizarr)     | Invite-based user onboarding                                                                                    |
+| [Tautulli](https://github.com/Tautulli/Tautulli) | Usage monitoring and analytics                                                                                  |
+| `apps/stripe-bridge/`                            | FastAPI (Python 3.12): turns Stripe webhooks into Wizarr API calls and serves the admin API. Tested with pytest |
+| `apps/admin-portal/`                             | Vite + React 19 SPA (TypeScript, SCSS modules, zustand, TanStack Query). Tested with bun test                   |
 
 **Tooling**
 
@@ -102,14 +102,15 @@ bun run setup:py   # local venv for the bridge test suite
 bun run verify     # lint, format check, typecheck and tests across both apps
 ```
 
-| Task | Command |
-| --- | --- |
-| Dev server | `bun run dev` |
-| Fix what is fixable | `bun run lint:fix`, `bun run format` |
-| Test one app | `bun run test:web`, `bun run test:bridge` |
-| Bridge container | `bun run bridge:up`, `bridge:down`, `bridge:logs` |
-| Only what changed | `bun run affected` |
-| Deploy the bridge to the NAS | `bun run deploy:nas` |
+| Task                         | Command                                           |
+| ---------------------------- | ------------------------------------------------- |
+| Dev server                   | `bun run dev`                                     |
+| Fix what is fixable          | `bun run lint:fix`, `bun run format`              |
+| Test one app                 | `bun run test:web`, `bun run test:bridge`         |
+| Bridge container             | `bun run bridge:up`, `bridge:down`, `bridge:logs` |
+| Only what changed            | `bun run affected`                                |
+| Re-run the pre-commit gate   | `bun run system-check:no-cache`                   |
+| Deploy the bridge to the NAS | `bun run deploy:nas`                              |
 
 Hooks run automatically. Pre-commit first runs `bun run lint:staged`, which fixes
 only the files in the commit (`oxlint --fix` and `oxfmt` on TS/TSX, `stylelint
@@ -118,9 +119,24 @@ result, then `bun run system-check` (lint, SCSS lint, format check, typecheck,
 and tests for `admin-portal`). Pre-push runs `bun run verify` across both apps.
 CI runs the same `bun run verify` on every push.
 
-lint-staged is configured per app, in `apps/*/.lintstagedrc.json`; the closest
-config to a staged file wins and its tasks run from that app's directory. Files
-outside `apps/` are left alone, since nothing formats them today.
+`system-check` reads the Nx cache, so a rerun with nothing changed reports a hit
+without executing anything. `bun run system-check:no-cache` runs the identical
+five targets with `--skip-nx-cache`, forcing every one to execute and skipping
+both the local and the remote cache. Reach for it when a cached pass looks
+wrong, when a tool was upgraded outside the hashed inputs, or when timing the
+real cost of the gate.
+
+lint-staged is configured per app, in `apps/*/.lintstagedrc.json`, plus
+`.lintstagedrc.json` at the root for everything outside `apps/`; the closest
+config to a staged file wins and its tasks run from that config's directory.
+
+Everything outside `apps/` (the `scripts/` and `.claude/skills/**` `.mjs`
+tooling, the docs, and the root config files) is linted and formatted from the
+root `.oxlintrc.json` and `.oxfmtrc.json`. That pair is not an Nx target, since
+the repo root is not an Nx project, so `bun run lint`, `format`, `format:check`
+and `verify` each run it directly before fanning out to the projects. To run
+just that pass: `bun run lint:root`, `bun run lint:root:fix`,
+`bun run format:root`, `bun run format:check:root`.
 
 ## Nx
 
@@ -135,9 +151,9 @@ bunx nx graph                          # project graph in the browser
 
 Where targets come from:
 
-| Project | Source |
-| --- | --- |
-| `admin-portal` | Inferred from its `package.json` scripts, whitelisted by `nx.includedScripts` |
+| Project         | Source                                                                                                                                                                              |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `admin-portal`  | Inferred from its `package.json` scripts, whitelisted by `nx.includedScripts`                                                                                                       |
 | `stripe-bridge` | Both: `package.json` scripts (`lint:py`, `test`, e2e) via `nx.includedScripts`, plus `project.json` for the Docker targets (`docker-build`, `serve`, `stop`, `logs`, `test-docker`) |
 
 Use `bunx nx show project <name>` to see a project's real target list rather than guessing from one file.
@@ -161,51 +177,51 @@ Skills under `.claude/skills/` are scoped to this repo. Each one's `SKILL.md` ca
 
 **Repo workflow**
 
-| Skill | What it does |
-| --- | --- |
-| `commiter` | Enforces the `CLAUDE.md` commit and PR conventions, keeping unrelated changes in separate commits |
-| `pr-creator` | Creates, drafts, formats, and validates pull requests against those same conventions |
-| `version-bumper` | Decides whether `main` is due for a release, recommends a level, and runs the release flow on approval |
-| `deploy-nas` | Ships `main` to the Synology NAS: syncs, rebuilds `stripe-bridge`, verifies health, rolls back a bad build |
-| `e2e-runner` | Runs the live e2e suites safely: what each asserts, what it mutates on the live Wizarr, and how to clean up a dead run |
-| `nas-state-backup` | Snapshots live NAS state (bridge DB, `wizarr-data`) before anything can destroy it |
-| `wizarr-upgrade` | Upgrades or rolls back the live Wizarr container, and judges whether a new release is safe to take |
+| Skill              | What it does                                                                                                                                          |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `commiter`         | Enforces the `CLAUDE.md` commit and PR conventions, keeping unrelated changes in separate commits                                                     |
+| `pr-creator`       | Creates, drafts, formats, and validates pull requests against those same conventions                                                                  |
+| `version-bumper`   | Decides whether `main` is due for a release, recommends a level, and runs the release flow on approval                                                |
+| `deploy-nas`       | Ships `main` to the Synology NAS: syncs, rebuilds `stripe-bridge`, verifies health, rolls back a bad build                                            |
+| `e2e-runner`       | Runs the live e2e suites safely: what each asserts, what it mutates on the live Wizarr, and how to clean up a dead run                                |
+| `nas-state-backup` | Snapshots live NAS state (bridge DB, `wizarr-data`) before anything can destroy it                                                                    |
+| `wizarr-upgrade`   | Upgrades or rolls back the live Wizarr container, and judges whether a new release is safe to take                                                    |
 | `arr-stack-update` | Moves the media-stack images (sonarr, radarr, sabnzbd, …) on Meleys and Vermithor to latest, recreating only what changed and rolling back what fails |
-| `copy-compliance` | Audits user-facing copy against the server-cost contribution framing |
-| `sales-agent` | Finds win-back opportunities among declined and lapsed members, ranks them, and drafts a compliance-checked email to send by hand |
-| `invite-audit` | Audits the invitation set: the four per-tier baseline links, their expiry and scope, and whether the 03:00 rotation is still running |
-| `monitor-ci` | Watches Nx Cloud CI, evaluates failures, and coordinates supported self-healing fixes |
+| `copy-compliance`  | Audits user-facing copy against the server-cost contribution framing                                                                                  |
+| `sales-agent`      | Finds win-back opportunities among declined and lapsed members, ranks them, and drafts a compliance-checked email to send by hand                     |
+| `invite-audit`     | Audits the invitation set: the four per-tier baseline links, their expiry and scope, and whether the 03:00 rotation is still running                  |
+| `monitor-ci`       | Watches Nx Cloud CI, evaluates failures, and coordinates supported self-healing fixes                                                                 |
 
 **Nx**
 
-| Skill | What it does |
-| --- | --- |
-| `nx-workspace` | Explores projects, targets, and configuration without changing anything |
-| `nx-run-tasks` | Runs targets for one, many, or only affected projects |
-| `nx-generate` | Finds and runs the right generator, then checks the output against repo conventions |
-| `nx-plugins` | Finds and installs Nx plugins for frameworks and other technologies |
-| `nx-import` | Imports another repository into the workspace while preserving history |
+| Skill                     | What it does                                                                            |
+| ------------------------- | --------------------------------------------------------------------------------------- |
+| `nx-workspace`            | Explores projects, targets, and configuration without changing anything                 |
+| `nx-run-tasks`            | Runs targets for one, many, or only affected projects                                   |
+| `nx-generate`             | Finds and runs the right generator, then checks the output against repo conventions     |
+| `nx-plugins`              | Finds and installs Nx plugins for frameworks and other technologies                     |
+| `nx-import`               | Imports another repository into the workspace while preserving history                  |
 | `link-workspace-packages` | Links sibling packages with the package manager instead of path aliases or manual edits |
 
 ## Claude agents
 
 Subagents under `.claude/agents/` are scoped to this repo the same way.
 
-| Agent | What it does |
-| --- | --- |
+| Agent               | What it does                                                                                                                                   |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | `wizteros-reviewer` | Reviews a diff, branch, or PR against the `CLAUDE.md` conventions the toolchain does not enforce; read-only, reads the rulebook at review time |
-| `sales-agent` | Ranks membership growth opportunities and drafts win-back copy; read-only, never sends and never mutates a member |
+| `sales-agent`       | Ranks membership growth opportunities and drafts win-back copy; read-only, never sends and never mutates a member                              |
 
 ## Docs
 
-| Topic | Where |
-| --- | --- |
-| Tiers and the invite/renewal/cancel flow | `docs/invite-flow.md` |
-| Failed payments, dunning, and duplicate customers | `docs/billing-failures.md` |
-| NAS deployment | `docs/nas-deployment.md` |
-| The *arr media stacks on the NAS | `docs/arr-stack.md` |
-| Webhook ingress | `docs/tailscale-funnel.md` |
-| Specs and plans | `docs/superpowers/specs/`, `docs/superpowers/plans/` |
-| Product requirements | `docs/prd/` |
-| Release history | `CHANGELOG.md` |
-| Working conventions | `CLAUDE.md` |
+| Topic                                             | Where                                                |
+| ------------------------------------------------- | ---------------------------------------------------- |
+| Tiers and the invite/renewal/cancel flow          | `docs/invite-flow.md`                                |
+| Failed payments, dunning, and duplicate customers | `docs/billing-failures.md`                           |
+| NAS deployment                                    | `docs/nas-deployment.md`                             |
+| The *arr media stacks on the NAS                  | `docs/arr-stack.md`                                  |
+| Webhook ingress                                   | `docs/tailscale-funnel.md`                           |
+| Specs and plans                                   | `docs/superpowers/specs/`, `docs/superpowers/plans/` |
+| Product requirements                              | `docs/prd/`                                          |
+| Release history                                   | `CHANGELOG.md`                                       |
+| Working conventions                               | `CLAUDE.md`                                          |

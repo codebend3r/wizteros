@@ -9,11 +9,11 @@ this document is the record of what that cost and what now covers it.
 
 One member, two Stripe customers, one lost library:
 
-| | `jimmyvo768@gmail.com` | `jimmyvo767@gmail.com` |
-| --- | --- | --- |
-| customer | `cus_Uy7XxcqWmbGh0a`, created 2026-07-28 | `cus_VAtOy3AxCWw4vI`, created 2026-08-31 |
-| subscription | `past_due`, delinquent | `active` |
-| latest invoice | `open`, unpaid, 2026-08-28 | paid 8.00 CAD, 2026-08-31 |
+|                | `jimmyvo768@gmail.com`                   | `jimmyvo767@gmail.com`                   |
+| -------------- | ---------------------------------------- | ---------------------------------------- |
+| customer       | `cus_Uy7XxcqWmbGh0a`, created 2026-07-28 | `cus_VAtOy3AxCWw4vI`, created 2026-08-31 |
+| subscription   | `past_due`, delinquent                   | `active`                                 |
+| latest invoice | `open`, unpaid, 2026-08-28               | paid 8.00 CAD, 2026-08-31                |
 
 What actually happened, in order:
 
@@ -40,7 +40,7 @@ What actually happened, in order:
    dunning, and the person locked out with money taken.
 
 The two addresses are not a mistake and were not "fixed" by deleting one: the
-paid subscription was the one on the address that was *not* the Plex account.
+paid subscription was the one on the address that was _not_ the Plex account.
 See **One person, two addresses** below for how the bridge now joins them.
 
 Every step above is now covered by a test.
@@ -50,13 +50,13 @@ Every step above is now covered by a test.
 The bridge handles five. All five must be enabled on the Stripe endpoint or the
 handler for them is dead code:
 
-| Event | What the bridge does |
-| --- | --- |
-| `checkout.session.completed` | issue a tier-scoped invite, mail it, clear any dunning flag |
-| `invoice.paid` | clear the dunning flag, extend expiry, **or recover access if there is nothing to extend** |
-| `invoice.payment_failed` | flag `past_due`; access untouched |
-| `customer.subscription.updated` | mirror `past_due` / `unpaid` / `active` onto the flag |
-| `customer.subscription.deleted` | clear `subscribed`, disable records |
+| Event                           | What the bridge does                                                                       |
+| ------------------------------- | ------------------------------------------------------------------------------------------ |
+| `checkout.session.completed`    | issue a tier-scoped invite, mail it, clear any dunning flag                                |
+| `invoice.paid`                  | clear the dunning flag, extend expiry, **or recover access if there is nothing to extend** |
+| `invoice.payment_failed`        | flag `past_due`; access untouched                                                          |
+| `customer.subscription.updated` | mirror `past_due` / `unpaid` / `active` onto the flag                                      |
+| `customer.subscription.deleted` | clear `subscribed`, disable records                                                        |
 
 Check what is actually enabled before assuming, because a missing event fails
 silently in exactly the way described above:

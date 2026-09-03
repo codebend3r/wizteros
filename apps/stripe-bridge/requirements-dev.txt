@@ -1,4 +1,4 @@
 -r requirements.txt
 pytest
 responses
-ruff
+ruff==0.16.3

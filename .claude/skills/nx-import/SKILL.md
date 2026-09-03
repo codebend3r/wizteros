@@ -102,31 +102,22 @@ Whole-repo import brings ALL source root files into the dest subdirectory. Clean
 
 **Don't blindly delete** `tsconfig.base.json` — imported projects may extend it via relative paths.
 
-### Root ESLint Config Missing (Subdirectory Import)
+### Imported Lint and Format Config
 
-Subdirectory import doesn't bring the source's root `eslint.config.mjs`, but project configs reference `../../eslint.config.mjs`.
+This workspace lints with oxlint and formats with oxfmt. Whatever the source repo used, the imported project has to end up on that pair — see `references/OXLINT.md` for the full conversion.
 
 **Fix order**:
 
-1. Install ESLint deps first: `pnpm add -wD eslint@^9 @nx/eslint-plugin typescript-eslint` (plus framework-specific plugins)
-2. Create root `eslint.config.mjs` (copy from source or create with `@nx/eslint-plugin` base rules)
-3. Then `npx nx add @nx/eslint` to register the plugin in `nx.json`
+1. Delete the source's lint and format config and its deps outright, root and project level.
+2. Add `oxlint` and `oxfmt` to the imported `package.json` `devDependencies`, pinned to the versions the other apps already use.
+3. Give the project its own `.oxlintrc.json` and `.oxfmtrc.json` at its root, modelled on `apps/admin-portal/`.
+4. Add `lint:ts`, `lint:ts:fix`, `format`, and `format:check` scripts, then list them in the project's `nx.includedScripts` so Nx infers the targets.
 
-Install `typescript-eslint` explicitly — pnpm's strict hoisting won't auto-resolve this transitive dep of `@nx/eslint-plugin`.
-
-### ESLint Version Pinning (Critical)
-
-**Pin ESLint to v9** (`eslint@^9.0.0`). ESLint 10 breaks `@nx/eslint` and many plugins with cryptic errors like `Cannot read properties of undefined (reading 'version')`.
-
-`@nx/eslint` may peer-depend on ESLint 8, causing the wrong version to resolve. If lint fails with `Cannot read properties of undefined (reading 'allow')`, add `pnpm.overrides`:
-
-```json
-{ "pnpm": { "overrides": { "eslint": "^9.0.0" } } }
-```
+Do not add `@nx/eslint` or register its plugin in `nx.json`; the repo root `.oxlintrc.json` already ignores `apps`, so each app owns its own config.
 
 ### Dependency Version Conflicts
 
-After import, compare key deps (`typescript`, `eslint`, framework-specific). If dest uses newer versions, upgrade imported packages to match (usually safe). If source is newer, may need to upgrade dest first. Use `pnpm.overrides` to enforce single-version policy if desired.
+After import, compare key deps (`typescript`, `oxlint`, `oxfmt`, framework-specific). If dest uses newer versions, upgrade imported packages to match (usually safe). If source is newer, may need to upgrade dest first. Keep `oxlint` and `oxfmt` on a single version across every app so the root pass and the per-app passes agree.
 
 ### Module Boundaries
 
@@ -180,7 +171,7 @@ For deeper Jest issues (tsconfig.spec.json, Babel transforms, CI atomization, Je
 
 ### Target Name Prefixing (Whole-Repo Import)
 
-When importing a project with existing npm scripts (`build`, `dev`, `start`, `lint`), Nx plugins auto-prefix inferred target names to avoid conflicts: e.g. `next:build`, `vite:build`, `eslint:lint`.
+When importing a project with existing npm scripts (`build`, `dev`, `start`, `lint`), Nx plugins auto-prefix inferred target names to avoid conflicts: e.g. `next:build`, `vite:build`.
 
 **Fix**: Remove the Nx-rewritten npm scripts from the imported `package.json`, then either:
 
@@ -214,11 +205,12 @@ Plain TS projects use `"noEmit": true`, incompatible with Nx project references.
 
 **Fix**: `rm -rf imported/node_modules imported/pnpm-lock.yaml imported/pnpm-workspace.yaml imported/.gitignore`, then `pnpm install`.
 
-### ESLint Config Handling
+### Lint and Format Config Handling
 
-- **Legacy `.eslintrc.json` (ESLint 8)**: Delete all `.eslintrc.*`, remove v8 deps, create flat `eslint.config.mjs`.
-- **Flat config (`eslint.config.js`)**: Self-contained configs can often be left as-is.
-- **No ESLint**: Create both root and project-level configs from scratch.
+Whatever the source shipped, the end state is the same: `.oxlintrc.json` plus `.oxfmtrc.json` at the imported project's root, and no other linter or formatter anywhere.
+
+- **Source had its own linter/formatter config**: delete every config file and every dep it pulled in, then port the rules that still matter into `.oxlintrc.json`. Rules with no oxlint equivalent get dropped and noted, not kept alive by reinstalling the old tool.
+- **Source had none**: copy `apps/admin-portal/.oxlintrc.json` and `.oxfmtrc.json` and trim the plugins the project doesn't need.
 
 ### TypeScript `paths` Aliases
 
@@ -230,9 +222,9 @@ Identify technologies in the source repo, then read and apply the matching refer
 
 Available references:
 
-- `references/ESLINT.md` — ESLint projects: duplicate `lint`/`eslint:lint` targets, legacy `.eslintrc.*` linting generated files, flat config `.cjs` self-linting, `typescript-eslint` v7/v9 peer dep conflict, mixed ESLint v8+v9 in one workspace.
 - `references/GRADLE.md`
 - `references/JEST.md` — Jest testing: `@nx/jest/plugin` setup, jest.preset.js, testing deps by framework, tsconfig.spec.json, Jest vs Vitest coexistence, Babel transforms, CI atomization.
 - `references/NEXT.md` — Next.js projects: `@nx/next/plugin` targets, `withNx`, Next.js TS config (`noEmit`, `jsx: "preserve"`), auto-installing deps via wrong PM, non-Nx `create-next-app` imports, mixed Next.js+Vite coexistence.
+- `references/OXLINT.md` — lint and format setup: converting an imported project to oxlint and oxfmt, wiring the `lint:ts`/`format` targets through `nx.includedScripts`, root versus per-app config scope, and disable directives.
 - `references/TURBOREPO.md`
 - `references/VITE.md` — Vite projects (React, Vue, or both): `@nx/vite/plugin` typecheck target, `resolve.alias`/`__dirname` fixes, framework deps, Vue-specific setup, mixed React+Vue coexistence.

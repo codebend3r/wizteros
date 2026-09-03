@@ -1,4 +1,4 @@
 -r requirements.txt
 pytest
 pytest-asyncio
-ruff
+ruff==0.16.3

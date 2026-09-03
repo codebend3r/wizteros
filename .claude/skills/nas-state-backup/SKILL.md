@@ -13,11 +13,11 @@ timestamped, verified tarballs written NAS-side.
 
 What is at risk:
 
-| Dir | Project | Why losing it hurts |
-|---|---|---|
-| `wizarr-data/` | `westeroz` | Wizarr's whole DB, including the **healed library-name cache**. Lose it and invite redemption breaks again, the same failure the healing pass was written to fix. |
-| `tautulli-config/` | `westeroz` | All Tautulli history and settings. Not load bearing for payments, unrecoverable if lost. |
-| `stripe-bridge-data/` | `stripe-bridge` | `bridge.db`: the Stripe customer to Wizarr invite mapping, member notes, tags, processed-event ids. Lose it and live subscribers stop reconciling. |
+| Dir                   | Project         | Why losing it hurts                                                                                                                                               |
+| --------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `wizarr-data/`        | `westeroz`      | Wizarr's whole DB, including the **healed library-name cache**. Lose it and invite redemption breaks again, the same failure the healing pass was written to fix. |
+| `tautulli-config/`    | `westeroz`      | All Tautulli history and settings. Not load bearing for payments, unrecoverable if lost.                                                                          |
+| `stripe-bridge-data/` | `stripe-bridge` | `bridge.db`: the Stripe customer to Wizarr invite mapping, member notes, tags, processed-event ids. Lose it and live subscribers stop reconciling.                |
 
 This is a **production data** operation on a live stack. It only ever reads, but it runs
 `docker exec` against the running bridge, so run it deliberately.
@@ -30,20 +30,20 @@ This is a **production data** operation on a live stack. It only ever reads, but
 .claude/skills/nas-state-backup/scripts/backup.sh --pull
 ```
 
-| Flag | Meaning |
-|---|---|
+| Flag        | Meaning                                                                                                                    |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `--dry-run` | Print every action, perform none. It still queries the NAS read-only, so the plan it prints is the real plan, not a guess. |
-| `--pull` | After the NAS-side backup, also copy the new snapshot dir to the Mac under `~/Backups/wizteros/`. |
+| `--pull`    | After the NAS-side backup, also copy the new snapshot dir to the Mac under `~/Backups/wizteros/`.                          |
 
-| Env override | Default |
-|---|---|
-| `WZ_NAS_HOST` | `crivas@192.168.50.2` |
-| `WZ_NAS_PATH` | `/volume1/docker/stripe-bridge` |
-| `WZ_WESTEROZ_PATH` | `/volume1/docker/westeroz` |
-| `WZ_BACKUP_ROOT` | `/volume1/docker/backups` |
-| `WZ_BACKUP_KEEP` | `7` |
-| `WZ_PULL_DEST` | `~/Backups/wizteros` |
-| `WZ_MIN_ARCHIVE_BYTES` | `1024` |
+| Env override           | Default                         |
+| ---------------------- | ------------------------------- |
+| `WZ_NAS_HOST`          | `crivas@192.168.50.2`           |
+| `WZ_NAS_PATH`          | `/volume1/docker/stripe-bridge` |
+| `WZ_WESTEROZ_PATH`     | `/volume1/docker/westeroz`      |
+| `WZ_BACKUP_ROOT`       | `/volume1/docker/backups`       |
+| `WZ_BACKUP_KEEP`       | `7`                             |
+| `WZ_PULL_DEST`         | `~/Backups/wizteros`            |
+| `WZ_MIN_ARCHIVE_BYTES` | `1024`                          |
 
 Run it as a single Bash invocation so the user sees the whole transcript. Default to
 `--dry-run` when the user is asking "is this backed up" rather than "back this up".

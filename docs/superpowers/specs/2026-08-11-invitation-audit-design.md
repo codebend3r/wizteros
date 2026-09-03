@@ -39,12 +39,12 @@ Two artifacts, split by whether the work is mechanical or judgment.
 
 ### 1. Bridge-side rotation (mechanical, runs unattended)
 
-| Piece | Change |
-| --- | --- |
-| `stripe_bridge/wizarr.py` | add `list_invitations()` and `delete_invitation(id)` |
-| `stripe_bridge/store.py` | add `baseline_invites` table plus accessors |
-| `stripe_bridge/baseline.py` | new: `rotate_baseline_invites()` and `audit_baseline_invites()` |
-| `stripe_bridge/stripe_wizarr_bridge.py` | add `_baseline_loop()` to the lifespan task list |
+| Piece                                   | Change                                                          |
+| --------------------------------------- | --------------------------------------------------------------- |
+| `stripe_bridge/wizarr.py`               | add `list_invitations()` and `delete_invitation(id)`            |
+| `stripe_bridge/store.py`                | add `baseline_invites` table plus accessors                     |
+| `stripe_bridge/baseline.py`             | new: `rotate_baseline_invites()` and `audit_baseline_invites()` |
+| `stripe_bridge/stripe_wizarr_bridge.py` | add `_baseline_loop()` to the lifespan task list                |
 
 The `DELETE /api/invitations/{id}` verb is already exercised by
 `apps/stripe-bridge/scripts/e2e-tiers.mjs:181`, so no new API surface is being
@@ -63,16 +63,16 @@ One per tier in `TIER_DOWNLOADS` — bronze, silver, gold, youth.
 
 Scope comes from `tiers.resolve_tier_access(tier=..., libraries=...)`, the same
 function the checkout path uses. This is the crux of the fix: the baseline set is
-*derived* from the live tier rules rather than frozen at creation time, so it is
+_derived_ from the live tier rules rather than frozen at creation time, so it is
 structurally incapable of granting a retired server or a stale library set.
 
-| Property | Value |
-| --- | --- |
-| `library_ids` / `server_ids` | `resolve_tier_access(tier)` — Meleys only |
-| `allow_downloads` | `TIER_DOWNLOADS[tier]` |
-| `duration` | `ACCESS_DURATION` (35 days of access once redeemed) |
-| `expires_in_days` | `2` — link validity, distinct from duration |
-| `unlimited` | `true` — baselines are multi-use signup links |
+| Property                     | Value                                               |
+| ---------------------------- | --------------------------------------------------- |
+| `library_ids` / `server_ids` | `resolve_tier_access(tier)` — Meleys only           |
+| `allow_downloads`            | `TIER_DOWNLOADS[tier]`                              |
+| `duration`                   | `ACCESS_DURATION` (35 days of access once redeemed) |
+| `expires_in_days`            | `2` — link validity, distinct from duration         |
+| `unlimited`                  | `true` — baselines are multi-use signup links       |
 
 ## Rotation
 
@@ -104,7 +104,7 @@ Rotation deletes an invite only when both hold:
 2. Its `expires` is in the past.
 
 A member checkout invite can never satisfy (1), so it can never be deleted. Anything
-unlimited that is *not* in `baseline_invites` is surfaced by the audit as a stray and
+unlimited that is _not_ in `baseline_invites` is surfaced by the audit as a stray and
 left alone.
 
 ```sql
@@ -118,14 +118,14 @@ CREATE TABLE IF NOT EXISTS baseline_invites (
 
 ## Audit checks
 
-| Check | Fails when |
-| --- | --- |
-| Tier coverage | a tier has no live baseline invite |
-| Expiry defined | a baseline invite has `expires: null` |
-| Scope drift | `server_names` is not exactly `[SHARE_SERVER]` |
-| Downloads | `allow_downloads` disagrees with `TIER_DOWNLOADS[tier]` |
+| Check             | Fails when                                                   |
+| ----------------- | ------------------------------------------------------------ |
+| Tier coverage     | a tier has no live baseline invite                           |
+| Expiry defined    | a baseline invite has `expires: null`                        |
+| Scope drift       | `server_names` is not exactly `[SHARE_SERVER]`               |
+| Downloads         | `allow_downloads` disagrees with `TIER_DOWNLOADS[tier]`      |
 | Rotation liveness | newest baseline for a tier is older than 24h (the loop died) |
-| Strays | an unlimited invite absent from `baseline_invites` |
+| Strays            | an unlimited invite absent from `baseline_invites`           |
 
 **Scope is verified via `server_names`, never `specific_libraries`.** Wizarr's
 invitation serializer reports `specific_libraries: []` even when an invite is
@@ -156,10 +156,10 @@ unscoped one. Confirmed against the live API on 2026-08-11 and already noted at
 
 ## Configuration
 
-| Variable | Default | Meaning |
-| --- | --- | --- |
-| `BASELINE_ROTATE_HOUR` | `3` | local hour the rotation fires |
-| `BASELINE_EXPIRES_DAYS` | `2` | how long a baseline link stays redeemable |
+| Variable                | Default | Meaning                                   |
+| ----------------------- | ------- | ----------------------------------------- |
+| `BASELINE_ROTATE_HOUR`  | `3`     | local hour the rotation fires             |
+| `BASELINE_EXPIRES_DAYS` | `2`     | how long a baseline link stays redeemable |
 
 `BASELINE_EXPIRES_DAYS` must stay above 1. At 1 the two generations stop
 overlapping and a link shared shortly before the rotation dies almost immediately.

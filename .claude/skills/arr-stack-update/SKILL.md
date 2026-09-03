@@ -12,7 +12,7 @@ images: pull, recreate **only what actually changed**, prove each service answer
 again, and roll a service back to its previous image if it does not.
 
 Everything in these stacks tracks a floating tag (`:latest`, or `:hardcover` for
-bookshelf), so "update" means *repull the tag and recreate the container*. There is
+bookshelf), so "update" means _repull the tag and recreate the container_. There is
 no version to bump anywhere in this repo.
 
 **Scope: the media stack only.** `stripe-bridge` is built from this repo rather than
@@ -24,10 +24,10 @@ and are excluded by default — see Stateful Services below.
 Both are single compose projects, discovered at runtime from container labels — never
 hardcode the paths, they have moved before.
 
-| Host | Project | Directory | Services |
-|---|---|---|---|
-| `meleys` | `westeroz` | `/volume1/docker/westeroz` | sonarr, radarr, sabnzbd (+ wizarr, tautulli) |
-| `vermithor` | `essoz` | `/volume1/docker/essoz` | sonarr, radarr, lidarr, prowlarr, sabnzbd, seerr, audiobookshelf, bookshelf (+ tautulli) |
+| Host        | Project    | Directory                  | Services                                                                                 |
+| ----------- | ---------- | -------------------------- | ---------------------------------------------------------------------------------------- |
+| `meleys`    | `westeroz` | `/volume1/docker/westeroz` | sonarr, radarr, sabnzbd (+ wizarr, tautulli)                                             |
+| `vermithor` | `essoz`    | `/volume1/docker/essoz`    | sonarr, radarr, lidarr, prowlarr, sabnzbd, seerr, audiobookshelf, bookshelf (+ tautulli) |
 
 Both hosts run a `sonarr`, a `radarr` and a `sabnzbd`. **Always name the host** — never
 say "the sonarr container".
@@ -41,17 +41,17 @@ Full inventory, ports, and volume layout: `docs/arr-stack.md`.
 .claude/skills/arr-stack-update/scripts/update-arr-stack.sh all --check
 ```
 
-| Flag | Meaning |
-|---|---|
-| `--check` | Pull images and report which are newer; leave containers running as-is |
-| `--services "a b"` | Update only these compose services |
-| `--include-stateful` | Also update wizarr and tautulli — snapshot them first |
-| `--prune` | Delete the superseded images afterwards |
-| `--no-rollback` | Leave a service that fails its health check on the new image |
-| `--timeout <s>` | Readiness wait per service, default 120 |
+| Flag                 | Meaning                                                                |
+| -------------------- | ---------------------------------------------------------------------- |
+| `--check`            | Pull images and report which are newer; leave containers running as-is |
+| `--services "a b"`   | Update only these compose services                                     |
+| `--include-stateful` | Also update wizarr and tautulli — snapshot them first                  |
+| `--prune`            | Delete the superseded images afterwards                                |
+| `--no-rollback`      | Leave a service that fails its health check on the new image           |
+| `--timeout <s>`      | Readiness wait per service, default 120                                |
 
 Run it as one Bash invocation so the user sees the whole transcript. Reach for
-`--check` first when the user is asking *whether* anything is stale rather than telling
+`--check` first when the user is asking _whether_ anything is stale rather than telling
 you to update it.
 
 ## What It Does

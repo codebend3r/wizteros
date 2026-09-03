@@ -3,13 +3,10 @@
   "version": "0.3.2",
   "private": true,
   "description": "Nx monorepo for the wizteros paid-access stack: the admin-portal SPA and the stripe-bridge API",
-  "type": "module",
   "workspaces": [
     "apps/*"
   ],
-  "nx": {
-    "includedScripts": []
-  },
+  "type": "module",
   "scripts": {
     "preinstall": "node scripts/only-bun.mjs",
     "prepare": "husky",
@@ -17,12 +14,15 @@
     "build": "nx run admin-portal:build",
     "preview": "nx run admin-portal:preview",
     "system-check": "nx run-many -t lint:ts lint:css format:check typecheck test -p admin-portal",
-    "verify": "nx run-many -t lint:ts lint:css lint:py format:check typecheck test",
+    "system-check:no-cache": "nx run-many -t lint:ts lint:css format:check typecheck test -p admin-portal --skip-nx-cache",
+    "verify": "bun run lint:root && bun run format:check:root && nx run-many -t lint:ts lint:css lint:py format:check typecheck test",
     "affected": "nx affected -t lint:ts lint:css lint:py format:check typecheck test",
     "graph": "nx graph",
     "typecheck": "nx run-many -t typecheck",
-    "lint": "nx run-many -t lint:ts lint:css lint:py",
-    "lint:fix": "nx run-many -t lint:ts:fix lint:css:fix lint:py:fix",
+    "lint": "bun run lint:root && nx run-many -t lint:ts lint:css lint:py",
+    "lint:fix": "bun run lint:root:fix && nx run-many -t lint:ts:fix lint:css:fix lint:py:fix",
+    "lint:root": "oxlint",
+    "lint:root:fix": "oxlint --fix",
     "lint:ts": "nx run-many -t lint:ts",
     "lint:ts:fix": "nx run-many -t lint:ts:fix",
     "lint:css": "nx run-many -t lint:css",
@@ -30,8 +30,10 @@
     "lint:py": "nx run-many -t lint:py",
     "lint:py:fix": "nx run-many -t lint:py:fix",
     "lint:staged": "lint-staged",
-    "format": "nx run-many -t format",
-    "format:check": "nx run-many -t format:check",
+    "format": "bun run format:root && nx run-many -t format",
+    "format:check": "bun run format:check:root && nx run-many -t format:check",
+    "format:root": "oxfmt .",
+    "format:check:root": "oxfmt --check .",
     "setup:py": "python3 -m venv apps/stripe-bridge/.venv && apps/stripe-bridge/.venv/bin/pip install -r apps/stripe-bridge/requirements-dev.txt",
     "setup:py:monitor": "python3 -m venv apps/fleet-monitor/.venv && apps/fleet-monitor/.venv/bin/pip install -r apps/fleet-monitor/requirements-dev.txt",
     "test:monitor": "nx run fleet-monitor:test",
@@ -55,6 +57,11 @@
   "devDependencies": {
     "husky": "^9.1.7",
     "lint-staged": "17.4.1",
-    "nx": "^23.1.1"
+    "nx": "^23.1.1",
+    "oxfmt": "0.61.0",
+    "oxlint": "1.76.0"
+  },
+  "nx": {
+    "includedScripts": []
   }
 }

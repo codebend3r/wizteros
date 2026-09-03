@@ -35,11 +35,11 @@ export const ConfirmActionModal = ({
   return (
     // Backdrop click is a convenience; the keyboard equivalent is the Escape
     // handler above, so no key handler belongs on the overlay itself.
-    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
+    // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div className={styles.overlay} onClick={() => !busy && onCancel()}>
       {/* The only handler is stopPropagation, which keeps backdrop clicks from
           closing the dialog; it is not an interaction affordance. */}
-      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions */}
+      {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions */}
       <section
         className={styles.dialog}
         role="dialog"
