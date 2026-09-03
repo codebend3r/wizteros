@@ -45,7 +45,7 @@ export const readLedger = ({ dir }) => {
     if (err.code === 'ENOENT') {
       return {}
     }
-    throw new Error(`Failed to read ledger at ${path}: ${err.message}`)
+    throw new Error(`Failed to read ledger at ${path}: ${err.message}`, { cause: err })
   }
 }
 
@@ -82,10 +82,7 @@ export const suppression = ({ record, play, now }) => {
   if (contacts.length >= LIFETIME_CAP) {
     return { reason: 'lifetime-cap', detail: `${contacts.length} lifetime contacts` }
   }
-  const latest = contacts.reduce(
-    (acc, contact) => Math.max(acc, Date.parse(contact.at) || 0),
-    0,
-  )
+  const latest = contacts.reduce((acc, contact) => Math.max(acc, Date.parse(contact.at) || 0), 0)
   if (!latest) {
     return null
   }

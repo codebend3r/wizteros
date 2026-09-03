@@ -46,13 +46,13 @@ Treat that as "audit did not run", not "audit found nothing".
 
 ## The rules being checked
 
-| Rule | Why |
-| --- | --- |
-| Four tiers always live | bronze, gold, silver, youth each need a redeemable link |
-| Every baseline has an expiry | a leaked link that never expires is redeemable forever |
-| Scope is `Meleys` alone | `tiers.py` retires the other servers from signups |
-| Downloads follow the tier | only gold and youth may download |
-| Newest baseline < 26h old | proves the 03:00 rotation is still running |
+| Rule                         | Why                                                     |
+| ---------------------------- | ------------------------------------------------------- |
+| Four tiers always live       | bronze, gold, silver, youth each need a redeemable link |
+| Every baseline has an expiry | a leaked link that never expires is redeemable forever  |
+| Scope is `Meleys` alone      | `tiers.py` retires the other servers from signups       |
+| Downloads follow the tier    | only gold and youth may download                        |
+| Newest baseline < 26h old    | proves the 03:00 rotation is still running              |
 
 Scope is judged on `server_names`, **never** `specific_libraries`. Wizarr's invitation
 serializer reports `specific_libraries: []` even for a correctly scoped invite, so
@@ -137,14 +137,14 @@ un-retired that is a tier-rules change with tests behind it, not an invite fix.
 
 ## Where each remedy happens
 
-| Remedy | Where |
-| --- | --- |
-| Fix a tier's library set | `tiers.py` + Plex library names, then `refresh:libraries`, test, deploy |
-| Ship the rotation to the NAS | `bun run deploy:nas`, confirm `GET /version` |
-| Force a rotation now | restart the bridge container and wait for 03:00, or wait a day |
-| Delete a stray invite | Wizarr UI, by hand, after confirming replacements exist |
-| Change the rotation hour | `BASELINE_ROTATE_HOUR` in the NAS `.env`, then rebuild |
-| Change the link lifetime | `BASELINE_EXPIRES_DAYS` (default 2), same |
+| Remedy                       | Where                                                                   |
+| ---------------------------- | ----------------------------------------------------------------------- |
+| Fix a tier's library set     | `tiers.py` + Plex library names, then `refresh:libraries`, test, deploy |
+| Ship the rotation to the NAS | `bun run deploy:nas`, confirm `GET /version`                            |
+| Force a rotation now         | restart the bridge container and wait for 03:00, or wait a day          |
+| Delete a stray invite        | Wizarr UI, by hand, after confirming replacements exist                 |
+| Change the rotation hour     | `BASELINE_ROTATE_HOUR` in the NAS `.env`, then rebuild                  |
+| Change the link lifetime     | `BASELINE_EXPIRES_DAYS` (default 2), same                               |
 
 ## Reporting back
 
@@ -165,7 +165,7 @@ without it, baseline and stray are indistinguishable.
 - Never delete a stray on the audit's say-so alone. It cannot know what you created
   on purpose.
 - Never judge scope by `specific_libraries` — it is `[]` on correctly scoped invites.
-- A missing expiry on a *member* invite is not this skill's problem; member invites
+- A missing expiry on a _member_ invite is not this skill's problem; member invites
   are governed by `INVITE_EXPIRES_DAYS` and diagnosed with `member-triage`.
 - Do not lower `BASELINE_EXPIRES_DAYS` to 1 "so links die sooner". At 1 day the
   overlap disappears and a link shared minutes before 03:00 dies almost immediately.

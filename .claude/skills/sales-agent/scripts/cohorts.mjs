@@ -53,7 +53,9 @@ export const parseArgs = ({ argv }) => {
       '--no-store',
       recordAt >= 0 ? ['--record', argv[recordAt + 1], argv[recordAt + 2]] : [],
       optOutAt >= 0 ? ['--opt-out', argv[optOutAt + 1]] : [],
-    ].flat().filter(Boolean),
+    ]
+      .flat()
+      .filter(Boolean),
   )
   const unknown = argv.filter((arg) => !consumed.has(arg))
   if (unknown.length) {
@@ -92,7 +94,10 @@ export const resolveSelf = ({ envValue = null, gitEmail = null } = {}) => {
    * `git config user.email` read) is used. Failing that, the filter is off
    * and nothing is treated as a self address.
    */
-  const fromEnv = (envValue ?? '').split(',').map((addr) => addr.trim()).filter(Boolean)
+  const fromEnv = (envValue ?? '')
+    .split(',')
+    .map((addr) => addr.trim())
+    .filter(Boolean)
   if (fromEnv.length) {
     return { source: 'WZ_SALES_SELF', addresses: fromEnv }
   }
@@ -149,7 +154,9 @@ export const buildReport = ({ members, ledger, now, play, selfAddresses = [] }) 
       play: name,
       cohortSize: cohort.length,
       contactable: withSuppression.filter((entry) => !entry.suppressed).length,
-      leads: rankLeads({ leads: withSuppression.filter((entry) => !entry.suppressed).map((entry) => entry.member) }),
+      leads: rankLeads({
+        leads: withSuppression.filter((entry) => !entry.suppressed).map((entry) => entry.member),
+      }),
       excluded: withSuppression
         .filter((entry) => entry.suppressed)
         .map((entry) => ({ email: entry.member.email, ...entry.suppressed })),
@@ -169,7 +176,10 @@ export const renderReport = ({ report }) => {
   /** Human readable report; the agent consumes --json instead. */
   const blocks = report.plays.map((entry) => {
     const leads = entry.leads
-      .map((lead) => `          ${lead.email}  ${lead.cohort}  tier=${lead.tier ?? 'none'}  last=${(lead.lastEventAt ?? 'unknown').slice(0, 10)}`)
+      .map(
+        (lead) =>
+          `          ${lead.email}  ${lead.cohort}  tier=${lead.tier ?? 'none'}  last=${(lead.lastEventAt ?? 'unknown').slice(0, 10)}`,
+      )
       .join('\n')
     const excluded = entry.excluded.map((item) => `${item.email} (${item.reason})`).join(', ')
     return [
@@ -192,9 +202,10 @@ export const renderReport = ({ report }) => {
     ? `SELF-FILTERED  ${report.selfFiltered.length} operator test address(es) excluded: ${report.selfFiltered.join(', ')}`
     : ''
   const total = report.plays.reduce((acc, entry) => acc + entry.contactable, 0)
-  const footer = total || report.triage.length
-    ? ''
-    : 'Nothing to send. Every cohort is empty or fully suppressed.'
+  const footer =
+    total || report.triage.length
+      ? ''
+      : 'Nothing to send. Every cohort is empty or fully suppressed.'
   return [...blocks, bulkDates, triage, selfFiltered, footer].filter(Boolean).join('\n')
 }
 
@@ -229,7 +240,10 @@ const main = async () => {
   }
   const config = requireConfig({})
   const { members, sources } = await fetchAll({ config, skipStore: args.skipStore })
-  const self = resolveSelf({ envValue: process.env.WZ_SALES_SELF ?? null, gitEmail: gitUserEmail() })
+  const self = resolveSelf({
+    envValue: process.env.WZ_SALES_SELF ?? null,
+    gitEmail: gitUserEmail(),
+  })
   const report = buildReport({
     members,
     ledger: readLedger({ dir }),
@@ -246,7 +260,9 @@ const main = async () => {
   process.stdout.write(
     args.json
       ? `${JSON.stringify({ ...report, sources: allSources }, null, 2)}\n`
-      : `sources: ${Object.entries(allSources).map(([k, v]) => `${k} ${v}`).join(', ')}\n\n${renderReport({ report })}\n`,
+      : `sources: ${Object.entries(allSources)
+          .map(([k, v]) => `${k} ${v}`)
+          .join(', ')}\n\n${renderReport({ report })}\n`,
   )
   return 0
 }

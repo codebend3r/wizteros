@@ -46,9 +46,7 @@ const SKIP_STORE = args.includes('--no-store')
 const SHOW_ALL = args.includes('--all')
 
 if (!STRIPE_API_KEY || !WIZARR_BASE_URL || !WIZARR_API_KEY) {
-  console.error(
-    'Missing STRIPE_API_KEY / WIZARR_BASE_URL / WIZARR_API_KEY (use --env-file=.env)',
-  )
+  console.error('Missing STRIPE_API_KEY / WIZARR_BASE_URL / WIZARR_API_KEY (use --env-file=.env)')
   process.exit(2)
 }
 
@@ -75,9 +73,8 @@ const PAYING = new Set(['active', 'trialing'])
 /** Parse an API timestamp to epoch ms; a naive datetime is read as UTC. */
 const parseTime = (value) => {
   if (!value) return null
-  const text = /\d{2}:\d{2}/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/.test(value)
-    ? `${value}Z`
-    : value
+  const text =
+    /\d{2}:\d{2}/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/.test(value) ? `${value}Z` : value
   const ms = new Date(text).getTime()
   return Number.isNaN(ms) ? null : ms
 }
@@ -87,7 +84,8 @@ const date = (ms) => new Date(ms).toISOString().slice(0, 10)
 
 const chunk = ({ items, size }) =>
   items.reduce(
-    (acc, item, i) => (i % size === 0 ? [...acc, [item]] : [...acc.slice(0, -1), [...acc.at(-1), item]]),
+    (acc, item, i) =>
+      i % size === 0 ? [...acc, [item]] : [...acc.slice(0, -1), [...acc.at(-1), item]],
     [],
   )
 
@@ -224,15 +222,26 @@ const peopleFrom = (users) =>
     const key = email || username.toLowerCase()
     if (!key) return acc
     const person = acc.get(key) ?? {
-      key, email, member: username, servers: [], expires: null, seen: false, enabled: null,
+      key,
+      email,
+      member: username,
+      servers: [],
+      expires: null,
+      seen: false,
+      enabled: null,
     }
     const server = u.server ?? ''
     acc.set(key, {
       ...person,
       email: person.email || email,
       member: person.member || username,
-      servers: server && !person.servers.includes(server) ? [...person.servers, server] : person.servers,
-      expires: laterExpiry({ current: person.expires, next: parseTime(u.expires), first: !person.seen }),
+      servers:
+        server && !person.servers.includes(server) ? [...person.servers, server] : person.servers,
+      expires: laterExpiry({
+        current: person.expires,
+        next: parseTime(u.expires),
+        first: !person.seen,
+      }),
       seen: true,
       enabled: mergeEnabled({ current: person.enabled, next: enabledFlag(u) }),
     })
@@ -279,11 +288,21 @@ const readStore = () => {
       { stdio: ['ignore', 'ignore', 'pipe'] },
     )
     const db = join(dir, basename(MAP_DB_PATH))
-    if (!existsSync(db)) return { ok: false, why: `${basename(MAP_DB_PATH)} not in ${NAS_DATA_DIR}` }
+    if (!existsSync(db))
+      return { ok: false, why: `${basename(MAP_DB_PATH)} not in ${NAS_DATA_DIR}` }
 
-    const columns = sqlite({ db, sql: 'PRAGMA table_info(customer_map)' }).map((c) => c.name)
-    const wanted = ['stripe_customer_id', 'email', 'invite_code', 'tier', 'invited_at', 'subscribed']
-    const present = wanted.filter((c) => columns.includes(c))
+    const columns = new Set(
+      sqlite({ db, sql: 'PRAGMA table_info(customer_map)' }).map((c) => c.name),
+    )
+    const wanted = [
+      'stripe_customer_id',
+      'email',
+      'invite_code',
+      'tier',
+      'invited_at',
+      'subscribed',
+    ]
+    const present = wanted.filter((c) => columns.has(c))
     if (!present.includes('email')) return { ok: false, why: 'customer_map has no email column' }
 
     const rows = sqlite({
@@ -301,7 +320,9 @@ const readStore = () => {
           (r.email ?? '').toLowerCase(),
           {
             email: r.email,
-            customerId: (r.stripe_customer_id ?? '').startsWith('cus_') ? r.stripe_customer_id : null,
+            customerId: (r.stripe_customer_id ?? '').startsWith('cus_')
+              ? r.stripe_customer_id
+              : null,
             inviteCode: r.invite_code ?? null,
             tier: r.tier ?? null,
             invitedAt: parseTime(r.invited_at),
@@ -315,11 +336,14 @@ const readStore = () => {
     // This NAS greets every session with a multi-line post-quantum warning on
     // stderr; keep the last line that is not part of it, so the reported reason
     // is the actual failure and not "See https://openssh.com/pq.html".
-    const detail = (e.stderr?.toString() ?? e.message ?? '')
-      .split('\n')
-      .map((l) => l.trim())
-      .filter((l) => l && !l.startsWith('**'))
-      .at(-1) ?? 'no error output'
+    const detail =
+      (e.stderr?.toString() ?? e.message ?? '')
+        .split('\n')
+        .map((l) => l.trim())
+        // Not `find`: `.at(-1)` wants the last surviving line, not the first.
+        // oxlint-disable-next-line unicorn/prefer-array-find
+        .filter((l) => l && !l.startsWith('**'))
+        .at(-1) ?? 'no error output'
     return { ok: false, why: `could not copy ${NAS_DATA_DIR} from ${NAS_HOST} (${detail})` }
   } finally {
     // Never leave a copy of live member data lying around in /tmp.
@@ -345,7 +369,13 @@ async function main() {
   )
 
   const [subs, users, invitations] = await Promise.all([
-    stripeList({ path: '/subscriptions', params: [['status', 'all'], ['expand[]', 'data.customer']] }),
+    stripeList({
+      path: '/subscriptions',
+      params: [
+        ['status', 'all'],
+        ['expand[]', 'data.customer'],
+      ],
+    }),
     wz('/api/users').then(async (r) => {
       if (!r.ok) throw new Error(`GET /api/users -> ${r.status}`)
       return (await r.json()).users ?? []
@@ -370,7 +400,9 @@ async function main() {
     `  · wizarr   ${String(users.length).padStart(4)} user record(s) -> ${people.size} member(s)`,
   )
   if (store.ok) {
-    console.log(`  · store    ${String(store.rows.size).padStart(4)} customer_map row(s) from ${NAS_HOST}`)
+    console.log(
+      `  · store    ${String(store.rows.size).padStart(4)} customer_map row(s) from ${NAS_HOST}`,
+    )
     if (store.missingColumns.length) {
       console.log(`             (older schema: no ${store.missingColumns.join(', ')})`)
     }
@@ -384,7 +416,9 @@ async function main() {
   // A cancel disables the Wizarr record but leaves its expiry alone, so with no
   // enabled flag in the payload a disabled member still reads as having access.
   if (!users.some((u) => enabledFlag(u) !== null)) {
-    console.log('  · caveat   this Wizarr exposes no enabled/disabled flag on /api/users, so expiry')
+    console.log(
+      '  · caveat   this Wizarr exposes no enabled/disabled flag on /api/users, so expiry',
+    )
     console.log('             is the only access signal. Confirm an "access, not paying" line in')
     console.log('             the admin UI before acting on it.')
   }
@@ -431,7 +465,9 @@ async function main() {
       }),
   )
   const emailByCode = new Map(
-    [...storeRows.values()].filter((r) => r.inviteCode).map((r) => [r.inviteCode, (r.email ?? '').toLowerCase()]),
+    [...storeRows.values()]
+      .filter((r) => r.inviteCode)
+      .map((r) => [r.inviteCode, (r.email ?? '').toLowerCase()]),
   )
   const billingEmail = (person) => {
     const direct = person.email || person.key
@@ -452,15 +488,18 @@ async function main() {
     if (!person) {
       const invited = row?.invitedAt ?? null
       if (invited !== null && NOW - invited <= GRACE * DAY) {
-        notes.push(`  pending  ${email.padEnd(34)}invite issued ${ago(invited)} ago, inside the ${GRACE}d grace window`)
+        notes.push(
+          `  pending  ${email.padEnd(34)}invite issued ${ago(invited)} ago, inside the ${GRACE}d grace window`,
+        )
         return
       }
       findings.push({
         kind: 'PAYING-NO-ACCESS',
         who: email,
-        detail: invited === null
-          ? 'active sub, no Wizarr record and no invite on file'
-          : `active sub, no Wizarr record, invite issued ${ago(invited)} ago and never redeemed`,
+        detail:
+          invited === null
+            ? 'active sub, no Wizarr record and no invite on file'
+            : `active sub, no Wizarr record, invite issued ${ago(invited)} ago and never redeemed`,
       })
       return
     }
@@ -488,17 +527,17 @@ async function main() {
     const sub = stripers.get(email)
     if (sub?.paying.length) return
     if (tags.get(email) === 'vip') {
-      notes.push(`  vip      ${email.padEnd(34)}enabled with no Stripe subscription (VIP tag, deliberate)`)
+      notes.push(
+        `  vip      ${email.padEnd(34)}enabled with no Stripe subscription (VIP tag, deliberate)`,
+      )
       return
     }
     // When did their money stop covering them? A canceled sub reports ended_at;
     // a past_due or unpaid one never does but is still inside the period it last
     // billed for, so current_period_end is the honest edge there. Without that
     // fallback a member three days into dunning reads as an outright freeloader.
-    const paidThrough = sub?.lapsed.reduce(
-      (acc, s) => Math.max(acc, (s.endedAt ?? s.periodEnd ?? 0) * 1000),
-      0,
-    ) ?? 0
+    const paidThrough =
+      sub?.lapsed.reduce((acc, s) => Math.max(acc, (s.endedAt ?? s.periodEnd ?? 0) * 1000), 0) ?? 0
     const expiry = person.expires === null ? 'no expiry set' : `expires ${date(person.expires)}`
     if (!sub) {
       const row = storeRows.get(email)
@@ -510,11 +549,15 @@ async function main() {
         })
         return
       }
-      notes.push(`  legacy   ${email.padEnd(34)}enabled, no Stripe customer at all (manual or legacy share)`)
+      notes.push(
+        `  legacy   ${email.padEnd(34)}enabled, no Stripe customer at all (manual or legacy share)`,
+      )
       return
     }
     if (paidThrough && NOW - paidThrough <= DURATION * DAY) {
-      notes.push(`  winding  ${email.padEnd(34)}stopped paying, still inside the ${DURATION}d window (paid through ${date(paidThrough)})`)
+      notes.push(
+        `  winding  ${email.padEnd(34)}stopped paying, still inside the ${DURATION}d window (paid through ${date(paidThrough)})`,
+      )
       return
     }
     findings.push({
@@ -575,7 +618,11 @@ async function main() {
         folded.set(email, detail)
         return
       }
-      findings.push({ kind: 'STORE-FLAG', who: email, detail: `Stripe subscription is active, ${detail}` })
+      findings.push({
+        kind: 'STORE-FLAG',
+        who: email,
+        detail: `Stripe subscription is active, ${detail}`,
+      })
     })
   }
 

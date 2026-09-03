@@ -1,6 +1,13 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { joinMembers, peopleFrom, requireConfig, shellQuote, stripeByEmail, wizarrList } from './sources.mjs'
+import {
+  joinMembers,
+  peopleFrom,
+  requireConfig,
+  shellQuote,
+  stripeByEmail,
+  wizarrList,
+} from './sources.mjs'
 
 test('shellQuote neutralizes spaces and command substitution in an operator supplied value', () => {
   assert.equal(shellQuote('/volume1/my docker/stripe-bridge'), `'/volume1/my docker/stripe-bridge'`)
@@ -68,7 +75,14 @@ test('stripeByEmail keeps the paying status when a customer has two subscription
 test('joinMembers carries store flags onto the member', () => {
   const members = joinMembers({
     storeRows: [
-      { email: 'a@example.com', tier: 'bronze', invited_at: '2026-07-01T00:00:00Z', subscribed: 1, tag: null, invite_code: null },
+      {
+        email: 'a@example.com',
+        tier: 'bronze',
+        invited_at: '2026-07-01T00:00:00Z',
+        subscribed: 1,
+        tag: null,
+        invite_code: null,
+      },
     ],
     people: [],
     stripe: {},
@@ -82,7 +96,16 @@ test('joinMembers carries store flags onto the member', () => {
 
 test('joinMembers attaches the Wizarr expiry to the matching store row', () => {
   const members = joinMembers({
-    storeRows: [{ email: 'a@example.com', tier: null, invited_at: null, subscribed: 1, tag: null, invite_code: null }],
+    storeRows: [
+      {
+        email: 'a@example.com',
+        tier: null,
+        invited_at: null,
+        subscribed: 1,
+        tag: null,
+        invite_code: null,
+      },
+    ],
     people: [{ email: 'a@example.com', username: 'alex', expires: '2026-09-01T00:00:00Z' }],
     stripe: {},
     invitations: [],
@@ -92,18 +115,36 @@ test('joinMembers attaches the Wizarr expiry to the matching store row', () => {
 
 test('joinMembers matches through the invite code when the Plex email differs', () => {
   const members = joinMembers({
-    storeRows: [{ email: 'billing@example.com', tier: null, invited_at: null, subscribed: 1, tag: null, invite_code: 'ABC123' }],
+    storeRows: [
+      {
+        email: 'billing@example.com',
+        tier: null,
+        invited_at: null,
+        subscribed: 1,
+        tag: null,
+        invite_code: 'ABC123',
+      },
+    ],
     people: [{ email: 'plex@example.com', username: 'alex', expires: '2026-09-01T00:00:00Z' }],
     stripe: {},
     invitations: [{ code: 'ABC123', used_by: 'alex' }],
-    })
+  })
   assert.equal(members.length, 1)
   assert.equal(members[0].expires, '2026-09-01T00:00:00Z')
 })
 
 test('joinMembers attaches the Stripe status', () => {
   const members = joinMembers({
-    storeRows: [{ email: 'a@example.com', tier: null, invited_at: null, subscribed: 0, tag: null, invite_code: null }],
+    storeRows: [
+      {
+        email: 'a@example.com',
+        tier: null,
+        invited_at: null,
+        subscribed: 0,
+        tag: null,
+        invite_code: null,
+      },
+    ],
     people: [],
     stripe: { 'a@example.com': { status: 'canceled' } },
     invitations: [],
@@ -113,7 +154,16 @@ test('joinMembers attaches the Stripe status', () => {
 
 test('joinMembers reads the vip tag', () => {
   const members = joinMembers({
-    storeRows: [{ email: 'a@example.com', tier: null, invited_at: null, subscribed: 1, tag: 'vip', invite_code: null }],
+    storeRows: [
+      {
+        email: 'a@example.com',
+        tier: null,
+        invited_at: null,
+        subscribed: 1,
+        tag: 'vip',
+        invite_code: null,
+      },
+    ],
     people: [],
     stripe: {},
     invitations: [],
@@ -122,7 +172,11 @@ test('joinMembers reads the vip tag', () => {
 })
 
 test('wizarrList unwraps a users envelope', () => {
-  const list = wizarrList({ body: { users: [{ id: 1 }, { id: 2 }], count: 2 }, key: 'users', path: '/api/users' })
+  const list = wizarrList({
+    body: { users: [{ id: 1 }, { id: 2 }], count: 2 },
+    key: 'users',
+    path: '/api/users',
+  })
   assert.deepEqual(list, [{ id: 1 }, { id: 2 }])
 })
 
@@ -149,8 +203,24 @@ test('wizarrList throws a diagnosable error when the key holds something other t
 
 test('joinMembers matches the invite-code fallback by the id inside a Python repr', () => {
   const members = joinMembers({
-    storeRows: [{ email: 'billing@example.com', tier: null, invited_at: null, subscribed: 1, tag: null, invite_code: 'ABC123' }],
-    people: [{ email: 'plex@example.com', username: 'amols7', expires: '2026-09-01T00:00:00Z', ids: [277] }],
+    storeRows: [
+      {
+        email: 'billing@example.com',
+        tier: null,
+        invited_at: null,
+        subscribed: 1,
+        tag: null,
+        invite_code: 'ABC123',
+      },
+    ],
+    people: [
+      {
+        email: 'plex@example.com',
+        username: 'amols7',
+        expires: '2026-09-01T00:00:00Z',
+        ids: [277],
+      },
+    ],
     stripe: {},
     invitations: [{ code: 'ABC123', used_by: '<User 277>' }],
   })
@@ -159,8 +229,24 @@ test('joinMembers matches the invite-code fallback by the id inside a Python rep
 
 test('joinMembers yields no match, and does not throw, when the repr id has no record', () => {
   const members = joinMembers({
-    storeRows: [{ email: 'billing@example.com', tier: null, invited_at: null, subscribed: 1, tag: null, invite_code: 'ABC123' }],
-    people: [{ email: 'plex@example.com', username: 'amols7', expires: '2026-09-01T00:00:00Z', ids: [277] }],
+    storeRows: [
+      {
+        email: 'billing@example.com',
+        tier: null,
+        invited_at: null,
+        subscribed: 1,
+        tag: null,
+        invite_code: 'ABC123',
+      },
+    ],
+    people: [
+      {
+        email: 'plex@example.com',
+        username: 'amols7',
+        expires: '2026-09-01T00:00:00Z',
+        ids: [277],
+      },
+    ],
     stripe: {},
     invitations: [{ code: 'ABC123', used_by: '<User 999>' }],
   })
@@ -170,25 +256,54 @@ test('joinMembers yields no match, and does not throw, when the repr id has no r
 
 test('joinMembers does not throw when used_by is null, absent, or a plain username, and the username still matches', () => {
   const base = {
-    people: [{ email: 'plex@example.com', username: 'alex', expires: '2026-09-01T00:00:00Z', ids: [1] }],
+    people: [
+      { email: 'plex@example.com', username: 'alex', expires: '2026-09-01T00:00:00Z', ids: [1] },
+    ],
     stripe: {},
   }
   const nullUsedBy = joinMembers({
-    storeRows: [{ email: 'a@example.com', tier: null, invited_at: null, subscribed: 1, tag: null, invite_code: 'CODE1' }],
+    storeRows: [
+      {
+        email: 'a@example.com',
+        tier: null,
+        invited_at: null,
+        subscribed: 1,
+        tag: null,
+        invite_code: 'CODE1',
+      },
+    ],
     invitations: [{ code: 'CODE1', used_by: null }],
     ...base,
   })
   assert.equal(nullUsedBy[0].expires, null)
 
   const absentUsedBy = joinMembers({
-    storeRows: [{ email: 'a@example.com', tier: null, invited_at: null, subscribed: 1, tag: null, invite_code: 'CODE2' }],
+    storeRows: [
+      {
+        email: 'a@example.com',
+        tier: null,
+        invited_at: null,
+        subscribed: 1,
+        tag: null,
+        invite_code: 'CODE2',
+      },
+    ],
     invitations: [{ code: 'CODE2' }],
     ...base,
   })
   assert.equal(absentUsedBy[0].expires, null)
 
   const usernameUsedBy = joinMembers({
-    storeRows: [{ email: 'billing@example.com', tier: null, invited_at: null, subscribed: 1, tag: null, invite_code: 'CODE3' }],
+    storeRows: [
+      {
+        email: 'billing@example.com',
+        tier: null,
+        invited_at: null,
+        subscribed: 1,
+        tag: null,
+        invite_code: 'CODE3',
+      },
+    ],
     invitations: [{ code: 'CODE3', used_by: 'alex' }],
     ...base,
   })
@@ -198,12 +313,27 @@ test('joinMembers does not throw when used_by is null, absent, or a plain userna
 test('joinMembers reaches a person on several servers by any of their Wizarr ids', () => {
   const people = peopleFrom({
     users: [
-      { id: 10, email: 'sam@example.com', username: 'sam', expires: '2026-09-01T00:00:00Z', server: 'Vermithor' },
+      {
+        id: 10,
+        email: 'sam@example.com',
+        username: 'sam',
+        expires: '2026-09-01T00:00:00Z',
+        server: 'Vermithor',
+      },
       { id: 20, email: 'sam@example.com', username: 'sam', expires: null, server: 'Caraxes' },
     ],
   })
   const viaFirstId = joinMembers({
-    storeRows: [{ email: 'billing@example.com', tier: null, invited_at: null, subscribed: 1, tag: null, invite_code: 'CODE4' }],
+    storeRows: [
+      {
+        email: 'billing@example.com',
+        tier: null,
+        invited_at: null,
+        subscribed: 1,
+        tag: null,
+        invite_code: 'CODE4',
+      },
+    ],
     people,
     stripe: {},
     invitations: [{ code: 'CODE4', used_by: '<User 10>' }],
@@ -211,7 +341,16 @@ test('joinMembers reaches a person on several servers by any of their Wizarr ids
   assert.equal(viaFirstId[0].expires, null)
 
   const viaSecondId = joinMembers({
-    storeRows: [{ email: 'billing@example.com', tier: null, invited_at: null, subscribed: 1, tag: null, invite_code: 'CODE5' }],
+    storeRows: [
+      {
+        email: 'billing@example.com',
+        tier: null,
+        invited_at: null,
+        subscribed: 1,
+        tag: null,
+        invite_code: 'CODE5',
+      },
+    ],
     people,
     stripe: {},
     invitations: [{ code: 'CODE5', used_by: '<User 20>' }],
@@ -221,10 +360,29 @@ test('joinMembers reaches a person on several servers by any of their Wizarr ids
 
 test('joinMembers takes the username path for used_by "amols7", never reading it as id 7', () => {
   const members = joinMembers({
-    storeRows: [{ email: 'billing@example.com', tier: null, invited_at: null, subscribed: 1, tag: null, invite_code: 'CODE6' }],
+    storeRows: [
+      {
+        email: 'billing@example.com',
+        tier: null,
+        invited_at: null,
+        subscribed: 1,
+        tag: null,
+        invite_code: 'CODE6',
+      },
+    ],
     people: [
-      { email: 'other@example.com', username: 'sevenoseven', expires: '2020-01-01T00:00:00Z', ids: [7] },
-      { email: 'plex@example.com', username: 'amols7', expires: '2026-09-01T00:00:00Z', ids: [277] },
+      {
+        email: 'other@example.com',
+        username: 'sevenoseven',
+        expires: '2020-01-01T00:00:00Z',
+        ids: [7],
+      },
+      {
+        email: 'plex@example.com',
+        username: 'amols7',
+        expires: '2026-09-01T00:00:00Z',
+        ids: [277],
+      },
     ],
     stripe: {},
     invitations: [{ code: 'CODE6', used_by: 'amols7' }],
@@ -234,8 +392,24 @@ test('joinMembers takes the username path for used_by "amols7", never reading it
 
 test('joinMembers still matches "<User 277>" by id', () => {
   const members = joinMembers({
-    storeRows: [{ email: 'billing@example.com', tier: null, invited_at: null, subscribed: 1, tag: null, invite_code: 'CODE7' }],
-    people: [{ email: 'plex@example.com', username: 'amols7', expires: '2026-09-01T00:00:00Z', ids: [277] }],
+    storeRows: [
+      {
+        email: 'billing@example.com',
+        tier: null,
+        invited_at: null,
+        subscribed: 1,
+        tag: null,
+        invite_code: 'CODE7',
+      },
+    ],
+    people: [
+      {
+        email: 'plex@example.com',
+        username: 'amols7',
+        expires: '2026-09-01T00:00:00Z',
+        ids: [277],
+      },
+    ],
     stripe: {},
     invitations: [{ code: 'CODE7', used_by: '<User 277>' }],
   })
@@ -243,9 +417,20 @@ test('joinMembers still matches "<User 277>" by id', () => {
 })
 
 test('joinMembers yields no match for a shape that is neither a repr nor a username hit', () => {
-  const people = [{ email: 'plex@example.com', username: 'amols7', expires: '2026-09-01T00:00:00Z', ids: [277] }]
+  const people = [
+    { email: 'plex@example.com', username: 'amols7', expires: '2026-09-01T00:00:00Z', ids: [277] },
+  ]
   const noBrackets = joinMembers({
-    storeRows: [{ email: 'billing@example.com', tier: null, invited_at: null, subscribed: 1, tag: null, invite_code: 'CODE8' }],
+    storeRows: [
+      {
+        email: 'billing@example.com',
+        tier: null,
+        invited_at: null,
+        subscribed: 1,
+        tag: null,
+        invite_code: 'CODE8',
+      },
+    ],
     people,
     stripe: {},
     invitations: [{ code: 'CODE8', used_by: 'User 277' }],
@@ -254,7 +439,16 @@ test('joinMembers yields no match for a shape that is neither a repr nor a usern
   assert.equal(noBrackets[0].expires, null)
 
   const wrongWord = joinMembers({
-    storeRows: [{ email: 'billing@example.com', tier: null, invited_at: null, subscribed: 1, tag: null, invite_code: 'CODE9' }],
+    storeRows: [
+      {
+        email: 'billing@example.com',
+        tier: null,
+        invited_at: null,
+        subscribed: 1,
+        tag: null,
+        invite_code: 'CODE9',
+      },
+    ],
     people,
     stripe: {},
     invitations: [{ code: 'CODE9', used_by: '<Account 5>' }],
@@ -265,10 +459,38 @@ test('joinMembers yields no match for a shape that is neither a repr nor a usern
 
 test('joinMembers collapses four store rows for one email into a single member', () => {
   const storeRows = [
-    { email: 'codebenderinc@gmail.com', tier: 'gold', invited_at: '2026-07-25T00:00:00Z', subscribed: 0, tag: null, invite_code: null },
-    { email: 'codebenderinc@gmail.com', tier: 'gold', invited_at: '2026-07-25T00:00:00Z', subscribed: 0, tag: null, invite_code: null },
-    { email: 'codebenderinc@gmail.com', tier: 'gold', invited_at: '2026-07-25T00:00:00Z', subscribed: 0, tag: null, invite_code: null },
-    { email: 'codebenderinc@gmail.com', tier: 'gold', invited_at: '2026-07-25T00:00:00Z', subscribed: 0, tag: null, invite_code: null },
+    {
+      email: 'codebenderinc@gmail.com',
+      tier: 'gold',
+      invited_at: '2026-07-25T00:00:00Z',
+      subscribed: 0,
+      tag: null,
+      invite_code: null,
+    },
+    {
+      email: 'codebenderinc@gmail.com',
+      tier: 'gold',
+      invited_at: '2026-07-25T00:00:00Z',
+      subscribed: 0,
+      tag: null,
+      invite_code: null,
+    },
+    {
+      email: 'codebenderinc@gmail.com',
+      tier: 'gold',
+      invited_at: '2026-07-25T00:00:00Z',
+      subscribed: 0,
+      tag: null,
+      invite_code: null,
+    },
+    {
+      email: 'codebenderinc@gmail.com',
+      tier: 'gold',
+      invited_at: '2026-07-25T00:00:00Z',
+      subscribed: 0,
+      tag: null,
+      invite_code: null,
+    },
   ]
   const members = joinMembers({ storeRows, people: [], stripe: {}, invitations: [] })
   assert.equal(members.length, 1)
@@ -276,8 +498,22 @@ test('joinMembers collapses four store rows for one email into a single member',
 
 test('joinMembers ORs subscribed across duplicate rows, true on any row winning', () => {
   const storeRows = [
-    { email: 'a@example.com', tier: null, invited_at: '2026-08-01T00:00:00Z', subscribed: 0, tag: null, invite_code: null },
-    { email: 'a@example.com', tier: null, invited_at: null, subscribed: 1, tag: null, invite_code: null },
+    {
+      email: 'a@example.com',
+      tier: null,
+      invited_at: '2026-08-01T00:00:00Z',
+      subscribed: 0,
+      tag: null,
+      invite_code: null,
+    },
+    {
+      email: 'a@example.com',
+      tier: null,
+      invited_at: null,
+      subscribed: 1,
+      tag: null,
+      invite_code: null,
+    },
   ]
   const members = joinMembers({ storeRows, people: [], stripe: {}, invitations: [] })
   assert.equal(members.length, 1)
@@ -286,12 +522,28 @@ test('joinMembers ORs subscribed across duplicate rows, true on any row winning'
 
 test('joinMembers keeps tier and invite_code from the row with the most recent invited_at', () => {
   const storeRows = [
-    { email: 'billing@example.com', tier: 'bronze', invited_at: '2026-07-01T00:00:00Z', subscribed: 0, tag: null, invite_code: 'OLD1' },
-    { email: 'billing@example.com', tier: 'gold', invited_at: '2026-07-25T00:00:00Z', subscribed: 0, tag: null, invite_code: 'NEW1' },
+    {
+      email: 'billing@example.com',
+      tier: 'bronze',
+      invited_at: '2026-07-01T00:00:00Z',
+      subscribed: 0,
+      tag: null,
+      invite_code: 'OLD1',
+    },
+    {
+      email: 'billing@example.com',
+      tier: 'gold',
+      invited_at: '2026-07-25T00:00:00Z',
+      subscribed: 0,
+      tag: null,
+      invite_code: 'NEW1',
+    },
   ]
   const members = joinMembers({
     storeRows,
-    people: [{ email: 'plex@example.com', username: 'bob', expires: '2099-01-01T00:00:00Z', ids: [] }],
+    people: [
+      { email: 'plex@example.com', username: 'bob', expires: '2099-01-01T00:00:00Z', ids: [] },
+    ],
     stripe: {},
     invitations: [{ code: 'NEW1', used_by: 'bob' }],
   })
@@ -306,8 +558,22 @@ test('joinMembers keeps tier and invite_code from the row with the most recent i
 
 test('joinMembers keeps a vip tag present on only one of several duplicate rows', () => {
   const storeRows = [
-    { email: 'a@example.com', tier: null, invited_at: null, subscribed: 0, tag: null, invite_code: null },
-    { email: 'a@example.com', tier: null, invited_at: null, subscribed: 0, tag: 'vip', invite_code: null },
+    {
+      email: 'a@example.com',
+      tier: null,
+      invited_at: null,
+      subscribed: 0,
+      tag: null,
+      invite_code: null,
+    },
+    {
+      email: 'a@example.com',
+      tier: null,
+      invited_at: null,
+      subscribed: 0,
+      tag: 'vip',
+      invite_code: null,
+    },
   ]
   const members = joinMembers({ storeRows, people: [], stripe: {}, invitations: [] })
   assert.equal(members.length, 1)
@@ -316,8 +582,22 @@ test('joinMembers keeps a vip tag present on only one of several duplicate rows'
 
 test('joinMembers does not merge rows for genuinely different emails', () => {
   const storeRows = [
-    { email: 'a@example.com', tier: null, invited_at: null, subscribed: 0, tag: null, invite_code: null },
-    { email: 'b@example.com', tier: null, invited_at: null, subscribed: 0, tag: null, invite_code: null },
+    {
+      email: 'a@example.com',
+      tier: null,
+      invited_at: null,
+      subscribed: 0,
+      tag: null,
+      invite_code: null,
+    },
+    {
+      email: 'b@example.com',
+      tier: null,
+      invited_at: null,
+      subscribed: 0,
+      tag: null,
+      invite_code: null,
+    },
   ]
   const members = joinMembers({ storeRows, people: [], stripe: {}, invitations: [] })
   assert.equal(members.length, 2)

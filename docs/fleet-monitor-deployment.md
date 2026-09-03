@@ -15,12 +15,12 @@ monitor that is down while the monitor is fine.
 The fix is the one the bridge already uses: publish it over the Tailscale
 Funnel that meleys is already running, and authorize each read.
 
-| | Bridge | Monitor |
-| --- | --- | --- |
-| Runs on | meleys :8000 | meleys :8010 |
-| Funnel mount | `/stripe` | `/monitor` |
-| Portal env | `VITE_ADMIN_API_BASE` | `VITE_FLEET_BASE` |
-| Auth | Supabase session, allowlisted email | same |
+|              | Bridge                              | Monitor           |
+| ------------ | ----------------------------------- | ----------------- |
+| Runs on      | meleys :8000                        | meleys :8010      |
+| Funnel mount | `/stripe`                           | `/monitor`        |
+| Portal env   | `VITE_ADMIN_API_BASE`               | `VITE_FLEET_BASE` |
+| Auth         | Supabase session, allowlisted email | same              |
 
 The Funnel strips the mount prefix, so `/monitor/fleet/cpu` reaches the
 container as `/fleet/cpu`.
@@ -103,7 +103,7 @@ a collector wedged on a slow box does not take the dashboard down with it.
 ### 4. Mount it on the Funnel
 
 **Use `funnel`, never `serve`.** They write the same config, and `serve` turns
-the Funnel *off* for the whole node — which silently takes Wizarr and the
+the Funnel _off_ for the whole node — which silently takes Wizarr and the
 bridge off the public internet along with it. Stripe webhooks stop arriving,
 public invite links die, and `/manage` on the deployed portal breaks. `serve`
 says "Removing Funnel for ...:443" and "Available within your tailnet" on its
@@ -152,12 +152,12 @@ collector a minute after first boot.
 
 ## When the chart is empty
 
-| Symptom | Cause |
-| --- | --- |
-| `Expected JSON from /fleet ... Is VITE_FLEET_BASE set?` | Unset in Netlify, or set but not redeployed. The call went to the SPA's own `/fleet` route and got index.html. |
-| The CPU chart works but Memory, GPU and Network report a failure | The NAS is running a monitor from before those routes existed. Netlify redeploys from `main` on its own and the NAS does not, so `bun run deploy:nas` is the missing step. |
-| The GPU chart draws two flat lines at 13.3% | Correct, and not a fault. That is the i915 idle floor (100 MHz of a 750 MHz ceiling) on the only two boxes with a render node; the line moves when something transcodes. |
-| `Not signed in, or this account is not allowed to read the fleet.` | Session lapsed, or the email is missing from `FM_ADMIN_ALLOWED_EMAILS`. Check the container's env, not just the file. |
-| Cards render, chart legend lists hosts with no lines | Collector is not reaching those hosts. Its ssh key is missing from their `authorized_keys`. |
-| Everything reads as down, browser console shows a CORS error | The Funnel mount is missing, so the request never reached the monitor. |
-| `/fleet` broken *and* invites stopped going out | Someone ran `tailscale serve` instead of `funnel`. The node is tailnet-only; re-run the step 4 command. |
+| Symptom                                                            | Cause                                                                                                                                                                      |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Expected JSON from /fleet ... Is VITE_FLEET_BASE set?`            | Unset in Netlify, or set but not redeployed. The call went to the SPA's own `/fleet` route and got index.html.                                                             |
+| The CPU chart works but Memory, GPU and Network report a failure   | The NAS is running a monitor from before those routes existed. Netlify redeploys from `main` on its own and the NAS does not, so `bun run deploy:nas` is the missing step. |
+| The GPU chart draws two flat lines at 13.3%                        | Correct, and not a fault. That is the i915 idle floor (100 MHz of a 750 MHz ceiling) on the only two boxes with a render node; the line moves when something transcodes.   |
+| `Not signed in, or this account is not allowed to read the fleet.` | Session lapsed, or the email is missing from `FM_ADMIN_ALLOWED_EMAILS`. Check the container's env, not just the file.                                                      |
+| Cards render, chart legend lists hosts with no lines               | Collector is not reaching those hosts. Its ssh key is missing from their `authorized_keys`.                                                                                |
+| Everything reads as down, browser console shows a CORS error       | The Funnel mount is missing, so the request never reached the monitor.                                                                                                     |
+| `/fleet` broken _and_ invites stopped going out                    | Someone ran `tailscale serve` instead of `funnel`. The node is tailnet-only; re-run the step 4 command.                                                                    |

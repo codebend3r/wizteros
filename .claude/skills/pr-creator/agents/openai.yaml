@@ -1,4 +1,4 @@
 interface:
-  display_name: "PR Creator"
-  short_description: "Create wizteros PRs in the required format"
-  default_prompt: "Use $pr-creator to create a pull request for the current branch."
+  display_name: 'PR Creator'
+  short_description: 'Create wizteros PRs in the required format'
+  default_prompt: 'Use $pr-creator to create a pull request for the current branch.'

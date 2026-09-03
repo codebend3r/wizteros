@@ -44,10 +44,10 @@ Use `--env-file-if-exists`, not `--env-file`. With plain `--env-file` a clone th
 script can run and report the real problem. The `if-exists` form lets the script's own
 guard fire and exit `2` with the list of variables it actually wants.
 
-| Flag | Meaning |
-|---|---|
+| Flag         | Meaning                                                                  |
+| ------------ | ------------------------------------------------------------------------ |
 | `--no-store` | Skip the NAS copy and compare Stripe against Wizarr only. Use it off-LAN |
-| `--all` | Print every note line instead of the first 12 |
+| `--all`      | Print every note line instead of the first 12                            |
 
 Exit codes: `0` clean, `1` drift found, `2` misconfigured, or Stripe/Wizarr unreadable.
 An unreadable **store** is deliberately not `2`: the run degrades to a two-way comparison
@@ -90,12 +90,12 @@ once as `legacy`. Treat a degraded run as a smoke test, not an audit.
 
 One line per person, grouped by kind.
 
-| Line | What it means | First move |
-|---|---|---|
-| `PAYING-NO-ACCESS` | Contributing right now, but their Wizarr record is missing, disabled, or expired | Reissue the invite from the admin UI, or reset the expiry if the record is just stale |
-| `ACCESS-NO-PAYING` | Still enabled in Wizarr with nothing paying for it, past the `ACCESS_DURATION` window they last paid for | A judgment call, not a cleanup task. See Red Flags |
-| `GHOST-CUSTOMER` | A `customer_map` row points at a `cus_...` that Stripe says is deleted or missing | Read-only curiosity unless the member is also listed above; the row is stale bookkeeping |
-| `STORE-FLAG` | Stripe and the store disagree about whether the member is subscribed | The fingerprint of a missed webhook. Confirm against the member's Stripe subscription |
+| Line               | What it means                                                                                            | First move                                                                               |
+| ------------------ | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `PAYING-NO-ACCESS` | Contributing right now, but their Wizarr record is missing, disabled, or expired                         | Reissue the invite from the admin UI, or reset the expiry if the record is just stale    |
+| `ACCESS-NO-PAYING` | Still enabled in Wizarr with nothing paying for it, past the `ACCESS_DURATION` window they last paid for | A judgment call, not a cleanup task. See Red Flags                                       |
+| `GHOST-CUSTOMER`   | A `customer_map` row points at a `cus_...` that Stripe says is deleted or missing                        | Read-only curiosity unless the member is also listed above; the row is stale bookkeeping |
+| `STORE-FLAG`       | Stripe and the store disagree about whether the member is subscribed                                     | The fingerprint of a missed webhook. Confirm against the member's Stripe subscription    |
 
 The **notes** section is expected states, never drift, and never counted:
 

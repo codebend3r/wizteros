@@ -1,4 +1,4 @@
 interface:
-  display_name: "Commiter"
-  short_description: "Enforce wizteros commit and PR formatting"
-  default_prompt: "Use $commiter to prepare a correctly formatted commit or pull request."
+  display_name: 'Commiter'
+  short_description: 'Enforce wizteros commit and PR formatting'
+  default_prompt: 'Use $commiter to prepare a correctly formatted commit or pull request.'

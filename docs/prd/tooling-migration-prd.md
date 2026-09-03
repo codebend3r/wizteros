@@ -40,15 +40,15 @@ A new generation of tooling written in Rust and Go (Oxc project, TypeScript 7 / 
 
 ## 5. Proposed Toolchain
 
-| Concern | Current | Target | Notes |
-|---|---|---|---|
-| JS/TS linting | ESLint + plugins | Oxlint | Rust. Supports most eslint, typescript-eslint, react, jsx-a11y, import, unicorn rules natively. |
-| Type-aware linting | typescript-eslint | oxlint-tsgolint (`oxlint --type-aware`) | Backed by tsgo. |
-| Type checking | tsc | tsgo (`@typescript/native-preview`) | Go port of the TypeScript compiler. Can also run via `oxlint --type-aware --type-check`. |
-| Formatting (all langs) | Prettier | Oxfmt | Rust. Passes 100% of Prettier JS/TS conformance tests. Formats JS/TS/JSX/TSX, JSON, YAML, TOML, HTML, Vue, CSS, SCSS, Less, Markdown, MDX, GraphQL. Tailwind class sorting built in. |
-| SCSS/CSS linting | Stylelint | Stylelint | Not migrated. Stylelint keeps `.stylelintrc.json`, `stylelint-disable` comments, and the `stylelint-config-recommended-scss` rule set. No Rust replacement reached parity, so this concern stays where it is. |
-| Unit testing | Vitest | Bun test | Zig. Jest-compatible API. See risks in Section 10. |
-| Editor integration | ESLint + Prettier extensions | Oxc VS Code extension, Stylelint extension | Format-on-save and inline diagnostics. |
+| Concern                | Current                      | Target                                     | Notes                                                                                                                                                                                                         |
+| ---------------------- | ---------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| JS/TS linting          | ESLint + plugins             | Oxlint                                     | Rust. Supports most eslint, typescript-eslint, react, jsx-a11y, import, unicorn rules natively.                                                                                                               |
+| Type-aware linting     | typescript-eslint            | oxlint-tsgolint (`oxlint --type-aware`)    | Backed by tsgo.                                                                                                                                                                                               |
+| Type checking          | tsc                          | tsgo (`@typescript/native-preview`)        | Go port of the TypeScript compiler. Can also run via `oxlint --type-aware --type-check`.                                                                                                                      |
+| Formatting (all langs) | Prettier                     | Oxfmt                                      | Rust. Passes 100% of Prettier JS/TS conformance tests. Formats JS/TS/JSX/TSX, JSON, YAML, TOML, HTML, Vue, CSS, SCSS, Less, Markdown, MDX, GraphQL. Tailwind class sorting built in.                          |
+| SCSS/CSS linting       | Stylelint                    | Stylelint                                  | Not migrated. Stylelint keeps `.stylelintrc.json`, `stylelint-disable` comments, and the `stylelint-config-recommended-scss` rule set. No Rust replacement reached parity, so this concern stays where it is. |
+| Unit testing           | Vitest                       | Bun test                                   | Zig. Jest-compatible API. See risks in Section 10.                                                                                                                                                            |
+| Editor integration     | ESLint + Prettier extensions | Oxc VS Code extension, Stylelint extension | Format-on-save and inline diagnostics.                                                                                                                                                                        |
 
 ### 5.1 Framework Coverage: React and Next.js
 
@@ -73,27 +73,32 @@ This migration assumes a React/Next.js codebase and the toolchain covers it as f
 ### 7.1 Functional
 
 **FR-1: Linting**
+
 - Oxlint replaces ESLint as the required lint gate in CI and pre-commit.
 - Type-aware rules enabled via `oxlint --type-aware` with `oxlint-tsgolint` installed.
 - Rule mapping documented: every currently enforced ESLint rule maps to an Oxlint rule, a Stylelint rule, or a documented exception.
 - `oxlint --fix` supported in the pre-commit hook.
 
 **FR-2: Formatting**
+
 - Oxfmt replaces Prettier for all supported file types, including `.scss`.
 - `.oxfmtrc.json` reproduces current Prettier settings (print width, quotes, trailing commas, etc.).
 - A one-time full-repo reformat commit is created and added to `.git-blame-ignore-revs`.
 - Format check (`oxfmt --check`) is a required CI gate.
 
 **FR-3: Type checking**
+
 - tsgo replaces tsc for `typecheck` scripts and CI.
 - tsc is retained in the repo for a two-sprint parallel-run period; any output discrepancies are filed as blockers.
 - The tsgo version is kept in sync with the tsgolint shim version used by Oxlint.
 
 **FR-4: SCSS linting**
+
 - Stylelint keeps running against all `.scss` files using `.stylelintrc.json`; nothing about the SCSS gate changes.
 - `stylelint --fix` covers the fixable subset and runs on staged files through lint-staged in the pre-commit hook.
 
 **FR-5: Testing**
+
 - Bun test replaces Vitest for unit and component tests.
 - All existing tests pass under Bun test, or are ticketed with an owner before cutover.
 - DOM environment (happy-dom or jsdom preload) configured for React component tests.
@@ -101,6 +106,7 @@ This migration assumes a React/Next.js codebase and the toolchain covers it as f
 - Watch mode and single-file runs work locally.
 
 **FR-6: Developer experience**
+
 - `package.json` scripts updated: `lint`, `lint:fix`, `format`, `format:check`, `typecheck`, `test`, `test:watch`.
 - Pre-commit hooks (husky/lefthook/lint-staged or equivalent) updated to use the new tools.
 - Recommended VS Code extensions and settings committed to `.vscode/`.
@@ -117,6 +123,7 @@ This migration assumes a React/Next.js codebase and the toolchain covers it as f
 ## 8. Migration Plan
 
 ### Phase 0: Baseline and audit (0.5 sprint)
+
 - Record current timings: ESLint full run, Prettier check, tsc, Vitest suite (local and CI).
 - Export the effective ESLint rule set (`eslint --print-config`) for the rule-mapping exercise.
 - Inventory the custom ESLint rules in use.
@@ -124,6 +131,7 @@ This migration assumes a React/Next.js codebase and the toolchain covers it as f
 - Inventory all mocks of Next.js modules (`next/navigation`, `next/router`, `next/image`, `next/link`, server actions) and count affected test files; this feeds the Bun test go/no-go decision (Open Question 1).
 
 ### Phase 1: Formatting (0.5 sprint, lowest risk)
+
 - Add Oxfmt, port Prettier config to `.oxfmtrc.json`.
 - Run `npx oxfmt .` in a single reformat commit; add to `.git-blame-ignore-revs`.
 - Swap CI gate from `prettier --check` to `oxfmt --check`.
@@ -131,6 +139,7 @@ This migration assumes a React/Next.js codebase and the toolchain covers it as f
 - Exit criteria: CI green, no formatting churn in subsequent PRs.
 
 ### Phase 2: Linting (1 sprint)
+
 - Add Oxlint; run the oxc migration tooling against the existing ESLint config.
 - Complete the rule-mapping doc; enable type-aware rules with oxlint-tsgolint.
 - Run ESLint and Oxlint in parallel in CI for one week (Oxlint blocking, ESLint informational).
@@ -139,12 +148,14 @@ This migration assumes a React/Next.js codebase and the toolchain covers it as f
 - Exit criteria: rule-mapping doc approved, one week of parallel runs with no missed high-severity issues.
 
 ### Phase 3: Type checking (0.5 sprint)
+
 - Add `@typescript/native-preview`; add `typecheck:tsgo` script.
 - Parallel-run tsgo and tsc in CI for two sprints; diff outputs.
 - Flip the blocking gate to tsgo; keep tsc as a manual escape hatch until Phase 5.
 - Exit criteria: zero unexplained diagnostic differences on main for two sprints.
 
 ### Phase 4: Testing (1 to 2 sprints, highest risk)
+
 - Install Bun (test runner only); configure DOM environment and test setup preloads.
 - Codemod Vitest imports/APIs to Bun test equivalents (`vi.*` to `jest.*`-compatible or `bun:test` mocks).
 - Migrate directory by directory; run both runners in CI during the transition (each suite runs under exactly one runner to avoid double execution).
@@ -153,6 +164,7 @@ This migration assumes a React/Next.js codebase and the toolchain covers it as f
 - Exit criteria: all suites green under Bun test, coverage gate intact, flake rate stable for two weeks.
 
 ### Phase 5: Cleanup
+
 - Remove tsc fallback, ESLint/Prettier/Vitest remnants, dead config files, and unused devDependencies.
 - Record post-migration timings against the Phase 0 baseline and publish results.
 - Update onboarding docs.
@@ -167,16 +179,16 @@ Some capabilities may not have a 1:1 replacement (custom ESLint rules, Vitest-on
 
 ## 10. Risks and Mitigations
 
-| Risk | Likelihood | Impact | Mitigation |
-|---|---|---|---|
-| Bun test incompatibilities (module mocking semantics, fake timers, snapshot format, jsdom edge cases) | High | High | Phase 4 is directory-by-directory with parallel CI; hard fallback is keeping Vitest (Vitest itself is getting faster via Rolldown, so this fallback is acceptable and should be decided by end of Phase 4, sprint 1). |
-| Next.js module mocking under Bun test (`mock.module` semantics differ from `vi.mock`: no hoisting, possible cross-file leakage) | High | High | Phase 0 mock inventory sizes the problem; centralize Next mocks in shared preload files; if mock volume is high, keep Vitest (fallback per Open Question 1). |
-| Oxlint nextjs plugin gaps versus `eslint-config-next` | Medium | Medium | Rule-mapping diff in Phase 2; parallel ESLint run catches misses; file gaps upstream or accept via exception process. |
-| Oxlint missing a rule the team relies on | Medium | Medium | Rule-mapping doc in Phase 2 plus one week of parallel ESLint runs; Oxlint supports custom rules via its plugin system for gaps worth keeping. |
-| tsgo diagnostic differences from tsc | Medium | High | Two-sprint parallel run; tsgo version pinned and synced with tsgolint. |
-| Oxfmt output differs from Prettier in edge cases | Low | Low | Conformance is at 100% for JS/TS; single reformat commit absorbs any drift; report divergences upstream. |
-| Tool immaturity / breaking changes (Oxfmt is newly out of beta) | Medium | Medium | Pin exact versions with `--save-exact`; upgrade deliberately, not automatically. |
-| Team learning curve and editor setup friction | Low | Low | Committed `.vscode` settings, migration guide, pairing during Phase 2. |
+| Risk                                                                                                                            | Likelihood | Impact | Mitigation                                                                                                                                                                                                            |
+| ------------------------------------------------------------------------------------------------------------------------------- | ---------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Bun test incompatibilities (module mocking semantics, fake timers, snapshot format, jsdom edge cases)                           | High       | High   | Phase 4 is directory-by-directory with parallel CI; hard fallback is keeping Vitest (Vitest itself is getting faster via Rolldown, so this fallback is acceptable and should be decided by end of Phase 4, sprint 1). |
+| Next.js module mocking under Bun test (`mock.module` semantics differ from `vi.mock`: no hoisting, possible cross-file leakage) | High       | High   | Phase 0 mock inventory sizes the problem; centralize Next mocks in shared preload files; if mock volume is high, keep Vitest (fallback per Open Question 1).                                                          |
+| Oxlint nextjs plugin gaps versus `eslint-config-next`                                                                           | Medium     | Medium | Rule-mapping diff in Phase 2; parallel ESLint run catches misses; file gaps upstream or accept via exception process.                                                                                                 |
+| Oxlint missing a rule the team relies on                                                                                        | Medium     | Medium | Rule-mapping doc in Phase 2 plus one week of parallel ESLint runs; Oxlint supports custom rules via its plugin system for gaps worth keeping.                                                                         |
+| tsgo diagnostic differences from tsc                                                                                            | Medium     | High   | Two-sprint parallel run; tsgo version pinned and synced with tsgolint.                                                                                                                                                |
+| Oxfmt output differs from Prettier in edge cases                                                                                | Low        | Low    | Conformance is at 100% for JS/TS; single reformat commit absorbs any drift; report divergences upstream.                                                                                                              |
+| Tool immaturity / breaking changes (Oxfmt is newly out of beta)                                                                 | Medium     | Medium | Pin exact versions with `--save-exact`; upgrade deliberately, not automatically.                                                                                                                                      |
+| Team learning curve and editor setup friction                                                                                   | Low        | Low    | Committed `.vscode` settings, migration guide, pairing during Phase 2.                                                                                                                                                |
 
 ## 11. Success Metrics
 
@@ -204,11 +216,11 @@ Each phase is independently reversible until Phase 5 cleanup:
 
 ## 14. Timeline Summary
 
-| Phase | Duration | Owner |
-|---|---|---|
-| 0: Baseline and audit | 0.5 sprint | Frontend lead |
-| 1: Formatting (Oxfmt) | 0.5 sprint | TBD |
-| 2: Linting (Oxlint) | 1 sprint | TBD |
-| 3: Type checking (tsgo) | 0.5 sprint (plus 2-sprint parallel run) | TBD |
-| 4: Testing (Bun test) | 1 to 2 sprints | TBD |
-| 5: Cleanup and report | 0.5 sprint | Frontend lead |
+| Phase                   | Duration                                | Owner         |
+| ----------------------- | --------------------------------------- | ------------- |
+| 0: Baseline and audit   | 0.5 sprint                              | Frontend lead |
+| 1: Formatting (Oxfmt)   | 0.5 sprint                              | TBD           |
+| 2: Linting (Oxlint)     | 1 sprint                                | TBD           |
+| 3: Type checking (tsgo) | 0.5 sprint (plus 2-sprint parallel run) | TBD           |
+| 4: Testing (Bun test)   | 1 to 2 sprints                          | TBD           |
+| 5: Cleanup and report   | 0.5 sprint                              | Frontend lead |

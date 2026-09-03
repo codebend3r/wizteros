@@ -47,7 +47,10 @@ test('--record requires an email address', () => {
 })
 
 test('--record requires a play', () => {
-  assert.throws(() => parseArgs({ argv: ['--record', 'a@example.com'] }), /--record requires a play/i)
+  assert.throws(
+    () => parseArgs({ argv: ['--record', 'a@example.com'] }),
+    /--record requires a play/i,
+  )
 })
 
 test('--record rejects an unrecognized play', () => {
@@ -67,7 +70,10 @@ test('--opt-out rejects a flag shaped value instead of opting out "--json"', () 
 })
 
 test('--record rejects a flag shaped email and a flag shaped play', () => {
-  assert.throws(() => parseArgs({ argv: ['--record', '--json', 'declined'] }), /got the flag "--json"/)
+  assert.throws(
+    () => parseArgs({ argv: ['--record', '--json', 'declined'] }),
+    /got the flag "--json"/,
+  )
   assert.throws(
     () => parseArgs({ argv: ['--record', 'a@example.com', '--json'] }),
     /got the flag "--json"/,
@@ -96,7 +102,9 @@ test('a suppressed person is counted as excluded, never dropped', () => {
       member({ email: 'fresh@example.com', invitedAt: daysAgo(30) }),
       member({ email: 'recent@example.com', invitedAt: daysAgo(30) }),
     ],
-    ledger: { 'recent@example.com': { contacts: [{ at: daysAgo(2), play: 'declined' }], optedOut: false } },
+    ledger: {
+      'recent@example.com': { contacts: [{ at: daysAgo(2), play: 'declined' }], optedOut: false },
+    },
     now: NOW,
     play: 'declined',
   })
@@ -125,13 +133,23 @@ test('contactable plus excluded always reconciles with the cohort size', () => {
 
 test('billing failures land in triage and never in a play', () => {
   const report = buildReport({
-    members: [member({ email: 'card@example.com', subscribed: true, stripeStatus: 'past_due', expires: daysAgo(1) })],
+    members: [
+      member({
+        email: 'card@example.com',
+        subscribed: true,
+        stripeStatus: 'past_due',
+        expires: daysAgo(1),
+      }),
+    ],
     ledger: {},
     now: NOW,
     play: null,
   })
   assert.equal(report.triage.length, 1)
-  assert.equal(report.plays.every((entry) => entry.leads.length === 0), true)
+  assert.equal(
+    report.plays.every((entry) => entry.leads.length === 0),
+    true,
+  )
 })
 
 test('uninvited people are listed for triage, never drafted for', () => {
@@ -159,7 +177,9 @@ test('the rendered report names the excluded reasons', () => {
 })
 
 test('an empty result renders as a real answer, not a blank page', () => {
-  const text = renderReport({ report: buildReport({ members: [], ledger: {}, now: NOW, play: null }) })
+  const text = renderReport({
+    report: buildReport({ members: [], ledger: {}, now: NOW, play: null }),
+  })
   assert.match(text, /nothing to send/i)
 })
 
@@ -185,7 +205,10 @@ test('a backfill member appears in the backfill play, never in declined', () => 
 
 test('the play blocks come back in warmth order: lapsed, backfill, declined', () => {
   const report = buildReport({ members: [], ledger: {}, now: NOW, play: null })
-  assert.deepEqual(report.plays.map((entry) => entry.play), ['lapsed', 'backfill', 'declined'])
+  assert.deepEqual(
+    report.plays.map((entry) => entry.play),
+    ['lapsed', 'backfill', 'declined'],
+  )
 })
 
 test('the detected bulk dates are reported, so a backfill block names its migration', () => {
@@ -202,8 +225,12 @@ test('two bulk dates are both reported, never collapsed into one migration', () 
   const first = daysAgo(40).slice(0, 10)
   const second = daysAgo(20).slice(0, 10)
   const members = [
-    ...Array.from({ length: 10 }, (_, i) => member({ email: `a${i}@example.com`, invitedAt: daysAgo(40) })),
-    ...Array.from({ length: 10 }, (_, i) => member({ email: `b${i}@example.com`, invitedAt: daysAgo(20) })),
+    ...Array.from({ length: 10 }, (_, i) =>
+      member({ email: `a${i}@example.com`, invitedAt: daysAgo(40) }),
+    ),
+    ...Array.from({ length: 10 }, (_, i) =>
+      member({ email: `b${i}@example.com`, invitedAt: daysAgo(20) }),
+    ),
   ]
   const report = buildReport({ members, ledger: {}, now: NOW, play: null })
   assert.deepEqual(report.bulkDates, [first, second])
@@ -212,7 +239,9 @@ test('two bulk dates are both reported, never collapsed into one migration', () 
 
 test('bulk detection runs after the self filter, so an operator address can drop a date under the threshold', () => {
   const members = [
-    ...Array.from({ length: 9 }, (_, i) => member({ email: `bulk${i}@example.com`, invitedAt: daysAgo(20) })),
+    ...Array.from({ length: 9 }, (_, i) =>
+      member({ email: `bulk${i}@example.com`, invitedAt: daysAgo(20) }),
+    ),
     member({ email: 'me+migration@example.com', invitedAt: daysAgo(20) }),
   ]
   const unfiltered = buildReport({ members, ledger: {}, now: NOW, play: null, selfAddresses: [] })
@@ -263,7 +292,10 @@ test('a gather run writes nothing: reading and rendering leave the state directo
 })
 
 test('resolveSelf prefers WZ_SALES_SELF, comma separated', () => {
-  const result = resolveSelf({ envValue: 'a@example.com, b@example.com', gitEmail: 'c@example.com' })
+  const result = resolveSelf({
+    envValue: 'a@example.com, b@example.com',
+    gitEmail: 'c@example.com',
+  })
   assert.equal(result.source, 'WZ_SALES_SELF')
   assert.deepEqual(result.addresses, ['a@example.com', 'b@example.com'])
 })
@@ -286,8 +318,14 @@ test('filterSelf removes a plus tagged variant of the operator address and keeps
     member({ email: 'someone@example.com' }),
   ]
   const { kept, filtered } = filterSelf({ members, selfAddresses: ['me@example.com'] })
-  assert.deepEqual(kept.map((m) => m.email), ['someone@example.com'])
-  assert.deepEqual(filtered.map((m) => m.email), ['me+gold@example.com'])
+  assert.deepEqual(
+    kept.map((m) => m.email),
+    ['someone@example.com'],
+  )
+  assert.deepEqual(
+    filtered.map((m) => m.email),
+    ['me+gold@example.com'],
+  )
 })
 
 test('the self address filter removes a plus tagged variant and leaves an unrelated address', () => {
@@ -302,7 +340,10 @@ test('the self address filter removes a plus tagged variant and leaves an unrela
     selfAddresses: ['me@example.com'],
   })
   const declined = report.plays.find((entry) => entry.play === 'declined')
-  assert.deepEqual(declined.leads.map((lead) => lead.email), ['someone@example.com'])
+  assert.deepEqual(
+    declined.leads.map((lead) => lead.email),
+    ['someone@example.com'],
+  )
 })
 
 test('the filter is off and filters nothing when no operator address can be resolved', () => {

@@ -1,18 +1,18 @@
 [build]
-  # Build from the monorepo root so bun installs the whole workspace and Nx can
-  # resolve the project graph; the SPA itself is apps/admin-portal.
-  command = "bun run build"
-  publish = "apps/admin-portal/dist"
+# Build from the monorepo root so bun installs the whole workspace and Nx can
+# resolve the project graph; the SPA itself is apps/admin-portal.
+command = "bun run build"
+publish = "apps/admin-portal/dist"
 
 [build.environment]
-  NODE_VERSION = "24"
-  BUN_VERSION = "1.3.14"
-  # SMTP_USER and FROM_ADDR both hold the public contact email shown in the
-  # footer, not a secret
-  SECRETS_SCAN_OMIT_KEYS = "SMTP_USER,FROM_ADDR"
-  # Dropping `base = "web"` moved the build root to the repo root, so secret
-  # scanning now sees the whole monorepo instead of just the SPA. Exempt the
-  # paths that never reach the CDN (bridge code, docs, tooling, placeholder env
-  # files). apps/admin-portal/src and the published dist stay scanned, so the
-  # bundle that actually ships is still protected.
-  SECRETS_SCAN_OMIT_PATHS = "apps/stripe-bridge/**,docs/**,scripts/**,.github/**,.husky/**,.claude/**,README.md,CLAUDE.md,docker-compose.yml,**/.env.example"
+NODE_VERSION = "24"
+BUN_VERSION = "1.3.14"
+# SMTP_USER and FROM_ADDR both hold the public contact email shown in the
+# footer, not a secret
+SECRETS_SCAN_OMIT_KEYS = "SMTP_USER,FROM_ADDR"
+# Dropping `base = "web"` moved the build root to the repo root, so secret
+# scanning now sees the whole monorepo instead of just the SPA. Exempt the
+# paths that never reach the CDN (bridge code, docs, tooling, placeholder env
+# files). apps/admin-portal/src and the published dist stay scanned, so the
+# bundle that actually ships is still protected.
+SECRETS_SCAN_OMIT_PATHS = "apps/stripe-bridge/**,docs/**,scripts/**,.github/**,.husky/**,.claude/**,README.md,CLAUDE.md,docker-compose.yml,**/.env.example"

@@ -108,10 +108,14 @@ export const peopleFrom = ({ users }) =>
         return acc
       }
       const current = acc[key]
-      const expires = current && (current.expires === null || user.expires === null)
-        ? null
-        : [current?.expires, user.expires].filter(Boolean).sort().at(-1) ?? null
-      const ids = [...(current?.ids ?? []), ...(user.id === undefined || user.id === null ? [] : [user.id])]
+      const expires =
+        current && (current.expires === null || user.expires === null)
+          ? null
+          : ([current?.expires, user.expires].filter(Boolean).sort().at(-1) ?? null)
+      const ids = [
+        ...(current?.ids ?? []),
+        ...(user.id === undefined || user.id === null ? [] : [user.id]),
+      ]
       return {
         ...acc,
         [key]: {
@@ -153,10 +157,14 @@ const readStore = () => {
       ['-c', `ssh ${SSH_OPTS} ${shellQuote(NAS_HOST)} ${shellQuote(remote)} > ${shellQuote(db)}`],
       { stdio: ['ignore', 'ignore', 'pipe'] },
     )
-    const columns = JSON.parse(
-      execFileSync('sqlite3', ['-readonly', '-json', db, 'PRAGMA table_info(customer_map)'], { encoding: 'utf8' }) || '[]',
-    ).map((row) => row.name)
-    const pick = (name) => (columns.includes(name) ? name : `NULL AS ${name}`)
+    const columns = new Set(
+      JSON.parse(
+        execFileSync('sqlite3', ['-readonly', '-json', db, 'PRAGMA table_info(customer_map)'], {
+          encoding: 'utf8',
+        }) || '[]',
+      ).map((row) => row.name),
+    )
+    const pick = (name) => (columns.has(name) ? name : `NULL AS ${name}`)
     const sql = `SELECT c.email, ${pick('tier')}, ${pick('invited_at')}, ${pick('subscribed')}, c.invite_code, t.tag
                  FROM customer_map c LEFT JOIN member_tags t ON lower(c.email) = t.email
                  WHERE c.email IS NOT NULL`
@@ -195,7 +203,8 @@ const personForInvite = ({ usedBy, byId, byUsername }) => {
   return idMatch ? byId[idMatch[1]] : byUsername[usedBy.toLowerCase()]
 }
 
-const storeRowSortKey = (row) => `${row.invited_at ?? ''} ${row.invite_code ?? ''} ${row.tier ?? ''}`
+const storeRowSortKey = (row) =>
+  `${row.invited_at ?? ''} ${row.invite_code ?? ''} ${row.tier ?? ''}`
 
 const mergeStoreRows = ({ rows }) => {
   /**
@@ -262,7 +271,10 @@ export const joinMembers = ({ storeRows, people, stripe, invitations }) => {
    * whose Plex email differs from their Stripe email keeps their real expiry
    * instead of reading as someone who never had access.
    */
-  const byEmail = people.reduce((acc, person) => (person.email ? { ...acc, [person.email]: person } : acc), {})
+  const byEmail = people.reduce(
+    (acc, person) => (person.email ? { ...acc, [person.email]: person } : acc),
+    {},
+  )
   const byUsername = people.reduce(
     (acc, person) => (person.username ? { ...acc, [person.username.toLowerCase()]: person } : acc),
     {},

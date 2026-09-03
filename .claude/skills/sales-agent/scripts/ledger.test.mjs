@@ -45,7 +45,9 @@ test('readLedger returns an empty object when the file is missing', () => {
 test('writeLedger then readLedger round-trips', () => {
   const dir = mkdtempSync(join(tmpdir(), 'wz-ledger-'))
   try {
-    const ledger = { 'a@example.com': { contacts: [{ at: daysAgo(1), play: 'declined' }], optedOut: false } }
+    const ledger = {
+      'a@example.com': { contacts: [{ at: daysAgo(1), play: 'declined' }], optedOut: false },
+    }
     writeLedger({ dir, ledger })
     assert.deepEqual(readLedger({ dir }), ledger)
   } finally {

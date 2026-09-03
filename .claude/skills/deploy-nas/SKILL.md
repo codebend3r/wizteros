@@ -28,12 +28,12 @@ The skill lives in the repo, and the script resolves the repo root from its own
 location — so it works from any clone or worktree with no path editing. Override with
 `WZ_REPO=/some/other/clone` if you ever need to ship a different tree.
 
-| Flag | Meaning |
-|---|---|
-| `--dry-run` | Report what would sync and rebuild; change nothing |
-| `--force` | Rebuild even when the NAS is already on this SHA, or when no NAS-built path changed |
-| `--skip-verify` | Skip health checks (and therefore rollback). Rarely correct |
-| `--no-rollback` | Verify, but leave a bad build running instead of reverting |
+| Flag            | Meaning                                                                             |
+| --------------- | ----------------------------------------------------------------------------------- |
+| `--dry-run`     | Report what would sync and rebuild; change nothing                                  |
+| `--force`       | Rebuild even when the NAS is already on this SHA, or when no NAS-built path changed |
+| `--skip-verify` | Skip health checks (and therefore rollback). Rarely correct                         |
+| `--no-rollback` | Verify, but leave a bad build running instead of reverting                          |
 
 Run it as a single Bash invocation so the user sees the whole transcript. Default to
 `--dry-run` first when the user seems unsure whether the NAS needs anything.
@@ -50,8 +50,8 @@ Run it as a single Bash invocation so the user sees the whole transcript. Defaul
    tar over SSH. Then verifies a checksum matches before rebuilding.
 5. **Rebuilds** — `sudo -n /usr/local/bin/docker compose up -d --build`.
 6. **Verifies**: container `running`; `GET /admin/members` returns `401`; `GET /version`
-   matches the `__version__` in the synced tree (a 401 proves *a* bridge is up, the
-   version proves it is *this* one); boot logs scanned for the tier-scope alarm and
+   matches the `__version__` in the synced tree (a 401 proves _a_ bridge is up, the
+   version proves it is _this_ one); boot logs scanned for the tier-scope alarm and
    tracebacks.
 7. **Rolls back** on a failed health check, re-tagging the previous image, and restores
    the old `.deployed-sha`.

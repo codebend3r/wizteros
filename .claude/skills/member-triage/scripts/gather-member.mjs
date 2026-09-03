@@ -288,7 +288,8 @@ const storeSection = ({ store, error }) => {
 
 // Alarms carry no email, so a plain grep for the member misses the reason their
 // signup failed. Both passes run over the same window.
-const ALARMS = /tier scope check:|no libraries resolved|unknown tier|allowlist mismatch|Traceback \(most recent call last\)/
+const ALARMS =
+  /tier scope check:|no libraries resolved|unknown tier|allowlist mismatch|Traceback \(most recent call last\)/
 
 const logsSection = async () => {
   // Tail on the NAS, filter here: no remote quoting of the address, and the

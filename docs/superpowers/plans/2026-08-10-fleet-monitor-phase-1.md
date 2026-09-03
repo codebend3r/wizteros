@@ -26,13 +26,13 @@
 
 ## Fleet reference (measured 2026-08-10)
 
-| Host | IP | Cores | RAM | `/dev/dri` | Docker |
-|---|---|---|---|---|---|
-| `vermithor` | 192.168.50.3 | 4 | 15.8 GB | yes | yes |
-| `meleys` | 192.168.50.2 | 2c/4t | 32.1 GB | no | yes |
-| `syrax` | 192.168.50.5 | 4 | 32.1 GB | no | no |
-| `vhagar` | 192.168.50.6 | 4 | 7.8 GB | yes | **yes** (added 2026-08-11) |
-| `caraxes` | 192.168.50.4 | 4 | 1.6 GB | no | no (aarch64, unsupported) |
+| Host        | IP           | Cores | RAM     | `/dev/dri` | Docker                     |
+| ----------- | ------------ | ----- | ------- | ---------- | -------------------------- |
+| `vermithor` | 192.168.50.3 | 4     | 15.8 GB | yes        | yes                        |
+| `meleys`    | 192.168.50.2 | 2c/4t | 32.1 GB | no         | yes                        |
+| `syrax`     | 192.168.50.5 | 4     | 32.1 GB | no         | no                         |
+| `vhagar`    | 192.168.50.6 | 4     | 7.8 GB  | yes        | **yes** (added 2026-08-11) |
+| `caraxes`   | 192.168.50.4 | 4     | 1.6 GB  | no         | no (aarch64, unsupported)  |
 
 `vhagar` runs Jellyfin as of 2026-08-11, so it is a third Docker host. `caraxes` is the
 only box where Docker cannot run at all.
@@ -85,6 +85,7 @@ Split by responsibility, not layer: `probes/` is "understand a byte stream", `tr
 ### Task 1: Scaffold the fleet-monitor Nx app
 
 **Files:**
+
 - Create: `apps/fleet-monitor/package.json`
 - Create: `apps/fleet-monitor/project.json`
 - Create: `apps/fleet-monitor/pytest.ini`
@@ -100,6 +101,7 @@ Split by responsibility, not layer: `probes/` is "understand a byte stream", `tr
 - Modify: `package.json` (root, add `setup:py:monitor` and `test:monitor` aliases)
 
 **Interfaces:**
+
 - Consumes: nothing.
 - Produces: the Nx project `fleet-monitor` with working `test` and `lint:py` targets. Every later task's test command is `bunx nx run fleet-monitor:test`.
 
@@ -287,20 +289,24 @@ In the root `package.json` `scripts` block, after the existing `setup:py` line:
 - [ ] **Step 8: Bootstrap the venv and run the test**
 
 Run:
+
 ```bash
 bun run setup:py:monitor
 bunx nx run fleet-monitor:test
 ```
+
 Expected: PASS, 1 test.
 
 - [ ] **Step 9: Confirm the release check still passes and lint is clean**
 
 Run:
+
 ```bash
 bunx nx run fleet-monitor:lint:py
 bunx nx show project fleet-monitor --json | head -5
 node -p "require('./apps/fleet-monitor/package.json').version"
 ```
+
 Expected: lint clean; the project shows `test`, `lint:py`, `lint:py:fix`, `docker-build`; the version read prints `undefined`, which is what keeps `release.sh` correct.
 
 - [ ] **Step 10: Commit**
@@ -319,6 +325,7 @@ git commit -m "WZ: Scaffold the fleet-monitor app
 ### Task 2: Pure /proc parsers
 
 **Files:**
+
 - Create: `apps/fleet-monitor/fleet_monitor/probes/__init__.py`
 - Create: `apps/fleet-monitor/fleet_monitor/probes/types.py`
 - Create: `apps/fleet-monitor/fleet_monitor/probes/proc.py`
@@ -328,6 +335,7 @@ git commit -m "WZ: Scaffold the fleet-monitor app
 - Test: `apps/fleet-monitor/tests/test_probes_proc.py`
 
 **Interfaces:**
+
 - Consumes: nothing.
 - Produces:
   - `Sample(metric: str, value: float, kind: str)`, a frozen dataclass. `kind` is `"gauge"` or `"counter"`.
@@ -343,6 +351,7 @@ git commit -m "WZ: Scaffold the fleet-monitor app
 caraxes is the ARM box with 1.6 GB of RAM, which makes it the most different from the rest and therefore the best default fixture.
 
 Run:
+
 ```bash
 cd apps/fleet-monitor/tests/fixtures
 ssh -o LogLevel=ERROR crivas@192.168.50.4 'head -6 /proc/stat' > caraxes_proc_stat.txt
@@ -353,6 +362,7 @@ ssh -o LogLevel=ERROR crivas@192.168.50.4 'cat /proc/net/dev' > caraxes_proc_net
 If off the LAN, use these verified captures instead.
 
 `caraxes_proc_stat.txt`:
+
 ```
 cpu  25839572 27406112 12199815 304159064 9504147 0 1283448 0 0 0
 cpu0 6444566 6850358 3054453 76012278 2360456 0 375923 0 0 0
@@ -362,6 +372,7 @@ cpu3 6473141 6864862 3058714 76003043 2389029 0 309254 0 0 0
 ```
 
 `caraxes_proc_meminfo.txt`:
+
 ```
 MemTotal:        1683776 kB
 MemFree:          125592 kB
@@ -371,6 +382,7 @@ Cached:           711756 kB
 ```
 
 `caraxes_proc_net_dev.txt` (note the two header lines and the tab-free column alignment):
+
 ```
 Inter-|   Receive                                                |  Transmit
  face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed
@@ -638,10 +650,12 @@ git commit -m "WZ: Add pure /proc parsers to fleet-monitor
 ### Task 3: System probes for disk, temperature and GPU
 
 **Files:**
+
 - Create: `apps/fleet-monitor/fleet_monitor/probes/system.py`
 - Test: `apps/fleet-monitor/tests/test_probes_system.py`
 
 **Interfaces:**
+
 - Consumes: `Sample` from `fleet_monitor.probes.types`.
 - Produces:
   - `system.parse_df(text: str) -> tuple[Sample, ...]`
@@ -891,10 +905,12 @@ git commit -m "WZ: Add disk, temperature and GPU probes to fleet-monitor
 ### Task 4: Batched collection script and response splitter
 
 **Files:**
+
 - Create: `apps/fleet-monitor/fleet_monitor/probes/script.py`
 - Test: `apps/fleet-monitor/tests/test_probes_script.py`
 
 **Interfaces:**
+
 - Consumes: nothing from earlier tasks.
 - Produces:
   - `script.VITALS_SCRIPT: str`, the shell script sent to a host each vitals tick.
@@ -1042,6 +1058,7 @@ Expected: PASS, 27 tests total.
 - [ ] **Step 5: Verify the script against a real host end to end**
 
 Run:
+
 ```bash
 python3 - <<'PY'
 import subprocess, sys
@@ -1058,6 +1075,7 @@ print("net samples:", len(proc.parse_net_dev(sections["netdev"])))
 print("gpu:", system.parse_gpu_freq(sections["gpu"]))
 PY
 ```
+
 Expected: sections `['gpu', 'loadavg', 'meminfo', 'netdev', 'stat', 'uptime']`, a non-zero cpu and net sample count, and a populated GPU tuple since vermithor has a render node. Repeat against `crivas@192.168.50.4` (caraxes) and confirm `gpu: ()` there.
 
 - [ ] **Step 6: Run lint and commit**
@@ -1079,11 +1097,13 @@ git commit -m "WZ: Batch fleet-monitor host collection into one script per tick
 ### Task 5: SSH transport with connection multiplexing
 
 **Files:**
+
 - Create: `apps/fleet-monitor/fleet_monitor/transport/__init__.py`
 - Create: `apps/fleet-monitor/fleet_monitor/transport/ssh.py`
 - Test: `apps/fleet-monitor/tests/test_transport_ssh.py`
 
 **Interfaces:**
+
 - Consumes: nothing.
 - Produces:
   - `ssh.SshResult(ok: bool, stdout: str, reason: str)`, a frozen dataclass.
@@ -1286,6 +1306,7 @@ Expected: PASS, 33 tests total. The unroutable-host test takes about 2 seconds.
 - [ ] **Step 6: Verify multiplexing actually engages**
 
 Run:
+
 ```bash
 rm -rf /tmp/fm-bench && python3 - <<'PY'
 import asyncio, sys, time
@@ -1302,6 +1323,7 @@ asyncio.run(main())
 PY
 ls /tmp/fm-bench
 ```
+
 Expected: all three print `True ok`. The first is noticeably slower than the second and third, and `/tmp/fm-bench` contains a `crivas@192.168.50.3:22` socket. That gap is the multiplexing working.
 
 - [ ] **Step 7: Run lint and commit**
@@ -1323,10 +1345,12 @@ git commit -m "WZ: Add a multiplexed ssh transport to fleet-monitor
 ### Task 6: SQLite store with counter rates
 
 **Files:**
+
 - Create: `apps/fleet-monitor/fleet_monitor/store.py`
 - Test: `apps/fleet-monitor/tests/test_store.py`
 
 **Interfaces:**
+
 - Consumes: `Sample` from `fleet_monitor.probes.types`.
 - Produces:
   - `store.init_db(path: str) -> None`
@@ -1616,10 +1640,12 @@ git commit -m "WZ: Add the fleet-monitor SQLite store
 ### Task 7: Rollups and retention
 
 **Files:**
+
 - Create: `apps/fleet-monitor/fleet_monitor/rollups.py`
 - Test: `apps/fleet-monitor/tests/test_rollups.py`
 
 **Interfaces:**
+
 - Consumes: `store._conn`, `store.init_db`.
 - Produces:
   - `rollups.init_db(path: str) -> None`
@@ -1842,12 +1868,14 @@ git commit -m "WZ: Add fleet-monitor rollups and retention
 ### Task 8: Docker container state
 
 **Files:**
+
 - Create: `apps/fleet-monitor/fleet_monitor/probes/docker.py`
 - Create: `apps/fleet-monitor/fleet_monitor/transport/http.py`
 - Test: `apps/fleet-monitor/tests/test_probes_docker.py`
 - Test: `apps/fleet-monitor/tests/test_transport_http.py`
 
 **Interfaces:**
+
 - Consumes: `Sample` from `fleet_monitor.probes.types`.
 - Produces:
   - `docker.ContainerState(name: str, running: bool, health: str, restart_count: int, started_at: str)`, frozen dataclass.
@@ -2086,7 +2114,7 @@ services:
     container_name: docker-socket-proxy
     restart: unless-stopped
     ports:
-      - "2375:2375"
+      - '2375:2375'
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
@@ -2113,11 +2141,13 @@ for h in meleys:192.168.50.2 vhagar:192.168.50.6; do
   echo "$name POST: $(curl -s -o /dev/null -w '%{http_code}' -X POST "http://$ip:2375/containers/x/restart")"
 done
 ```
+
 Expected: `GET 200` and `POST 403` on both. If a POST returns anything else, stop and fix the proxy config before continuing.
 
 - [ ] **Step 7: Verify the probe against both hosts**
 
 Run:
+
 ```bash
 python3 - <<'PY'
 import asyncio, json, sys
@@ -2134,6 +2164,7 @@ async def main():
 asyncio.run(main())
 PY
 ```
+
 Expected: six containers on meleys (`sonarr`, `sabnzbd`, `radarr`, `stripe-bridge`, `wizarr`, `tautulli`), with `wizarr` and `tautulli` reporting `healthy`. Repeat against `192.168.50.6` and expect `jellyfin` plus the socket proxy.
 
 - [ ] **Step 8: Run lint and commit**
@@ -2153,10 +2184,12 @@ git commit -m "WZ: Add container state collection to fleet-monitor
 ### Task 9: Incident state machine
 
 **Files:**
+
 - Create: `apps/fleet-monitor/fleet_monitor/incidents.py`
 - Test: `apps/fleet-monitor/tests/test_incidents.py`
 
 **Interfaces:**
+
 - Consumes: `store._conn`.
 - Produces:
   - `incidents.init_db(path: str) -> None`
@@ -2531,12 +2564,14 @@ git commit -m "WZ: Add the fleet-monitor incident state machine
 ### Task 10: Collector and configuration
 
 **Files:**
+
 - Create: `apps/fleet-monitor/fleet_monitor/config.py`
 - Create: `apps/fleet-monitor/fleet_monitor/collector.py`
 - Test: `apps/fleet-monitor/tests/test_config.py`
 - Test: `apps/fleet-monitor/tests/test_collector.py`
 
 **Interfaces:**
+
 - Consumes: everything above.
 - Produces:
   - `config.Host(name: str, ip: str, has_gpu: bool, docker_url: str)`, frozen dataclass.
@@ -2853,6 +2888,7 @@ Expected: PASS, 79 tests total.
 - [ ] **Step 6: Run one real tick against the live fleet**
 
 Run:
+
 ```bash
 python3 - <<'PY'
 import asyncio, sys, tempfile
@@ -2876,6 +2912,7 @@ async def main():
 asyncio.run(main())
 PY
 ```
+
 Expected: five `host:` checks ok, two `docker:` hosts ok, and one `container:` check per running container (fifteen today, sixteen once Jellyfin lands on meleys), and a non-zero metric count per host. `vermithor` should not yet show `disk.volume1.used_percent` because that is on the slow tier.
 
 - [ ] **Step 7: Run lint and commit**
@@ -2895,11 +2932,13 @@ git commit -m "WZ: Add the fleet-monitor collector and fleet config
 ### Task 11: Read API
 
 **Files:**
+
 - Create: `apps/fleet-monitor/fleet_monitor/api.py`
 - Test: `apps/fleet-monitor/tests/test_api.py`
 - Modify: `apps/fleet-monitor/requirements-dev.txt` (add `httpx` is already present via requirements; no change needed unless `TestClient` complains)
 
 **Interfaces:**
+
 - Consumes: `store`, `incidents`, `config`.
 - Produces: `api.app`, a FastAPI application with:
   - `GET /health` -> `{"ok": true, "heartbeat_age_seconds": float | null, "stale": bool}`
@@ -3105,6 +3144,7 @@ git commit -m "WZ: Add the fleet-monitor read API
 ### Task 12: Fleet overview page in the admin portal
 
 **Files:**
+
 - Create: `apps/admin-portal/src/lib/fleetApi.ts`
 - Create: `apps/admin-portal/src/lib/fleetApi.test.ts`
 - Create: `apps/admin-portal/src/pages/Fleet/Fleet.tsx`
@@ -3115,6 +3155,7 @@ git commit -m "WZ: Add the fleet-monitor read API
 - Modify: `apps/admin-portal/src/AppRoutes.tsx`
 
 **Interfaces:**
+
 - Consumes: `GET /fleet` and `GET /incidents` from Task 11.
 - Produces: the `/fleet` route.
 
@@ -3499,8 +3540,8 @@ export const Fleet = () => {
         <h1>Fleet</h1>
         {!!data?.stale && (
           <p className={styles.stale} role="alert">
-            Collector data is stale. The monitor runs on vermithor and cannot report that box
-            being down, so treat everything below as history, not the present.
+            Collector data is stale. The monitor runs on vermithor and cannot report that box being
+            down, so treat everything below as history, not the present.
           </p>
         )}
       </header>
@@ -3562,7 +3603,7 @@ import { Fleet } from '@/pages/Fleet/Fleet'
 ```
 
 ```tsx
-    <Route path="/fleet" element={<Fleet />} />
+<Route path="/fleet" element={<Fleet />} />
 ```
 
 Place the route line after `/email` to keep the list in the same order as the imports. Do not introduce an auth wrapper here; match the surrounding pattern.
@@ -3570,6 +3611,7 @@ Place the route line after `/email` to keep the list in the same order as the im
 - [ ] **Step 10: Run the full web gate**
 
 Run:
+
 ```bash
 bunx nx run admin-portal:test
 bunx nx run admin-portal:lint:ts
@@ -3577,6 +3619,7 @@ bunx nx run admin-portal:lint:css
 bunx nx run admin-portal:typecheck
 bunx nx run admin-portal:format:check
 ```
+
 Expected: all clean. `lint:ts` enforces the no-default-export, no-`any`, no-`interface` rules from CLAUDE.md; do not disable a rule to pass.
 
 - [ ] **Step 11: Verify responsiveness at 320px**

@@ -10,10 +10,10 @@ description: Use when the wizteros live end-to-end suites are in play, either ru
 Two Node scripts drive **synthetic, locally signed Stripe webhooks** through a **locally
 running bridge container** against the **live Wizarr instance**:
 
-| Script | Nx target (root alias) | Proves |
-|---|---|---|
-| `apps/stripe-bridge/scripts/e2e-retest.mjs` | `stripe-bridge:test:e2e` (`bun run test:e2e`) | The paid-access flow time-boxes a real member's records |
-| `apps/stripe-bridge/scripts/e2e-tiers.mjs` | `stripe-bridge:test:e2e:tiers` (`bun run test:e2e:tiers`) | Each tier's signup produces a correctly scoped invite |
+| Script                                      | Nx target (root alias)                                    | Proves                                                  |
+| ------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------- |
+| `apps/stripe-bridge/scripts/e2e-retest.mjs` | `stripe-bridge:test:e2e` (`bun run test:e2e`)             | The paid-access flow time-boxes a real member's records |
+| `apps/stripe-bridge/scripts/e2e-tiers.mjs`  | `stripe-bridge:test:e2e:tiers` (`bun run test:e2e:tiers`) | Each tier's signup produces a correctly scoped invite   |
 
 Both targets are **inferred** from the `scripts` in `apps/stripe-bridge/package.json`
 (whitelisted by its `nx.includedScripts`), not declared in `apps/stripe-bridge/project.json`,
@@ -50,7 +50,7 @@ cannot pass that argument (see Procedure).
    otherwise fails with "bridge not reachable".
 3. Reads the member's records straight from Wizarr (`GET /api/users?email=...`). A non-ok
    response aborts; **zero records aborts** ("no Wizarr records for ...").
-4. **Reset to baseline**, per record: `POST /api/users/<id>/enable` (the response is *not*
+4. **Reset to baseline**, per record: `POST /api/users/<id>/enable` (the response is _not_
    checked, so a failed enable is silent), then `PUT /api/users/<id>/update-expiry` with the
    body `{}`, which sets unlimited. A non-ok update-expiry aborts the run with the status and
    body. An explicit `null` is rejected by Wizarr's schema, hence the empty object.
@@ -70,7 +70,7 @@ Because event ids are unique per run, the `processed_events` idempotency table n
 run. Because the customer id is unique per run, no stored mapping is reused.
 
 Bridge surface this covers: signature verification, the checkout handler (tier normalize, live
-library resolution, invite create *or* reuse depending on whether `cs_e2e` is already bound,
+library resolution, invite create _or_ reuse depending on whether `cs_e2e` is already bound,
 invite email, `upsert_pending`, the `stale_record_ids` coverage check, expiry stamp on surviving
 records), and the `invoice.paid` handler (`set_subscribed`, id resolution by email, absolute
 expiry).
@@ -113,11 +113,11 @@ Per tier, in order `bronze, silver, gold, youth`:
 5. Asserts, also only over returned ids: bronze was granted no 4K library, and no tier was
    granted a `9X.` private library.
 6. **Downloads is printed, never asserted.** `EXPECT_DOWNLOADS` (`bronze:false, silver:false,
-   gold:true, youth:true`) only appears in the `ok` line; the invite's real `allow_downloads` is
+gold:true, youth:true`) only appears in the `ok` line; the invite's real `allow_downloads` is
    never read back. Do not report the tiers suite as proof the downloads flag is right.
 7. **Cleanup**: `DELETE /api/invitations/<id>` for every invite created, even when assertions
    failed, then "Cleaned up N test invite(s)". A failed delete prints `WARN could not delete
-   invite <code>` and the run keeps going.
+invite <code>` and the run keeps going.
 
 One thing the suite proves implicitly and loudly: a tier that resolves to zero libraries makes
 the checkout handler raise, which surfaces as a 500 on the POST and aborts the run.
@@ -165,14 +165,14 @@ routine smoke test against someone else's account.
 
 ### If a run dies mid-way
 
-| Left behind | How to tell | How to clean up |
-|---|---|---|
-| Member reset but not extended | Records enabled with `expires` null (unlimited access, no paid window) | Re-run the retest for that email (direct `node` invocation, see Procedure), or `PUT /api/users/<id>/update-expiry` with a real ISO date |
-| Member disabled by the checkout path | Records disabled, invite created and mailed | `POST /api/users/<id>/enable` per record, then stamp expiry as above |
-| Stranded retest invite | The `cs_e2e` bronze invite for the member's email, never deleted by design | Find it in `GET /api/invitations` and `DELETE /api/invitations/<id>`, or delete it in the Wizarr UI |
-| Stranded tier invites | Up to four, when a throw escaped `main()` before or during the cleanup loop (the deletes run under a 60s timeout that can itself throw); codes are in the run output | `DELETE /api/invitations/<id>` for each |
-| Silently stranded tier invite | A `WARN could not delete invite` line in an otherwise green run | Same delete, by the code in the WARN line |
-| Stranded container | `docker ps --filter name=stripe-bridge-e2e` | `bun run bridge:down` (or `docker rm -f stripe-bridge-e2e`) |
+| Left behind                          | How to tell                                                                                                                                                          | How to clean up                                                                                                                         |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Member reset but not extended        | Records enabled with `expires` null (unlimited access, no paid window)                                                                                               | Re-run the retest for that email (direct `node` invocation, see Procedure), or `PUT /api/users/<id>/update-expiry` with a real ISO date |
+| Member disabled by the checkout path | Records disabled, invite created and mailed                                                                                                                          | `POST /api/users/<id>/enable` per record, then stamp expiry as above                                                                    |
+| Stranded retest invite               | The `cs_e2e` bronze invite for the member's email, never deleted by design                                                                                           | Find it in `GET /api/invitations` and `DELETE /api/invitations/<id>`, or delete it in the Wizarr UI                                     |
+| Stranded tier invites                | Up to four, when a throw escaped `main()` before or during the cleanup loop (the deletes run under a 60s timeout that can itself throw); codes are in the run output | `DELETE /api/invitations/<id>` for each                                                                                                 |
+| Silently stranded tier invite        | A `WARN could not delete invite` line in an otherwise green run                                                                                                      | Same delete, by the code in the WARN line                                                                                               |
+| Stranded container                   | `docker ps --filter name=stripe-bridge-e2e`                                                                                                                          | `bun run bridge:down` (or `docker rm -f stripe-bridge-e2e`)                                                                             |
 
 With `WIZARR_BASE_URL` and `WIZARR_API_KEY` exported from `.env`:
 
@@ -215,7 +215,7 @@ next retest minting and mailing a fresh `cs_e2e` invite.
   `apps/stripe-bridge`, which is what makes `--env-file=../../.env` land on the root `.env`. Only
   the hand-rolled `node --env-file=.env apps/...` form below is cwd-sensitive, and has to be run
   from the repo root.
-- **LAN access to the live Wizarr**, from the host *and* from inside the container. The
+- **LAN access to the live Wizarr**, from the host _and_ from inside the container. The
   `.env` value is the NAS LAN address, so a full-tunnel VPN or a different network breaks both
   halves.
 - **Node 20.6 or newer.** Both scripts run under `node --env-file`, not bun, even though they are
@@ -248,6 +248,7 @@ bun run bridge:down       # ALWAYS, pass or fail
 
   Confirm the header line it prints (`E2E retest: someone@example.com`) names the member you
   meant before it gets past the bridge wait.
+
 - `bridge:up` always `docker rm -f`s the old container first, so it is safe to re-run, but it
   runs whatever image `stripe-bridge` currently points at. After editing bridge code, rebuild.
 - When something fails, read the bridge side: `bun run bridge:logs` is `docker logs -f` and
@@ -257,27 +258,27 @@ bun run bridge:down       # ALWAYS, pass or fail
 
 ## Reading failures
 
-| Symptom | What broke, in product terms | Where to look |
-|---|---|---|
-| exit `9`, `node: ../../.env: not found` | There is no `.env` at all, so the run never started | Create the repo-root `.env` from `.env.example`; a fresh clone or worktree never has one |
-| exit `2`, "Missing WIZARR_BASE_URL / ..." | The `.env` exists but is incomplete, so the run never started | Those three keys in the repo-root `.env` |
-| "bridge not reachable at http://localhost:8000" (after ~20s) | The container is not serving; retest only, tiers has no such wait | `docker logs --tail 100 stripe-bridge-e2e`. Usually a `KeyError` at import from a missing env var, or port 8000 already taken |
-| `ERROR: fetch failed` in tiers | Same cause, no friendly message: the container is down, or `WIZARR_BASE_URL` is unreachable from the host | `docker ps --filter name=stripe-bridge-e2e`, then the logs; then LAN access to Wizarr |
-| `GET /api/libraries -> N` in tiers | Wizarr cannot list libraries, so no tier can be scoped or verified | `WIZARR_API_KEY`, then `WizarrClient.list_libraries` against the live API |
-| `GET /api/users -> 401/403` | Wizarr rejects the key; nobody's access changed | `WIZARR_API_KEY` in `.env`, rotated by a Wizarr upgrade or reinstall |
-| `GET /api/users -> 404`, or a read returns an unexpected shape | Wizarr's API surface moved under us | `stripe_bridge/wizarr.py`, then the scripts' direct `fetch` calls |
-| "no Wizarr records for `<email>`" | That member has no records at all: deleted, or their Plex email differs | Confirm the member in Wizarr; pass the right email |
-| `reset id=N -> 400` | The unlimited-expiry write was rejected | `WizarrClient.set_expiry`. Wizarr validates `expires` as a date-time, so clearing must omit the key. A schema change here breaks reset first |
-| `POST checkout.session.completed -> 400: invalid signature` | The bridge would reject the real Stripe webhook too | `STRIPE_WEBHOOK_SECRET` mismatch between the script's `.env` and the container's env, usually a container started before the `.env` edit. `bridge:up` again |
-| `POST ... -> 500` on retest | The checkout or renewal handler raised, so a real payment would retry forever | Logs first. Candidates: no libraries resolved for the tier (`tiers.resolve_tier_access`), a slow Wizarr write (`USER_WRITE_TIMEOUT`), SMTP failure in `mailer.send_invite_email` |
-| `FAIL: N/M record(s) not set to ~now+35d`, `expires=null` | Paid access was not time-boxed: the member would keep unlimited access, or lose the paid window | `access_expiry_iso` and the `invoice.paid` branch in `stripe_wizarr_bridge.py`. Check whether the member is tagged `vip` in the local bridge DB: both handlers short-circuit for VIPs and leave expiry alone, which fails this assertion by design |
-| `FAIL`, expiry present but outside the 2 day window | The window length drifted | `ACCESS_DURATION` in `.env` versus the container's env, then `access_expiry_iso` |
-| `POST checkout(<tier>) -> 500` in tiers | That tier cannot issue an invite at all; real checkouts for it raise and Stripe retries forever | `tiers.py` against the live library names. This is the exact failure the tier scope alarm exists for. Also possible: the SMTP relay refused the `@invalid.test` recipient |
-| "`<tier>`: bridge created no invite" | The webhook was accepted but no invite reached Wizarr | `WizarrClient.create_invite` and the `/api/invitations` response shape |
-| "servers X != Meleys" | The invite was scoped to the wrong server, so a redeemer gets a retired server's copy or nothing | `tiers.SHARE_SERVER`, `_is_on_share_server`, and `resolve_tier_access["server_ids"]` |
-| "missing: ..." / "unexpected: ..." | The tier rules and the real server disagree about library names | Compare `tiers.py` with the live list. If a Plex library was renamed, `bun run refresh:libraries` and fix `tiers.py` to match the new names, never the reverse. If `tiers.py` rules were changed deliberately, the script's independent mirror (`expectedNames`) is now stale and needs the same edit |
-| "bronze granted a 4K library" / "granted a private 9X. library" | A scoping leak: paying members see libraries their tier does not include | `tiers._is_4k`, `_is_private`, `_shareable_libraries`. Highest severity on this list; stop and fix before anything ships |
-| `WARN could not delete invite` | A redeemable test invite is loose in live Wizarr | Delete it by code (see the cleanup table) |
+| Symptom                                                         | What broke, in product terms                                                                              | Where to look                                                                                                                                                                                                                                                                                         |
+| --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| exit `9`, `node: ../../.env: not found`                         | There is no `.env` at all, so the run never started                                                       | Create the repo-root `.env` from `.env.example`; a fresh clone or worktree never has one                                                                                                                                                                                                              |
+| exit `2`, "Missing WIZARR_BASE_URL / ..."                       | The `.env` exists but is incomplete, so the run never started                                             | Those three keys in the repo-root `.env`                                                                                                                                                                                                                                                              |
+| "bridge not reachable at http://localhost:8000" (after ~20s)    | The container is not serving; retest only, tiers has no such wait                                         | `docker logs --tail 100 stripe-bridge-e2e`. Usually a `KeyError` at import from a missing env var, or port 8000 already taken                                                                                                                                                                         |
+| `ERROR: fetch failed` in tiers                                  | Same cause, no friendly message: the container is down, or `WIZARR_BASE_URL` is unreachable from the host | `docker ps --filter name=stripe-bridge-e2e`, then the logs; then LAN access to Wizarr                                                                                                                                                                                                                 |
+| `GET /api/libraries -> N` in tiers                              | Wizarr cannot list libraries, so no tier can be scoped or verified                                        | `WIZARR_API_KEY`, then `WizarrClient.list_libraries` against the live API                                                                                                                                                                                                                             |
+| `GET /api/users -> 401/403`                                     | Wizarr rejects the key; nobody's access changed                                                           | `WIZARR_API_KEY` in `.env`, rotated by a Wizarr upgrade or reinstall                                                                                                                                                                                                                                  |
+| `GET /api/users -> 404`, or a read returns an unexpected shape  | Wizarr's API surface moved under us                                                                       | `stripe_bridge/wizarr.py`, then the scripts' direct `fetch` calls                                                                                                                                                                                                                                     |
+| "no Wizarr records for `<email>`"                               | That member has no records at all: deleted, or their Plex email differs                                   | Confirm the member in Wizarr; pass the right email                                                                                                                                                                                                                                                    |
+| `reset id=N -> 400`                                             | The unlimited-expiry write was rejected                                                                   | `WizarrClient.set_expiry`. Wizarr validates `expires` as a date-time, so clearing must omit the key. A schema change here breaks reset first                                                                                                                                                          |
+| `POST checkout.session.completed -> 400: invalid signature`     | The bridge would reject the real Stripe webhook too                                                       | `STRIPE_WEBHOOK_SECRET` mismatch between the script's `.env` and the container's env, usually a container started before the `.env` edit. `bridge:up` again                                                                                                                                           |
+| `POST ... -> 500` on retest                                     | The checkout or renewal handler raised, so a real payment would retry forever                             | Logs first. Candidates: no libraries resolved for the tier (`tiers.resolve_tier_access`), a slow Wizarr write (`USER_WRITE_TIMEOUT`), SMTP failure in `mailer.send_invite_email`                                                                                                                      |
+| `FAIL: N/M record(s) not set to ~now+35d`, `expires=null`       | Paid access was not time-boxed: the member would keep unlimited access, or lose the paid window           | `access_expiry_iso` and the `invoice.paid` branch in `stripe_wizarr_bridge.py`. Check whether the member is tagged `vip` in the local bridge DB: both handlers short-circuit for VIPs and leave expiry alone, which fails this assertion by design                                                    |
+| `FAIL`, expiry present but outside the 2 day window             | The window length drifted                                                                                 | `ACCESS_DURATION` in `.env` versus the container's env, then `access_expiry_iso`                                                                                                                                                                                                                      |
+| `POST checkout(<tier>) -> 500` in tiers                         | That tier cannot issue an invite at all; real checkouts for it raise and Stripe retries forever           | `tiers.py` against the live library names. This is the exact failure the tier scope alarm exists for. Also possible: the SMTP relay refused the `@invalid.test` recipient                                                                                                                             |
+| "`<tier>`: bridge created no invite"                            | The webhook was accepted but no invite reached Wizarr                                                     | `WizarrClient.create_invite` and the `/api/invitations` response shape                                                                                                                                                                                                                                |
+| "servers X != Meleys"                                           | The invite was scoped to the wrong server, so a redeemer gets a retired server's copy or nothing          | `tiers.SHARE_SERVER`, `_is_on_share_server`, and `resolve_tier_access["server_ids"]`                                                                                                                                                                                                                  |
+| "missing: ..." / "unexpected: ..."                              | The tier rules and the real server disagree about library names                                           | Compare `tiers.py` with the live list. If a Plex library was renamed, `bun run refresh:libraries` and fix `tiers.py` to match the new names, never the reverse. If `tiers.py` rules were changed deliberately, the script's independent mirror (`expectedNames`) is now stale and needs the same edit |
+| "bronze granted a 4K library" / "granted a private 9X. library" | A scoping leak: paying members see libraries their tier does not include                                  | `tiers._is_4k`, `_is_private`, `_shareable_libraries`. Highest severity on this list; stop and fix before anything ships                                                                                                                                                                              |
+| `WARN could not delete invite`                                  | A redeemable test invite is loose in live Wizarr                                                          | Delete it by code (see the cleanup table)                                                                                                                                                                                                                                                             |
 
 ## When to run
 

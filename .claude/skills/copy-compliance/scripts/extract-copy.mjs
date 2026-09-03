@@ -209,7 +209,8 @@ const extractTagText = (source, lineOf) =>
 // runs away across the file.
 const STRING_RE = /'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)"|`((?:[^`\\\n]|\\.)*)`/g
 
-const isImportLine = (line) => /^\s*(?:import|export)\b.*\bfrom\b/.test(line) || /^\s*import\s/.test(line)
+const isImportLine = (line) =>
+  /^\s*(?:import|export)\b.*\bfrom\b/.test(line) || /^\s*import\s/.test(line)
 
 const extractStringLiterals = (lines) =>
   lines.flatMap((rawLine, index) => {

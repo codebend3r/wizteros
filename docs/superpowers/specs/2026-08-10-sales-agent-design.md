@@ -98,11 +98,11 @@ exactly, including `INVITE_GRACE_DAYS` from `lib/inviteRules.ts`. If the two eve
 disagree the agent is telling the operator something the admin UI contradicts, which
 destroys trust in both.
 
-| Play | Membership | Cooldown |
-|---|---|---|
-| `declined` | `subscribed=0`, `invited_at` present, past the 14 day grace | 45 days |
-| `lapsed` | `subscribed=1` with a past expiry, or a Stripe status of `canceled` | 60 days |
-| `uninvited` | known to the bridge, no confirmed payment, no invite stamp | not pitched |
+| Play        | Membership                                                          | Cooldown    |
+| ----------- | ------------------------------------------------------------------- | ----------- |
+| `declined`  | `subscribed=0`, `invited_at` present, past the 14 day grace         | 45 days     |
+| `lapsed`    | `subscribed=1` with a past expiry, or a Stripe status of `canceled` | 60 days     |
+| `uninvited` | known to the bridge, no confirmed payment, no invite stamp          | not pitched |
 
 ### Filters applied before anything reaches the operator
 
@@ -141,13 +141,13 @@ node --env-file-if-exists=.env .claude/skills/sales-agent/scripts/cohorts.mjs [f
 `node: .env: not found` with exit 9 before the script's own guard can report the real
 problem.
 
-| Flag | Meaning |
-|---|---|
-| `--play=declined\|lapsed\|uninvited` | Restrict to one play. Default is all three |
-| `--all` | Include suppressed people, each annotated with the reason |
-| `--json` | Machine readable output for the agent |
-| `--record <email> <play>` | Append one contact to the ledger |
-| `--opt-out <email>` | Set the permanent exclusion flag |
+| Flag                                 | Meaning                                                   |
+| ------------------------------------ | --------------------------------------------------------- |
+| `--play=declined\|lapsed\|uninvited` | Restrict to one play. Default is all three                |
+| `--all`                              | Include suppressed people, each annotated with the reason |
+| `--json`                             | Machine readable output for the agent                     |
+| `--record <email> <play>`            | Append one contact to the ledger                          |
+| `--opt-out <email>`                  | Set the permanent exclusion flag                          |
 
 Exit codes: `0` whenever the script ran, whatever it found, and `2` when it is
 misconfigured or an upstream was unreadable. Finding nobody contactable is exit `0`. A
@@ -216,11 +216,11 @@ titles, no catalog, no libraries as content, nothing unlimited.
 
 Permitted as a cost argument. Banned as a content argument.
 
-| Allowed | Banned |
-|---|---|
-| "One contribution instead of several subscriptions" | "Everything you are paying elsewhere for" |
-| "One login for the whole household" | "Cancel your subscriptions, this covers it" |
-| "A single monthly contribution toward hosting" | Any named commercial service, ever |
+| Allowed                                             | Banned                                      |
+| --------------------------------------------------- | ------------------------------------------- |
+| "One contribution instead of several subscriptions" | "Everything you are paying elsewhere for"   |
+| "One login for the whole household"                 | "Cancel your subscriptions, this covers it" |
+| "A single monthly contribution toward hosting"      | Any named commercial service, ever          |
 
 The test is the one the compliance skill already uses: does the sentence describe what the
 money keeps running, or what the member gets to consume? Consolidating spend is about
