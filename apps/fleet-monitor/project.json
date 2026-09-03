@@ -4,6 +4,13 @@
   "projectType": "application",
   "sourceRoot": "apps/fleet-monitor/fleet_monitor",
   "tags": ["scope:monitor", "lang:python"],
+  "namedInputs": {
+    "pyToolchain": [
+      {
+        "runtime": "apps/fleet-monitor/.venv/bin/ruff --version 2>/dev/null || ruff --version 2>/dev/null || echo 'ruff missing'"
+      }
+    ]
+  },
   "targets": {
     "docker-build": {
       "executor": "nx:run-commands",

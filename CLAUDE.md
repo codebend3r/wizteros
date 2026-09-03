@@ -95,6 +95,8 @@ All three projects source targets from more than one place, so check `nx show pr
 
 Anything cacheable is declared in `nx.json` `targetDefaults`. A new target that is safe to cache belongs there; anything that touches Docker or the network must stay `cache: false`.
 
+A cacheable target has to declare every input that can change its result, including the tool that runs it. `lint:py` is the one that bites: ruff lives in each app's gitignored `.venv`, so it is invisible to the `{projectRoot}/**/*` file glob, and a missing or upgraded ruff used to flip the outcome under an identical hash, which is what Nx reported as a flaky task. Each Python project therefore defines a `pyToolchain` named input in its own `project.json`, a `runtime` command that prints the resolved ruff version (or `ruff missing`), and `targetDefaults.lint:py` composes it as `["default", "pyToolchain"]`. Two constraints forced that shape: `{projectRoot}` is **not** interpolated inside a `runtime` input, so the venv path has to be spelled out per project rather than shared in `nx.json`, and runtime commands run from the workspace root, so the path is workspace-relative. Ruff is pinned in both `requirements-dev.txt` so the version cannot drift underneath the pin.
+
 Gates: pre-commit runs `bun run lint:staged` (lint-staged, autofixing just the staged files) then `bun run system-check` (admin-portal only), pre-push runs `bun run verify` (both apps). CI runs the same checks. lint-staged config is per app in `apps/*/.lintstagedrc.json`, and commands there must spell out `node_modules/.bin/<tool>` because bun keeps the bins in the app, not the root.
 
 ## Releases and deploy

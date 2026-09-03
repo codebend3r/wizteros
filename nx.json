@@ -44,7 +44,7 @@
       "cache": true
     },
     "lint:py": {
-      "inputs": ["default"],
+      "inputs": ["default", "pyToolchain"],
       "cache": true
     },
     "format:check": {
