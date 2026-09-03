@@ -370,6 +370,94 @@ def test_subscription_deleted_disables_all_records(bridge):
     assert "5 server record(s)" in events[0]["detail"]
 
 
+def test_cancel_leaves_access_alone_when_another_address_still_pays(bridge):
+    """Jimmy's shape: two customers, one person, and only one of them cancelling.
+
+    The dead customer's email IS the address the member's Wizarr records live
+    under, so resolving it finds their real, paid-for access. Disabling that
+    because a second, abandoned subscription ended locks out a member who is
+    current.
+    """
+    from stripe_bridge import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_dead", "watches@x.com", "INVOLD")
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_live", "pays@x.com", "INVNEW")
+    store.set_subscribed(bridge.MAP_DB_PATH, "pays@x.com", True)
+    store.set_member_link(bridge.MAP_DB_PATH, stripe_email="pays@x.com",
+                          plex_email="watches@x.com")
+    bridge.client.find_user_ids_by_email.return_value = [287, 288]
+
+    bridge.handle_event({
+        "type": "customer.subscription.deleted",
+        "id": "evt_cancel_one_of_two",
+        "data": {"object": {"customer": "cus_dead"}},
+    })
+
+    bridge.client.disable_user.assert_not_called()
+    # The dead customer really did stop, even though access is untouched.
+    assert store.all_customer_rows(bridge.MAP_DB_PATH)["watches@x.com"]["subscribed"] is False
+    events = store.events_for_email(bridge.MAP_DB_PATH, "watches@x.com")
+    assert events[0]["action"] == "Canceled"
+    assert "pays@x.com" in events[0]["detail"]
+
+
+def test_cancel_still_disables_when_the_linked_address_has_stopped_too(bridge):
+    """Once nothing is paying, the guard must get out of the way."""
+    from stripe_bridge import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_dead", "watches@x.com", "INVOLD")
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_live", "pays@x.com", "INVNEW")
+    store.set_subscribed(bridge.MAP_DB_PATH, "pays@x.com", False)
+    store.set_member_link(bridge.MAP_DB_PATH, stripe_email="pays@x.com",
+                          plex_email="watches@x.com")
+    bridge.client.find_user_ids_by_email.return_value = [287, 288]
+
+    bridge.handle_event({
+        "type": "customer.subscription.deleted",
+        "id": "evt_cancel_last_one",
+        "data": {"object": {"customer": "cus_dead"}},
+    })
+
+    assert sorted(c.args[0] for c in bridge.client.disable_user.call_args_list) == [287, 288]
+
+
+def test_cancelling_the_paying_address_spares_the_member_the_other_way_round(bridge):
+    """The link is directional; the guard must not be.
+
+    Cancelling the payer while the Plex address itself still carries a live
+    subscription is the same person in the same situation, mirrored.
+    """
+    from stripe_bridge import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_live", "watches@x.com", "INVOLD")
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_dead", "pays@x.com", "INVNEW")
+    store.set_subscribed(bridge.MAP_DB_PATH, "watches@x.com", True)
+    store.set_member_link(bridge.MAP_DB_PATH, stripe_email="pays@x.com",
+                          plex_email="watches@x.com")
+    bridge.client.find_user_ids_by_email.return_value = [287]
+
+    bridge.handle_event({
+        "type": "customer.subscription.deleted",
+        "id": "evt_cancel_payer",
+        "data": {"object": {"customer": "cus_dead"}},
+    })
+
+    bridge.client.disable_user.assert_not_called()
+
+
+def test_an_unlinked_member_cancelling_is_unaffected_by_the_guard(bridge):
+    """The ordinary case has no links at all and must keep disabling."""
+    from stripe_bridge import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "solo@x.com", "abc")
+    store.set_subscribed(bridge.MAP_DB_PATH, "other@x.com", True)  # unrelated member
+    bridge.client.find_user_ids_by_email.return_value = [12]
+
+    bridge.handle_event({
+        "type": "customer.subscription.deleted",
+        "id": "evt_cancel_solo",
+        "data": {"object": {"customer": "cus_1"}},
+    })
+
+    assert [c.args[0] for c in bridge.client.disable_user.call_args_list] == [12]
+
+
 def test_webhook_route_handles_stripe_object_event(bridge, monkeypatch):
     # Real Stripe webhooks arrive as a StripeObject (no dict .get), not a plain
     # dict — construct_event returns one. Drive the actual route to prove the

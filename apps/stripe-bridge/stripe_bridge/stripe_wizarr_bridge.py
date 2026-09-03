@@ -272,6 +272,33 @@ def resolve_user_ids(client, store_path: str, customer_id: str, email: str | Non
     return ids
 
 
+def linked_addresses(store_path: str, email: str) -> set[str]:
+    """Every address belonging to the same person as `email`, lowercased.
+
+    Links point payer -> Plex account, so the person is identified by the Plex
+    address: either this address pays for someone (follow the link) or it is
+    the account itself. Both directions matter, since a cancellation can land
+    on either half of the pair.
+    """
+    links = store.all_member_links(store_path)
+    lowered = email.lower()
+    owner = links.get(lowered, lowered)
+    return {owner} | {payer for payer, plex in links.items() if plex == owner}
+
+
+def still_subscribed_elsewhere(store_path: str, email: str) -> str | None:
+    """Another address of the same person still carrying a live subscription.
+
+    A member can hold two Stripe customers, and only one of them dying is the
+    normal way that ends. Records resolve by email, so the dead customer's
+    address is the same one the live member watches under: disabling on its
+    cancellation revokes access somebody is currently paying for.
+    """
+    rows = store.all_customer_rows(store_path)
+    others = sorted(linked_addresses(store_path, email) - {email.lower()})
+    return next((a for a in others if (rows.get(a) or {}).get("subscribed")), None)
+
+
 def resolve_tier_scope(tier: str, *, context: str) -> dict:
     """The tier's live library scope, or raise so the delivery is retried.
 
@@ -503,6 +530,14 @@ def _dispatch(etype: str, obj: dict) -> None:
         email = (m and m["email"]) or customer_email(customer_id)
         if email:
             store.set_subscribed(MAP_DB_PATH, email, False)
+        # This customer really did stop, but the person behind it may not have.
+        paying = still_subscribed_elsewhere(MAP_DB_PATH, email) if email else None
+        if paying:
+            log.info("cancel: %s still pays under %s; access left alone", email, paying)
+            store.record_event(
+                MAP_DB_PATH, email, "Canceled",
+                f"subscription ended; access kept, still paying under {paying}")
+            return
         ids = resolve_user_ids(client, MAP_DB_PATH, customer_id, email)
         for uid in ids:
             client.disable_user(uid)
