@@ -43,6 +43,53 @@ store.init_db(MAP_DB_PATH)
 _last_tier_problems: dict = {}
 
 
+# Last set of VIPs alerted on as holding no access, so a standing problem mails
+# once rather than every sweep.
+_last_vips_without_access: list = []
+
+
+def check_vip_access() -> list:
+    """VIPs holding no Wizarr record at all; alert on the set changing.
+
+    A VIP is a standing grant, so "no records" is never a normal resting state
+    for one: it means an invite was issued and never redeemed, or something
+    disabled them. Guards stop the causes the bridge knows about, and this is
+    the net under the ones it does not (a manual disable, a Plex-side unshare,
+    an invite that quietly expired). Never raises: it runs inside the reconcile
+    loop, and an unreachable Wizarr is not a lockout.
+    """
+    global _last_vips_without_access
+    tags = store.all_member_tags(MAP_DB_PATH)
+    vips = sorted(email for email, tag in tags.items() if tag == "vip")
+    if not vips:
+        _last_vips_without_access = []
+        return []
+    try:
+        users = client.list_users()
+    except Exception:
+        log.exception("vip access check: could not read users from Wizarr")
+        return []
+    held = {(u.get("email") or "").lower() for u in users}
+    stranded = [email for email in vips if email not in held]
+    if not stranded:
+        _last_vips_without_access = []
+        return []
+    log.error("vip access check: %d VIP(s) hold no records: %s", len(stranded), stranded)
+    if stranded != _last_vips_without_access:
+        _last_vips_without_access = stranded
+        body = "\n".join(f"- {email}" for email in stranded)
+        try:
+            send_alert_email(
+                f"{len(stranded)} VIP(s) hold no server access",
+                f"These VIP members have no Wizarr record on any server:\n\n{body}\n\n"
+                f"VIP access is meant to be permanent. Either they never redeemed "
+                f"their invite, or something disabled them.\n",
+            )
+        except Exception:
+            log.exception("vip access alert email failed")
+    return stranded
+
+
 def check_tier_scopes() -> dict:
     """Verify every tier still resolves against the live library list; alert on drift.
 
@@ -151,16 +198,20 @@ def reconcile_pending_expiries() -> int:
 
 
 async def _reconcile_loop() -> None:
-    """Run the expiry sweep and the tier scope check now, then every interval.
+    """Run the alarms and the expiry sweep now, then every interval.
 
-    The scope check runs first and independently: it is the drift alarm, so it
-    must still fire on a sweep where the expiry pass throws.
+    The checks run first and independently of each other: they are the drift
+    alarms, so each must still fire on a sweep where another pass throws.
     """
     while True:
         try:
             await asyncio.to_thread(check_tier_scopes)
         except Exception:
             log.exception("tier scope check failed")
+        try:
+            await asyncio.to_thread(check_vip_access)
+        except Exception:
+            log.exception("vip access check failed")
         try:
             await asyncio.to_thread(reconcile_pending_expiries)
         except Exception:
@@ -547,6 +598,14 @@ def _dispatch(etype: str, obj: dict) -> None:
         email = (m and m["email"]) or customer_email(customer_id)
         if email:
             store.set_subscribed(MAP_DB_PATH, email, False)
+        # A VIP's access is a standing grant, not something the subscription
+        # buys. The renewal handler already leaves their expiry alone and the
+        # sweep skips them; disabling them here undid both.
+        if email and store.get_member_tag(MAP_DB_PATH, email) == "vip":
+            log.info("cancel: %s is VIP; access left alone", email)
+            store.record_event(MAP_DB_PATH, email, "Canceled",
+                               "subscription ended; access kept, VIP")
+            return
         # This customer really did stop, but the person behind it may not have.
         paying = still_subscribed_elsewhere(MAP_DB_PATH, email) if email else None
         if paying:

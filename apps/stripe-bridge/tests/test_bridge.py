@@ -457,6 +457,33 @@ def test_cancel_leaves_access_alone_when_another_address_still_pays(bridge):
     assert "pays@x.com" in events[0]["detail"]
 
 
+def test_cancel_never_disables_a_vip(bridge):
+    """VIP access is a standing grant, not something a subscription pays for.
+
+    The renewal handler already refuses to touch a VIP's expiry, and the expiry
+    sweep skips them outright, but the cancel handler disabled whatever it
+    resolved. A VIP whose card lapsed therefore lost every server the moment
+    Stripe reported the subscription gone.
+    """
+    from stripe_bridge import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "vip@x.com", "abc")
+    store.set_member_tag(bridge.MAP_DB_PATH, "vip@x.com", "vip")
+    bridge.client.find_user_ids_by_email.return_value = [147, 57, 106, 155, 204]
+
+    bridge.handle_event({
+        "type": "customer.subscription.deleted",
+        "id": "evt_vip_cancel",
+        "data": {"object": {"customer": "cus_1"}},
+    })
+
+    bridge.client.disable_user.assert_not_called()
+    # The subscription really did end, so the payment flag still clears.
+    assert store.all_customer_rows(bridge.MAP_DB_PATH)["vip@x.com"]["subscribed"] is False
+    events = store.events_for_email(bridge.MAP_DB_PATH, "vip@x.com")
+    assert events[0]["action"] == "Canceled"
+    assert "VIP" in events[0]["detail"]
+
+
 def test_cancel_still_disables_when_the_linked_address_has_stopped_too(bridge):
     """Once nothing is paying, the guard must get out of the way."""
     from stripe_bridge import store
@@ -1070,3 +1097,50 @@ def test_retry_resends_an_invite_email_that_never_went_out(bridge):
     bridge.client.create_invite.assert_called_once()
     assert bridge.send_invite_email.call_count == 2
     bridge.send_invite_email.assert_called_with("a@x.com", "http://inv.test/j/abc")
+
+
+def test_vip_access_check_flags_a_vip_holding_nothing(bridge, monkeypatch):
+    """The standing guarantee needs an alarm, not just a guard.
+
+    A VIP can end up with no records for reasons no single guard covers: an
+    invite that was never redeemed, a manual disable, a Plex-side unshare. The
+    sweep is what turns that silence into a mail.
+    """
+    from stripe_bridge import store
+    sent = []
+    monkeypatch.setattr(bridge, "send_alert_email",
+                        lambda subject, body: sent.append((subject, body)))
+    store.set_member_tag(bridge.MAP_DB_PATH, "vip@x.com", "vip")
+    store.set_member_tag(bridge.MAP_DB_PATH, "ok@x.com", "vip")
+    bridge.client.list_users.return_value = [
+        {"id": 1, "email": "ok@x.com", "server": "Meleys", "expires": None},
+    ]
+
+    assert bridge.check_vip_access() == ["vip@x.com"]
+    assert len(sent) == 1
+    assert "vip@x.com" in sent[0][1]
+    # A standing problem mails once, not every sweep.
+    assert bridge.check_vip_access() == ["vip@x.com"]
+    assert len(sent) == 1
+
+
+def test_vip_access_check_is_quiet_when_every_vip_holds_access(bridge, monkeypatch):
+    from stripe_bridge import store
+    sent = []
+    monkeypatch.setattr(bridge, "send_alert_email",
+                        lambda subject, body: sent.append(subject))
+    store.set_member_tag(bridge.MAP_DB_PATH, "ok@x.com", "vip")
+    bridge.client.list_users.return_value = [
+        {"id": 1, "email": "ok@x.com", "server": "Meleys", "expires": None},
+    ]
+    assert bridge.check_vip_access() == []
+    assert sent == []
+
+
+def test_vip_access_check_survives_wizarr_being_down(bridge, monkeypatch):
+    from stripe_bridge import store
+    store.set_member_tag(bridge.MAP_DB_PATH, "vip@x.com", "vip")
+    bridge.client.list_users.side_effect = RuntimeError("wizarr down")
+    # Unreachable is not the same as locked out, and this runs inside the sweep.
+    assert bridge.check_vip_access() == []
+
