@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AdminGate, useAdminAuth } from '@/components/AdminGate/AdminGate'
 import { AdminLayout } from '@/components/AdminLayout/AdminLayout'
@@ -22,6 +22,10 @@ import { deriveStatus, STATUS_EMOJI, type MemberStatus } from '@/lib/memberStatu
 import styles from '@/pages/Manage/Manage.module.scss'
 
 export const MEMBERS_QUERY_KEY = ['members'] as const
+
+// The search term lives in the query string, so a refresh, a bookmark, or a
+// pasted link lands on the same filtered list the sender was looking at.
+const SEARCH_PARAM = 'search'
 
 type PendingInvite = {
   member: Member
@@ -53,7 +57,8 @@ const EMPTY_COUNTS: Record<MemberStatus, number> = {
 const ManageInner = () => {
   const { deauthenticate } = useAdminAuth()
   const queryClient = useQueryClient()
-  const [search, setSearch] = useState('')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const search = searchParams.get(SEARCH_PARAM) ?? ''
   const [statusFilter, setStatusFilter] = useState<MemberStatus | null>(null)
   const [pendingInvite, setPendingInvite] = useState<PendingInvite | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -156,6 +161,24 @@ const ManageInner = () => {
     setActionError(null)
     setInviteResult(null)
     setPendingInvite(selection)
+  }
+
+  // replace, not push: one history entry per keystroke would bury whatever
+  // page the admin arrived from behind a dozen back presses. An emptied box
+  // drops the key entirely rather than leaving a bare `?search=` behind.
+  const setSearch = (term: string) => {
+    setSearchParams(
+      (params) => {
+        const next = new URLSearchParams(params)
+        if (term) {
+          next.set(SEARCH_PARAM, term)
+        } else {
+          next.delete(SEARCH_PARAM)
+        }
+        return next
+      },
+      { replace: true },
+    )
   }
 
   const error =

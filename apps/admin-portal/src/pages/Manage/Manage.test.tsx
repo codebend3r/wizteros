@@ -1,5 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, expect, test, vi } from '@/test/vi'
@@ -34,14 +34,19 @@ vi.mock('@/lib/adminApi', () => ({
 
 const { fetchMembers, reissueInvite } = await import('@/lib/adminApi')
 
-const renderManage = () => {
+// Reads the live query string back out of the router so a test can assert
+// what the address bar would show.
+const LocationSearch = () => <span data-testid="location-search">{useLocation().search}</span>
+
+const renderManage = ({ entry = '/manage' }: { entry?: string } = {}) => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[entry]}>
         <Manage />
+        <LocationSearch />
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -82,6 +87,37 @@ test('filters members by email with the search input', async () => {
   await userEvent.type(screen.getByLabelText('Search by email'), 'max@')
   expect(screen.queryByText('cj')).toBeNull()
   expect(screen.getByText('max')).toBeInTheDocument()
+})
+
+test('a search puts the term in the url as ?search=', async () => {
+  vi.mocked(fetchMembers).mockResolvedValue([member])
+  renderManage()
+  expect(await screen.findByText('cj')).toBeInTheDocument()
+  await userEvent.type(screen.getByLabelText('Search by email'), 'free')
+  expect(screen.getByTestId('location-search')).toHaveTextContent('?search=free')
+})
+
+test('a ?search= url prefills the input and filters on first paint', async () => {
+  vi.mocked(fetchMembers).mockResolvedValue([
+    member,
+    { ...member, member: 'max', email: 'max@y.com' },
+  ])
+  renderManage({ entry: '/manage?search=max@' })
+  expect(await screen.findByText('max')).toBeInTheDocument()
+  expect(screen.queryByText('cj')).toBeNull()
+  expect(screen.getByLabelText('Search by email')).toHaveValue('max@')
+})
+
+test('clearing the search drops the param instead of leaving ?search=', async () => {
+  vi.mocked(fetchMembers).mockResolvedValue([
+    member,
+    { ...member, member: 'max', email: 'max@y.com' },
+  ])
+  renderManage({ entry: '/manage?search=max@' })
+  expect(await screen.findByText('max')).toBeInTheDocument()
+  await userEvent.clear(screen.getByLabelText('Search by email'))
+  expect(screen.getByTestId('location-search').textContent).toBe('')
+  expect(screen.getByText('cj')).toBeInTheDocument()
 })
 
 test('inviting to a tier confirms via modal then updates the row optimistically', async () => {
