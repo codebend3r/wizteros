@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["eslint", "oxc", "unicorn", "import", "promise"],
+  "plugins": ["oxc", "unicorn", "import", "promise"],
   "categories": {
     "correctness": "error",
     "suspicious": "error",
@@ -14,7 +14,7 @@
   },
   "rules": {
     // The house style is `!!value` for boolean conversion, including in guards.
-    "eslint/no-extra-boolean-cast": "off",
+    "no-extra-boolean-cast": "off",
     // Every `.sort()` here already runs on a fresh array (`[...rows]`,
     // `Object.keys(...)`, `.filter(...)`), so nothing shared is mutated and
     // `toSorted` would only add an allocation. Same call as admin-portal makes.
@@ -28,10 +28,10 @@
     "oxc/no-map-spread": "off",
 
     // Conventions from CLAUDE.md.
-    "eslint/no-var": "error",
-    "eslint/prefer-const": "error",
-    "eslint/eqeqeq": ["error", "always", { "null": "ignore" }],
-    "eslint/no-iterator": "error",
+    "no-var": "error",
+    "prefer-const": "error",
+    "eqeqeq": ["error", "always", { "null": "ignore" }],
+    "no-iterator": "error",
     "unicorn/prefer-array-flat-map": "error",
     "import/no-default-export": "error"
   },
@@ -42,7 +42,7 @@
       // debug print, and a non-zero exit is how they report a failed audit.
       "files": [".claude/skills/**/*.mjs", "scripts/**/*.mjs"],
       "rules": {
-        "eslint/no-console": "off",
+        "no-console": "off",
         "unicorn/no-process-exit": "off"
       }
     }

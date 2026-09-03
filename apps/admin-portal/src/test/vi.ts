@@ -31,7 +31,7 @@ const stubGlobal = (name: string, value: unknown): void => {
 const restoreGlobals = (): void => {
   // Map#forEach, not Array#forEach: iteration by callback is the idiomatic
   // form here, and for…of is out per the repo conventions.
-  // eslint-disable-next-line unicorn/no-array-for-each
+  // oxlint-disable-next-line unicorn/no-array-for-each
   stubbedGlobals.forEach(({ existed, value }, name) => {
     if (existed) {
       Reflect.set(globalThis, name, value)

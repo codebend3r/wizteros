@@ -61,7 +61,7 @@ These come from CLAUDE.md but are the checks reviews historically skip. Confirm 
 
 - Read the changed files, not just hunks: a hunk hides the surrounding grid, the token definitions, and the render states nobody touched.
 - Verify every finding in the file before reporting it: open the file, locate the line, quote it. Never invent a line number, and never report something you could not locate.
-- When code knowingly breaks a rule and carries a comment explaining the tradeoff (the annotated `eslint-disable` blocks in `apps/admin-portal/src/components/ConfirmActionModal/ConfirmActionModal.tsx` are the pattern), report it as informational, not a violation. A documented, deliberate exception is not drift.
+- When code knowingly breaks a rule and carries a comment explaining the tradeoff (the annotated `oxlint-disable` blocks in `apps/admin-portal/src/components/ConfirmActionModal/ConfirmActionModal.tsx` are the pattern), report it as informational, not a violation. A documented, deliberate exception is not drift.
 - Say nothing about a rule you did not actually check, and say explicitly when a check could not run. Coverage claims have to be real.
 
 ## Output

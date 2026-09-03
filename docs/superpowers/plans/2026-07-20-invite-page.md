@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- **TypeScript:** `type` aliases only — never `interface` (lint: `@typescript-eslint/consistent-type-definitions`). No `any`. No type casts. Prefer type guards.
+- **TypeScript:** `type` aliases only — never `interface` (lint: `typescript/consistent-type-definitions`). No `any`. No type casts. Prefer type guards.
 - **Code style:** `Array.prototype` methods, never `for`/`for..of`. Double-bang (`!!v`) for booleans. Short-circuit `&&` (not ternary) for conditional React render where the else branch is null/undefined; guard numbers so `0` never renders. Optional chaining pairs with `??`. Single object param over positional params.
 - **CSS:** SCSS modules per component. All colors/spacing/radius/fonts come from `styles/globals.scss` tokens (`--color-*`, `--space-*`, `--radius-*`, `--font-*`). Container-driven layout with grid/flex + `gap`; no margins for spacing; no bare `<div>` without a class.
 - **Comments:** docstrings on functions only — never line-by-line, never on imports.
