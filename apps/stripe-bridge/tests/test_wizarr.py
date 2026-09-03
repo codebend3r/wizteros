@@ -5,7 +5,11 @@ import pytest
 import requests
 import responses
 
-from stripe_bridge.wizarr import WizarrClient
+from stripe_bridge.wizarr import (
+    EXPIRY_DAYS_HONORED,
+    WizarrClient,
+    honored_expiry_days,
+)
 
 BASE = "http://wizarr.test"
 
@@ -33,6 +37,45 @@ def test_create_invite_scopes_libraries_and_downloads():
     assert sent["unlimited"] is False
     assert sent["library_ids"] == [17, 20]
     assert sent["allow_downloads"] is True
+
+
+def test_an_unhonored_expiry_snaps_up_to_one_wizarr_keeps():
+    """Wizarr's lookup is {1, 7, 30}; every other number becomes "never".
+
+    That is the whole hazard: the API does not reject an expiry it cannot
+    express, it drops it, so asking for 2 days yields a link redeemable
+    forever. Snapping up is the safe direction, since a shorter window can
+    kill a paying member's invite before they redeem it.
+    """
+    assert honored_expiry_days(2) == 7      # the baseline rotation's default
+    assert honored_expiry_days(14) == 30    # INVITE_EXPIRES_DAYS' default
+    assert honored_expiry_days(8) == 30
+
+
+def test_an_expiry_wizarr_already_honors_is_left_alone():
+    assert [honored_expiry_days(d) for d in EXPIRY_DAYS_HONORED] == list(EXPIRY_DAYS_HONORED)
+
+
+def test_an_expiry_past_the_longest_option_takes_that_one_not_never():
+    """There is no finite choice above 30, and "never" is not a fallback.
+
+    Landing on the longest expiry Wizarr has is worse than what was asked for
+    and better than the link outliving the server.
+    """
+    assert honored_expiry_days(365) == 30
+
+
+@responses.activate
+def test_create_invite_sends_the_snapped_expiry_not_the_requested_one():
+    responses.post(
+        f"{BASE}/api/invitations",
+        json={"invitation": {"id": 7, "code": "ghi789",
+                             "url": f"{BASE}/j/ghi789"}},
+        status=201,
+    )
+    client().create_invite([1], expires_in_days=2, duration="35", unlimited=True)
+    sent = json.loads(responses.calls[0].request.body)
+    assert sent["expires_in_days"] == 7
 
 
 @responses.activate
