@@ -12,6 +12,51 @@ the version recorded in the tree at that commit. That was not always true; the
 history was rewritten on 2026-08-08 to make it so. See
 [The 2026-08-08 history rewrite](#the-2026-08-08-history-rewrite).
 
+## v0.3.3 (2026-09-03)
+
+- Recover access after a failed payment: `invoice.payment_failed` and
+  `customer.subscription.updated` now land behind a new `payment_state` column,
+  so access is never revoked while Stripe retries, and `invoice.paid` clears the
+  flag, issues a tier-scoped invite when nothing resolves to extend, and alerts
+  the operator instead of returning on a lone warning
+- Link a member's paying address to the account they watch with: a
+  `member_links` table, `POST /admin/link-address`, and a "same person" action
+  beside the duplicate badge, honored by the renewal, cancel, and expiry paths
+  so one person stops reading as two rows
+- Keep a member's access when only one of their subscriptions ends, and never
+  let a cancelled subscription take a VIP's access; a sweep alarm now mails when
+  a VIP holds no records at all
+- Stop the expiry sweep passing over members it can never anchor: re-anchor at
+  the sweep when the signup window has already lapsed, never stamp a past date,
+  and resolve records through `member_links`
+- Close the expiry gap for members whose Plex address differs from their Stripe
+  one, by falling back to the redeemed invite's `used_by`; the invite email now
+  asks new members to create their Plex account with the address it was sent to
+- Resolve Wizarr `used_by` reprs (`<User 281>`) to real member records, so
+  redeemed invites resolve again in the bridge and in the `member-triage` and
+  `stripe-reconcile` skill scripts
+- Make a duplicated email resolve to one predictable customer row: a real `cus_`
+  row outranks an admin placeholder, and the newest checkout wins among real ones
+- Widen gold to every shareable library on Meleys, Vermithor, Vhagar and Syrax,
+  and retire Caraxes outright behind `RETIRED_SERVERS`, so no tier can resolve
+  one of its libraries
+- Stop minting invite links Wizarr never expires (#51): Wizarr honors only
+  `{1, 7, 30}` day expiries and silently falls back to "never", so an unhonored
+  value now snaps up to the next honored one and logs the substitution
+- Show payment failures and dual addresses on the admin pages: a Payment Failed
+  status with its own filter pill on `/manage`, a Stripe address shown only when
+  it differs from the Plex one, and a possible-duplicate badge for two addresses
+  one edit apart or the same Gmail mailbox written with dots or a `+tag`
+- Keep the members search in the url (#53), so a refresh, a bookmark, or a
+  pasted `?search=` link lands on the same filtered list
+- Add a second oxlint and oxfmt pair at the repo root (#52), covering the 15
+  `.mjs` files under `scripts/` and `.claude/skills/`, the docs, and the root
+  config files that nothing linted or formatted before
+- Document the billing-failure runbook in `docs/billing-failures.md`, the sweep
+  fallback in `docs/invite-flow.md`, and fleet-monitor in CLAUDE.md
+- Match youth libraries by title in the tiers e2e, so regrouping the Plex
+  libraries renumbers them without breaking the expectation
+
 ## v0.3.2 (2026-08-30)
 
 - Rebuild the fleet host card: band it into identity, readings, and inventory,
