@@ -268,3 +268,26 @@ def test_member_downloads_roundtrip_lowercased_and_overwritten(tmp_path):
     store.set_member_downloads(db, "a@example.com", True)
     assert store.get_member_downloads(db, "A@example.com") is True
     assert store.all_member_downloads(db) == {"a@example.com": True}
+
+
+def test_member_links_are_keyed_lowercased_and_clearable(tmp_path):
+    dbp = str(tmp_path / "b.db")
+    store.init_db(dbp)
+    store.set_member_link(dbp, stripe_email="Pays@X.com", plex_email="Watches@X.com")
+    assert store.get_member_link(dbp, "pays@x.com") == "watches@x.com"
+    assert store.get_member_link(dbp, "PAYS@X.COM") == "watches@x.com"
+    assert store.all_member_links(dbp) == {"pays@x.com": "watches@x.com"}
+    # Re-pointing replaces rather than duplicating; one payer, one owner.
+    store.set_member_link(dbp, stripe_email="pays@x.com", plex_email="other@x.com")
+    assert store.all_member_links(dbp) == {"pays@x.com": "other@x.com"}
+    store.set_member_link(dbp, stripe_email="pays@x.com", plex_email=None)
+    assert store.all_member_links(dbp) == {}
+    assert store.get_member_link(dbp, "pays@x.com") is None
+
+
+def test_one_person_can_pay_under_several_addresses(tmp_path):
+    dbp = str(tmp_path / "b.db")
+    store.init_db(dbp)
+    store.set_member_link(dbp, stripe_email="a@x.com", plex_email="one@x.com")
+    store.set_member_link(dbp, stripe_email="b@x.com", plex_email="one@x.com")
+    assert store.all_member_links(dbp) == {"a@x.com": "one@x.com", "b@x.com": "one@x.com"}

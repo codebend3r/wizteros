@@ -127,20 +127,31 @@ def _plex_email_by_invite(*, invitations: list, users: list) -> dict[str, str]:
     return resolved
 
 
-def _customer_by_plex_email(*, customers: dict, plex_email_by_invite: dict) -> dict[str, dict]:
+def _customer_by_plex_email(*, customers: dict, plex_email_by_invite: dict,
+                            manual_links: dict | None = None) -> dict[str, dict]:
     """Plex email -> the Stripe customer row belonging to that person.
 
     Only rows whose email differs from the Plex email they resolve to are
     returned: a matching pair needs no linking, and keeping the map to real
     mismatches means the caller can treat a hit as "these are two addresses for
     one person" without re-comparing.
+
+    Two sources, manual first. The redeemed invite answers on its own for
+    anyone who signed up through their own checkout. It cannot answer for
+    someone who re-subscribed under a re-typed address while already holding
+    access: that invite is never redeemed, so `used_by` stays null and the
+    paying customer keeps standing as a second member. `member_links` is the
+    admin's answer for those, and it is marked so callers can tell a stated
+    link from an inferred one.
     """
     linked: dict[str, dict] = {}
     for customer_email, row in customers.items():
         code = (row.get("invite_code") or "").lower()
-        plex_email = plex_email_by_invite.get(code) if code else None
+        manual = (manual_links or {}).get(customer_email)
+        plex_email = manual or (plex_email_by_invite.get(code) if code else None)
         if plex_email and plex_email != customer_email:
-            linked[plex_email] = {**row, "stripe_email": customer_email}
+            linked[plex_email] = {**row, "stripe_email": customer_email,
+                                  "manual_link": bool(manual)}
     return linked
 
 
@@ -175,7 +186,11 @@ def _dedupe_members(users: list, customers: dict, libraries: list,
         key = person["email"].lower() if person["email"] else ""
         # Their own address first; the invite linkage only answers for members
         # whose Plex account is under a different email than they pay with.
-        row = customers.get(key) or (linked or {}).get(key) or {}
+        # A manual link outranks even that: "they pay under X" is only ever
+        # stated about someone whose own address is the dead or failing one,
+        # so billing has to read from the customer the admin pointed at.
+        link = (linked or {}).get(key) or {}
+        row = link if link.get("manual_link") else (customers.get(key) or link or {})
         tier = tiers.canonical_tier(row.get("tier")) or "unknown"
         downloads = tiers.TIER_DOWNLOADS.get(tier) if tier != "unknown" else None
         servers = sorted(person["servers"])
@@ -303,6 +318,7 @@ def list_members() -> list[dict]:
         customers=customers,
         plex_email_by_invite=_plex_email_by_invite(
             invitations=snap.get("invitations") or [], users=snap["users"]),
+        manual_links=store.all_member_links(MAP_DB_PATH),
     )
     members = _dedupe_members(snap["users"], customers, snap["libraries"], linked=linked)
     joined = {m["email"].lower() for m in members if m["email"]}
@@ -362,6 +378,7 @@ def get_member(email: str) -> dict:
     linked = _customer_by_plex_email(
         customers=customers,
         plex_email_by_invite=_plex_email_by_invite(invitations=invitations, users=users),
+        manual_links=store.all_member_links(MAP_DB_PATH),
     )
     matches = _dedupe_members(
         [u for u in users if (u.get("email") or "").lower() == email.lower()],
@@ -477,6 +494,50 @@ def set_downloads(body: SetDownloadsBody) -> dict:
         f"turned {'on' if body.allow else 'off'} by admin",
     )
     return {"email": body.email, "downloads": body.allow}
+
+
+class LinkAddressBody(BaseModel):
+    stripe_email: str
+    plex_email: str | None = None
+
+
+@router.post("/admin/link-address", dependencies=[Depends(require_admin)])
+def link_address(body: LinkAddressBody) -> dict:
+    """Declare that `stripe_email` bills for the member watching as `plex_email`.
+
+    The two then read as one member everywhere: one row on the list, the
+    paying customer behind it, and a renewal on the Stripe address extending
+    the Plex account's records instead of finding nothing and re-inviting.
+
+    Purely a bridge-side statement of identity. No subscription is cancelled,
+    no refund is issued, and neither Stripe customer is altered. A member
+    paying twice still needs that settled in Stripe. Pass a null `plex_email`
+    to undo the link.
+    """
+    stripe_email = body.stripe_email.strip().lower()
+    plex_email = body.plex_email.strip().lower() if body.plex_email else None
+    if not stripe_email:
+        raise HTTPException(status_code=400, detail="stripe_email is required")
+    if plex_email == stripe_email:
+        raise HTTPException(status_code=400, detail="an address cannot link to itself")
+    # Chains would make "whose row is this" depend on resolution order, and the
+    # shape they describe (A pays for B, B pays for C) is not a real one.
+    links = store.all_member_links(MAP_DB_PATH)
+    if plex_email and plex_email in links:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{plex_email} already pays under {links[plex_email]}; unlink it first")
+
+    store.set_member_link(MAP_DB_PATH, stripe_email=stripe_email, plex_email=plex_email)
+    if plex_email:
+        store.record_event(MAP_DB_PATH, plex_email, "Address linked",
+                           f"pays under {stripe_email}")
+        store.record_event(MAP_DB_PATH, stripe_email, "Address linked",
+                           f"billing address for {plex_email}")
+    else:
+        store.record_event(MAP_DB_PATH, stripe_email, "Address unlinked",
+                           "stands as its own member again")
+    return {"stripe_email": stripe_email, "plex_email": plex_email}
 
 
 @router.post("/admin/cancel-subscription", dependencies=[Depends(require_admin)])

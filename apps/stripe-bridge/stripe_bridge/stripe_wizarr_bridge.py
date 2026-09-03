@@ -249,10 +249,22 @@ def access_expiry_iso() -> str:
 def resolve_user_ids(client, store_path: str, customer_id: str, email: str | None) -> list[int]:
     """All Wizarr record ids for a member (one per server), resolved live.
 
-    Prefer email; fall back to the stored invite code (Stripe email may differ
-    from the Plex account email).
+    Prefer email, then the address an admin linked this one to, then the
+    stored invite code (the Stripe email may differ from the Plex account
+    email). The linked address comes second on purpose: it is a stated fact
+    about who this customer is, while the invite code only infers it from a
+    redemption. It is also the only thing that answers for a member who
+    re-subscribed under a re-typed address without ever redeeming the invite
+    that checkout issued: their renewal would otherwise find nothing to
+    extend and mint yet another invite they have no reason to click.
     """
     ids = client.find_user_ids_by_email(email) if email else []
+    if not ids and email:
+        linked = store.get_member_link(store_path, email)
+        if linked:
+            ids = client.find_user_ids_by_email(linked)
+            if ids:
+                log.info("resolved %s through its linked address %s", email, linked)
     if not ids:
         m = store.get_mapping(store_path, customer_id)
         if m and m["invite_code"]:

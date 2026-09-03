@@ -430,6 +430,57 @@ def test_resolve_falls_back_from_email_to_invite(bridge):
     bridge.client.find_user_ids_by_invite.assert_called_once_with("abc")
 
 
+def test_resolve_uses_a_linked_address_before_the_invite_code(bridge):
+    """A stated identity beats an inferred one, and beats an invite nobody used.
+
+    This is the renewal half of the re-typed-address case: the paying customer
+    has no Wizarr record under its own email and holds an invite that was
+    never redeemed, so both existing lookups come back empty and the member's
+    access is never extended.
+    """
+    from stripe_bridge import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "pays@x.com", "abc")
+    store.set_member_link(bridge.MAP_DB_PATH, stripe_email="pays@x.com",
+                          plex_email="watches@x.com")
+    bridge.client.find_user_ids_by_email.side_effect = (
+        lambda email: [7, 8] if email == "watches@x.com" else [])
+    bridge.client.find_user_ids_by_invite.return_value = [99]
+
+    ids = bridge.resolve_user_ids(bridge.client, bridge.MAP_DB_PATH, "cus_1", "pays@x.com")
+
+    assert ids == [7, 8]
+    bridge.client.find_user_ids_by_invite.assert_not_called()
+
+
+def test_resolve_still_prefers_the_members_own_email_over_a_link(bridge):
+    from stripe_bridge import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "pays@x.com", "abc")
+    store.set_member_link(bridge.MAP_DB_PATH, stripe_email="pays@x.com",
+                          plex_email="watches@x.com")
+    bridge.client.find_user_ids_by_email.return_value = [1]
+    ids = bridge.resolve_user_ids(bridge.client, bridge.MAP_DB_PATH, "cus_1", "pays@x.com")
+    assert ids == [1]
+    bridge.client.find_user_ids_by_email.assert_called_once_with("pays@x.com")
+
+
+def test_a_renewal_on_a_linked_address_extends_the_plex_records(bridge):
+    """The whole point: the money arrives at one address, access lives at another."""
+    from stripe_bridge import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "pays@x.com", "abc", tier="bronze")
+    store.set_member_link(bridge.MAP_DB_PATH, stripe_email="pays@x.com",
+                          plex_email="watches@x.com")
+    bridge.client.find_user_ids_by_email.side_effect = (
+        lambda email: [7] if email == "watches@x.com" else [])
+
+    bridge.handle_event({
+        "id": "evt_renew", "type": "invoice.paid",
+        "data": {"object": {"customer": "cus_1", "customer_email": "pays@x.com",
+                            "billing_reason": "subscription_cycle"}},
+    })
+
+    assert bridge.client.set_expiry.call_args[0][0] == 7
+
+
 def test_webhook_route_rejects_invalid_signature(bridge, monkeypatch):
     import asyncio
 

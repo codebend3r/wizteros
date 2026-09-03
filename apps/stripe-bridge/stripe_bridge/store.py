@@ -72,6 +72,21 @@ CREATE TABLE IF NOT EXISTS baseline_invites (
 """
 
 
+# An admin's statement that two addresses are one person. The automatic join
+# (a redeemed invite's used_by) answers only for members who actually redeemed
+# the invite their checkout issued; someone who re-subscribes under a re-typed
+# address while already holding access never redeems the new one, so nothing
+# ties the paying customer to the Plex account they watch with. Keyed on the
+# Stripe address because that is the row that must stop standing on its own;
+# one person can pay under several addresses, so plex_email is not unique.
+_MEMBER_LINKS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS member_links (
+    stripe_email TEXT PRIMARY KEY,
+    plex_email   TEXT NOT NULL
+)
+"""
+
+
 def _conn(path: str) -> sqlite3.Connection:
     """Open the SQLite file; the Row factory makes rows dict-like (row["email"])."""
     c = sqlite3.connect(path)
@@ -131,6 +146,7 @@ def init_db(path: str) -> None:
         c.execute(_EVENT_LOG_SCHEMA)
         c.execute(_SESSION_INVITES_SCHEMA)
         c.execute(_BASELINE_INVITES_SCHEMA)
+        c.execute(_MEMBER_LINKS_SCHEMA)
         _ensure_tier_column(c)
         _ensure_invited_at_column(c)
         _ensure_subscribed_column(c)
@@ -410,6 +426,44 @@ def get_member_tag(path: str, email: str) -> str | None:
             (email.lower(),),
         ).fetchone()
     return row["tag"] if row else None
+
+
+def set_member_link(path: str, *, stripe_email: str, plex_email: str | None) -> None:
+    """Record that `stripe_email` bills for the person watching as `plex_email`.
+
+    A None `plex_email` clears the link, which puts the Stripe address back on
+    the members list as its own row. Both are stored lowercased, the same key
+    the customer map and the Wizarr user join use.
+    """
+    with _conn(path) as c:
+        if plex_email is None:
+            c.execute("DELETE FROM member_links WHERE stripe_email = ?",
+                      (stripe_email.lower(),))
+        else:
+            c.execute(
+                """
+                INSERT INTO member_links (stripe_email, plex_email) VALUES (?, ?)
+                ON CONFLICT(stripe_email) DO UPDATE SET plex_email = excluded.plex_email
+                """,
+                (stripe_email.lower(), plex_email.lower()),
+            )
+
+
+def get_member_link(path: str, stripe_email: str) -> str | None:
+    """The Plex address this Stripe address pays for, or None when unlinked."""
+    with _conn(path) as c:
+        row = c.execute(
+            "SELECT plex_email FROM member_links WHERE stripe_email = ?",
+            (stripe_email.lower(),),
+        ).fetchone()
+    return row["plex_email"] if row else None
+
+
+def all_member_links(path: str) -> dict[str, str]:
+    """Map lowercased Stripe address -> the Plex address it pays for."""
+    with _conn(path) as c:
+        rows = c.execute("SELECT stripe_email, plex_email FROM member_links").fetchall()
+    return {row["stripe_email"]: row["plex_email"] for row in rows}
 
 
 def all_member_tags(path: str) -> dict[str, str]:

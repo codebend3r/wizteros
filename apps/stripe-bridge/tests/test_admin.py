@@ -892,6 +892,90 @@ def test_an_unredeemed_invite_links_nothing(admin_db):
     assert by_email["nora@x.com"]["subscribed"] is False
 
 
+def test_a_linked_address_collapses_a_pair_no_invite_can_join(admin_db):
+    """The Jimmy case: two customers, one person, and an invite never redeemed.
+
+    Someone whose card declines and who re-subscribes under a re-typed address
+    already holds access, so the new checkout's invite sits unredeemed forever
+    and `used_by` can never tie the two together. The admin's link is the only
+    thing that can, and it has to produce exactly what the invite join would.
+    """
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_new", "stripe-only@x.com", "INV1", tier="gold")
+    a.client.list_invitations.return_value = [{"code": "INV1", "used_by": None}]
+    store.set_member_link(dbp, stripe_email="stripe-only@x.com", plex_email="nora@x.com")
+    a.members_snapshot.clear()
+
+    by_email = {m["email"].lower(): m for m in a.list_members()}
+    assert "stripe-only@x.com" not in by_email      # no longer its own row
+    nora = by_email["nora@x.com"]
+    assert nora["stripe_email"] == "stripe-only@x.com"
+    assert nora["tier"] == "gold"
+    assert nora["subscribed"] is True
+    assert nora["customer_id"] == "cus_new"
+
+
+def test_a_link_outranks_a_customer_row_at_the_members_own_address(admin_db):
+    """The dead address is usually still a customer; the live one must win.
+
+    A member who re-subscribed has two Stripe customers: the failing one at
+    their own address and the paying one at the other. Reading billing from
+    the row that merely matches on email would show the abandoned subscription
+    and its tier while the money arrives somewhere else.
+    """
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_dead", "nora@x.com", "INVOLD", tier="bronze")
+    store.upsert_pending(dbp, "cus_live", "stripe-only@x.com", "INV1", tier="gold")
+    a.client.list_invitations.return_value = [{"code": "INV1", "used_by": None}]
+    store.set_member_link(dbp, stripe_email="stripe-only@x.com", plex_email="nora@x.com")
+    a.members_snapshot.clear()
+
+    by_email = {m["email"].lower(): m for m in a.list_members()}
+    assert "stripe-only@x.com" not in by_email
+    nora = by_email["nora@x.com"]
+    assert nora["customer_id"] == "cus_live"        # the one actually paying
+    assert nora["tier"] == "gold"
+    assert nora["stripe_email"] == "stripe-only@x.com"
+
+
+def test_unlinking_puts_the_address_back_on_its_own(admin_db):
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_new", "stripe-only@x.com", "INV1", tier="gold")
+    a.client.list_invitations.return_value = [{"code": "INV1", "used_by": None}]
+    store.set_member_link(dbp, stripe_email="stripe-only@x.com", plex_email="nora@x.com")
+    store.set_member_link(dbp, stripe_email="stripe-only@x.com", plex_email=None)
+    a.members_snapshot.clear()
+
+    by_email = {m["email"].lower(): m for m in a.list_members()}
+    assert "stripe-only@x.com" in by_email
+    assert by_email["nora@x.com"]["stripe_email"] is None
+
+
+def test_link_address_endpoint_refuses_a_self_link(admin_db):
+    a, _ = admin_db
+    with pytest.raises(HTTPException) as excinfo:
+        a.link_address(a.LinkAddressBody(stripe_email="a@x.com", plex_email="A@x.com"))
+    assert excinfo.value.status_code == 400
+
+
+def test_link_address_endpoint_refuses_a_chain(admin_db):
+    a, dbp = admin_db
+    store.set_member_link(dbp, stripe_email="b@x.com", plex_email="c@x.com")
+    with pytest.raises(HTTPException) as excinfo:
+        a.link_address(a.LinkAddressBody(stripe_email="a@x.com", plex_email="b@x.com"))
+    assert excinfo.value.status_code == 400
+
+
+def test_link_address_endpoint_records_both_sides(admin_db):
+    a, dbp = admin_db
+    a.link_address(a.LinkAddressBody(stripe_email="Pays@x.com", plex_email="Watches@x.com"))
+    assert store.all_member_links(dbp) == {"pays@x.com": "watches@x.com"}
+    assert [e["action"] for e in store.events_for_email(dbp, "watches@x.com")] == \
+        ["Address linked"]
+    assert [e["action"] for e in store.events_for_email(dbp, "pays@x.com")] == \
+        ["Address linked"]
+
+
 def test_used_by_resolves_a_plain_username_too(admin_db):
     """Wizarr returns a repr today; a real username must keep working."""
     a, dbp = admin_db
