@@ -7,11 +7,24 @@ log = logging.getLogger("bridge")
 # server. Name-only and deliberately server-agnostic (see _is_private).
 PRIVATE_NAME_RE = re.compile(r"^9\d\.")
 
-# The one Plex server every tier shares from. Meleys now carries a copy of
-# every library worth sharing, so the other servers (Vermithor, Vhagar,
-# Caraxes, Syrax) are retired from signups — their libraries survive only as
-# "(switch to Meleys)" mirrors and must never be granted again.
+# The Plex server the paid-entry tiers share from. Meleys carries a copy of
+# every library worth sharing, so bronze, silver and youth resolve here alone.
 SHARE_SERVER = "Meleys"
+
+# Gold reaches past it, across the rest of the live fleet. These servers hold
+# libraries Meleys does not mirror, and gold grants all of them.
+GOLD_SHARE_SERVERS = frozenset({"Meleys", "Vermithor", "Vhagar", "Syrax"})
+
+# Retired outright: no tier may resolve a library here and no member may keep a
+# record on it. Listed separately from the per-tier sets so widening a tier can
+# never quietly readmit it.
+RETIRED_SERVERS = frozenset({"Caraxes"})
+
+
+def tier_share_servers(tier: str) -> frozenset:
+    """The Plex servers a tier may share from, retired servers already removed."""
+    wanted = GOLD_SHARE_SERVERS if tier == "gold" else frozenset({SHARE_SERVER})
+    return wanted - RETIRED_SERVERS
 
 # Youth allowlist, matched on library title alone — every shareable library is
 # on SHARE_SERVER, so the server half of the key added nothing but a second
@@ -77,13 +90,14 @@ def _is_4k(library: dict) -> bool:
     return "4k" in (library.get("name") or "").lower()
 
 
-def _is_on_share_server(library: dict) -> bool:
-    """Whether a library lives on the one server every tier shares from.
+def _is_on_share_server(library: dict, tier: str) -> bool:
+    """Whether a library sits on a server this tier is allowed to share from.
 
     Exact match on server_name, so a library with a null or renamed server
     fails closed rather than leaking a retired server's copy into a tier.
     """
-    return library.get("server_name") == SHARE_SERVER
+    server = library.get("server_name")
+    return bool(server) and server in tier_share_servers(tier)
 
 
 def _tier_wants(tier: str, library: dict) -> bool:
@@ -96,25 +110,25 @@ def _tier_wants(tier: str, library: dict) -> bool:
 
 
 def _shareable_libraries(*, tier: str, libraries: list) -> list:
-    """Enabled libraries on the share server that a tier's rules include.
+    """Enabled libraries on a tier's servers that its rules include.
 
-    The share-server and private filters run last, independent of the tier
-    rules, so no rule change can ever share a private library or resurrect a
-    retired server.
+    The server and private filters run last, independent of the tier rules, so
+    no rule change can ever share a private library or resurrect a retired
+    server.
     """
     selected = [
         lib for lib in libraries
         if lib.get("enabled") and _tier_wants(tier, lib)
     ]
     return [lib for lib in selected
-            if _is_on_share_server(lib) and not _is_private(lib)]
+            if _is_on_share_server(lib, tier) and not _is_private(lib)]
 
 
 def tier_server_libraries(*, tier: str, libraries: list) -> dict:
     """Shareable library names a tier grants, grouped by server name.
 
-    Keyed by server for the admin UI's per-server breakdown, though every tier
-    now resolves to the single SHARE_SERVER entry. Derived from the tier rules
+    Keyed by server for the admin UI's per-server breakdown: one entry for the
+    entry tiers, one per fleet server for gold. Derived from the tier rules
     (what invites are scoped to), not read back from Plex — Wizarr's users API
     doesn't expose per-user libraries. Unknown tiers grant nothing.
     """
@@ -157,8 +171,9 @@ def tier_scope_problems(*, libraries: list) -> dict:
     for tier in TIER_DOWNLOADS:
         shareable = _shareable_libraries(tier=tier, libraries=libraries)
         if not shareable:
+            servers = ", ".join(sorted(tier_share_servers(tier)))
             problems[tier] = (
-                f"no libraries resolved on {SHARE_SERVER} — checkouts for this "
+                f"no libraries resolved on {servers}: checkouts for this "
                 f"tier will fail and retry forever"
             )
         elif tier == "youth":
@@ -181,10 +196,11 @@ def stale_record_ids(*, records: list, covered_servers) -> list:
     new scope does NOT cover (or has no server name), every record is returned
     and the caller falls back to disable-first (fail closed on stale access).
 
-    Since every tier resolves to SHARE_SERVER alone, this returns the full set
-    for any legacy member still holding a record on a retired server: that
-    disable-and-re-join IS the migration onto the single server, at the cost of
-    an access gap between the disable and the member redeeming their invite.
+    A member holding a record on a server their new tier does not cover (a
+    Caraxes record, or a fleet record under an entry tier) therefore returns
+    the full set: that disable-and-re-join IS the migration onto the covered
+    servers, at the cost of an access gap between the disable and the member
+    redeeming their invite.
     """
     covered = set(covered_servers)
     if all(record.get("server") in covered for record in records):

@@ -889,8 +889,9 @@ def test_checkout_gold_enables_downloads(bridge):
                             "customer_details": {"email": "a@x.com"},
                             "metadata": {"tier": "gold"}}},
     })
+    # Gold spans the fleet, so the Vermithor library and its server join the scope.
     bridge.client.create_invite.assert_called_once_with(
-        [2], 14, "35", library_ids=[17, 20, 22, 24], allow_downloads=True)
+        [1, 2], 14, "35", library_ids=[17, 20, 22, 24, 41], allow_downloads=True)
 
 
 def test_checkout_youth_scopes_to_youth_libraries_only(bridge):

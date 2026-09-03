@@ -2,9 +2,9 @@ import logging
 
 from stripe_bridge import tiers
 
-# Meleys carries every library a tier can grant. The other Plex servers are
-# retired from signups: their libraries are mirrored onto Meleys and renamed
-# "(switch to Meleys)", and no tier may share them again.
+# Meleys carries every library the paid-entry tiers grant. Gold reaches wider:
+# it spans the whole fleet except Caraxes, which is retired outright and may
+# never be shared with anyone again.
 LIBRARIES = [
     {"id": 23, "name": "01. Movies", "server_id": 2, "server_name": "Meleys", "enabled": True},
     {"id": 24, "name": "02. 4K Movies", "server_id": 2, "server_name": "Meleys", "enabled": True},
@@ -30,26 +30,62 @@ LIBRARIES = [
      "server_name": "Vhagar", "enabled": True},
 ]
 
-RETIRED_IDS = {9, 17, 22, 30, 36, 37, 40}
+CARAXES_IDS = {30, 36, 37}
+# Enabled, non-private, off Meleys: gold's reach, and nobody else's.
+FLEET_IDS = {9, 17, 22, 40}
 PRIVATE_IDS = {37, 61}
 FOUR_K_IDS = {24, 26, 28}
+ENTRY_TIERS = ("bronze", "silver", "youth")
 
 
-def test_no_tier_shares_off_the_share_server():
+def test_caraxes_is_shared_with_no_tier():
+    """Retired outright. Not narrowed, not mirrored: gone."""
     for tier in tiers.TIER_DOWNLOADS:
         out = tiers.resolve_tier_access(tier=tier, libraries=LIBRARIES)
-        assert RETIRED_IDS.isdisjoint(out["library_ids"]), tier
-        assert out["server_ids"] == [2], tier
+        assert CARAXES_IDS.isdisjoint(out["library_ids"]), tier
+        assert "Caraxes" not in out["server_names"], tier
+
+
+def test_only_gold_reaches_past_the_share_server():
+    for tier in ENTRY_TIERS:
+        out = tiers.resolve_tier_access(tier=tier, libraries=LIBRARIES)
+        assert FLEET_IDS.isdisjoint(out["library_ids"]), tier
         assert out["server_names"] == ["Meleys"], tier
+    gold = tiers.resolve_tier_access(tier="gold", libraries=LIBRARIES)
+    assert FLEET_IDS.issubset(gold["library_ids"])
+    assert gold["server_names"] == ["Meleys", "Syrax", "Vermithor", "Vhagar"]
 
 
-def test_share_server_guard_survives_tier_rule_bugs(monkeypatch):
-    # Simulate a future tier-rule bug that wants every library shared; the
-    # share-server filter must still strip every retired server's libraries.
+def test_gold_grants_every_enabled_public_library_on_its_servers():
+    gold = set(tiers.resolve_tier_access(tier="gold", libraries=LIBRARIES)["library_ids"])
+    expected = {
+        lib["id"] for lib in LIBRARIES
+        if lib["enabled"]
+        and lib["server_name"] in ("Meleys", "Syrax", "Vermithor", "Vhagar")
+        and lib["id"] not in PRIVATE_IDS
+    }
+    assert gold == expected
+
+
+def test_server_guards_survive_tier_rule_bugs(monkeypatch):
+    # Simulate a future tier-rule bug that wants every library shared. Caraxes
+    # must stay unreachable for every tier, and the entry tiers must stay on
+    # the share server.
     monkeypatch.setattr(tiers, "_tier_wants", lambda tier, lib: True)
     for tier in tiers.TIER_DOWNLOADS:
         out = tiers.resolve_tier_access(tier=tier, libraries=LIBRARIES)
-        assert RETIRED_IDS.isdisjoint(out["library_ids"]), tier
+        assert CARAXES_IDS.isdisjoint(out["library_ids"]), tier
+    for tier in ENTRY_TIERS:
+        out = tiers.resolve_tier_access(tier=tier, libraries=LIBRARIES)
+        assert FLEET_IDS.isdisjoint(out["library_ids"]), tier
+
+
+def test_a_library_with_no_server_name_is_never_shared():
+    orphan = [{"id": 999, "name": "01. Orphan", "server_id": 9,
+               "server_name": None, "enabled": True}]
+    for tier in tiers.TIER_DOWNLOADS:
+        out = tiers.resolve_tier_access(tier=tier, libraries=LIBRARIES + orphan)
+        assert 999 not in out["library_ids"], tier
 
 
 def test_private_libraries_appear_in_no_tier():
@@ -79,11 +115,13 @@ def test_silver_includes_4k_without_downloads():
     assert out["allow_downloads"] is False
 
 
-def test_gold_matches_silver_libraries_with_downloads_on():
+def test_gold_is_silver_plus_the_rest_of_the_fleet():
+    """Gold used to match silver exactly; it now adds the fleet servers."""
     silver = tiers.resolve_tier_access(tier="silver", libraries=LIBRARIES)
     gold = tiers.resolve_tier_access(tier="gold", libraries=LIBRARIES)
-    assert gold["library_ids"] == silver["library_ids"]
-    assert gold["server_ids"] == silver["server_ids"]
+    assert set(silver["library_ids"]) < set(gold["library_ids"])
+    assert set(gold["library_ids"]) - set(silver["library_ids"]) == FLEET_IDS
+    assert set(silver["server_ids"]) < set(gold["server_ids"])
     assert gold["allow_downloads"] is True
 
 
@@ -139,13 +177,23 @@ def test_disabled_libraries_are_never_shared():
         assert 50 not in out["library_ids"], tier
 
 
-def test_tier_server_libraries_groups_gold_under_the_share_server():
+def test_tier_server_libraries_groups_gold_across_the_fleet():
     out = tiers.tier_server_libraries(tier="gold", libraries=LIBRARIES)
     assert out == {
         "Meleys": ["01. Movies", "02. 4K Movies", "03. Family Movies",
                    "04. 4K Family Movies", "05. TV Shows", "06. 4K TV Shows",
                    "14. Kid Shows"],
+        "Syrax": ["01. Classic TV Shows (switch to Meleys)"],
+        "Vermithor": ["01. TV Shows (switch to Meleys)",
+                      "06. Kid Shows (switch to Meleys)"],
+        "Vhagar": ["01. 4K Movies (switch to Meleys)"],
     }
+
+
+def test_tier_server_libraries_keeps_the_entry_tiers_on_one_server():
+    for tier in ENTRY_TIERS:
+        out = tiers.tier_server_libraries(tier=tier, libraries=LIBRARIES)
+        assert set(out) == {"Meleys"}, tier
 
 
 def test_tier_server_libraries_bronze_drops_4k():
@@ -162,10 +210,10 @@ def test_tier_server_libraries_youth_matches_allowlist():
     }
 
 
-def test_tier_server_libraries_never_lists_a_retired_server():
+def test_tier_server_libraries_never_lists_caraxes():
     for tier in tiers.TIER_DOWNLOADS:
         out = tiers.tier_server_libraries(tier=tier, libraries=LIBRARIES)
-        assert set(out) <= {"Meleys"}, tier
+        assert "Caraxes" not in out, tier
 
 
 def test_tier_server_libraries_never_includes_private_or_disabled():

@@ -32,6 +32,12 @@ def names(tier: str) -> list[str]:
         tiers.SHARE_SERVER, [])
 
 
+def all_names(tier: str) -> list[str]:
+    """Every library name a tier grants, across all of its servers, sorted."""
+    grouped = tiers.tier_server_libraries(tier=tier, libraries=LIBRARIES)
+    return sorted(name for names_ in grouped.values() for name in names_)
+
+
 def test_the_snapshot_still_looks_like_a_real_wizarr_response():
     assert len(LIBRARIES) > 20
     assert all({"id", "name", "server_id", "server_name", "enabled"} <= set(lib)
@@ -47,8 +53,20 @@ def test_every_tier_resolves_to_something(tier):
 
 
 @pytest.mark.parametrize("tier", sorted(tiers.TIER_DOWNLOADS))
-def test_every_tier_stays_on_the_share_server(tier):
+def test_no_tier_reaches_a_retired_server(tier):
+    # Caraxes is retired outright: no tier may resolve a library there, and
+    # the real snapshot still carries its libraries to prove the filter runs.
+    assert "Caraxes" in {lib["server_name"] for lib in LIBRARIES}
+    assert not tiers.RETIRED_SERVERS & set(scope(tier)["server_names"]), tier
+
+
+@pytest.mark.parametrize("tier", sorted(set(tiers.TIER_DOWNLOADS) - {"gold"}))
+def test_every_entry_tier_stays_on_the_share_server(tier):
     assert scope(tier)["server_names"] == [tiers.SHARE_SERVER]
+
+
+def test_gold_spans_the_live_fleet():
+    assert set(scope("gold")["server_names"]) == set(tiers.GOLD_SHARE_SERVERS)
 
 
 @pytest.mark.parametrize("tier", sorted(tiers.TIER_DOWNLOADS))
@@ -74,7 +92,7 @@ def test_bronze_is_everything_except_4k():
     assert scope("bronze")["allow_downloads"] is False
 
 
-def test_silver_and_gold_grant_every_shareable_library():
+def test_silver_grants_every_shareable_library_on_the_share_server():
     shareable = sorted(
         lib["name"] for lib in LIBRARIES
         if lib["enabled"]
@@ -82,7 +100,18 @@ def test_silver_and_gold_grant_every_shareable_library():
         and not tiers.PRIVATE_NAME_RE.match(lib["name"])
     )
     assert names("silver") == shareable
-    assert names("gold") == shareable
+    assert names("gold") == shareable  # gold still grants all of them here
+
+
+def test_gold_grants_every_shareable_library_across_its_servers():
+    shareable = sorted(
+        lib["name"] for lib in LIBRARIES
+        if lib["enabled"]
+        and lib["server_name"] in tiers.GOLD_SHARE_SERVERS
+        and not tiers.PRIVATE_NAME_RE.match(lib["name"])
+    )
+    assert all_names("gold") == shareable
+    assert len(shareable) > len(names("gold")), "gold must reach past the share server"
 
 
 def test_only_gold_and_youth_allow_downloads():

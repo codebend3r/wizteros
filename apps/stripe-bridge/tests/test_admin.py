@@ -116,7 +116,7 @@ def test_list_members_dedupes_and_joins_tier(admin_db):
     assert cj["downloads"] is True                         # derived from tier
     # per-server access derives from tier rules: only the share server
     # grants anything, and 90. private is never shown
-    assert cj["libraries"] == {"Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"], "Vhagar": []}
+    assert cj["libraries"] == {"Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"], "Vhagar": ["03. 4K Movies"]}
 
     nora = by_email["nora@x.com"]
     assert nora["subscribed"] is False
@@ -151,8 +151,8 @@ def test_list_members_unions_the_live_plex_share(admin_db, monkeypatch):
     # plex is ground truth where it has an answer...
     assert cj["libraries"]["Meleys"] == ["01. Movies", "05. TV Shows"]
     assert cj["libraries"]["Caraxes"] == ["09. Basketball"]
-    # ...and Vhagar is retired, so the tier derives nothing there
-    assert cj["libraries"]["Vhagar"] == []
+    # ...and gold reaches Vhagar too, so the tier derives its library there
+    assert cj["libraries"]["Vhagar"] == ["03. 4K Movies"]
 
     # unknown tier derives no libraries, so plex is the only real answer here
     assert by_email["nora@x.com"]["libraries"] == {"Syrax": ["02. Anime"]}
@@ -177,7 +177,7 @@ def test_list_members_falls_back_to_tier_access_without_a_plex_token(admin_db):
     store.upsert_pending(dbp, "cus_1", "a@x.com", "abc", tier="gold")
     cj = {m["email"].lower(): m for m in a.list_members()}["a@x.com"]
     assert cj["servers"] == ["Meleys", "Vhagar"]
-    assert cj["libraries"] == {"Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"], "Vhagar": []}
+    assert cj["libraries"] == {"Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"], "Vhagar": ["03. 4K Movies"]}
 
 
 def test_list_members_survives_a_plex_tv_failure(admin_db, monkeypatch):
@@ -192,7 +192,7 @@ def test_list_members_survives_a_plex_tv_failure(admin_db, monkeypatch):
     monkeypatch.setattr(a.plex, "shared_access_all", boom)
     cj = {m["email"].lower(): m for m in a.list_members()}["a@x.com"]
     assert cj["servers"] == ["Meleys", "Vhagar"]
-    assert cj["libraries"] == {"Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"], "Vhagar": []}
+    assert cj["libraries"] == {"Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"], "Vhagar": ["03. 4K Movies"]}
 
 
 def test_subscribed_is_the_flag_not_the_expiry(admin_db):
@@ -213,7 +213,7 @@ def test_get_member_found_and_missing(admin_db):
     store.upsert_pending(dbp, "cus_1", "a@x.com", "abc", tier="gold")
     found = a.get_member("a@x.com")
     assert found["member"] == "cj"
-    assert found["libraries"] == {"Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"], "Vhagar": []}
+    assert found["libraries"] == {"Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"], "Vhagar": ["03. 4K Movies"]}
     with pytest.raises(HTTPException) as missing:
         a.get_member("ghost@x.com")
     assert missing.value.status_code == 404
@@ -246,7 +246,7 @@ def test_pending_subscriber_libraries_follow_their_tier(admin_db):
     by_email = {m["email"].lower(): m for m in a.list_members()}
     # entitled is the tier-derived set; libraries stays empty until they join
     assert by_email["gold@x.com"]["entitled"] == {
-        "Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"]}
+        "Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"], "Vhagar": ["03. 4K Movies"]}
     assert by_email["youth@x.com"]["entitled"] == {
         "Meleys": ["03. Family Movies", "14. Kid Shows"]}
     assert by_email["gold@x.com"]["libraries"] == {}
@@ -276,7 +276,7 @@ def test_get_member_pending_subscriber_shows_tier_libraries(admin_db):
     m = a.get_member("gold@x.com")
     # entitled drives the member page's Servers section; holding nothing yet is
     # reported as holding nothing.
-    assert m["entitled"] == {"Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"]}
+    assert m["entitled"] == {"Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"], "Vhagar": ["03. 4K Movies"]}
     assert m["servers"] == []
     assert m["libraries"] == {}
 
@@ -794,10 +794,10 @@ def test_members_carry_a_pure_tier_entitlement_map(admin_db):
     store.upsert_pending(dbp, "cus_1", "a@x.com", "abc", tier="gold")
     cj = {m["email"].lower(): m for m in a.list_members()}["a@x.com"]
     assert cj["entitled"] == {
-        "Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"]}
-    # the member holds a Vhagar record, but no tier entitles anything there
+        "Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"], "Vhagar": ["03. 4K Movies"]}
+    # gold entitles Vhagar now, and the member holds a record there
     assert "Vhagar" in cj["servers"]
-    assert "Vhagar" not in cj["entitled"]
+    assert "Vhagar" in cj["entitled"]
 
 
 def test_entitlement_follows_the_tier_not_the_records(admin_db):
@@ -824,7 +824,7 @@ def test_entitlement_survives_the_plex_union(admin_db, monkeypatch):
     cj = {m["email"].lower(): m for m in a.list_members()}["a@x.com"]
     assert cj["libraries"]["Meleys"] == ["01. Movies", "05. TV Shows"]  # plex wins here
     assert cj["entitled"] == {
-        "Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"]}  # tier stands
+        "Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"], "Vhagar": ["03. 4K Movies"]}  # tier stands
 
 
 def test_get_member_carries_entitlement_too(admin_db):
@@ -840,7 +840,7 @@ def test_pending_subscriber_entitlement_is_the_tier_not_what_they_hold(admin_db)
     a, dbp = admin_db
     store.upsert_pending(dbp, "cus_g", "gold@x.com", "INV1", tier="gold")
     mx = {m["email"].lower(): m for m in a.list_members()}["gold@x.com"]
-    assert mx["entitled"] == {"Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"]}
+    assert mx["entitled"] == {"Meleys": ["01. Movies", "03. Family Movies", "14. Kid Shows"], "Vhagar": ["03. 4K Movies"]}
     assert mx["libraries"] == {}
 
 
