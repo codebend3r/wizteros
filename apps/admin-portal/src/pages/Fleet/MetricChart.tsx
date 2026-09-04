@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { CartesianGrid, Line, LineChart, Tooltip, XAxis, YAxis } from 'recharts'
 import type { MetricHostSeries, MetricUnit } from '@/lib/fleetApi'
 import { CHART_HEIGHT } from '@/pages/Fleet/chartFrame'
@@ -6,6 +6,7 @@ import { chartCaption, type MetricCopy } from '@/pages/Fleet/metricCopy'
 import { metricScale, type MetricScale } from '@/pages/Fleet/metricScale'
 import styles from '@/pages/Fleet/MetricChart.module.scss'
 import { seriesClass } from '@/pages/Fleet/seriesPalette'
+import { useMeasuredWidth } from '@/lib/useMeasuredWidth'
 import { rangeProse } from '@/stores/fleetPrefsStore'
 
 type MetricChartProps = {
@@ -51,12 +52,6 @@ const AT_KEY = 'at'
 const hostKey = (name: string): string => `host:${name}`
 
 const MARGIN = { top: 12, right: 16, bottom: 4, left: 0 } as const
-
-// Phone-safe on purpose. A wide fallback inflates the layout on a narrow
-// screen before ResizeObserver runs, and the observer then measures the box
-// its own fallback inflated: the wrong width locks itself in. From below, the
-// first measurement can only grow.
-const FALLBACK_WIDTH = 280
 
 // A missed reading must render as a gap in the line, not a straight bridge
 // pretending the host was observed. The collector's cadence is not hardcoded
@@ -315,29 +310,6 @@ const axisTicks = ({
     every one of them would otherwise read midnight. */
 const axisLabel = ({ at, step }: { at: number; step: number }): string =>
   step >= DAY_MS ? dayShort(at) : timeShort(at)
-
-/** The rendered width of the chart's box, tracked so the chart draws in real
-    pixels: hairlines stay hairlines and label text never scales with a viewBox.
-    Falls back to a fixed width where ResizeObserver cannot measure.
-
-    Measured here rather than handed to Recharts' own ResponsiveContainer, which
-    renders nothing at all inside a box reporting zero size - every one of this
-    chart's tests among them. */
-const useMeasuredWidth = (): { ref: RefObject<HTMLDivElement | null>; width: number } => {
-  const ref = useRef<HTMLDivElement | null>(null)
-  const [width, setWidth] = useState(FALLBACK_WIDTH)
-  useEffect(() => {
-    const element = ref.current
-    if (!element || typeof ResizeObserver === 'undefined') return undefined
-    const observer = new ResizeObserver((entries) => {
-      const measured = entries[0]?.contentRect.width ?? 0
-      if (measured > 0) setWidth(measured)
-    })
-    observer.observe(element)
-    return () => observer.disconnect()
-  }, [])
-  return { ref, width }
-}
 
 /** The moving present: the frame's right edge, and the moment every line's tip
  * is carried to.

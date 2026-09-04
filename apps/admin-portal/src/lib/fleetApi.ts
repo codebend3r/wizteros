@@ -147,7 +147,7 @@ export const formatBytes = (value: number | null): string => {
   return `${(value / 1024 ** index).toFixed(1)} ${UNITS[index]}`
 }
 
-const plural = ({ count, unit }: { count: number; unit: string }): string =>
+export const plural = ({ count, unit }: { count: number; unit: string }): string =>
   `${count} ${unit}${count === 1 ? '' : 's'}`
 
 /** A metric age in words. "unknown" for an absent age, because a host that was
