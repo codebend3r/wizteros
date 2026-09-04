@@ -26,6 +26,11 @@ def tier_share_servers(tier: str) -> frozenset:
     wanted = GOLD_SHARE_SERVERS if tier == "gold" else frozenset({SHARE_SERVER})
     return wanted - RETIRED_SERVERS
 
+
+def all_share_servers() -> frozenset:
+    """Every server some tier may share from: the only ones an invite can name."""
+    return frozenset().union(*(tier_share_servers(tier) for tier in TIER_DOWNLOADS))
+
 # Youth allowlist, matched on library title alone — every shareable library is
 # on SHARE_SERVER, so the server half of the key added nothing but a second
 # way to drift out of date. The titles are the actual Plex library names with
@@ -183,6 +188,87 @@ def tier_scope_problems(*, libraries: list) -> dict:
                     f"allowlist entries missing from {SHARE_SERVER}: {', '.join(missing)}"
                 )
     return problems
+
+
+def stale_libraries(*, libraries: list, live: dict | None) -> list:
+    """Enabled Wizarr library rows whose name Plex no longer answers to.
+
+    Wizarr caches library names and shares by NAME: at redemption it hands
+    plexapi the cached names for the invite, and plexapi looks each one up on
+    the live server. A rename on the Plex side that Wizarr has not rescanned
+    therefore makes Plex reject every invite carrying the old name, whole
+    ("Plex invitation failed", a KeyError on the stale title). That is how a
+    bronze signup landed with no access on 2026-09-04: "33. Formula 1" had
+    become "22. Formula 1" on Meleys.
+
+    `live` is plex.live_sections(): server name -> section id -> live title,
+    and the section id is what Wizarr stores as external_id. Each stale row
+    comes back with a `live_name` (the current title, or None when the
+    section is gone). Only rows that can reach an invite count: disabled rows
+    and rows on servers no tier shares from (retired Caraxes) are skipped, as
+    are servers plex.tv does not list and rows without an external_id, where
+    nothing can be checked and unknown is not stale. None for `live` (no
+    token, plex.tv unreachable) reports nothing stale for the same reason.
+    """
+    if not live:
+        return []
+    shareable = all_share_servers()
+    stale = []
+    for lib in libraries:
+        server = lib.get("server_name")
+        sections = live.get(server)
+        external_id = lib.get("external_id")
+        if (not lib.get("enabled") or server not in shareable
+                or sections is None or not external_id):
+            continue
+        live_name = sections.get(str(external_id))
+        if live_name != lib.get("name"):
+            stale.append({**lib, "live_name": live_name})
+    return stale
+
+
+def without_stale(*, libraries: list, live: dict | None) -> list:
+    """The library list with every stale row dropped, each drop logged with its remedy.
+
+    An invite carrying a stale name grants nothing, because Plex rejects the
+    whole share; one without it grants everything else. The scope check's
+    alert tells the operator to rescan, and the next invite carries the
+    library again.
+    """
+    stale = stale_libraries(libraries=libraries, live=live)
+    for row in stale:
+        log.error(
+            "dropping stale library %r on %s from the invite scope: %s; rescan the "
+            "server's libraries in Wizarr to restore it",
+            row["name"], row.get("server_name"),
+            f"Plex now calls it {row['live_name']!r}" if row["live_name"]
+            else "it is gone from Plex")
+    stale_ids = {row["id"] for row in stale}
+    return [lib for lib in libraries if lib.get("id") not in stale_ids]
+
+
+def library_cache_problems(*, libraries: list, live: dict | None) -> dict:
+    """Servers whose Wizarr library cache no longer matches Plex, with a readable reason.
+
+    Shaped like tier_scope_problems so the scope check can report both in one
+    alert: keyed by "wizarr cache on <server>", empty when the cache is
+    current or when there is nothing to check it against.
+    """
+    by_server: dict[str, list] = {}
+    for row in stale_libraries(libraries=libraries, live=live):
+        by_server.setdefault(row.get("server_name") or "?", []).append(row)
+    return {
+        f"wizarr cache on {server}": (
+            "; ".join(
+                f"'{row['name']}' is now '{row['live_name']}' on Plex"
+                if row["live_name"] else f"'{row['name']}' is gone from Plex"
+                for row in rows
+            )
+            + ". Plex rejects every invite carrying a stale name until the "
+            "server's libraries are rescanned in Wizarr"
+        )
+        for server, rows in by_server.items()
+    }
 
 
 def stale_record_ids(*, records: list, covered_servers) -> list:

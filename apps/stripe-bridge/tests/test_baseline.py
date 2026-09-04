@@ -6,6 +6,13 @@ from stripe_bridge import baseline, store, tiers
 
 NOW = datetime(2026, 8, 11, 3, 0, tzinfo=timezone.utc)
 
+
+@pytest.fixture(autouse=True)
+def _no_plex_tv(monkeypatch):
+    """No plex.tv in these tests: the library list is trusted as given."""
+    from stripe_bridge import plex
+    monkeypatch.setattr(plex, "live_sections_or_none", lambda: None)
+
 # Enough of Meleys to resolve every tier: the youth allowlist in full, plus a
 # non-4K library bronze/silver/gold pick up and a 4K one bronze must exclude.
 LIBRARIES = [

@@ -191,7 +191,14 @@
     },
     {
       "id": 58,
-      "name": "33. Formula 1",
+      "name": "22. Formula 1",
+      "server_id": 2,
+      "server_name": "Meleys",
+      "enabled": true
+    },
+    {
+      "id": 59,
+      "name": "24. Basketball",
       "server_id": 2,
       "server_name": "Meleys",
       "enabled": true

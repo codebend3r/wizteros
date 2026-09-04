@@ -93,3 +93,46 @@ def test_shared_access_all_groups_every_email_in_one_pass():
     assert access["other@x.com"]["Vermithor"]["libraries"] == ["02. Anime"]  # shared="0" dropped
     shared_calls = [c for c in responses.calls if "shared_servers" in c.request.url]
     assert len(shared_calls) == 2  # one per owned server, regardless of member count
+
+
+# --- live sections: the owner's view of each server's libraries -------------
+
+SERVER_M1 = """<MediaContainer>
+  <Server name="Meleys" machineIdentifier="m-1">
+    <Section id="145283096" key="31" type="show" title="22. Formula 1"/>
+    <Section id="137390246" key="8" type="movie" title="04. Movies"/>
+  </Server>
+</MediaContainer>"""
+
+SERVER_M2 = """<MediaContainer>
+  <Server name="Vermithor" machineIdentifier="m-2">
+    <Section id="145181324" key="14" type="show" title="01. TV Shows"/>
+  </Server>
+</MediaContainer>"""
+
+
+@responses.activate
+def test_live_sections_keys_titles_by_server_then_section_id():
+    # The section id is what Wizarr stores as a library's external_id, so
+    # this is the join the stale-cache check needs.
+    responses.get("http://plex.test/api/servers", body=SERVERS_XML)
+    responses.get("http://plex.test/api/servers/m-1", body=SERVER_M1)
+    responses.get("http://plex.test/api/servers/m-2", body=SERVER_M2)
+    assert plex.live_sections() == {
+        "Meleys": {"145283096": "22. Formula 1", "137390246": "04. Movies"},
+        "Vermithor": {"145181324": "01. TV Shows"},
+    }
+
+
+@responses.activate
+def test_live_sections_or_none_swallows_a_plex_tv_failure(caplog):
+    responses.get("http://plex.test/api/servers", status=503)
+    with caplog.at_level("WARNING", logger="bridge"):
+        assert plex.live_sections_or_none() is None
+    assert "plex.tv" in caplog.text
+
+
+def test_live_sections_or_none_is_none_without_a_token(monkeypatch):
+    # No token means no plex.tv at all; the caller trusts Wizarr's cache.
+    monkeypatch.setattr(plex, "PLEX_TOKEN", "")
+    assert plex.live_sections_or_none() is None

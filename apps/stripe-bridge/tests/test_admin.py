@@ -50,6 +50,7 @@ def admin_db(tmp_path, monkeypatch):
     # No plex.tv by default: the members list must be reachable without a token,
     # and tests that exercise the live union opt in explicitly.
     monkeypatch.setattr(admin.plex, "PLEX_TOKEN", "")
+    monkeypatch.setattr(admin.plex, "live_sections_or_none", lambda: None)
     admin.client = MagicMock()
     admin.client.list_users.return_value = USERS
     admin.client.list_libraries.return_value = LIBRARIES

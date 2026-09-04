@@ -2,7 +2,7 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 
-from stripe_bridge import store, tiers
+from stripe_bridge import plex, store, tiers
 
 log = logging.getLogger("bridge.baseline")
 
@@ -100,7 +100,10 @@ def rotate_baseline_invites(*, client, db_path: str, now: datetime | None = None
     never empty the baseline set.
     """
     now = now or datetime.now(timezone.utc)
-    libraries = client.list_libraries()
+    # Stale cache rows are dropped as on every other invite path: Plex rejects
+    # an invite carrying a name it no longer knows, whole.
+    libraries = tiers.without_stale(
+        libraries=client.list_libraries(), live=plex.live_sections_or_none())
     broken = tiers.tier_scope_problems(libraries=libraries)
     minted, skipped = [], []
     for tier in BASELINE_TIERS:

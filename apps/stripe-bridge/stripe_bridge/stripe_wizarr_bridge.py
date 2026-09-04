@@ -9,7 +9,7 @@ import stripe
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from stripe_bridge import __version__, admin, baseline, store, tiers
+from stripe_bridge import __version__, admin, baseline, plex, store, tiers
 from stripe_bridge.mailer import send_alert_email, send_invite_email
 from stripe_bridge.wizarr import WizarrClient
 
@@ -95,11 +95,14 @@ def check_tier_scopes() -> dict:
 
     The tier rules match Plex library names, so a rename on the server silently
     empties a tier with no code change and no failing test — that is exactly how
-    the youth tier died unnoticed. Returns the problems found (empty when
-    healthy). Never raises: it runs inside the reconcile loop, and neither a
-    down Wizarr nor a down SMTP may take that loop out. A Wizarr that cannot be
-    reached is reported as healthy — unreachable is not misconfigured, and the
-    next sweep will try again.
+    the youth tier died unnoticed. The same rename also leaves a stale name in
+    Wizarr's own library cache until someone rescans it, and Plex rejects every
+    invite carrying that name whole at redemption, so the cache is checked
+    against plex.tv's live sections here too. Returns the problems found
+    (empty when healthy). Never raises: it runs inside the reconcile loop, and
+    neither a down Wizarr nor a down SMTP may take that loop out. A Wizarr or
+    plex.tv that cannot be reached is reported as healthy — unreachable is not
+    misconfigured, and the next sweep will try again.
     """
     global _last_tier_problems
     try:
@@ -107,7 +110,10 @@ def check_tier_scopes() -> dict:
     except Exception:
         log.exception("tier scope check: could not read libraries from Wizarr")
         return {}
-    problems = tiers.tier_scope_problems(libraries=libraries)
+    problems = {
+        **tiers.tier_scope_problems(libraries=libraries),
+        **tiers.library_cache_problems(libraries=libraries, live=plex.live_sections_or_none()),
+    }
     if not problems:
         _last_tier_problems = {}
         return {}
@@ -118,9 +124,9 @@ def check_tier_scopes() -> dict:
         body = "\n".join(f"- {tier}: {reason}" for tier, reason in sorted(problems.items()))
         try:
             send_alert_email(
-                f"{len(problems)} tier(s) not resolving",
-                f"The live Wizarr library list no longer satisfies these tiers:\n\n{body}\n\n"
-                f"Members cannot sign up for them until the names line up again.\n",
+                f"{len(problems)} invite scope problem(s)",
+                f"Invites no longer line up with the live library list:\n\n{body}\n\n"
+                f"Members cannot sign up cleanly until the names line up again.\n",
             )
         except Exception:
             log.exception("tier scope alert email failed")
@@ -374,8 +380,14 @@ def resolve_tier_scope(tier: str, *, context: str) -> dict:
     the server (a rename, a disabled library). Issuing the invite anyway would
     hand the member an invite that grants nothing, so the handler raises and
     leaves the Stripe event unmarked for redelivery.
+
+    Rows Wizarr's cache still names the old way are dropped first: Plex rejects
+    an invite carrying a stale name whole, so the member is better off with
+    everything else than with nothing, and the scope check alerts on the drop.
     """
-    access = tiers.resolve_tier_access(tier=tier, libraries=client.list_libraries())
+    libraries = tiers.without_stale(
+        libraries=client.list_libraries(), live=plex.live_sections_or_none())
+    access = tiers.resolve_tier_access(tier=tier, libraries=libraries)
     if not access["library_ids"]:
         log.error("no libraries resolved for %s tier %s; aborting for retry", tier, context)
         raise RuntimeError(f"no libraries resolved for tier {tier!r} on {context!r}")

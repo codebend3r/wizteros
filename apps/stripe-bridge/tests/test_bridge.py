@@ -39,6 +39,8 @@ def bridge(tmp_path, monkeypatch):
     store.init_db(dbp)
     b.client = MagicMock()
     monkeypatch.setattr(b, "send_invite_email", MagicMock())
+    # No plex.tv by default: the library list is trusted as given.
+    monkeypatch.setattr(b.plex, "live_sections_or_none", lambda: None)
     return b
 
 

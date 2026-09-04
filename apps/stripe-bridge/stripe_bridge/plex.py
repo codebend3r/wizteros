@@ -31,6 +31,40 @@ def owned_servers() -> list[dict]:
     ]
 
 
+def live_sections() -> dict[str, dict[str, str]]:
+    """Every owned server's library sections from plex.tv, keyed by server name.
+
+    Each server maps section id to the section's live title. The id is the
+    value Wizarr stores as a library's external_id, and the title is what
+    plexapi resolves an invite's library names against at redemption, so
+    this is the view a stale Wizarr cache has to be checked against.
+    """
+    return {
+        server["name"]: {
+            section.get("id"): section.get("title") or ""
+            for section in _get_xml(f"/api/servers/{server['machine_id']}").iter("Section")
+            if section.get("id")
+        }
+        for server in owned_servers()
+    }
+
+
+def live_sections_or_none() -> dict[str, dict[str, str]] | None:
+    """live_sections(), or None when there is no token or plex.tv cannot answer.
+
+    None means "nothing to check against", never "no libraries": callers keep
+    trusting Wizarr's cache rather than blocking a checkout on a third party.
+    """
+    if not PLEX_TOKEN:
+        return None
+    try:
+        return live_sections()
+    except Exception as exc:
+        log.warning("plex.tv live sections unavailable; trusting wizarr's "
+                    "library cache: %s", exc)
+        return None
+
+
 def shared_access_all() -> dict[str, dict[str, dict]]:
     """Every shared account's plex.tv access, keyed by lowercased email then server.
 

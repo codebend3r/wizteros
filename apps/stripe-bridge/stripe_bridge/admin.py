@@ -641,7 +641,11 @@ def reissue_invite(body: ReissueInviteBody) -> dict:
     if not PUBLIC_INVITE_BASE:
         raise HTTPException(status_code=500, detail="PUBLIC_INVITE_BASE not configured")
     tier = tiers.normalize_tier(body.tier)
-    access = tiers.resolve_tier_access(tier=tier, libraries=client.list_libraries())
+    # Stale cache rows are dropped the same way the checkout path does it: an
+    # invite carrying a name Plex no longer knows is rejected whole.
+    libraries = tiers.without_stale(
+        libraries=client.list_libraries(), live=plex.live_sections_or_none())
+    access = tiers.resolve_tier_access(tier=tier, libraries=libraries)
     if not access["library_ids"]:
         raise HTTPException(status_code=502, detail=f"no libraries resolved for tier {tier}")
     records = client.find_users_by_email(body.email)
