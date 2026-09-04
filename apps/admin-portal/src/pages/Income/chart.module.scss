@@ -1,0 +1,248 @@
+// Chart chrome shared by the growth line and the movements bars: the same
+// recessive grid, the same tooltip box, the same legend the fleet charts wear.
+.chart {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+}
+
+.caption {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+.empty {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+.plotWrap {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+
+  // The SVG is drawn at a measured pixel width, so between mount and the
+  // first measurement it may be wider than this box. Scrolling inside is the
+  // house rule for wide content: the mismatch must never widen the page.
+  overflow-x: auto;
+  padding: var(--space-1) 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+// Horizontal guides only, border-coloured hairlines behind the data ink.
+.grid {
+  stroke: var(--color-border);
+}
+
+.axis {
+  line {
+    stroke: var(--color-border);
+  }
+}
+
+.tickLabel {
+  fill: var(--color-muted);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+// The second line under a month tick, naming that month's outages. Text, so
+// it is read; muted, so the line above it stays the subject.
+.tickNote {
+  fill: var(--color-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+}
+
+// The one direct label on the growth line: the figure at its tip.
+.endLabel {
+  fill: var(--color-text);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+
+.crosshair {
+  stroke: var(--color-muted);
+  stroke-width: 1;
+}
+
+// The hovered month on the bar chart lifts against a wash, so the reader
+// sees which column the tooltip belongs to.
+.hoverBand {
+  fill: var(--color-text);
+  fill-opacity: 0.06;
+}
+
+.baseline {
+  stroke: var(--color-muted);
+}
+
+// Gains and losses share one hue each; the softer step (the tier moves) is
+// the same hue mixed toward the text colour, so it reads paler than the firm
+// one (a member arriving or leaving) and still clears the surface. One opaque
+// value per class, read by the bars, the legend swatch, and the tooltip key
+// alike; identity is always also stated in words beside each of them.
+.gain {
+  --mark-color: var(--color-series-3);
+}
+
+.gainSoft {
+  --mark-color: color-mix(in oklab, var(--color-series-3) 55%, var(--color-text));
+}
+
+.loss {
+  --mark-color: var(--color-series-2);
+}
+
+.lossSoft {
+  --mark-color: color-mix(in oklab, var(--color-series-2) 55%, var(--color-text));
+}
+
+// The growth line's own colour: the brand accent, the one thing on the page
+// allowed to be loud.
+.income {
+  --mark-color: var(--color-accent);
+}
+
+// Recharts measures this box and pins it beside the cursor, clamped to the
+// plot, so it must stay in normal flow.
+.tooltip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  font-size: var(--font-size-xs);
+  pointer-events: none;
+}
+
+.tooltipTitle {
+  color: var(--color-muted);
+}
+
+.tooltipRows {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-0);
+  padding: 0;
+  list-style: none;
+}
+
+// The value leads and the name follows: at the tooltip the reader already
+// chose a month and wants the number.
+.tooltipRow {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.tooltipValue {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.tooltipName {
+  color: var(--color-muted);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  padding: 0;
+  list-style: none;
+  font-size: var(--font-size-sm);
+}
+
+.legendItem {
+  display: grid;
+  align-items: center;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-1);
+}
+
+// A filled square for a bar series, mirroring the mark it stands for.
+.swatch {
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: 2px;
+  background: var(--mark-color, var(--color-muted));
+}
+
+// Holds the swatch column open on a tooltip row that has no series (the net).
+.swatchGap {
+  width: var(--space-2);
+}
+
+// The table twin of both charts, folded until asked for.
+.details {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+}
+
+.summary {
+  justify-self: start;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--color-accent);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+
+  th,
+  td {
+    padding: var(--space-1) var(--space-2);
+    border-block-end: 1px solid var(--color-border);
+    text-align: end;
+    white-space: nowrap;
+  }
+
+  th {
+    color: var(--color-muted);
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  th[scope='row'],
+  td:first-child,
+  th:first-child {
+    text-align: start;
+  }
+
+  tbody tr:last-child td,
+  tbody tr:last-child th {
+    border-block-end: none;
+  }
+}

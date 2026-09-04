@@ -4,9 +4,11 @@ import styles from '@/components/SideMenu/SideMenu.module.scss'
 import { useAuthStore } from '@/stores/authStore'
 import { useMenuStore } from '@/stores/menuStore'
 
+// No Home row: the brand mark in the header is the link to the landing page,
+// and a second copy of it here was one more tab stop before the admin pages.
 export const menuRoutes = [
-  { label: 'Home', path: '/' },
   { label: 'Members', path: '/manage' },
+  { label: 'Income', path: '/income' },
   { label: 'Invite', path: '/invite' },
   { label: 'Email', path: '/email' },
   { label: 'Fleet', path: '/fleet' },
@@ -69,7 +71,6 @@ export const SideMenu = () => {
                   isActive ? `${styles.link} ${styles.linkActive}` : styles.link
                 }
                 to={path}
-                end={path === '/'}
                 onClick={() => setOpen({ open: false })}
               >
                 {label}

@@ -48,21 +48,24 @@ test('marks the current route as active', () => {
     </MemoryRouter>,
   )
   expect(screen.getByRole('link', { name: 'Invite' })).toHaveAttribute('aria-current', 'page')
-  expect(screen.getByRole('link', { name: 'Home' })).not.toHaveAttribute('aria-current')
+  expect(screen.getByRole('link', { name: 'Members' })).not.toHaveAttribute('aria-current')
   // Also pins the scss-modules test loader: without it `styles.link` resolves
   // to String.prototype.link and React drops the className entirely.
   expect(screen.getByRole('link', { name: 'Invite' })).toHaveClass('link', 'linkActive')
-  expect(screen.getByRole('link', { name: 'Home' })).toHaveClass('link')
+  expect(screen.getByRole('link', { name: 'Members' })).toHaveClass('link')
 })
 
-test('home link is only active on exactly /', () => {
+// The brand mark in the header is the way home; a Home row in the drawer was
+// the same link twice, one of them a tab stop away from the page it named.
+test('offers no Home link, since the header brand already goes there', () => {
   openMenu()
   render(
     <MemoryRouter initialEntries={['/manage']}>
       <SideMenu />
     </MemoryRouter>,
   )
-  expect(screen.getByRole('link', { name: 'Home' })).not.toHaveAttribute('aria-current')
+  expect(screen.queryByRole('link', { name: 'Home' })).not.toBeInTheDocument()
+  expect(menuRoutes.map(({ label }) => label)).not.toContain('Home')
 })
 
 test('the header hamburger opens the drawer and a link click closes it', async () => {

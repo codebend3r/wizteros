@@ -1,0 +1,117 @@
+// One card, three bands: the figure, what qualifies it, and the per-tier
+// arithmetic that produces it. Grid gaps do the spacing; nothing carries a
+// margin of its own.
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.label {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.figure {
+  display: grid;
+  align-items: baseline;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-2);
+}
+
+// The one number the page exists for: the body sans at display size, in its
+// proportional figures. Tabular digits would space "121" out like a clock.
+.amount {
+  font-family: var(--font-body);
+  font-size: var(--font-size-figure);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.per {
+  color: var(--color-muted);
+  font-size: var(--font-size-lg);
+}
+
+.qualifiers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  padding: 0;
+  list-style: none;
+  font-size: var(--font-size-md);
+}
+
+.qualifier {
+  color: var(--color-muted);
+}
+
+// The direction is written as a sign in the text; these only underline it,
+// in the same greens and reds the member pages use for shared and missing.
+.up {
+  color: var(--color-state-shared);
+}
+
+.down {
+  color: var(--color-state-not-entitled);
+}
+
+.risk {
+  color: var(--color-state-payment-failed);
+}
+
+// min(100%, 10rem) keeps four tiles from forcing a 320px screen sideways;
+// they stack there instead.
+.tiers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+  gap: var(--space-2);
+  padding: 0;
+  list-style: none;
+}
+
+.tile {
+  display: grid;
+  align-content: start;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-0);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+}
+
+.tileLabel {
+  display: grid;
+  align-items: center;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-1);
+  color: var(--color-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tileFigure {
+  font-family: var(--font-body);
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.tileQualifier {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+}

@@ -51,6 +51,9 @@
   --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
 
   --font-size-hero: clamp(2.5rem, 6vw, 4rem);
+  // The one figure a dashboard leads with (the income page's monthly total):
+  // larger than the landing hero, capped so it never outgrows a phone width.
+  --font-size-figure: clamp(3.5rem, 14vw, 7rem);
   --font-size-xl: 2.25rem;
   --font-size-lg: 1.25rem;
   --font-size-md: 1rem;

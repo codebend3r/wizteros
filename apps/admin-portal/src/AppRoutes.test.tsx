@@ -63,6 +63,44 @@ test('serves the fleet overview at /fleet once past the gate', async () => {
   expect(await screen.findByRole('heading', { level: 1, name: 'Fleet' })).toBeInTheDocument()
 })
 
+// /income is the other lazily-loaded route, for the same charting library.
+test('gates /income behind the Supabase login when signed out', async () => {
+  useAuthStore.setState({ enabled: true, status: 'signed-out' })
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => new Promise(() => {})),
+  )
+  render(
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      <MemoryRouter initialEntries={['/income']}>
+        <AppRoutes />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+  expect(await screen.findByRole('button', { name: 'Sign in' })).toBeInTheDocument()
+  expect(screen.queryByRole('heading', { level: 1, name: 'Income' })).toBeNull()
+})
+
+test('serves the income page at /income once past the gate', async () => {
+  useAuthStore.setState({ enabled: false })
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => new Promise(() => {})),
+  )
+  render(
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      <MemoryRouter initialEntries={['/income']}>
+        <AppRoutes />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+  expect(await screen.findByRole('heading', { level: 1, name: 'Income' })).toBeInTheDocument()
+})
+
 test('serves the single login page at /login', () => {
   useAuthStore.setState({ enabled: true, status: 'signed-out' })
   render(

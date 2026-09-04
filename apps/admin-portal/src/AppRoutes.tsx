@@ -20,6 +20,12 @@ const Fleet = lazy(async () => {
   return { default: module.Fleet }
 })
 
+// Same reason, same library: the income page draws two charts.
+const Income = lazy(async () => {
+  const module = await import('@/pages/Income/Income')
+  return { default: module.Income }
+})
+
 export const AppRoutes = () => (
   <Routes>
     <Route path="/" element={<App />} />
@@ -33,6 +39,14 @@ export const AppRoutes = () => (
         // the whole page rather than for a panel inside it
         <Suspense fallback={<p>Loading the fleet monitor.</p>}>
           <Fleet />
+        </Suspense>
+      }
+    />
+    <Route
+      path="/income"
+      element={
+        <Suspense fallback={<p>Loading the income page.</p>}>
+          <Income />
         </Suspense>
       }
     />
