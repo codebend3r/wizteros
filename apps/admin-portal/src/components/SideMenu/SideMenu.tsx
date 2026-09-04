@@ -19,12 +19,22 @@ export const SideMenu = () => {
   const status = useAuthStore((state) => state.status)
   const signOut = useAuthStore((state) => state.signOut)
   const navRef = useRef<HTMLElement>(null)
+  // Seeded with the state the store rehydrated to, so a reload that restores
+  // an open drawer lands the caret wherever the page wants it rather than
+  // yanking focus into a menu nobody just asked for.
+  const wasOpen = useRef(open)
+
+  useEffect(() => {
+    if (open && !wasOpen.current) {
+      navRef.current?.focus()
+    }
+    wasOpen.current = open
+  }, [open])
 
   useEffect(() => {
     if (!open) {
       return
     }
-    navRef.current?.focus()
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setOpen({ open: false })
@@ -36,22 +46,21 @@ export const SideMenu = () => {
     }
   }, [open, setOpen])
 
+  // Collapsed is the default at every width, so a closed menu leaves nothing
+  // behind: no empty column, no hidden links for the keyboard to walk into.
+  if (!open) {
+    return null
+  }
+
   return (
     <aside className={styles.sideMenu}>
-      {open && (
-        <button
-          className={styles.backdrop}
-          type="button"
-          aria-label="Close menu"
-          onClick={() => setOpen({ open: false })}
-        />
-      )}
-      <nav
-        ref={navRef}
-        tabIndex={-1}
-        className={open ? `${styles.menu} ${styles.menuOpen}` : styles.menu}
-        aria-label="Sections"
-      >
+      <button
+        className={styles.backdrop}
+        type="button"
+        aria-label="Close menu"
+        onClick={() => setOpen({ open: false })}
+      />
+      <nav ref={navRef} tabIndex={-1} className={styles.menu} aria-label="Sections">
         <ul className={styles.list}>
           {menuRoutes.map(({ label, path }) => (
             <li className={styles.item} key={path}>

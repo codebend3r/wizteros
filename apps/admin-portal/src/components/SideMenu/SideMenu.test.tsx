@@ -1,13 +1,33 @@
 import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import userEvent from '@testing-library/user-event'
-import { expect, test, vi } from '@/test/vi'
+import { afterEach, expect, test, vi } from '@/test/vi'
 import { Header } from '@/components/Header/Header'
 import { menuRoutes, SideMenu } from '@/components/SideMenu/SideMenu'
 import { useAuthStore } from '@/stores/authStore'
 import { useMenuStore } from '@/stores/menuStore'
 
+// The store is a module singleton that now writes through to localStorage, so
+// every test hands back the collapsed default it started from.
+afterEach(() => {
+  useMenuStore.setState({ open: false })
+  localStorage.removeItem('wz-menu')
+})
+
+const openMenu = () => useMenuStore.setState({ open: true })
+
+test('renders nothing while collapsed, at any width', () => {
+  render(
+    <MemoryRouter initialEntries={['/manage']}>
+      <SideMenu />
+    </MemoryRouter>,
+  )
+  expect(screen.queryByRole('navigation', { name: 'Sections' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('link', { name: 'Members' })).not.toBeInTheDocument()
+})
+
 test('lists a link for every route', () => {
+  openMenu()
   render(
     <MemoryRouter initialEntries={['/manage']}>
       <SideMenu />
@@ -21,6 +41,7 @@ test('lists a link for every route', () => {
 })
 
 test('marks the current route as active', () => {
+  openMenu()
   render(
     <MemoryRouter initialEntries={['/invite']}>
       <SideMenu />
@@ -35,6 +56,7 @@ test('marks the current route as active', () => {
 })
 
 test('home link is only active on exactly /', () => {
+  openMenu()
   render(
     <MemoryRouter initialEntries={['/manage']}>
       <SideMenu />
@@ -44,7 +66,6 @@ test('home link is only active on exactly /', () => {
 })
 
 test('the header hamburger opens the drawer and a link click closes it', async () => {
-  useMenuStore.setState({ open: false })
   render(
     <MemoryRouter initialEntries={['/']}>
       <Header brandName="Westeroz" />
@@ -53,15 +74,53 @@ test('the header hamburger opens the drawer and a link click closes it', async (
   )
   const toggle = screen.getByRole('button', { name: 'Menu' })
   expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.queryByRole('navigation', { name: 'Sections' })).not.toBeInTheDocument()
   await userEvent.click(toggle)
   expect(toggle).toHaveAttribute('aria-expanded', 'true')
   const drawer = screen.getByRole('navigation', { name: 'Sections' })
   await userEvent.click(within(drawer).getByRole('link', { name: 'Members' }))
   expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.queryByRole('navigation', { name: 'Sections' })).not.toBeInTheDocument()
+})
+
+test('the header hamburger closes a drawer it already opened', async () => {
+  render(
+    <MemoryRouter initialEntries={['/']}>
+      <Header brandName="Westeroz" />
+      <SideMenu />
+    </MemoryRouter>,
+  )
+  const toggle = screen.getByRole('button', { name: 'Menu' })
+  await userEvent.click(toggle)
+  await userEvent.click(toggle)
+  expect(useMenuStore.getState().open).toBe(false)
+})
+
+test('opening the drawer moves focus into it', async () => {
+  render(
+    <MemoryRouter initialEntries={['/']}>
+      <Header brandName="Westeroz" />
+      <SideMenu />
+    </MemoryRouter>,
+  )
+  await userEvent.click(screen.getByRole('button', { name: 'Menu' }))
+  expect(screen.getByRole('navigation', { name: 'Sections' })).toHaveFocus()
+})
+
+test('a drawer restored from storage leaves focus where the page put it', () => {
+  openMenu()
+  render(
+    <MemoryRouter initialEntries={['/']}>
+      <SideMenu />
+    </MemoryRouter>,
+  )
+  // Persisted open is the state of a fresh load, not a fresh click: nothing
+  // asked for the menu, so nothing should steal the caret into it.
+  expect(screen.getByRole('navigation', { name: 'Sections' })).not.toHaveFocus()
 })
 
 test('clicking away from the drawer closes it', async () => {
-  useMenuStore.setState({ open: true })
+  openMenu()
   render(
     <MemoryRouter initialEntries={['/']}>
       <SideMenu />
@@ -72,7 +131,7 @@ test('clicking away from the drawer closes it', async () => {
 })
 
 test('Escape closes the drawer', async () => {
-  useMenuStore.setState({ open: true })
+  openMenu()
   render(
     <MemoryRouter initialEntries={['/']}>
       <SideMenu />
@@ -83,6 +142,7 @@ test('Escape closes the drawer', async () => {
 })
 
 test('hides the sign-out button while signed out', () => {
+  openMenu()
   render(
     <MemoryRouter initialEntries={['/manage']}>
       <SideMenu />
@@ -92,6 +152,7 @@ test('hides the sign-out button while signed out', () => {
 })
 
 test('shows the sign-out button while signed in and signs out on click', async () => {
+  openMenu()
   const signOut = vi.fn(async () => {})
   useAuthStore.setState({ status: 'signed-in', email: 'cj.rivas.dev@gmail.com', signOut })
   render(

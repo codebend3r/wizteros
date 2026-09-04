@@ -4,6 +4,7 @@ import { Footer } from '@/components/Footer/Footer'
 import { Header } from '@/components/Header/Header'
 import { SideMenu } from '@/components/SideMenu/SideMenu'
 import { siteConfig } from '@/site.config'
+import { useMenuStore } from '@/stores/menuStore'
 import styles from '@/components/AdminLayout/AdminLayout.module.scss'
 
 type AdminLayoutProps = {
@@ -17,10 +18,11 @@ type AdminLayoutProps = {
 export const AdminLayout = ({ children, showHardRefresh = true }: AdminLayoutProps) => {
   const queryClient = useQueryClient()
   const fetching = useIsFetching() > 0
+  const menuOpen = useMenuStore((state) => state.open)
   return (
     <div className={styles.layout}>
       <Header brandName={siteConfig.brandName} />
-      <div className={styles.body}>
+      <div className={menuOpen ? `${styles.body} ${styles.bodyOpen}` : styles.body}>
         <SideMenu />
         <div className={styles.content}>{children}</div>
       </div>

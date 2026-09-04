@@ -1,11 +1,14 @@
+// Only ever rendered while open, so there is no collapsed state to style. On
+// a wide window it takes the layout's first column; under the breakpoint it
+// turns into the overlay container for a drawer that floats over the page.
 .sideMenu {
   display: grid;
   gap: var(--space-2);
   align-content: start;
 }
 
-// Click-away target behind the mobile drawer; desktop shows the menu
-// persistently, so it only ever paints under the 48rem breakpoint.
+// Click-away target behind the mobile drawer. A wide window keeps the menu in
+// the flow beside the page, so nothing is covered and nothing needs dismissing.
 .backdrop {
   display: none;
 }
@@ -62,11 +65,18 @@
 }
 
 @media (max-width: 48rem) {
-  .backdrop {
-    display: block;
+  // Out of the layout grid entirely: a phone has no room for a column beside
+  // the page, so the whole aside becomes the overlay the drawer sits in.
+  .sideMenu {
     position: fixed;
     inset: 0;
     z-index: 15;
+  }
+
+  .backdrop {
+    display: block;
+    position: absolute;
+    inset: 0;
     padding: 0;
     border: none;
     background: rgb(0 0 0 / 40%);
@@ -74,18 +84,14 @@
   }
 
   .menu {
-    display: none;
-  }
-
-  .menuOpen {
-    display: block;
-    position: fixed;
+    position: absolute;
     top: 0;
     bottom: 0;
     left: 0;
     z-index: 20;
     overflow-y: auto;
     width: 16rem;
+    max-width: 80vw;
     padding: var(--space-3);
     border-right: 1px solid var(--color-border);
     background: var(--color-surface);

@@ -6,13 +6,19 @@
   min-height: 100vh;
 }
 
-// Sidebar + content split for the middle row; single column on mobile where
-// the sidebar collapses into SideMenu's hamburger drawer.
+// The middle row. Collapsed is the default at every width, so the page owns
+// the full column until the hamburger opens the menu.
 .body {
   display: grid;
-  grid-template-columns: 14rem 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
   padding: var(--space-3);
+}
+
+// An open menu takes a column beside the page rather than covering it, which
+// is what makes leaving it open worth persisting on a wide window.
+.bodyOpen {
+  grid-template-columns: 14rem minmax(0, 1fr);
 }
 
 .content {
@@ -22,10 +28,15 @@
 
 @media (max-width: 48rem) {
   .body {
-    grid-template-columns: 1fr;
     // Phones need every horizontal pixel; the pages drop their own inline
     // padding at this breakpoint too, leaving this as the only gutter.
     padding: var(--space-2) var(--space-1);
+  }
+
+  // No room for a column here: the drawer floats over the page instead, and
+  // SideMenu takes itself out of this grid to do it.
+  .bodyOpen {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
