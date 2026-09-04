@@ -18,8 +18,8 @@ import styles from '@/pages/Fleet/Fleet.module.scss'
 // The chart queries' cadence is user-set through the slider instead: polling
 // faster than a tick buys display latency (a fresh tick shows within the
 // chosen interval), never extra data. It does not set a chart's own rate -
-// each plots a point every second whatever the slider says, holding the last
-// reading in between.
+// the frame advances once a second whatever the slider says, carrying each
+// host's newest reading onto the present in between.
 const REFETCH_MS = 30_000
 const INCIDENT_HOURS = 24
 
@@ -173,9 +173,10 @@ const FleetInner = () => {
             <ChartTabs kinds={CHART_KINDS} active={chartKind} onSelect={setChartKind}>
               {!!chart.data && (
                 <MetricChart
-                  // remounted per kind on purpose: the per-second trail belongs
-                  // to the chart it was collected for, and carrying a CPU trail
-                  // into the network tab would draw percentages as bytes
+                  // remounted per kind on purpose: percentages and throughputs
+                  // share no scale, and Recharts' own per-chart state - the
+                  // active tooltip index, the keyboard cursor - would otherwise
+                  // point into the new tab at a moment picked in the old one
                   key={chartKind}
                   hosts={chart.data.hosts}
                   windowMinutes={chart.data.window_minutes}

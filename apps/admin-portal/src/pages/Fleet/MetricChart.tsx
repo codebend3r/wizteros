@@ -29,13 +29,16 @@ type HostPlot = {
   readonly seriesIndex: number
   readonly points: readonly PlotPoint[]
   readonly byTick: ReadonlyMap<number, number>
-}
+  /** How long this host's newest reading may be carried forward, read off the
+      spacing of the readings themselves and carried from there.
 
-/** One second of the drawn line: every host's newest reading carried forward
-    to `at`. */
-type HeldSample = {
-  readonly at: number
-  readonly values: ReadonlyMap<string, number>
+      Measured once, on the way in, where the series is nothing but readings.
+      Re-deriving it downstream measured a series that already carried the
+      drawn present: those points sit a second apart, so the inferred cadence
+      collapsed to a second, every real interval between readings was
+      reclassified as a gap, and the line broke into points too sparse to draw.
+      The chart went blank a few seconds after it painted. */
+  readonly holdLimitMs: number | null
 }
 
 /** One row of the dataset Recharts draws: a moment, and every host's value at
@@ -61,34 +64,12 @@ const FALLBACK_WIDTH = 280
 // monitor cannot silently turn real gaps into bridges.
 const GAP_FACTOR = 2.5
 
-// The line advances one point per second, whatever cadence the page polls the
-// monitor at. The collector reads each host far more slowly than that, so the
-// seconds between readings carry the last value forward and the line reads as
-// a stair-step instead of freezing until the next reading lands.
-const SAMPLE_EVERY_MS = 1000
-
-// How much of the trail is kept. It exists to show the seconds between
-// readings, and only at zooms where a second is more than a rounding error: an
-// hour of it already outruns what a week-wide frame can resolve to a pixel.
-const HELD_TRAIL_MS = 3_600_000
-
-const toPlots = (hosts: readonly MetricHostSeries[]): readonly HostPlot[] =>
-  hosts.map((host, seriesIndex) => {
-    const points = host.points
-      .map((point) => ({ at: new Date(point.at).getTime(), value: point.value }))
-      .filter((point) => Number.isFinite(point.at))
-    return {
-      name: host.name,
-      seriesIndex,
-      points,
-      byTick: new Map(points.map((point) => [point.at, point.value])),
-    }
-  })
-
-const unionTicks = (plots: readonly HostPlot[]): readonly number[] =>
-  [...new Set(plots.flatMap((plot) => plot.points.map((point) => point.at)))].sort(
-    (first, second) => first - second,
-  )
+// The frame advances once a second, whatever cadence the page polls the monitor
+// at, and each host's newest reading is carried onto the new right edge with
+// it. The collector reads each host far more slowly than that, so the tip of
+// every line keeps moving between readings instead of freezing until the next
+// one lands.
+const FRAME_EVERY_MS = 1000
 
 /** The typical spacing between readings, or null below two readings. */
 const medianDelta = (ticks: readonly number[]): number | null => {
@@ -106,6 +87,25 @@ const holdLimit = (points: readonly PlotPoint[]): number | null => {
   return median === null ? null : median * GAP_FACTOR
 }
 
+const toPlots = (hosts: readonly MetricHostSeries[]): readonly HostPlot[] =>
+  hosts.map((host, seriesIndex) => {
+    const points = host.points
+      .map((point) => ({ at: new Date(point.at).getTime(), value: point.value }))
+      .filter((point) => Number.isFinite(point.at))
+    return {
+      name: host.name,
+      seriesIndex,
+      points,
+      byTick: new Map(points.map((point) => [point.at, point.value])),
+      holdLimitMs: holdLimit(points),
+    }
+  })
+
+const unionTicks = (plots: readonly HostPlot[]): readonly number[] =>
+  [...new Set(plots.flatMap((plot) => plot.points.map((point) => point.at)))].sort(
+    (first, second) => first - second,
+  )
+
 /** How long the chart may go without a reading before the silence is news.
  *
  * The most patient host's own hold limit, so the readout appears exactly when
@@ -113,47 +113,37 @@ const holdLimit = (points: readonly PlotPoint[]): number | null => {
  * anywhere, where there is no observed cadence to be late against.
  */
 const stallLimit = (plots: readonly HostPlot[]): number | null => {
-  const limits = plots.flatMap((plot) => {
-    const limit = holdLimit(plot.points)
-    return limit === null ? [] : [limit]
-  })
+  const limits = plots.flatMap((plot) => (plot.holdLimitMs === null ? [] : [plot.holdLimitMs]))
   return limits.length > 0 ? Math.max(...limits) : null
 }
 
-/** One second's sample, or null when no host has a reading fresh enough to
-    carry. A host whose newest reading has already outlived its hold limit is
-    left out, so a collector that stopped ends the line rather than extending a
-    flat one nothing observed. */
-const heldAt = ({ plots, at }: { plots: readonly HostPlot[]; at: number }): HeldSample | null => {
-  const values = plots.flatMap((plot) => {
-    const newest = plot.points[plot.points.length - 1]
-    const limit = holdLimit(plot.points)
-    return !newest || limit === null || at - newest.at > limit
-      ? []
-      : [[plot.name, newest.value] as const]
-  })
-  return values.length > 0 ? { at, values: new Map(values) } : null
+/** One host's newest reading carried onto the present, or null when there is
+ * nothing fresh enough to carry.
+ *
+ * One point, at the frame's own right edge, rather than a trail of them: what
+ * the line owes the reader is a tip that keeps moving between readings, and a
+ * point per second bought nothing beyond that except a series that grew for as
+ * long as the tab stayed open. A host whose newest reading has already outlived
+ * its hold limit is left out, so a collector that stopped ends the line rather
+ * than extending a flat one nothing observed.
+ */
+const heldPoint = ({ plot, at }: { plot: HostPlot; at: number }): PlotPoint | null => {
+  const newest = plot.points[plot.points.length - 1]
+  if (newest === undefined || plot.holdLimitMs === null) return null
+  // strictly past the newest reading: a hold stands in for a reading that has
+  // not arrived and must never displace one that has
+  return at > newest.at && at - newest.at <= plot.holdLimitMs ? { at, value: newest.value } : null
 }
 
-/** The readings plus the held samples, as one series per host.
+/** The readings with the present drawn onto the end of each host's line.
  *
- * A real reading always wins the instant it lands on: the hold stands in for a
- * reading that has not arrived, and must never displace one that has.
+ * `byTick` is left alone on purpose: it answers what was observed, and the
+ * tooltip reads it. The carried point is a drawing device, not an observation.
  */
-const withHeld = (
-  plots: readonly HostPlot[],
-  samples: readonly HeldSample[],
-): readonly HostPlot[] =>
+const withHeld = ({ plots, at }: { plots: readonly HostPlot[]; at: number }): readonly HostPlot[] =>
   plots.map((plot) => {
-    const held = samples.flatMap((sample) => {
-      const value = sample.values.get(plot.name)
-      return value === undefined ? [] : [{ at: sample.at, value }]
-    })
-    const byTick = new Map([...held, ...plot.points].map((point) => [point.at, point.value]))
-    const points = [...byTick]
-      .sort(([first], [second]) => first - second)
-      .map(([at, value]) => ({ at, value }))
-    return { ...plot, points, byTick }
+    const held = heldPoint({ plot, at })
+    return held === null ? plot : { ...plot, points: [...plot.points, held] }
   })
 
 /** One host's value at every moment in `times`: carried forward between its own
@@ -167,11 +157,12 @@ const withHeld = (
 const carryForward = ({
   points,
   times,
+  limit,
 }: {
   points: readonly PlotPoint[]
   times: readonly number[]
+  limit: number | null
 }): readonly (number | null)[] => {
-  const limit = holdLimit(points)
   let cursor = 0
   let carried: PlotPoint | undefined
   return times.map((at) => {
@@ -200,7 +191,7 @@ const carryForward = ({
  */
 const gapBreaks = (plots: readonly HostPlot[]): readonly number[] =>
   plots.flatMap((plot) => {
-    const limit = holdLimit(plot.points)
+    const limit = plot.holdLimitMs
     return limit === null
       ? []
       : plot.points.flatMap((point, index) => {
@@ -225,7 +216,9 @@ const toRows = (plots: readonly HostPlot[]): readonly ChartRow[] => {
   const times = [...new Set([...unionTicks(plots), ...gapBreaks(plots)])].sort(
     (first, second) => first - second,
   )
-  const columns = plots.map((plot) => carryForward({ points: plot.points, times }))
+  const columns = plots.map((plot) =>
+    carryForward({ points: plot.points, times, limit: plot.holdLimitMs }),
+  )
   /** Every host's column at one moment, keyed alongside the timestamp itself. */
   const entriesAt = (at: number, index: number): readonly (readonly [string, number | null])[] => [
     [AT_KEY, at],
@@ -346,56 +339,83 @@ const useMeasuredWidth = (): { ref: RefObject<HTMLDivElement | null>; width: num
   return { ref, width }
 }
 
-type Frame = {
-  /** The frame's right edge. */
-  readonly nowMs: number
-  readonly samples: readonly HeldSample[]
+/** The moving present: the frame's right edge, and the moment every line's tip
+ * is carried to.
+ *
+ * One number from one timer, which is the whole point. Read from two clocks
+ * they raced: a tip stamped a hair past the right edge the other had just set
+ * was clipped straight back off, and the line sat a second behind the present
+ * for as long as the page was open.
+ *
+ * The timer owns the cadence and nothing else does, so it survives a refetch
+ * untouched: keying it on the payload would restart it on every poll and shift
+ * its phase, and the chart would advance at the poll rate again by the back
+ * door.
+ */
+const useNow = (now: () => number): number => {
+  const [nowMs, setNowMs] = useState(now)
+  useEffect(() => {
+    const timer = setInterval(() => setNowMs(now()), FRAME_EVERY_MS)
+    return () => clearInterval(timer)
+  }, [now])
+  return nowMs
 }
 
-/** The moving present and the per-second trail drawn up to it.
+/** Everything the frame [nowMs - span, nowMs] draws. */
+type DrawnFrame = {
+  /** Mutable, because Recharts takes its data that way, and built here so the
+      render does not have to copy it back out of a readonly one every pass. */
+  readonly rows: ChartRow[]
+  /** The lines as drawn: readings plus each host's carried present. */
+  readonly lines: readonly HostPlot[]
+  /** The same hosts with observations only, which is what the legend names and
+      the freshness readout counts. A carried point is not a reading. */
+  readonly readings: readonly HostPlot[]
+  readonly ticks: readonly number[]
+  readonly scale: MetricScale
+}
+
+/** The frame, derived in one pass and cached against the moment it draws.
  *
- * One timer stamps both, which is the whole reason they live together. Read
- * from two intervals they raced: the newest sample was stamped a hair past the
- * right edge the other timer had just set, so the frame clipped it and the
- * line's tip sat a second behind the present for as long as the page was open.
- *
- * The timer owns the cadence and the payload only supplies the values, which is
- * why the plots are read back through a ref: keying the interval on them would
- * restart it on every refetch and shift the phase, so the chart would advance
- * at the poll rate again by the back door.
+ * Once a second, when the frame actually slides - not once a render. The page
+ * around this chart re-renders on its own polling, on a resize and on every
+ * refetch that answers with what it already had, and rebuilding a few hundred
+ * rows, a peak and a scale for a frame that has not moved is work nobody can
+ * see.
  */
-const useFrame = ({
+const drawFrame = ({
   plots,
-  windowMs,
-  now,
+  nowMs,
+  span,
+  unit,
 }: {
   plots: readonly HostPlot[]
-  windowMs: number
-  now: () => number
-}): Frame => {
-  const [frame, setFrame] = useState<Frame>(() => ({ nowMs: now(), samples: [] }))
-  const latest = useRef(plots)
-  useEffect(() => {
-    latest.current = plots
-  }, [plots])
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      const at = now()
-      const sample = heldAt({ plots: latest.current, at })
-      setFrame((previous) => {
-        // trimmed here as well as at draw time, so a tab left open on a wide
-        // range holds a bounded trail rather than a week of seconds
-        const kept = previous.samples.filter(
-          (entry) => entry.at >= at - Math.min(windowMs, HELD_TRAIL_MS),
-        )
-        return { nowMs: at, samples: sample === null ? kept : [...kept, sample] }
-      })
-    }, SAMPLE_EVERY_MS)
-    return () => clearInterval(timer)
-  }, [now, windowMs])
-
-  return frame
+  nowMs: number
+  span: number
+  unit: MetricUnit
+}): DrawnFrame => {
+  // The drawn frame is [now - window, now]: a reading that ages past the window
+  // slides off the left edge, and the space between the newest reading and the
+  // right edge is the honest rendering of "nothing this recent yet".
+  const first = nowMs - span
+  const clipToFrame = (plot: HostPlot): HostPlot => ({
+    ...plot,
+    points: plot.points.filter((point) => point.at >= first && point.at <= nowMs),
+  })
+  const lines = withHeld({ plots, at: nowMs }).map(clipToFrame)
+  // The axis is sized from what is on screen, not from the whole payload: a
+  // spike that has already slid off the left edge must not keep the ceiling
+  // high over a chart that no longer shows it. A fixed-scale unit ignores the
+  // peak entirely.
+  const peak = Math.max(0, ...lines.flatMap((plot) => plot.points.map((point) => point.value)))
+  const readings = plots.map(clipToFrame)
+  return {
+    rows: [...toRows(lines)],
+    lines,
+    readings,
+    ticks: unionTicks(readings),
+    scale: metricScale({ unit, peak }),
+  }
 }
 
 // Module-level so the default is one stable reference: an inline default would
@@ -468,47 +488,21 @@ export const MetricChart = ({
 
   const plots = useMemo(() => toPlots(hosts), [hosts])
   const span = windowMinutes * 60_000
-  // The present and the trail drawn up to it advance together, once a second.
-  const { nowMs, samples } = useFrame({ plots, windowMs: span, now })
-  const drawn = useMemo(() => withHeld(plots, samples), [plots, samples])
+  const nowMs = useNow(now)
+  const {
+    rows,
+    lines: visiblePlots,
+    readings: visibleReadings,
+    ticks,
+    scale,
+  } = useMemo(() => drawFrame({ plots, nowMs, span, unit }), [plots, nowMs, span, unit])
 
-  // The drawn frame is [now - window, now]: a reading that ages past the window
-  // slides off the left edge, and the space between the newest reading and the
-  // right edge is the honest rendering of "nothing this recent yet".
   const first = nowMs - span
-  const inFrame = (point: PlotPoint): boolean => point.at >= first && point.at <= nowMs
-  /** The same host with only the readings the current frame covers. */
-  const clipToFrame = (plot: HostPlot): HostPlot => ({
-    name: plot.name,
-    seriesIndex: plot.seriesIndex,
-    byTick: plot.byTick,
-    points: plot.points.filter(inFrame),
-  })
-  const visiblePlots = drawn.map(clipToFrame)
-  const visibleReadings = plots.map(clipToFrame)
-
   // Labelled at quarter-hour boundaries rather than wherever the domain
   // divides, so the ticks name round times and stay put while the frame slides
   // under them. The spacing widens with the range and narrows with the box.
   const step = tickStep({ span, width })
   const quarterHours = axisTicks({ first, last: nowMs, step })
-
-  const rows = toRows(visiblePlots)
-
-  // The axis is sized from what is on screen, not from the whole payload: a
-  // spike that has already slid off the left edge must not keep the ceiling
-  // high over a chart that no longer shows it. A fixed-scale unit ignores the
-  // peak entirely.
-  const peak = Math.max(
-    0,
-    ...visiblePlots.flatMap((plot) => plot.points.map((point) => point.value)),
-  )
-  const scale = metricScale({ unit, peak })
-
-  // Everything that reports what was observed - the freshness readout, the
-  // table - counts readings only. The held samples are one second apart by
-  // construction and would report a cadence nothing collected at.
-  const ticks = unionTicks(visibleReadings)
 
   // Only worth saying once the collector is late. Readings land every few
   // seconds, so an always-on readout spends its life reporting the ordinary lag
@@ -542,7 +536,7 @@ export const MetricChart = ({
           <LineChart
             width={width}
             height={CHART_HEIGHT}
-            data={[...rows]}
+            data={rows}
             margin={MARGIN}
             // Recharts' own keyboard layer: the chart takes a tab stop and the
             // arrow keys walk it, announcing each moment through the tooltip.

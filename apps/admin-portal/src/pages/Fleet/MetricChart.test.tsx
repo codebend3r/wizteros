@@ -62,6 +62,12 @@ const curves = (container: HTMLElement): readonly string[] =>
 
 const segments = (d: string): number => (d.match(/M/g) ?? []).length
 
+/** The last coordinate a path draws, which is where the line's tip sits. */
+const tip = (d: string): string => {
+  const pairs = [...d.matchAll(/-?[\d.]+,-?[\d.]+/g)]
+  return pairs[pairs.length - 1]?.[0] ?? ''
+}
+
 test('MetricChart legend names every host, including one with nothing to draw', () => {
   renderChart([meleys, series({ name: 'caraxes', points: [] })])
 
@@ -141,9 +147,46 @@ test('MetricChart says nothing about freshness while the readings keep coming', 
   expect(screen.queryByText(/Newest reading/)).toBeNull()
 })
 
-test('MetricChart carries the newest reading forward a point per second', async () => {
-  // a present 10s past the last reading, well inside the 30s cadence, so the
-  // value is held rather than dropped as stale
+test('MetricChart carries the newest reading up to the present', async () => {
+  // A present 10s past the newest reading, well inside the 30s cadence: the
+  // line has to reach the right edge, or every host reads as one that fell
+  // silent whenever the collector is mid-cycle.
+  const held = render(
+    <MetricChart
+      hosts={[meleys]}
+      windowMinutes={60}
+      unit="percent"
+      copy={METRIC_COPY.cpu}
+      now={() => T0 + 70_000}
+    />,
+  )
+  // the same frame with that present actually observed, which is the geometry
+  // the carried point has to land on: asserted against Recharts' own scale
+  // rather than against a pixel written out here
+  const observed = render(
+    <MetricChart
+      hosts={[
+        series({
+          name: 'meleys',
+          points: [
+            [0, 20],
+            [30, 25],
+            [60, 30],
+            [70, 30],
+          ],
+        }),
+      ]}
+      windowMinutes={60}
+      unit="percent"
+      copy={METRIC_COPY.cpu}
+      now={() => T0 + 70_000}
+    />,
+  )
+
+  expect(tip(curves(held.container)[0] ?? '')).toBe(tip(curves(observed.container)[0] ?? ''))
+})
+
+test('MetricChart redraws on its own timer, not on a refetch', async () => {
   let offset = 0
   const { container } = render(
     <MetricChart
@@ -155,16 +198,40 @@ test('MetricChart carries the newest reading forward a point per second', async 
     />,
   )
 
-  const curveCount = (): number => ((curves(container)[0] ?? '').match(/C/g) ?? []).length
-  const before = curveCount()
+  const drawn = (): string => curves(container)[0] ?? ''
+  const before = drawn()
 
-  // the trail advances on its own timer, not on a refetch: nothing about this
-  // render changes except the clock
+  // nothing about this render changes except the clock, and the frame slides
+  // under the line anyway
   offset = 1000
-  await waitFor(() => expect(curveCount()).toBeGreaterThan(before), { timeout: 4000 })
-  const afterOne = curveCount()
-  offset = 2000
-  await waitFor(() => expect(curveCount()).toBeGreaterThan(afterOne), { timeout: 4000 })
+  await waitFor(() => expect(drawn()).not.toBe(before), { timeout: 4000 })
+})
+
+test('MetricChart keeps its line whole as the held seconds pile up', async () => {
+  // The seconds carried between readings are a drawing device, not readings.
+  // Reading the collector's cadence back off a series that already holds them
+  // measures the drawing device: the cadence collapses to a second, every real
+  // 30s interval is reclassified as a gap, and the line shatters into points
+  // too sparse to draw. The chart went blank a few seconds after it painted.
+  const started = Date.now()
+  const { container } = render(
+    <MetricChart
+      hosts={[meleys]}
+      windowMinutes={60}
+      unit="percent"
+      copy={METRIC_COPY.cpu}
+      // 10s past the newest reading against a 30s cadence, advancing with the
+      // real clock so each sampling tick stamps a distinct second, as in a browser
+      now={() => T0 + 70_000 + (Date.now() - started)}
+    />,
+  )
+  expect(segments(curves(container)[0] ?? '')).toBe(1)
+
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 3200))
+  })
+
+  expect(segments(curves(container)[0] ?? '')).toBe(1)
 })
 
 test('MetricChart holds nothing once the newest reading has outlived the cadence', async () => {
