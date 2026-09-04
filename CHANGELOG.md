@@ -12,6 +12,21 @@ the version recorded in the tree at that commit. That was not always true; the
 history was rewritten on 2026-08-08 to make it so. See
 [The 2026-08-08 history rewrite](#the-2026-08-08-history-rewrite).
 
+## v0.3.5 (2026-09-04)
+
+- Add an income analytics dashboard to the admin portal, with current monthly
+  contributions by tier, month-over-month growth and movement charts, an event
+  timeline, and monthly summaries derived from member and action history
+- Expose the complete member action log through the bridge admin API so the
+  income view can reconstruct signups, tier changes, cancellations and outages
+- Add durable member bans: disable access immediately, schedule Stripe billing
+  cancellation, block later checkouts, invites, renewals and reconciliation,
+  and surface the state and action throughout the admin portal
+- Keep the member-table sort in the URL, default the list to lifecycle status,
+  and leave alternate billing identities to the member detail page
+- Share responsive chart measurement and scale helpers between the fleet and
+  income views, with regression coverage across the portal and bridge
+
 ## v0.3.4 (2026-09-04)
 
 - Drop stale Wizarr library names from every invite scope: Wizarr shares by
