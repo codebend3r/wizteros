@@ -12,6 +12,23 @@ the version recorded in the tree at that commit. That was not always true; the
 history was rewritten on 2026-08-08 to make it so. See
 [The 2026-08-08 history rewrite](#the-2026-08-08-history-rewrite).
 
+## v0.3.4 (2026-09-04)
+
+- Drop stale Wizarr library names from every invite scope: Wizarr shares by
+  library name from a cache only a manual scan refreshes, and a Plex rename
+  ("33. Formula 1" to "22. Formula 1" on Meleys) made Plex reject every pending
+  bronze, silver and gold invite whole. The bridge now reads each server's live
+  sections from plex.tv, drops rows whose name no longer matches on the
+  checkout, admin reissue and baseline paths, and names the stale rows in the
+  hourly scope check and its alert; plex.tv being down trusts the cache, and
+  retired servers are ignored
+- Collapse the admin side menu behind a hamburger at every width, rendered only
+  while open so a collapsed menu leaves no empty column and no hidden links in
+  the tab order; the open flag persists under `wz-menu`
+- Stop the fleet chart blanking a few seconds in: read each host's cadence once
+  off the readings and carry one point onto the present, so an hour-open tab
+  draws 121 rows instead of 3601
+
 ## v0.3.3 (2026-09-03)
 
 - Recover access after a failed payment: `invoice.payment_failed` and
