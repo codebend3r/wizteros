@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import type { Member, PaidTier } from '@/lib/adminApi'
 import { isPaidTier, PAID_TIERS, TIER_LABELS } from '@/lib/inviteRules'
 import { STATUS_EMOJI, deriveStatus, type MemberStatus } from '@/lib/memberStatus'
@@ -12,6 +12,28 @@ const PAGE_SIZES = [10, 25, 50, 100, 250] as const
 type SortColumn = 'member' | 'email' | 'status'
 type SortDirection = 'asc' | 'desc'
 type SortState = { column: SortColumn; direction: SortDirection }
+
+// The sort lives in the query string next to the search term, so a refresh,
+// a bookmark, or a pasted link lands on the same order the sender saw.
+const SORT_PARAM = 'sort'
+const DIRECTION_PARAM = 'dir'
+
+const SORT_COLUMNS: ReadonlyArray<SortColumn> = ['member', 'email', 'status']
+
+// A bare /manage opens sorted by status, descending, until a header is clicked.
+const DEFAULT_SORT: SortState = { column: 'status', direction: 'desc' }
+
+const isSortColumn = (value: string | null): value is SortColumn =>
+  SORT_COLUMNS.some((column) => column === value)
+
+// A missing or unknown column falls back to the default order; a direction
+// that is not `desc` reads as ascending.
+const readSort = (params: URLSearchParams): SortState => {
+  const column = params.get(SORT_PARAM)
+  return isSortColumn(column)
+    ? { column, direction: params.get(DIRECTION_PARAM) === 'desc' ? 'desc' : 'asc' }
+    : DEFAULT_SORT
+}
 
 type MembersTableProps = {
   members: ReadonlyArray<Member>
@@ -99,12 +121,12 @@ const sortValue = ({ member, column }: { member: Member; column: SortColumn }): 
 type SortHeaderProps = {
   column: SortColumn
   label: string
-  sort: SortState | null
+  sort: SortState
   onToggle: (column: SortColumn) => void
 }
 
 const SortHeader = ({ column, label, sort, onToggle }: SortHeaderProps) => {
-  const active = sort?.column === column
+  const active = sort.column === column
   return (
     <th aria-sort={active ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
       <button className={styles.sortButton} type="button" onClick={() => onToggle(column)}>
@@ -164,7 +186,8 @@ export const MembersTable = ({
 }: MembersTableProps) => {
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState<number>(25)
-  const [sort, setSort] = useState<SortState | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const sort = useMemo(() => readSort(searchParams), [searchParams])
   const [menuEmail, setMenuEmail] = useState<string | null>(null)
 
   // Two live customers for one person bill twice and heal neither: the new
@@ -178,9 +201,6 @@ export const MembersTable = ({
   )
 
   const sorted = useMemo(() => {
-    if (!sort) {
-      return members
-    }
     const factor = sort.direction === 'asc' ? 1 : -1
     return [...members].sort(
       (a, b) =>
@@ -196,12 +216,21 @@ export const MembersTable = ({
   const start = current * pageSize
   const visible = sorted.slice(start, start + pageSize)
 
+  // replace, not push: toggling a header is a view tweak, and one history
+  // entry per click would bury the page the admin arrived from. The updater
+  // keeps whatever else is in the query string (the search term) intact.
   const toggleSort = (column: SortColumn) => {
     setPage(0)
-    setSort(
-      sort?.column === column
-        ? { column, direction: sort.direction === 'asc' ? 'desc' : 'asc' }
-        : { column, direction: 'asc' },
+    const direction: SortDirection =
+      sort.column === column && sort.direction === 'asc' ? 'desc' : 'asc'
+    setSearchParams(
+      (params) => {
+        const next = new URLSearchParams(params)
+        next.set(SORT_PARAM, column)
+        next.set(DIRECTION_PARAM, direction)
+        return next
+      },
+      { replace: true },
     )
   }
 
@@ -267,14 +296,6 @@ export const MembersTable = ({
                     >
                       {member.email}
                     </Link>
-                    {!!member.stripe_email && (
-                      <span
-                        className={styles.stripeEmail}
-                        title={`Pays under ${member.stripe_email}; watches as ${member.email}`}
-                      >
-                        pays as {member.stripe_email}
-                      </span>
-                    )}
                     {!!twins.length && (
                       <span className={styles.duplicate}>
                         <span title="Another member has a nearly identical address. Check Stripe for two customers billing one person.">

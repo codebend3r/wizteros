@@ -1,5 +1,5 @@
 import { render, screen, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import userEvent from '@testing-library/user-event'
 import { expect, test, vi } from '@/test/vi'
 import { MembersTable } from '@/components/MembersTable/MembersTable'
@@ -22,6 +22,9 @@ const makeMember = (overrides: Partial<Member>): Member => ({
   stripe_email: null,
   ...overrides,
 })
+
+// Echoes the current query string so a test can read what the table wrote.
+const LocationProbe = () => <output data-testid="location">{useLocation().search}</output>
 
 test('shows a status per row; subscribed members get Re-invite, the rest Invite', () => {
   render(
@@ -311,6 +314,132 @@ test('changing the sort returns to the first page', async () => {
   expect(screen.getAllByText('Page 1 of 2')).toHaveLength(2)
 })
 
+test('sorting by status writes the column and direction to the query string', async () => {
+  render(
+    <MemoryRouter initialEntries={['/manage?search=x']}>
+      <MembersTable
+        members={[makeMember({ email: 'a@x.com' }), makeMember({ email: 'b@x.com' })]}
+        onSelectTier={vi.fn()}
+        invitingEmail={null}
+      />
+      <LocationProbe />
+    </MemoryRouter>,
+  )
+
+  const header = screen.getByRole('button', { name: 'Status' })
+  await userEvent.click(header)
+  expect(screen.getByTestId('location')).toHaveTextContent('?search=x&sort=status&dir=asc')
+
+  await userEvent.click(header)
+  expect(screen.getByTestId('location')).toHaveTextContent('?search=x&sort=status&dir=desc')
+})
+
+test('a sort in the query string is applied on first render', () => {
+  render(
+    <MemoryRouter initialEntries={['/manage?sort=status&dir=desc']}>
+      <MembersTable
+        members={[
+          makeMember({ member: 'u1', email: 'free@x.com' }), // Uninvited
+          makeMember({
+            member: 'u2',
+            email: 'pending@x.com',
+            servers: [],
+            invited_at: new Date().toISOString(),
+          }), // Invited
+        ]}
+        onSelectTier={vi.fn()}
+        invitingEmail={null}
+      />
+    </MemoryRouter>,
+  )
+
+  const header = screen.getByRole('button', { name: 'Status' })
+  expect(header.closest('th')).toHaveAttribute('aria-sort', 'descending')
+  const rows = screen.getAllByRole('row')
+  expect(rows[1]).toHaveTextContent('free@x.com')
+  expect(rows[2]).toHaveTextContent('pending@x.com')
+})
+
+test('with no sort in the query string the table sorts by status descending', () => {
+  render(
+    <MemoryRouter initialEntries={['/manage']}>
+      <MembersTable
+        members={[
+          makeMember({
+            member: 'u1',
+            email: 'pending@x.com',
+            servers: [],
+            invited_at: new Date().toISOString(),
+          }), // Invited
+          makeMember({ member: 'u2', email: 'free@x.com' }), // Uninvited
+        ]}
+        onSelectTier={vi.fn()}
+        invitingEmail={null}
+      />
+    </MemoryRouter>,
+  )
+
+  const header = screen.getByRole('button', { name: 'Status' })
+  expect(header.closest('th')).toHaveAttribute('aria-sort', 'descending')
+  expect(screen.getByRole('button', { name: 'Member' }).closest('th')).not.toHaveAttribute(
+    'aria-sort',
+  )
+  const rows = screen.getAllByRole('row')
+  expect(rows[1]).toHaveTextContent('free@x.com')
+  expect(rows[2]).toHaveTextContent('pending@x.com')
+})
+
+test('an unknown sort column in the query string falls back to the default order', () => {
+  render(
+    <MemoryRouter initialEntries={['/manage?sort=tier&dir=asc']}>
+      <MembersTable
+        members={[
+          makeMember({
+            member: 'u1',
+            email: 'pending@x.com',
+            servers: [],
+            invited_at: new Date().toISOString(),
+          }), // Invited
+          makeMember({ member: 'u2', email: 'free@x.com' }), // Uninvited
+        ]}
+        onSelectTier={vi.fn()}
+        invitingEmail={null}
+      />
+    </MemoryRouter>,
+  )
+
+  expect(screen.getByRole('button', { name: 'Status' }).closest('th')).toHaveAttribute(
+    'aria-sort',
+    'descending',
+  )
+  const rows = screen.getAllByRole('row')
+  expect(rows[1]).toHaveTextContent('free@x.com')
+  expect(rows[2]).toHaveTextContent('pending@x.com')
+})
+
+test('an unknown direction in the query string falls back to ascending', () => {
+  render(
+    <MemoryRouter initialEntries={['/manage?sort=member&dir=sideways']}>
+      <MembersTable
+        members={[
+          makeMember({ member: 'zed', email: 'z@x.com' }),
+          makeMember({ member: 'ann', email: 'a@x.com' }),
+        ]}
+        onSelectTier={vi.fn()}
+        invitingEmail={null}
+      />
+    </MemoryRouter>,
+  )
+
+  expect(screen.getByRole('button', { name: 'Member' }).closest('th')).toHaveAttribute(
+    'aria-sort',
+    'ascending',
+  )
+  const rows = screen.getAllByRole('row')
+  expect(rows[1]).toHaveTextContent('ann')
+  expect(rows[2]).toHaveTextContent('zed')
+})
+
 test('Invite opens a tier menu and picking one calls onSelectTier', async () => {
   const onSelectTier = vi.fn()
   const target = makeMember({ email: 'free@x.com' })
@@ -572,7 +701,9 @@ test('a member holding no records shows no servers rather than their tier scope'
   expect(screen.queryByLabelText(/librar/)).not.toBeInTheDocument()
 })
 
-test('shows the Stripe address on a member who pays under a different email', () => {
+// The billing address is the member page's business. On the list it was a
+// second line under the Plex address that read as a second member.
+test('keeps the Stripe address off the list even when it differs from the Plex one', () => {
   render(
     <MemoryRouter>
       <MembersTable
@@ -590,7 +721,8 @@ test('shows the Stripe address on a member who pays under a different email', ()
     </MemoryRouter>,
   )
   expect(screen.getByText('jimmyvo768@gmail.com')).toBeInTheDocument()
-  expect(screen.getByText('pays as jimmyvo767@gmail.com')).toBeInTheDocument()
+  expect(screen.queryByText(/pays as/)).not.toBeInTheDocument()
+  expect(screen.queryByText(/jimmyvo767@gmail.com/)).not.toBeInTheDocument()
 })
 
 test('a member whose addresses match shows only the one address', () => {

@@ -9,6 +9,7 @@ import { Preloader } from '@/components/Preloader/Preloader'
 import { TierIcon } from '@/components/TierIcon/TierIcon'
 import {
   AdminAuthError,
+  banMember,
   cancelSubscription,
   fetchMember,
   fetchMemberEvents,
@@ -52,6 +53,7 @@ const STATE_CLASS: Record<LibraryAccessState, string | undefined> = {
 const TAG_LABELS: Record<MemberTag, string> = {
   vip: '💎 VIP',
   hvu: '⭐ HVU',
+  banned: '⛔ Banned',
 }
 
 const parseTimestamp = (value: string | null): Date | null => {
@@ -304,6 +306,8 @@ const UserInner = () => {
   const [pendingNeverExpire, setPendingNeverExpire] = useState(false)
   const [pendingCancelSub, setPendingCancelSub] = useState(false)
   const [cancelNotice, setCancelNotice] = useState<string | null>(null)
+  const [pendingBan, setPendingBan] = useState(false)
+  const [banNotice, setBanNotice] = useState<string | null>(null)
   const [pendingDownloads, setPendingDownloads] = useState<boolean | null>(null)
 
   const {
@@ -542,6 +546,26 @@ const UserInner = () => {
         return
       }
       setActionError('Could not cancel the subscription.')
+    },
+  })
+
+  const banMutation = useMutation({
+    mutationFn: () => banMember({ email }),
+    onSuccess: (result) => {
+      applyToMemberCaches((row) => ({ ...row, tag: 'banned' }))
+      const records = `${result.disabled} server record${result.disabled === 1 ? '' : 's'} disabled`
+      const billing = result.cancel_at
+        ? `billing stops ${new Date(result.cancel_at).toLocaleDateString()}.`
+        : 'no subscription to cancel.'
+      setBanNotice(`Banned. ${records}; ${billing}`)
+      void queryClient.invalidateQueries({ queryKey: ['member-events', email] })
+    },
+    onError: (cause) => {
+      if (cause instanceof AdminAuthError) {
+        deauthenticate()
+        return
+      }
+      setActionError('Could not ban the member.')
     },
   })
 
@@ -803,6 +827,32 @@ const UserInner = () => {
                   </button>
                 </div>
               </section>
+              <section className={styles.controlSection}>
+                <h2 className={styles.sectionTitle}>Ban</h2>
+                <p className={styles.controlHint}>
+                  Disables every server record right now, stops their billing at the end of the
+                  period, and marks the address so the bridge never invites, extends, or restores it
+                  again. Clearing the tag lifts the ban; access comes back only with a fresh invite.
+                </p>
+                {!!banNotice && (
+                  <p className={styles.cancelNotice} role="status">
+                    {banNotice}
+                  </p>
+                )}
+                <div className={styles.controlRow}>
+                  <button
+                    className={styles.dangerButton}
+                    type="button"
+                    onClick={() => {
+                      setActionError(null)
+                      setPendingBan(true)
+                    }}
+                    disabled={banMutation.isPending || member.tag === 'banned'}
+                  >
+                    {banMutation.isPending ? 'Banning…' : 'Ban member'}
+                  </button>
+                </div>
+              </section>
               <section className={styles.notesSection}>
                 <h2 className={styles.sectionTitle}>
                   Notes
@@ -950,6 +1000,25 @@ const UserInner = () => {
             <p className={styles.controlHint}>
               They keep access until the end of the period they already contributed for; the bridge
               shuts them off automatically when it ends.
+            </p>
+          </ConfirmActionModal>
+        )}
+        {!!member && pendingBan && (
+          <ConfirmActionModal
+            title="Confirm ban"
+            confirmLabel="Ban member"
+            onConfirm={() => {
+              banMutation.mutate()
+              setPendingBan(false)
+            }}
+            onCancel={() => setPendingBan(false)}
+          >
+            <p>
+              Ban {member.member} ({member.email}).
+            </p>
+            <p className={styles.controlHint}>
+              Every server record is disabled the moment you confirm, and their Stripe subscription
+              is flagged to cancel at the end of the period. Any refund is made in Stripe.
             </p>
           </ConfirmActionModal>
         )}

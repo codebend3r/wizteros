@@ -1,6 +1,8 @@
 import { afterEach, expect, test, vi } from '@/test/vi'
 import {
   AdminAuthError,
+  banMember,
+  fetchAllEvents,
   fetchMember,
   fetchMembers,
   fetchPlexAccess,
@@ -241,4 +243,85 @@ test('fetchMembers names the offending row and field when validation fails', asy
   const failure = fetchMembers()
   await expect(failure).rejects.toThrow('bad@x.com')
   await expect(failure).rejects.toThrow('tier')
+})
+
+test('fetchAllEvents reads the whole log with no email in the query', async () => {
+  const rows = [
+    {
+      id: 2,
+      at: '2026-08-01T00:00:00+00:00',
+      email: 'b@x.com',
+      action: 'Signed up',
+      detail: 'bronze tier',
+    },
+    {
+      id: 1,
+      at: '2026-07-01T00:00:00+00:00',
+      email: 'a@x.com',
+      action: 'Signed up',
+      detail: 'gold tier',
+    },
+  ]
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    status: 200,
+    headers: { get: () => 'application/json' },
+    json: async () => rows,
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  expect(await fetchAllEvents()).toEqual(rows)
+  const [url] = fetchMock.mock.calls[0]
+  expect(url).toBe('/admin/events')
+})
+
+test('fetchAllEvents rejects a payload that is not an event list', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: { get: () => 'application/json' },
+      json: async () => ({ detail: 'nope' }),
+    }),
+  )
+  await expect(fetchAllEvents()).rejects.toThrow('Unexpected events response')
+})
+
+test('banMember posts the email and returns what was revoked', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    status: 200,
+    headers: { get: () => 'application/json' },
+    json: async () => ({
+      email: 'a@x.com',
+      disabled: 2,
+      canceled: 1,
+      cancel_at: '2026-09-21T00:00:00+00:00',
+    }),
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  const result = await banMember({ email: 'a@x.com' })
+  expect(result).toEqual({
+    email: 'a@x.com',
+    disabled: 2,
+    canceled: 1,
+    cancel_at: '2026-09-21T00:00:00+00:00',
+  })
+  const [url, init] = fetchMock.mock.calls[0]
+  expect(url).toBe('/admin/ban')
+  expect(init.method).toBe('POST')
+  expect(JSON.parse(init.body)).toEqual({ email: 'a@x.com' })
+})
+
+test('fetchMembers accepts the banned tag', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: { get: () => 'application/json' },
+      json: async () => [{ ...member, tag: 'banned' }],
+    }),
+  )
+  expect((await fetchMembers())[0]?.tag).toBe('banned')
 })

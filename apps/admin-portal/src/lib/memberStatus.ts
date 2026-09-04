@@ -2,6 +2,7 @@ import type { Member } from '@/lib/adminApi'
 import { INVITE_GRACE_DAYS } from '@/lib/inviteRules'
 
 export type MemberStatus =
+  | 'Banned'
   | 'Uninvited'
   | 'Invited'
   | 'Declined Invite'
@@ -22,11 +23,15 @@ export const STATUS_EMOJI: Record<MemberStatus, string> = {
   'Declined Invite': '🚫',
   Uninvited: '⚪',
   VIP: '💎',
+  Banned: '⛔',
 }
 
 /**
  * Derive a member's lifecycle status from the bridge's member record.
  *
+ * - Banned: the admin's revocation, and the one tag with teeth: the bridge
+ *   refuses to invite, extend, or restore a banned address, so nothing below
+ *   it can be true in any way that matters.
  * - VIP: the admin's manual tag — overrides every derived status. VIP members
  *   keep access with no expiry and are never subject to the invite lifecycle.
  * - Payment Failed: Stripe has a declined charge outstanding. Ranked above
@@ -44,6 +49,9 @@ export const STATUS_EMOJI: Record<MemberStatus, string> = {
  * The `hvu` tag is a purely administrative label and does not affect status.
  */
 export const deriveStatus = ({ member }: { member: Member }): MemberStatus => {
+  if (member.tag === 'banned') {
+    return 'Banned'
+  }
   if (member.tag === 'vip') {
     return 'VIP'
   }

@@ -84,15 +84,6 @@
   font-weight: 600;
 }
 
-// The Stripe address, shown only when it differs from the Plex address the
-// row is keyed on. Both belong to one person.
-.stripeEmail {
-  display: block;
-  color: var(--color-muted);
-  font-size: var(--font-size-xs);
-  overflow-wrap: anywhere;
-}
-
 .duplicate {
   display: grid;
   grid-template-columns: auto auto;

@@ -42,6 +42,7 @@ const STATUS_FILTERS: ReadonlyArray<{ status: MemberStatus; label: string }> = [
   { status: 'Declined Invite', label: 'Declined' },
   { status: 'Expired Member', label: 'Expired' },
   { status: 'Uninvited', label: 'Uninvited' },
+  { status: 'Banned', label: 'Banned' },
 ]
 
 const EMPTY_COUNTS: Record<MemberStatus, number> = {
@@ -52,6 +53,7 @@ const EMPTY_COUNTS: Record<MemberStatus, number> = {
   'Declined Invite': 0,
   Uninvited: 0,
   VIP: 0,
+  Banned: 0,
 }
 
 const ManageInner = () => {

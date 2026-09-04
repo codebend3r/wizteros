@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabaseClient'
 
 export type PaidTier = 'bronze' | 'silver' | 'gold' | 'youth'
 export type Tier = PaidTier | 'unknown'
-export type MemberTag = 'vip' | 'hvu'
+export type MemberTag = 'vip' | 'hvu' | 'banned'
 
 export type Member = {
   member: string
@@ -99,6 +99,15 @@ export type SetDownloadsResult = {
   downloads: boolean
 }
 
+export type BanResult = {
+  email: string
+  /** Wizarr records disabled on the spot. */
+  disabled: number
+  /** Stripe subscriptions flagged to cancel at period end. */
+  canceled: number
+  cancel_at: string | null
+}
+
 export class AdminAuthError extends Error {}
 
 const ADMIN_API_BASE: string = import.meta.env.VITE_ADMIN_API_BASE ?? ''
@@ -128,7 +137,8 @@ const TIERS: ReadonlyArray<Tier> = ['bronze', 'silver', 'gold', 'youth', 'unknow
 const isTier = (value: unknown): value is Tier =>
   typeof value === 'string' && TIERS.some((tier) => tier === value)
 
-const isMemberTag = (value: unknown): value is MemberTag => value === 'vip' || value === 'hvu'
+const isMemberTag = (value: unknown): value is MemberTag =>
+  value === 'vip' || value === 'hvu' || value === 'banned'
 
 // A bridge deployed before the libraries map, invited_at stamp, tag, or
 // customer_id may still omit them; tolerate that and normalize with toMember
@@ -390,6 +400,22 @@ export const fetchPlexAccess = async ({ email }: { email: string }): Promise<Ple
   return data
 }
 
+const isBanResult = (value: unknown): value is BanResult =>
+  isRecord(value) &&
+  typeof value.email === 'string' &&
+  typeof value.disabled === 'number' &&
+  typeof value.canceled === 'number' &&
+  (typeof value.cancel_at === 'string' || value.cancel_at === null)
+
+/** The whole action log across every member, newest first. */
+export const fetchAllEvents = async (): Promise<MemberEvent[]> => {
+  const data = await requestJson({ path: '/admin/events' })
+  if (!isMemberEventArray(data)) {
+    throw new Error('Unexpected events response')
+  }
+  return data
+}
+
 export const fetchMemberEvents = async ({ email }: { email: string }): Promise<MemberEvent[]> => {
   const data = await requestJson({
     path: `/admin/events?email=${encodeURIComponent(email)}`,
@@ -478,6 +504,18 @@ export const cancelSubscription = async ({
   })
   if (!isCancelSubscriptionResult(data)) {
     throw new Error('Unexpected cancel-subscription response')
+  }
+  return data
+}
+
+/**
+ * Revoke a member for good: tag them banned, disable every server record now,
+ * and stop their billing at period end. Clearing the tag lifts the ban.
+ */
+export const banMember = async ({ email }: { email: string }): Promise<BanResult> => {
+  const data = await requestJson({ path: '/admin/ban', method: 'POST', body: { email } })
+  if (!isBanResult(data)) {
+    throw new Error('Unexpected ban response')
   }
   return data
 }

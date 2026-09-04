@@ -99,6 +99,15 @@ test('a legacy share with a fresh outstanding invite is Invited', () => {
   expect(deriveStatus({ member })).toBe('Invited')
 })
 
+test('a banned tag outranks everything, VIP and a live subscription included', () => {
+  const member = makeMember({
+    expires: '2099-01-01T00:00:00+00:00',
+    subscribed: true,
+    tag: 'banned',
+  })
+  expect(deriveStatus({ member })).toBe('Banned')
+})
+
 test('a vip tag overrides every derived status', () => {
   const member = makeMember({ expires: '2020-01-01T00:00:00+00:00', subscribed: true, tag: 'vip' })
   expect(deriveStatus({ member })).toBe('VIP')

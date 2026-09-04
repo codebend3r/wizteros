@@ -61,6 +61,7 @@ vi.mock('@/lib/adminApi', () => ({
   cancelSubscription: vi.fn(),
   setMemberTag: vi.fn(),
   setMemberDownloads: vi.fn(),
+  banMember: vi.fn(),
 }))
 
 const {
@@ -75,6 +76,7 @@ const {
   cancelSubscription,
   setMemberTag,
   setMemberDownloads,
+  banMember,
 } = await import('@/lib/adminApi')
 
 const renderUser = ({ email }: { email: string | null }) => {
@@ -444,6 +446,49 @@ test('cancels the Stripe subscription through the confirm modal', async () => {
 
   expect(cancelSubscription).toHaveBeenCalledWith({ email: 'max@y.com' })
   expect(await screen.findByText(/Cancellation scheduled — access ends/)).toBeInTheDocument()
+})
+
+test('bans the member through the confirm modal and shows what was revoked', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  vi.mocked(banMember).mockResolvedValue({
+    email: 'max@y.com',
+    disabled: 2,
+    canceled: 1,
+    cancel_at: '2026-09-21T00:00:00+00:00',
+  })
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  await user.click(screen.getByRole('button', { name: 'Ban member' }))
+  const dialog = screen.getByRole('dialog', { name: 'Confirm ban' })
+  expect(banMember).not.toHaveBeenCalled()
+  await user.click(within(dialog).getByRole('button', { name: 'Ban member' }))
+
+  expect(banMember).toHaveBeenCalledWith({ email: 'max@y.com' })
+  expect(
+    await screen.findByText(/Banned\. 2 server records disabled; billing stops/),
+  ).toBeInTheDocument()
+  expect(detailValue('Tag')).toBe('⛔ Banned')
+  expect(screen.getByText('Banned')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Ban member' })).toBeDisabled()
+})
+
+test('shows an error when the ban fails', async () => {
+  const user = userEvent.setup()
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  vi.mocked(banMember).mockRejectedValue(new Error('boom'))
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  await user.click(screen.getByRole('button', { name: 'Ban member' }))
+  await user.click(
+    within(screen.getByRole('dialog', { name: 'Confirm ban' })).getByRole('button', {
+      name: 'Ban member',
+    }),
+  )
+
+  expect(await screen.findByText('Could not ban the member.')).toBeInTheDocument()
 })
 
 test('shows an error when the subscription cancellation fails', async () => {
