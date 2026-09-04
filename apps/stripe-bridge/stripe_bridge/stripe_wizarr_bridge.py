@@ -157,7 +157,7 @@ def reconcile_pending_expiries() -> int:
     links = store.all_member_links(MAP_DB_PATH)
     pending = {
         email: row for email, row in customers.items()
-        if row["subscribed"] and row["invited_at"] and tags.get(email) != "vip"
+        if row["subscribed"] and row["invited_at"] and tags.get(email) not in ("vip", "banned")
     }
     if not pending:
         return 0
@@ -487,6 +487,24 @@ def _dispatch(etype: str, obj: dict) -> None:
             return
         session_id = obj.get("id")
         tier = tiers.normalize_tier((obj.get("metadata") or {}).get("tier"))
+        # A banned address can still reach a Payment Link. Nothing is issued
+        # and nothing is recorded against the customer; the operator is told,
+        # because the charge itself went through and is theirs to refund.
+        if store.get_member_tag(MAP_DB_PATH, email) == "banned":
+            log.error("checkout %s by banned member %s; no invite issued", session_id, email)
+            store.record_event(MAP_DB_PATH, email, "Checkout blocked",
+                               f"banned member paid for {tier}; no invite issued")
+            try:
+                send_alert_email(
+                    f"banned member {email} checked out",
+                    f"{email} is banned but completed a {tier} checkout "
+                    f"(session {session_id}, customer {customer_id}).\n\n"
+                    f"No invite was issued and no access was granted. Refund or "
+                    f"cancel the subscription in Stripe.\n",
+                )
+            except Exception:
+                log.exception("banned checkout alert email failed for %s", email)
+            return
         access = resolve_tier_scope(tier, context=f"checkout {session_id}")
         # Everything below the invite can raise (a slow Wizarr write, SMTP), and
         # a raise leaves the event unmarked so Stripe retries the whole handler.
@@ -556,6 +574,12 @@ def _dispatch(etype: str, obj: dict) -> None:
             store.set_payment_state(MAP_DB_PATH, email, None)
         if obj.get("billing_reason") == "subscription_create":
             log.info("skipping first (signup) invoice for %s", obj.get("customer"))
+            return
+        # A ban outranks a payment: nothing is extended and nothing restored.
+        if email and store.get_member_tag(MAP_DB_PATH, email) == "banned":
+            log.warning("renewal: %s is banned; access not extended", email)
+            store.record_event(MAP_DB_PATH, email, "Payment received",
+                               "banned; access not extended")
             return
         if email:
             store.set_subscribed(MAP_DB_PATH, email, True)

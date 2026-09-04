@@ -348,3 +348,16 @@ def test_one_row_per_email_is_unaffected(tmp_path):
     assert len(rows) == 1
     assert rows["solo@x.com"]["customer_id"] == "cus_1"
     assert rows["solo@x.com"]["invite_code"] == "ONE"
+
+
+def test_all_events_spans_every_member_newest_first(tmp_path):
+    db = str(tmp_path / "bridge.db")
+    store.init_db(db)
+    assert store.all_events(db) == []
+    store.record_event(db, "A@X.com", "Signed up", "gold tier — invite emailed")
+    store.record_event(db, "b@x.com", "Signed up", "bronze tier — invite emailed")
+    store.record_event(db, "a@x.com", "Canceled", "subscription ended — 1 server record(s) disabled")
+    events = store.all_events(db)
+    assert [(e["email"], e["action"]) for e in events] == [
+        ("a@x.com", "Canceled"), ("b@x.com", "Signed up"), ("a@x.com", "Signed up")]
+    assert store.all_events(db, limit=1)[0]["action"] == "Canceled"

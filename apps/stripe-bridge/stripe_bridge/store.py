@@ -529,6 +529,23 @@ def events_for_email(path: str, email: str, limit: int = 100) -> list[dict]:
     return [dict(row) for row in rows]
 
 
+def all_events(path: str, limit: int = 50_000) -> list[dict]:
+    """The whole action history across every member, newest first.
+
+    Feeds the income page, which reads signups, tier changes and
+    cancellations off it to draw the months; per-member reads stay on
+    events_for_email. The cap is a safety valve, not a page size: the log
+    grows by a few rows per member per month, so it is decades away, and
+    when it is reached the oldest rows (the earliest signups) go first.
+    """
+    with _conn(path) as c:
+        rows = c.execute(
+            "SELECT id, at, email, action, detail FROM event_log ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
 def all_customer_tiers(path: str) -> dict[str, str | None]:
     """Every customer's lowercased email -> tier (tier may be None).
 

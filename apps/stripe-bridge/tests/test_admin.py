@@ -1002,3 +1002,85 @@ def test_member_page_survives_wizarr_refusing_the_invitation_list(admin_db):
     a.client.list_invitations.side_effect = RuntimeError("wizarr is down")
     m = a.get_member("nora@x.com")
     assert m["stripe_email"] is None  # linkage lost, page still renders
+
+
+def test_get_events_without_an_email_lists_every_member(admin_db):
+    a, dbp = admin_db
+    store.record_event(dbp, "a@x.com", "Signed up", "gold tier — invite emailed")
+    store.record_event(dbp, "b@x.com", "Signed up", "bronze tier — invite emailed")
+
+    assert [e["email"] for e in a.get_events()] == ["b@x.com", "a@x.com"]
+    assert [e["email"] for e in a.get_events("a@x.com")] == ["a@x.com"]
+
+
+def test_ban_tags_the_member_and_cancels_their_billing(admin_db, monkeypatch):
+    a, dbp = admin_db
+    store.upsert_pending(dbp, "cus_9", "a@x.com", "abc", tier="gold")
+    stripe_mock = _stripe_mock_with_subs([_stripe_sub("sub_1")])
+    stripe_mock.Subscription.modify.return_value = _stripe_sub(
+        "sub_1", cancel_at=1790000000, flagged=True)
+    monkeypatch.setattr(a, "stripe", stripe_mock)
+    a.client.find_user_ids_by_email.return_value = [1, 2]
+
+    result = a.ban_member(a.BanBody(email="A@X.com"))
+
+    assert result == {"email": "A@X.com", "disabled": 2, "canceled": 1,
+                      "cancel_at": "2026-09-21T14:13:20+00:00"}
+    assert a.get_member("a@x.com")["tag"] == "banned"
+    assert a.client.disable_user.call_args_list == [((1,),), ((2,),)]
+    stripe_mock.Subscription.modify.assert_called_once_with("sub_1", cancel_at_period_end=True)
+    events = store.events_for_email(dbp, "a@x.com")
+    assert events[0]["action"] == "Banned"
+    assert "2 server record(s) disabled" in events[0]["detail"]
+    assert "billing stops 2026-09-21" in events[0]["detail"]
+
+
+def test_ban_works_for_a_member_with_nothing_to_revoke(admin_db, monkeypatch):
+    # Someone already gone from Wizarr and Stripe can still be marked, so the
+    # next checkout or re-invite under that address is refused.
+    a, dbp = admin_db
+    stripe_mock = _stripe_mock_with_subs([])
+    stripe_mock.Customer.list.return_value.data = []
+    monkeypatch.setattr(a, "stripe", stripe_mock)
+    a.client.find_user_ids_by_email.return_value = []
+
+    result = a.ban_member(a.BanBody(email="gone@x.com"))
+
+    assert result == {"email": "gone@x.com", "disabled": 0, "canceled": 0, "cancel_at": None}
+    assert store.get_member_tag(dbp, "gone@x.com") == "banned"
+    assert store.events_for_email(dbp, "gone@x.com")[0]["detail"] == (
+        "no server records to disable; no subscription to cancel")
+
+
+def test_ban_still_lands_when_stripe_is_down(admin_db, monkeypatch):
+    a, dbp = admin_db
+    stripe_mock = MagicMock()
+    stripe_mock.Subscription.list.side_effect = RuntimeError("stripe is down")
+    stripe_mock.Customer.list.side_effect = RuntimeError("stripe is down")
+    monkeypatch.setattr(a, "stripe", stripe_mock)
+    a.client.find_user_ids_by_email.return_value = [7]
+
+    result = a.ban_member(a.BanBody(email="a@x.com"))
+
+    assert result["disabled"] == 1
+    assert result["canceled"] == 0
+    assert store.get_member_tag(dbp, "a@x.com") == "banned"
+    assert "could not reach Stripe" in store.events_for_email(dbp, "a@x.com")[0]["detail"]
+
+
+def test_set_tag_accepts_banned_and_clearing_it_unbans(admin_db):
+    a, _dbp = admin_db
+    a.set_tag(a.SetTagBody(email="a@x.com", tag="banned"))
+    assert a.get_member("a@x.com")["tag"] == "banned"
+    a.set_tag(a.SetTagBody(email="a@x.com", tag=None))
+    assert a.get_member("a@x.com")["tag"] is None
+
+
+def test_reissue_invite_refuses_a_banned_member(admin_db):
+    a, _ = admin_db
+    store.set_member_tag(a.MAP_DB_PATH, "a@x.com", "banned")
+    with pytest.raises(HTTPException) as e:
+        a.reissue_invite(a.ReissueInviteBody(email="A@X.com", tier="gold"))
+    assert e.value.status_code == 409
+    assert "banned" in e.value.detail
+    a.client.create_invite.assert_not_called()

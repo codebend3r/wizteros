@@ -1146,3 +1146,61 @@ def test_vip_access_check_survives_wizarr_being_down(bridge, monkeypatch):
     # Unreachable is not the same as locked out, and this runs inside the sweep.
     assert bridge.check_vip_access() == []
 
+
+def test_checkout_by_a_banned_member_issues_nothing_and_alerts(bridge, monkeypatch):
+    from stripe_bridge import store
+    store.set_member_tag(bridge.MAP_DB_PATH, "banned@x.com", "banned")
+    alert = MagicMock()
+    monkeypatch.setattr(bridge, "send_alert_email", alert)
+    bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
+
+    bridge.handle_event({
+        "type": "checkout.session.completed",
+        "id": "evt_checkout_banned",
+        "data": {"object": {"id": "cs_1", "customer": "cus_1",
+                            "customer_details": {"email": "Banned@x.com"},
+                            "metadata": {"tier": "gold"}}},
+    })
+
+    bridge.client.create_invite.assert_not_called()
+    bridge.send_invite_email.assert_not_called()
+    assert store.get_mapping(bridge.MAP_DB_PATH, "cus_1") is None
+    alert.assert_called_once()
+    assert "banned@x.com" in alert.call_args[0][1].lower()
+    events = store.events_for_email(bridge.MAP_DB_PATH, "banned@x.com")
+    assert events[0]["action"] == "Checkout blocked"
+    assert "banned" in events[0]["detail"]
+    # Marked processed: a retry must not raise the alarm a second time.
+    assert store.is_event_processed(bridge.MAP_DB_PATH, "evt_checkout_banned")
+
+
+def test_invoice_paid_never_extends_a_banned_member(bridge):
+    from stripe_bridge import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "banned@x.com", "abc", tier="gold")
+    store.set_member_tag(bridge.MAP_DB_PATH, "banned@x.com", "banned")
+    bridge.client.find_user_ids_by_email.return_value = [147]
+
+    bridge.handle_event({
+        "type": "invoice.paid",
+        "id": "evt_paid_banned",
+        "data": {"object": {"customer": "cus_1", "customer_email": "banned@x.com",
+                            "billing_reason": "subscription_cycle"}},
+    })
+
+    bridge.client.set_expiry.assert_not_called()
+    bridge.client.create_invite.assert_not_called()
+    events = store.events_for_email(bridge.MAP_DB_PATH, "banned@x.com")
+    assert events[0]["action"] == "Payment received"
+    assert "banned" in events[0]["detail"]
+
+
+def test_reconcile_skips_banned_members(bridge):
+    from stripe_bridge import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "banned@x.com", "abc", tier="gold")
+    store.set_member_tag(bridge.MAP_DB_PATH, "banned@x.com", "banned")
+    bridge.client.list_users.return_value = [
+        {"id": 1, "email": "banned@x.com", "server": "Meleys", "expires": None},
+    ]
+
+    assert bridge.reconcile_pending_expiries() == 0
+    bridge.client.set_expiry.assert_not_called()

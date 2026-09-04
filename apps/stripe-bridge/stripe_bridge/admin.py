@@ -407,8 +407,14 @@ def get_plex_access(email: str) -> dict:
 
 
 @router.get("/admin/events", dependencies=[Depends(require_admin)])
-def get_events(email: str) -> list[dict]:
-    """The member's action history (invites, renewals, cancels), newest first."""
+def get_events(email: str | None = None) -> list[dict]:
+    """A member's action history (invites, renewals, cancels), newest first.
+
+    Without an email, the whole log across every member: what the income
+    page reads its months and its timeline from.
+    """
+    if email is None:
+        return store.all_events(MAP_DB_PATH)
     return store.events_for_email(MAP_DB_PATH, email)
 
 
@@ -450,7 +456,9 @@ class CancelSubscriptionBody(BaseModel):
     email: str
 
 
-MEMBER_TAGS = ("vip", "hvu")
+# banned is the one tag with teeth: the bridge refuses to invite, extend or
+# restore a banned address, whatever Stripe says about it.
+MEMBER_TAGS = ("vip", "hvu", "banned")
 
 
 class SetTagBody(BaseModel):
@@ -540,23 +548,18 @@ def link_address(body: LinkAddressBody) -> dict:
     return {"stripe_email": stripe_email, "plex_email": plex_email}
 
 
-@router.post("/admin/cancel-subscription", dependencies=[Depends(require_admin)])
-def cancel_subscription(body: CancelSubscriptionBody) -> dict:
+def _flag_subscriptions(email: str) -> tuple[bool, list, list]:
     """Flag every live Stripe subscription for an email to cancel at period end.
 
-    Mirrors a portal self-cancel: the member keeps access through the period
-    they already contributed for, then Stripe fires
-    customer.subscription.deleted and the webhook disables their records —
-    nothing is revoked here directly. Customer ids come from the bridge's own
-    mapping first, falling back to a live Stripe email lookup for members who
-    predate the mapping. Idempotent: subscriptions already flagged are left
-    alone and still count as scheduled.
+    Returns (a customer exists, newly flagged, already flagged). Customer ids
+    come from the bridge's own mapping first, falling back to a live Stripe
+    email lookup for members who predate the mapping. Subscriptions already
+    flagged are left alone. Nothing here raises for an unknown email or an
+    email with no subscription: the caller decides whether that is an error.
     """
-    customer_ids = store.customer_ids_for_email(MAP_DB_PATH, body.email)
+    customer_ids = store.customer_ids_for_email(MAP_DB_PATH, email)
     if not customer_ids:
-        customer_ids = [c.id for c in stripe.Customer.list(email=body.email, limit=100).data]
-    if not customer_ids:
-        raise HTTPException(status_code=404, detail="no stripe customer for that email")
+        customer_ids = [c.id for c in stripe.Customer.list(email=email, limit=100).data]
     flagged = []
     already = []
     for customer_id in customer_ids:
@@ -565,19 +568,76 @@ def cancel_subscription(body: CancelSubscriptionBody) -> dict:
                 already.append(sub)
             else:
                 flagged.append(stripe.Subscription.modify(sub.id, cancel_at_period_end=True))
+    return bool(customer_ids), flagged, already
+
+
+def _cancel_at_of(subscriptions: list) -> str | None:
+    """The latest period end among the flagged subscriptions, as an ISO stamp."""
+    cancel_ts = max((getattr(sub, "cancel_at", None) or 0 for sub in subscriptions), default=0)
+    return datetime.fromtimestamp(cancel_ts, timezone.utc).isoformat() if cancel_ts else None
+
+
+@router.post("/admin/cancel-subscription", dependencies=[Depends(require_admin)])
+def cancel_subscription(body: CancelSubscriptionBody) -> dict:
+    """Flag every live Stripe subscription for an email to cancel at period end.
+
+    Mirrors a portal self-cancel: the member keeps access through the period
+    they already contributed for, then Stripe fires
+    customer.subscription.deleted and the webhook disables their records.
+    Nothing is revoked here directly. Idempotent: subscriptions already
+    flagged are left alone and still count as scheduled.
+    """
+    found, flagged, already = _flag_subscriptions(body.email)
+    if not found:
+        raise HTTPException(status_code=404, detail="no stripe customer for that email")
     if not flagged and not already:
         raise HTTPException(status_code=404, detail="no active subscription for that email")
-    cancel_ts = max(
-        (getattr(sub, "cancel_at", None) or 0 for sub in flagged + already), default=0)
-    cancel_at = (
-        datetime.fromtimestamp(cancel_ts, timezone.utc).isoformat() if cancel_ts else None
-    )
+    cancel_at = _cancel_at_of(flagged + already)
     if flagged:
         store.record_event(
             MAP_DB_PATH, body.email, "Cancellation scheduled",
             f"by admin — access ends {cancel_at[:10]}" if cancel_at else "by admin",
         )
     return {"email": body.email, "canceled": len(flagged), "cancel_at": cancel_at}
+
+
+class BanBody(BaseModel):
+    email: str
+
+
+@router.post("/admin/ban", dependencies=[Depends(require_admin)])
+def ban_member(body: BanBody) -> dict:
+    """Revoke a member and mark them so nothing brings them back by accident.
+
+    Three things, in the order that fails safest: the tag first (from here on
+    the webhooks refuse to invite, extend or restore this address), then every
+    Wizarr record disabled now, then every live Stripe subscription flagged to
+    cancel at period end so no further charge lands. Stripe being down costs
+    the cancellation, not the ban: the tag and the disable have already
+    happened, the event says what was skipped, and the subscription can be
+    cancelled by hand. Refunds are a Stripe decision and are never made here.
+    Clearing the tag (set-tag with null) lifts the ban; access is re-granted
+    only by a fresh invite.
+    """
+    store.set_member_tag(MAP_DB_PATH, body.email, "banned")
+    ids = client.find_user_ids_by_email(body.email)
+    for uid in ids:
+        client.disable_user(uid)
+    try:
+        _found, flagged, _already = _flag_subscriptions(body.email)
+        cancel_at = _cancel_at_of(flagged)
+        billing = (f"billing stops {cancel_at[:10]}" if cancel_at
+                   else "no subscription to cancel")
+    except Exception:
+        log.exception("ban: could not flag subscriptions for %s", body.email)
+        flagged, cancel_at = [], None
+        billing = "could not reach Stripe, cancel the subscription by hand"
+    revoked = (f"{len(ids)} server record(s) disabled" if ids
+               else "no server records to disable")
+    store.record_event(MAP_DB_PATH, body.email, "Banned", f"{revoked}; {billing}")
+    members_snapshot.refresh_async()
+    return {"email": body.email, "disabled": len(ids), "canceled": len(flagged),
+            "cancel_at": cancel_at}
 
 
 @router.post("/admin/reset-expiry", dependencies=[Depends(require_admin)])
@@ -640,6 +700,8 @@ def reissue_invite(body: ReissueInviteBody) -> dict:
     """
     if not PUBLIC_INVITE_BASE:
         raise HTTPException(status_code=500, detail="PUBLIC_INVITE_BASE not configured")
+    if store.get_member_tag(MAP_DB_PATH, body.email) == "banned":
+        raise HTTPException(status_code=409, detail="member is banned; clear the tag first")
     tier = tiers.normalize_tier(body.tier)
     # Stale cache rows are dropped the same way the checkout path does it: an
     # invite carrying a name Plex no longer knows is rejected whole.
