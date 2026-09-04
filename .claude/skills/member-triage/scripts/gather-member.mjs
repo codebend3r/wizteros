@@ -205,11 +205,12 @@ const wizarrSection = async ({ inviteCode }) => {
     return
   }
   bullet('invitations:')
+  // Scope is read from server_names alone: the serializer reports
+  // specific_libraries as [] even for a correctly scoped invite.
   mine.forEach((inv) =>
     bullet(
       `    code=${inv.code}  status=${inv.status}  expires=${when(inv.expires)}  ` +
-        `used_by=${inv.used_by ?? 'nobody'}  servers=${(inv.server_names ?? []).join(',') || '?'}  ` +
-        `libraries=${(inv.specific_libraries ?? []).length}`,
+        `used_by=${inv.used_by ?? 'nobody'}  servers=${(inv.server_names ?? []).join(',') || '?'}`,
     ),
   )
 }

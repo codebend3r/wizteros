@@ -59,7 +59,9 @@ the Wizarr, store, and log sections; being off the LAN leaves you Stripe and Wiz
   next user sync deletes every row plex.tv no longer reports as shared, so the record
   goes away on its own. So no records means no access, and a record with a past `expires`
   means a lapsed window. The user list is cached for ten minutes, so a record disabled
-  seconds ago can still show.
+  seconds ago can still show. An invitation still `pending` with `used_by=nobody` is
+  not proof the member never opened it: a redemption Plex rejected leaves the
+  invitation unconsumed and shows only in Wizarr's own container log (case 9).
 - **Bridge store** is the bridge's memory. `tier` drives the displayed tier, the
   downloads default, and the scope of the _next_ invite. `subscribed` is the
   confirmed-payment flag written by the webhooks, and status keys off it, not off the
@@ -296,19 +298,66 @@ Cancel is never immediate here, and there is no revoke-now button to reach for: 
 API has no disable or delete verb at all, so pulling access early means doing it in Wizarr
 by hand, outside the event log.
 
+## Case 9: redeemed, but Plex rejected the share
+
+Dossier: Stripe active with a paid invoice. Store `subscribed=1`, `invite=<code>`, event
+"Signed up". Wizarr invitation `status=pending`, `used_by=nobody`, records `none found`.
+Bridge log `sent invite to <email>` and nothing after it. It looks exactly like a member
+who never opened the link, so the member's own report is the only signal the dossier
+does not carry.
+
+The bridge plays no part in redemption, so the evidence is in Wizarr's container log:
+
+```bash
+ssh crivas@192.168.50.2 'sudo -n /usr/local/bin/docker logs --tail 4000 wizarr 2>&1' \
+  | grep -i "invitation failed\|Failed to invite"
+```
+
+`Failed to invite friend <email>: '33. formula 1'` beside
+`"event": "Plex invitation failed", "code": "<code>"` means Wizarr handed plexapi a
+library name the live server does not have. Wizarr shares by name, from its own
+`library` table, and that table only refreshes when someone presses **Scan libraries**,
+so a rename on the Plex side leaves the old name in the cache and Plex rejects the whole
+share. The invitation stays `pending`, so the member can retry the same link once the
+cache is right.
+
+This is never a per-member problem: every pending invite scoped to that server carries
+the same stale row, the baseline links included. On 2026-09-04 it was "33. Formula 1"
+renamed to "22. Formula 1" on Meleys, and it broke every bronze, silver and gold invite
+at once while the tier scope check stayed green, because that check reads the same
+cache.
+
+**Remedy.** Rescan the server's libraries in Wizarr (Settings, Media Servers, the
+server, **Scan libraries**). The scan upserts by Plex section id and keeps each row's
+primary key, so every pending invite is repaired in place and needs no reissue; the
+member opens the same link again. The scan routes are session-only, so with no Wizarr
+admin login at hand `scripts/rescan-wizarr-libraries.py` performs the same upsert from
+inside the container (it writes to Wizarr's database, so snapshot first with the
+nas-state-backup skill). Confirm with `GET /api/libraries`: the renamed row now carries
+the live name. Do not reissue: a reissue before the rescan mints another invite with the
+same stale row.
+
+The bridge now checks Wizarr's cache against plex.tv's live sections on every invite
+path and in the hourly scope check. `tier scope check: wizarr cache on <server> -> ...`
+in the bridge log (the dossier's alarm pass shows it, and an alert mail goes out) names
+the stale row, and the checkout, reissue and baseline paths drop it from the scope so the
+invite still grants everything else. That alarm still means "rescan in Wizarr": the
+dropped library only comes back on the next invite after the rescan.
+
 ## Where each remedy happens
 
-| Remedy                                                                      | Where                                                         | Endpoint behind it                |
-| --------------------------------------------------------------------------- | ------------------------------------------------------------- | --------------------------------- |
-| Issue or reissue a tier-scoped invite                                       | `/user` **Invite / Re-invite**, or `/reset-user` tier buttons | `POST /admin/reissue-invite`      |
-| Set or clear an expiry                                                      | `/user` **Set expiry** / **Never expire**                     | `POST /admin/reset-expiry`        |
-| Correct the recorded tier only                                              | `/user` **Hard reset tier**                                   | `POST /admin/reset-tier`          |
-| VIP / HVU label                                                             | `/user` **Tag**                                               | `POST /admin/set-tag`             |
-| Downloads override                                                          | `/user` downloads toggle                                      | `POST /admin/set-downloads`       |
-| Schedule a cancel at period end                                             | `/user` **Cancel subscription**                               | `POST /admin/cancel-subscription` |
-| Confirm webhook delivery, fix a customer email, add `metadata.tier`, refund | Stripe dashboard                                              | none                              |
-| Delete a stale invitation, inspect a record                                 | Wizarr API with `X-API-Key`, or the Wizarr UI                 | `/api/invitations`, `/api/users`  |
-| Fix a tier's library set                                                    | `tiers.py` plus the Plex library names, then deploy           | none                              |
+| Remedy                                                                      | Where                                                                                  | Endpoint behind it                |
+| --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | --------------------------------- |
+| Issue or reissue a tier-scoped invite                                       | `/user` **Invite / Re-invite**, or `/reset-user` tier buttons                          | `POST /admin/reissue-invite`      |
+| Set or clear an expiry                                                      | `/user` **Set expiry** / **Never expire**                                              | `POST /admin/reset-expiry`        |
+| Correct the recorded tier only                                              | `/user` **Hard reset tier**                                                            | `POST /admin/reset-tier`          |
+| VIP / HVU label                                                             | `/user` **Tag**                                                                        | `POST /admin/set-tag`             |
+| Downloads override                                                          | `/user` downloads toggle                                                               | `POST /admin/set-downloads`       |
+| Schedule a cancel at period end                                             | `/user` **Cancel subscription**                                                        | `POST /admin/cancel-subscription` |
+| Confirm webhook delivery, fix a customer email, add `metadata.tier`, refund | Stripe dashboard                                                                       | none                              |
+| Delete a stale invitation, inspect a record                                 | Wizarr API with `X-API-Key`, or the Wizarr UI                                          | `/api/invitations`, `/api/users`  |
+| Fix a tier's library set                                                    | `tiers.py` plus the Plex library names, then deploy                                    | none                              |
+| Refresh Wizarr's library-name cache after a Plex rename                     | Wizarr UI, Media Servers, **Scan libraries** (or `scripts/rescan-wizarr-libraries.py`) | none (session-only route)         |
 
 ## Reporting back
 
@@ -335,6 +384,8 @@ A missing log section in particular means "cause not established", not "no cause
   uncovered, disable-first runs and they lose access until they redeem.
 - Never edit `bridge.db` by hand. Every field it holds has an endpoint that also writes
   the event log.
+- A `pending` invitation is not evidence the member never tried. Read Wizarr's container
+  log before concluding a new signup simply has not clicked yet.
 - "Never expire" is not a fix for a billing problem. Status is driven by `subscribed`, so
   clearing an expiry hides an unpaid member instead of resolving them.
 - Two Stripe customers on one address is a real state, not a glitch. Read the whole
