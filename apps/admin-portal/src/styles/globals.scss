@@ -41,6 +41,9 @@
   --space-6: 3rem;
   --space-8: 5rem;
 
+  // Small chrome such as an icon tile: at 24px square the 12px radius would
+  // round it nearly into a circle.
+  --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 20px;
 

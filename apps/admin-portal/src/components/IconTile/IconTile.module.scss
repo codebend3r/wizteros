@@ -1,0 +1,44 @@
+// A tinted square carrying one glyph, in the colour of the thing it stands
+// for. The tint is that colour at under a fifth strength over the surface, so
+// the glyph clears it at every tone and the tile reads as a frame rather than
+// a swatch. Where color-mix is unsupported the background drops and the glyph
+// stands on the surface alone, which still reads.
+.tile {
+  display: grid;
+  flex: none;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklab, var(--tile-color) 18%, var(--color-surface));
+  color: var(--tile-color);
+}
+
+// Three sizes, one per place a tile sits: inventory rows and the status pill,
+// the toolbar marks, and the readings.
+.sm {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.md {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.lg {
+  width: 2rem;
+  height: 2rem;
+}
+
+.muted {
+  --tile-color: var(--color-muted);
+}
+
+.ok {
+  --tile-color: var(--color-state-shared);
+}
+
+// The series colour is set by the card the tile sits in. Outside one, the
+// accent stands in rather than an unset variable dropping the declaration.
+.series {
+  --tile-color: var(--series-color, var(--color-accent));
+}
