@@ -37,6 +37,20 @@ test('a rate axis leaves room its labels need and a percent axis does not', () =
   )
 })
 
+test('the axis widens with its widest label, so none is wrapped onto two lines', () => {
+  const MB = 1024 ** 2
+  // "100.0 MB/s" is one character wider than "75.0 MB/s", and that character
+  // is what Recharts broke the label at
+  const wide = metricScale({ unit: 'bytes_per_second', peak: 100 * MB })
+  const narrow = metricScale({ unit: 'bytes_per_second', peak: 8 * MB })
+
+  expect(wide.format(wide.max)).toBe('100.0 MB/s')
+  expect(narrow.format(narrow.max)).toBe('10.0 MB/s')
+  expect(wide.axisWidth).toBeGreaterThan(narrow.axisWidth)
+  // seven and a half pixels a character at the axis font, plus the margin
+  expect(wide.axisWidth).toBeGreaterThanOrEqual('100.0 MB/s'.length * 7.5)
+})
+
 test('niceCeiling rounds up to a readable number rather than to the peak itself', () => {
   // under a kilobyte there is no binary unit to round inside, so this is plain
   // decimal rounding

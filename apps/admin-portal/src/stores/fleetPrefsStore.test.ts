@@ -14,8 +14,42 @@ afterEach(() => {
   useFleetPrefsStore.setState({
     updateIntervalMs: DEFAULT_UPDATE_INTERVAL_MS,
     rangeMinutes: DEFAULT_RANGE_MINUTES,
+    chartExpanded: false,
   })
   localStorage.removeItem('wz-fleet-prefs')
+})
+
+test('the chart starts collapsed', () => {
+  expect(useFleetPrefsStore.getState().chartExpanded).toBe(false)
+})
+
+test('an expanded chart is stored and written through to localStorage', () => {
+  useFleetPrefsStore.getState().setChartExpanded(true)
+
+  expect(useFleetPrefsStore.getState().chartExpanded).toBe(true)
+  expect(localStorage.getItem('wz-fleet-prefs')).toContain('"chartExpanded":true')
+})
+
+test('a persisted chart size survives rehydration', async () => {
+  localStorage.setItem(
+    'wz-fleet-prefs',
+    JSON.stringify({ state: { chartExpanded: true }, version: 0 }),
+  )
+
+  await useFleetPrefsStore.persist.rehydrate()
+
+  expect(useFleetPrefsStore.getState().chartExpanded).toBe(true)
+})
+
+test('a hand-edited chart size rehydrates as collapsed', async () => {
+  localStorage.setItem(
+    'wz-fleet-prefs',
+    JSON.stringify({ state: { chartExpanded: 'tall' }, version: 0 }),
+  )
+
+  await useFleetPrefsStore.persist.rehydrate()
+
+  expect(useFleetPrefsStore.getState().chartExpanded).toBe(false)
 })
 
 test('the default interval is one second and sits among the stops', () => {

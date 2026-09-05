@@ -1,5 +1,5 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { expect, test } from '@/test/vi'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { expect, test, vi } from '@/test/vi'
 import type { MetricHostSeries } from '@/lib/fleetApi'
 import { METRIC_COPY } from '@/pages/Fleet/metricCopy'
 import { MetricChart } from '@/pages/Fleet/MetricChart'
@@ -67,6 +67,10 @@ const tip = (d: string): string => {
   const pairs = [...d.matchAll(/-?[\d.]+,-?[\d.]+/g)]
   return pairs[pairs.length - 1]?.[0] ?? ''
 }
+
+/** The x of the first coordinate a path draws, which is where the line
+    begins. */
+const headX = (d: string): number => Number(d.match(/M\s*(-?[\d.]+),/)?.[1] ?? NaN)
 
 test('MetricChart legend names every host, including one with nothing to draw', () => {
   renderChart([meleys, series({ name: 'caraxes', points: [] })])
@@ -259,21 +263,176 @@ test('MetricChart reports the age of the newest reading once the collector is la
   expect(screen.getByText('Newest reading 330 s ago.')).toBeInTheDocument()
 })
 
-// Recharts divides the domain for its own ticks, which labels the present's
-// offset and reshuffles every second as the frame slides.
-test('MetricChart labels the time axis on quarter hours only', () => {
-  const { container } = renderChart([meleys, vermithor])
-
-  // the label group, not the axis group: Recharts hoists tick text out of the
-  // axis it belongs to
-  const labels = [
+/** The x axis labels as drawn. The label group, not the axis group: Recharts
+    hoists tick text out of the axis it belongs to. */
+const axisLabels = (container: HTMLElement): readonly string[] =>
+  [
     ...container.querySelectorAll(
       '.recharts-xAxis-tick-labels .recharts-cartesian-axis-tick-value',
     ),
   ].map((tick) => tick.textContent ?? '')
+
+type ResizeCallback = (entries: readonly { contentRect: { width: number } }[]) => void
+
+/** Stand in for ResizeObserver with one that reports `width` the moment a box
+    is observed. happy-dom lays nothing out, so without this every chart
+    measures the fallback width and the axis is sized for a phone. */
+const stubMeasuredWidth = (width: number): void => {
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      readonly #callback: ResizeCallback
+      constructor(callback: ResizeCallback) {
+        this.#callback = callback
+      }
+      observe(): void {
+        this.#callback([{ contentRect: { width } }])
+      }
+      disconnect(): void {}
+    },
+  )
+}
+
+const renderChartWindow = ({
+  windowMinutes,
+  width,
+}: {
+  windowMinutes: number
+  width: number
+}): HTMLElement => {
+  stubMeasuredWidth(width)
+  const { container } = render(
+    <MetricChart
+      hosts={[meleys, vermithor]}
+      windowMinutes={windowMinutes}
+      unit="percent"
+      copy={METRIC_COPY.cpu}
+      now={() => NOW}
+    />,
+  )
+  return container
+}
+
+// Recharts divides the domain for its own ticks, which labels the present's
+// offset and reshuffles every second as the frame slides.
+test('MetricChart labels the time axis on round minutes only', () => {
+  // an hour on a wide box takes the five-minute spacing; the frame itself
+  // starts at :06:30, which is where a domain-divided axis would label from
+  const container = renderChartWindow({ windowMinutes: 60, width: 1600 })
+
+  const labels = axisLabels(container)
   const minutes = labels.map((label) => Number(label.match(/\d{1,2}:(\d{2})/)?.[1] ?? NaN))
   expect(minutes.length).toBeGreaterThan(0)
-  expect(minutes.filter((minute) => minute % 15 !== 0)).toEqual([])
+  expect(minutes.filter((minute) => minute % 5 !== 0)).toEqual([])
+})
+
+// The preset ranges span four orders of magnitude; the axis must carry a
+// readable number of labels at every one of them, not one label at fifteen
+// minutes and twenty-five at a day.
+test.each([60, 6 * 60, 24 * 60, 3 * 24 * 60, 7 * 24 * 60])(
+  'MetricChart draws between six and twelve labels over a %i minute window',
+  (windowMinutes) => {
+    const container = renderChartWindow({ windowMinutes, width: 1600 })
+
+    const count = axisLabels(container).length
+    expect(count).toBeGreaterThanOrEqual(6)
+    expect(count).toBeLessThanOrEqual(12)
+  },
+)
+
+// Readings land a collector tick apart, so the first one inside the frame can
+// sit a whole tick past the left edge. The line is drawn in from the reading
+// before the edge instead, and Recharts clips it at the plot's side.
+test('MetricChart draws the line in from the reading before the frame edge', () => {
+  // the frame is [NOW - 60 min, NOW]; -3300 s is 90 s before its left edge
+  const insideOnly = series({
+    name: 'meleys',
+    points: [
+      [0, 20],
+      [30, 25],
+    ],
+  })
+  const withLeadIn = series({
+    name: 'meleys',
+    points: [
+      [-3300, 10],
+      [0, 20],
+      [30, 25],
+    ],
+  })
+
+  const control = curves(renderChart([insideOnly]).container)[0] ?? ''
+  cleanup()
+  const led = curves(renderChart([withLeadIn]).container)[0] ?? ''
+
+  expect(segments(led)).toBe(1)
+  expect(headX(led)).toBeLessThan(headX(control))
+})
+
+test('MetricChart sizes the axis from the readings on screen, not the lead-in', () => {
+  const MB = 1024 ** 2
+  const { container } = render(
+    <MetricChart
+      hosts={[
+        series({
+          name: 'meleys',
+          points: [
+            // a 100 MB/s reading 90 s before the frame's left edge is drawn
+            // in from, not shown, so it must not lift the ceiling to 100
+            [-3300, 100 * MB],
+            [0, 1 * MB],
+            [30, 1.5 * MB],
+          ],
+        }),
+      ]}
+      windowMinutes={60}
+      unit="bytes_per_second"
+      copy={METRIC_COPY.network}
+      now={() => NOW}
+    />,
+  )
+
+  const labels = [
+    ...container.querySelectorAll(
+      '.recharts-yAxis-tick-labels .recharts-cartesian-axis-tick-value',
+    ),
+  ].map((tick) => tick.textContent ?? '')
+  expect(labels).toContain('2.0 MB/s')
+  expect(labels).not.toContain('100.0 MB/s')
+})
+
+// A quarter hour is short enough to label every minute, so it does: fifteen
+// marks, one a minute, on any box that holds them.
+test('MetricChart labels every minute of a fifteen minute window', () => {
+  const container = renderChartWindow({ windowMinutes: 15, width: 1600 })
+
+  expect(axisLabels(container).length).toBe(15)
+})
+
+test('MetricChart keeps the axis under twelve labels on a narrow box', () => {
+  const container = renderChartWindow({ windowMinutes: 6 * 60, width: 320 })
+
+  expect(axisLabels(container).length).toBeLessThanOrEqual(12)
+})
+
+// A week holds seven midnights; "12:00 AM" seven times over names none of
+// them. Every label past a day carries its date, so no two can read the same.
+test('MetricChart dates the axis labels once the window passes a day', () => {
+  const container = renderChartWindow({ windowMinutes: 3 * 24 * 60, width: 1600 })
+
+  const labels = axisLabels(container)
+  expect(labels.length).toBeGreaterThan(0)
+  expect(new Set(labels).size).toBe(labels.length)
+  expect(labels.filter((label) => !/\d{1,2}:\d{2}/.test(label))).toEqual([])
+})
+
+test('MetricChart labels a day-wide window by time alone', () => {
+  const container = renderChartWindow({ windowMinutes: 24 * 60, width: 1600 })
+
+  const labels = axisLabels(container)
+  const timeOnly = new Date(NOW).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  expect(labels.length).toBeGreaterThan(0)
+  expect(labels.filter((label) => label.length > timeOnly.length)).toEqual([])
 })
 
 test('MetricChart dates the inspected moment, not just its time', () => {

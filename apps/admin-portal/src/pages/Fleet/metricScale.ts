@@ -27,8 +27,26 @@ const TICK_FRACTIONS = [0, 0.25, 0.5, 0.75, 1] as const
 // half empty.
 const NICE_STEPS = [1, 2, 2.5, 5, 10] as const
 
-const PERCENT_AXIS_WIDTH = 44
-const RATE_AXIS_WIDTH = 68
+/** What one character of a label needs across at the axis's 12px font. Tabular
+    digits and the letters of a unit both sit near 0.6em; this is a little over,
+    so a measured width can only come in under the budget, never over it. */
+const LABEL_CHAR_PX = 7.5
+
+/** The margin Recharts keeps between tick and text, plus clear space between
+    the label's end and the plot. */
+const AXIS_PAD_PX = 12
+
+/** Room for the widest label the axis will draw, so Recharts never wraps one
+    onto a second line. It breaks a label at its space once the text outgrows
+    the axis, and "100.0" over "MB/s" reads as two ticks where there is one. */
+const axisWidthFor = ({
+  ticks,
+  format,
+}: {
+  ticks: readonly number[]
+  format: (value: number) => string
+}): number =>
+  Math.ceil(Math.max(...ticks.map((tick) => format(tick).length)) * LABEL_CHAR_PX + AXIS_PAD_PX)
 
 const formatPercent = (value: number): string => `${value}%`
 
@@ -70,10 +88,7 @@ export const niceCeiling = (peak: number): number => {
 export const metricScale = ({ unit, peak }: { unit: MetricUnit; peak: number }): MetricScale => {
   const percent = unit === 'percent'
   const max = percent ? 100 : niceCeiling(peak)
-  return {
-    max,
-    ticks: TICK_FRACTIONS.map((fraction) => max * fraction),
-    format: percent ? formatPercent : formatRate,
-    axisWidth: percent ? PERCENT_AXIS_WIDTH : RATE_AXIS_WIDTH,
-  }
+  const ticks = TICK_FRACTIONS.map((fraction) => max * fraction)
+  const format = percent ? formatPercent : formatRate
+  return { max, ticks, format, axisWidth: axisWidthFor({ ticks, format }) }
 }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { CartesianGrid, Line, LineChart, Tooltip, XAxis, YAxis } from 'recharts'
 import type { MetricHostSeries, MetricUnit } from '@/lib/fleetApi'
-import { CHART_HEIGHT } from '@/pages/Fleet/chartFrame'
+import { COLLAPSED_CHART_HEIGHT } from '@/pages/Fleet/chartFrame'
 import { chartCaption, type MetricCopy } from '@/pages/Fleet/metricCopy'
 import { metricScale, type MetricScale } from '@/pages/Fleet/metricScale'
 import styles from '@/pages/Fleet/MetricChart.module.scss'
@@ -16,6 +16,9 @@ type MetricChartProps = {
       formatting. Comes from the same response as the numbers. */
   readonly unit: MetricUnit
   readonly copy: MetricCopy
+  /** The plot's height in pixels. The page's own toggle picks it, and hands
+      the same number to the placeholder that stands in for this chart. */
+  readonly height?: number
   /** The clock, injectable so tests can pin the frame. */
   readonly now?: () => number
 }
@@ -228,8 +231,13 @@ const toRows = (plots: readonly HostPlot[]): readonly ChartRow[] => {
 const timeShort = (at: number): string =>
   new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
-const dayShort = (at: number): string =>
-  new Date(at).toLocaleDateString([], { month: 'short', day: 'numeric' })
+const dayTimeShort = (at: number): string =>
+  new Date(at).toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 
 /** The inspected moment, to the second and carrying its date.
  *
@@ -246,22 +254,32 @@ const stampExact = (at: number): string =>
     second: '2-digit',
   })
 
-const QUARTER_HOUR_MS = 900_000
+const MINUTE_MS = 60_000
 const HOUR_MS = 3_600_000
 const DAY_MS = 86_400_000
 const WIDEST_TICK_STEP_MS = 7 * DAY_MS
 
 /** The spacings the x axis may label at, narrowest first.
  *
- * Every one is a whole number of quarter hours, which is what keeps a tick on
- * :00, :15, :30 or :45 rather than on whatever second the frame happened to
- * start at. Recharts' own tick picker divides the domain instead, so it labels
- * the moving present's offset - 07:23, 07:38 - and the labels shuffle every
- * second as the frame slides.
+ * Every one divides an hour or a day evenly, which is what keeps a tick on a
+ * round minute rather than on whatever second the frame happened to start
+ * at. Recharts' own tick picker divides the domain instead, so it labels the
+ * moving present's offset - 07:23, 07:38 - and the labels shuffle every second
+ * as the frame slides.
+ *
+ * No neighbour is more than 2.5 times the last. The picker takes the narrowest
+ * spacing that keeps the axis under its cap, so that ratio is what keeps it
+ * from dropping under half of the cap when it widens by one: every preset
+ * range past a quarter hour lands between six and twelve labels on a box wide
+ * enough to hold them, and the quarter hour itself labels every minute.
  */
 const TICK_STEPS_MS = [
-  QUARTER_HOUR_MS,
-  2 * QUARTER_HOUR_MS,
+  MINUTE_MS,
+  2 * MINUTE_MS,
+  5 * MINUTE_MS,
+  10 * MINUTE_MS,
+  15 * MINUTE_MS,
+  30 * MINUTE_MS,
   HOUR_MS,
   2 * HOUR_MS,
   3 * HOUR_MS,
@@ -272,16 +290,25 @@ const TICK_STEPS_MS = [
   WIDEST_TICK_STEP_MS,
 ] as const
 
-/** What one label needs across, its text plus the space that keeps two labels
-    from touching. */
-const TICK_LABEL_PX = 76
+/** The most labels the axis carries: past this they read as a band of text
+    rather than as marks along a scale. */
+const MAX_TICKS = 12
 
-/** The narrowest allowed spacing whose labels still fit the measured box, so a
-    phone drops to hourly ticks where a desktop can carry quarter hours. */
-const tickStep = ({ span, width }: { span: number; width: number }): number => {
-  const budget = Math.max(2, Math.floor(width / TICK_LABEL_PX))
-  return TICK_STEPS_MS.find((step) => span / step + 1 <= budget) ?? WIDEST_TICK_STEP_MS
-}
+/** A quarter hour is the one range short enough to label every minute, and
+    fifteen marks a minute apart still read as a scale: the reader counts
+    minutes off it directly. */
+const MINUTE_BY_MINUTE_MS = 15 * MINUTE_MS
+const MINUTE_BY_MINUTE_TICKS = 15
+
+const tickCap = (span: number): number =>
+  span <= MINUTE_BY_MINUTE_MS ? MINUTE_BY_MINUTE_TICKS : MAX_TICKS
+
+/** What one label needs across, its text plus the space that keeps two labels
+    from touching. "08:56 PM" runs near 58px at the axis font, so 64 leaves a
+    sliver between neighbours and lets fifteen minute marks fit a 960px box. A
+    dated label is near twice the text of a time. */
+const TIME_LABEL_PX = 64
+const DAY_TIME_LABEL_PX = 116
 
 /** Every boundary of the chosen spacing that falls inside the frame.
  *
@@ -306,10 +333,39 @@ const axisTicks = ({
   return Array.from({ length: count }, (_, index) => start + index * step)
 }
 
-/** A tick's label: the date once the ticks stand a day or more apart, where
-    every one of them would otherwise read midnight. */
-const axisLabel = ({ at, step }: { at: number; step: number }): string =>
-  step >= DAY_MS ? dayShort(at) : timeShort(at)
+/** The ticks of the narrowest spacing that fits: at most `cap`, and no more
+ * than the measured box can hold without two labels touching, so a phone
+ * drops to hourly ticks where a desktop carries five minutes.
+ *
+ * Counted by laying the ticks out, not by dividing the span: a frame whose
+ * edge lands exactly on a boundary carries one tick more than the division
+ * says, and the cap is a promise about what is drawn.
+ */
+const labelledTicks = ({
+  first,
+  last,
+  width,
+  labelPx,
+  cap,
+}: {
+  first: number
+  last: number
+  width: number
+  labelPx: number
+  cap: number
+}): readonly number[] => {
+  const budget = Math.min(cap, Math.max(2, Math.floor(width / labelPx)))
+  const candidates = TICK_STEPS_MS.map((step) => axisTicks({ first, last, step }))
+  return (
+    candidates.find((ticks) => ticks.length <= budget) ?? candidates[candidates.length - 1] ?? []
+  )
+}
+
+/** A tick's label: date and time once the frame spans more than a day, where a
+    time alone could name any of several days it is drawn on; time alone below
+    that, since the frame never crosses a day boundary more than once. */
+const axisLabel = ({ at, dated }: { at: number; dated: boolean }): string =>
+  dated ? dayTimeShort(at) : timeShort(at)
 
 /** The moving present: the frame's right edge, and the moment every line's tip
  * is carried to.
@@ -370,17 +426,32 @@ const drawFrame = ({
   // slides off the left edge, and the space between the newest reading and the
   // right edge is the honest rendering of "nothing this recent yet".
   const first = nowMs - span
+  const inFrame = (point: PlotPoint): boolean => point.at >= first && point.at <= nowMs
   const clipToFrame = (plot: HostPlot): HostPlot => ({
     ...plot,
-    points: plot.points.filter((point) => point.at >= first && point.at <= nowMs),
+    points: plot.points.filter(inFrame),
   })
-  const lines = withHeld({ plots, at: nowMs }).map(clipToFrame)
+  // The newest reading before the left edge stays on the drawn line, so the
+  // stroke enters from the edge instead of starting at the first reading
+  // inside it: readings land a collector tick apart, and a line that began at
+  // the first one left up to a tick of empty plot on the left. The x axis
+  // allows overflow, so Recharts clips the stroke at the plot's edge and the
+  // reading itself is never shown.
+  const withLeadIn = (plot: HostPlot): HostPlot => {
+    const before = plot.points.filter((point) => point.at < first)
+    const lead = before[before.length - 1]
+    return {
+      ...plot,
+      points: [...(lead === undefined ? [] : [lead]), ...plot.points.filter(inFrame)],
+    }
+  }
+  const lines = withHeld({ plots, at: nowMs }).map(withLeadIn)
+  const readings = plots.map(clipToFrame)
   // The axis is sized from what is on screen, not from the whole payload: a
   // spike that has already slid off the left edge must not keep the ceiling
-  // high over a chart that no longer shows it. A fixed-scale unit ignores the
-  // peak entirely.
-  const peak = Math.max(0, ...lines.flatMap((plot) => plot.points.map((point) => point.value)))
-  const readings = plots.map(clipToFrame)
+  // high over a chart that no longer shows it, and the lead-in reading is off
+  // screen by definition. A fixed-scale unit ignores the peak entirely.
+  const peak = Math.max(0, ...readings.flatMap((plot) => plot.points.map((point) => point.value)))
   return {
     rows: [...toRows(lines)],
     lines,
@@ -454,6 +525,7 @@ export const MetricChart = ({
   windowMinutes,
   unit,
   copy,
+  height = COLLAPSED_CHART_HEIGHT,
   now = readClock,
 }: MetricChartProps) => {
   const { ref, width } = useMeasuredWidth()
@@ -470,11 +542,17 @@ export const MetricChart = ({
   } = useMemo(() => drawFrame({ plots, nowMs, span, unit }), [plots, nowMs, span, unit])
 
   const first = nowMs - span
-  // Labelled at quarter-hour boundaries rather than wherever the domain
-  // divides, so the ticks name round times and stay put while the frame slides
-  // under them. The spacing widens with the range and narrows with the box.
-  const step = tickStep({ span, width })
-  const quarterHours = axisTicks({ first, last: nowMs, step })
+  // Labelled at round minutes rather than wherever the domain divides, so the
+  // ticks name round times and stay put while the frame slides under them. The
+  // spacing widens with the range and narrows with the box.
+  const dated = span > DAY_MS
+  const axisMoments = labelledTicks({
+    first,
+    last: nowMs,
+    width,
+    labelPx: dated ? DAY_TIME_LABEL_PX : TIME_LABEL_PX,
+    cap: tickCap(span),
+  })
 
   // Only worth saying once the collector is late. Readings land every few
   // seconds, so an always-on readout spends its life reporting the ordinary lag
@@ -507,7 +585,7 @@ export const MetricChart = ({
         <div className={styles.plotWrap} ref={ref}>
           <LineChart
             width={width}
-            height={CHART_HEIGHT}
+            height={height}
             data={rows}
             margin={MARGIN}
             // Recharts' own keyboard layer: the chart takes a tab stop and the
@@ -526,14 +604,17 @@ export const MetricChart = ({
               // rather than stretching to fill it
               domain={[first, nowMs]}
               allowDataOverflow
-              ticks={[...quarterHours]}
-              tickFormatter={(at: number) => axisLabel({ at, step })}
+              ticks={[...axisMoments]}
+              tickFormatter={(at: number) => axisLabel({ at, dated })}
               // the label class rides the tick itself: Recharts hoists tick
               // text out of the axis group, where the axis class cannot
               // reach it
               tick={{ className: styles.tickLabel }}
               tickLine={false}
-              minTickGap={width < 480 ? 64 : 40}
+              // every tick handed over is drawn: the axis already picked as
+              // many as the box holds, and Recharts culling them again by its
+              // own measure thinned a scale that was sized to fit
+              interval={0}
               className={styles.axis}
             />
             <YAxis

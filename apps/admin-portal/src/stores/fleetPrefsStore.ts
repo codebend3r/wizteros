@@ -63,6 +63,10 @@ type FleetPrefsState = {
       one request per interval however many charts exist. */
   readonly chartKind: MetricKind
   readonly setChartKind: (kind: MetricKind) => void
+  /** Whether the chart stands at its tall height. Collapsed by default: the
+      short box keeps the host cards on screen beneath it. */
+  readonly chartExpanded: boolean
+  readonly setChartExpanded: (expanded: boolean) => void
 }
 
 /** The fleet page's own knobs, persisted so a refresh keeps them.
@@ -83,6 +87,8 @@ export const useFleetPrefsStore = create<FleetPrefsState>()(
         set({ rangeMinutes: isRange(minutes) ? minutes : DEFAULT_RANGE_MINUTES }),
       chartKind: DEFAULT_CHART_KIND,
       setChartKind: (kind) => set({ chartKind: isChartKind(kind) ? kind : DEFAULT_CHART_KIND }),
+      chartExpanded: false,
+      setChartExpanded: (expanded) => set({ chartExpanded: expanded }),
     }),
     {
       name: 'wz-fleet-prefs',
@@ -95,6 +101,10 @@ export const useFleetPrefsStore = create<FleetPrefsState>()(
             : current.updateIntervalMs,
           rangeMinutes: isRange(stored.rangeMinutes) ? stored.rangeMinutes : current.rangeMinutes,
           chartKind: isChartKind(stored.chartKind) ? stored.chartKind : current.chartKind,
+          chartExpanded:
+            typeof stored.chartExpanded === 'boolean'
+              ? stored.chartExpanded
+              : current.chartExpanded,
         }
       },
     },

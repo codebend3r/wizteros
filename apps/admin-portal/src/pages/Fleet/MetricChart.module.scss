@@ -31,7 +31,7 @@
   // first measurement it may be wider than this box. Scrolling inside is the
   // house rule for wide content: the mismatch must never widen the page.
   overflow-x: auto;
-  padding: var(--space-1) 0;
+  padding: var(--space-2);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);

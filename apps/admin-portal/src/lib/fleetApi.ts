@@ -316,6 +316,24 @@ export const fetchFleet = async (): Promise<FleetResponse> => {
 
 /** One metric family's history. The kind is the route, so a new chart is a new
     kind on both sides rather than a second fetcher here. */
+/** The monitor's own ceiling on a history window, a week: raw samples are
+    pruned past it, so it refuses anything wider. Mirrored here so the lead-in
+    below cannot push a week-wide request over the edge into a refusal. */
+export const MAX_HISTORY_MINUTES = 10_080
+
+/** How much history to ask for beyond the frame a chart draws.
+ *
+ * The frame is [now - window, now], and the first reading inside it can sit a
+ * whole collector tick past the left edge, so a line that began there left a
+ * strip of empty plot before it. One minute covers two ticks plus clock skew
+ * between the monitor and the browser: the reading before the edge arrives
+ * with the rest, and the line is drawn in from it.
+ */
+export const HISTORY_LEAD_IN_MINUTES = 1
+
+export const historyMinutes = (windowMinutes: number): number =>
+  Math.min(windowMinutes + HISTORY_LEAD_IN_MINUTES, MAX_HISTORY_MINUTES)
+
 export const fetchMetricHistory = async ({
   kind,
   minutes,

@@ -1,4 +1,4 @@
-import { CHART_HEIGHT } from '@/pages/Fleet/chartFrame'
+import { COLLAPSED_CHART_HEIGHT } from '@/pages/Fleet/chartFrame'
 import { chartCaption, type MetricCopy } from '@/pages/Fleet/metricCopy'
 import styles from '@/pages/Fleet/MetricChartSkeleton.module.scss'
 import { rangeProse } from '@/stores/fleetPrefsStore'
@@ -10,6 +10,8 @@ type MetricChartSkeletonProps = {
       reserves the height it will actually take. Empty until the fleet query
       answers, which is the one case the row can still reflow. */
   readonly hostNames: readonly string[]
+  /** The height the chart it stands in for will be drawn at. */
+  readonly height?: number
 }
 
 /** The chart's own shape, held while its readings load.
@@ -25,6 +27,7 @@ export const MetricChartSkeleton = ({
   copy,
   windowMinutes,
   hostNames,
+  height = COLLAPSED_CHART_HEIGHT,
 }: MetricChartSkeletonProps) => (
   <div className={styles.chart}>
     <p className={styles.subtitle}>{chartCaption({ copy, windowMinutes })}</p>
@@ -33,7 +36,7 @@ export const MetricChartSkeleton = ({
       {/* the height is the chart's own number, in pixels, because the chart is
         drawn at a pixel height: a stylesheet copy would be a second place for
         it to drift */}
-      <div className={styles.plot} style={{ height: `${CHART_HEIGHT}px` }}>
+      <div className={styles.plot} style={{ height: `${height}px` }}>
         <p className={styles.status} role="status">
           <span className={styles.spinner} aria-hidden="true" />
           Loading {copy.reading} readings for the last {rangeProse(windowMinutes)}.
