@@ -1,10 +1,9 @@
-name: Pull request checks
+name: 🧪 Pull request checks
 
-# `synchronize` is the one that matters: it fires on every push to the PR head,
-# so each new commit is checked, not just the PR opening.
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+  push:
+  workflow_dispatch:
 
 permissions:
   contents: read
