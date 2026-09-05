@@ -1,3 +1,4 @@
+import type { IconName } from '@/components/Icon/Icon'
 import type { MetricKind } from '@/lib/fleetApi'
 import { rangeProse } from '@/stores/fleetPrefsStore'
 
@@ -9,6 +10,8 @@ import { rangeProse } from '@/stores/fleetPrefsStore'
 export type MetricCopy = {
   /** The section heading. */
   readonly title: string
+  /** The glyph over the title on its tab. */
+  readonly icon: IconName
   /** What the numbers are, opening the description. */
   readonly measure: string
   /** The noun in "No ... readings in the last hour". */
@@ -18,21 +21,25 @@ export type MetricCopy = {
 export const METRIC_COPY: Record<MetricKind, MetricCopy> = {
   cpu: {
     title: 'CPU',
+    icon: 'cpu',
     measure: 'Aggregate CPU busy percent per host',
     reading: 'CPU',
   },
   memory: {
     title: 'Memory',
+    icon: 'memory',
     measure: 'Used memory percent per host',
     reading: 'memory',
   },
   gpu: {
     title: 'GPU',
+    icon: 'gpu',
     measure: 'Intel iGPU frequency as a share of its own ceiling, per host',
     reading: 'GPU',
   },
   network: {
     title: 'Network',
+    icon: 'network',
     measure: 'Total throughput per host, received plus sent across every interface',
     reading: 'network',
   },

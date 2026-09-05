@@ -62,10 +62,15 @@
 }
 
 // Hugs its own text rather than spanning the band, so a one-word status reads
-// as a token and a phrase can still wrap to a second line.
+// as a token and a phrase can still wrap to a second line. The tile leads,
+// inset by the same hairline the text is, so pill and tile share one corner.
 .status {
+  display: grid;
+  align-items: center;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-1);
   justify-self: start;
-  padding: var(--space-0) var(--space-1);
+  padding: var(--space-0) var(--space-1) var(--space-0) var(--space-0);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-bg);
@@ -93,12 +98,22 @@
 }
 
 // A rail rather than a filled box: these notes qualify the readings beside
-// them and should not outweigh them.
+// them and should not outweigh them. The mark sits on the first line and the
+// sentence takes the rest of the width.
 .note {
+  display: grid;
+  align-items: start;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-1);
   padding-inline-start: var(--space-1);
   border-inline-start: 2px solid var(--color-accent);
   color: var(--color-muted);
   font-size: var(--font-size-sm);
+}
+
+// The rail's colour, so mark and rail read as one device.
+.noteMark {
+  color: var(--color-accent);
 }
 
 // Two columns at every width. The cells are short enough to hold a label and
@@ -111,14 +126,25 @@
   margin: 0;
 }
 
+// The tile leads and spans both rows, so the label sits level with its top
+// and the figure hangs under the label rather than under the tile.
 .stat {
   display: grid;
   align-content: start;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-0);
+  align-items: start;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    'tile label'
+    'tile value';
+  gap: var(--space-0) var(--space-1);
+}
+
+.statTile {
+  grid-area: tile;
 }
 
 .statLabel {
+  grid-area: label;
   color: var(--color-muted);
   font-size: var(--font-size-xs);
   font-weight: 600;
@@ -128,6 +154,7 @@
 
 .statValue {
   display: grid;
+  grid-area: value;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-0);
   margin: 0;
@@ -171,10 +198,6 @@
 }
 
 .footer {
-  // Shared by the chevron and by the spacer that reserves its column, so the
-  // two footer rows cannot drift out of alignment with each other.
-  --chevron-size: 0.375rem;
-
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-1);
@@ -183,19 +206,13 @@
 }
 
 // The GPU line and the containers line are the same kind of statement - what
-// this host has - so they take the same three-column track and read as a pair.
+// this host has - so they open on the same tile column and read as a pair,
+// with both labels starting at the same x.
 .meta {
   display: grid;
   align-items: center;
   grid-template-columns: auto minmax(0, 1fr) auto;
   gap: var(--space-1) var(--space-2);
-
-  // Holds the chevron's column open on the row that has no chevron, so both
-  // labels start at the same x instead of one sitting a marker's width in.
-  &::before {
-    content: '';
-    width: var(--chevron-size);
-  }
 }
 
 .metaLabel {
@@ -221,15 +238,14 @@
   gap: var(--space-1);
 }
 
-// The chevron is drawn rather than left to the native marker: `display: grid`
-// takes a summary's own triangle away, so the row that reads as expandable
-// used to be indistinguishable from the GPU line above it. Three columns -
-// chevron, label, tally - so the tally sits hard right whatever the label
-// wraps to.
+// Four columns - tile, label, tally, chevron - so the tally sits hard right
+// whatever the label wraps to, and the chevron past it is what tells this row
+// apart from the GPU line above: `display: grid` takes a summary's own marker
+// away, so the row that reads as expandable used to look just like that one.
 .containersSummary {
   display: grid;
   align-items: center;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   gap: var(--space-1) var(--space-2);
   cursor: pointer;
   list-style: none;
@@ -238,26 +254,20 @@
     display: none;
   }
 
-  &::before {
-    content: '';
-    width: var(--chevron-size);
-    height: var(--chevron-size);
-    border-right: 2px solid var(--color-muted);
-    border-bottom: 2px solid var(--color-muted);
-
-    // Pointing down while shut, up while open. Snapped rather than tweened:
-    // a 6px mark is too small for the motion to read as anything but flicker.
-    transform: rotate(45deg);
-  }
-
   &:focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
   }
 }
 
-.containers[open] > .containersSummary::before {
-  transform: rotate(-135deg);
+// Pointing down while shut, up while open. Snapped rather than tweened: a
+// 12px mark is too small for the motion to read as anything but flicker.
+.chevron {
+  color: var(--color-muted);
+}
+
+.containers[open] > .containersSummary .chevron {
+  transform: rotate(180deg);
 }
 
 .containerList {

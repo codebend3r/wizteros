@@ -1,3 +1,6 @@
+import type { ReactNode } from 'react'
+import { Icon, type IconName } from '@/components/Icon/Icon'
+import { IconTile, type IconTileTone } from '@/components/IconTile/IconTile'
 import {
   formatAge,
   formatBytes,
@@ -23,6 +26,15 @@ const STATUS_LABEL: Record<HostStatus, string | null> = {
   ok: 'Healthy',
   warn: null,
   unknown: 'Not collected',
+}
+
+// The tile beside the status word. Never collected is an absence, not a
+// health, so it wears the muted tone: a green tile on it would let a reader's
+// eye file the card as fine before the word beside it said otherwise.
+const STATUS_MARK: Record<HostStatus, { name: IconName; tone: IconTileTone } | null> = {
+  ok: { name: 'check', tone: 'ok' },
+  warn: null,
+  unknown: { name: 'help', tone: 'muted' },
 }
 
 // The status word is computed from disk and load, and disk is a slow-tier
@@ -111,8 +123,23 @@ const usageReading = ({
     scale stays inside the track instead of overflowing it. */
 const barWidth = (percent: number): string => `${Math.max(0, Math.min(percent, 100))}%`
 
+/** A qualification beside the readings, led by a warning mark.
+ *
+ * The mark is decoration: the sentence is the warning, and it opens with the
+ * word that names the problem, so a reader who never sees the triangle loses
+ * nothing.
+ */
+const Note = ({ children }: { readonly children: ReactNode }) => (
+  <p className={styles.note}>
+    <Icon name="warn" className={styles.noteMark} />
+    <span>{children}</span>
+  </p>
+)
+
 type StatProps = {
   readonly label: string
+  /** The glyph on the tile beside the label, in the host's colour. */
+  readonly icon: IconName
   readonly reading: Reading
   /** The share the meter fills, or null for a reading with no meter. Only the
       two capacity readings carry one: a bar under a load average would need a
@@ -123,9 +150,11 @@ type StatProps = {
 
 /** One reading as three tiers: what it is, what it says, what it is measured
     against. The label and the qualifier recede so the figure can be the thing
-    the eye lands on. */
-const Stat = ({ label, reading, meterPercent }: StatProps) => (
+    the eye lands on; the tile ahead of them is a faster handle on the label,
+    not a fourth tier. */
+const Stat = ({ label, icon, reading, meterPercent }: StatProps) => (
   <div className={styles.stat}>
+    <IconTile name={icon} tone="series" size="lg" className={styles.statTile} />
     <dt className={styles.statLabel}>{label}</dt>
     <dd className={styles.statValue}>
       <span className={styles.figure}>{reading.value}</span>
@@ -149,6 +178,7 @@ export const HostCard = ({ summary, className }: HostCardProps) => {
   // absence itself. Only a collected host can carry a stale present tense.
   const staleStatus = summary.status !== 'unknown' && summary.metricsStale
   const label = STATUS_LABEL[summary.status]
+  const mark = STATUS_MARK[summary.status]
   // One text node, not a word plus a decorative span: the qualification has to
   // be part of the status itself, not something a reader can visually skip.
   const statusText = label === null ? null : `${label}${staleStatus ? STALE_STATUS_SUFFIX : ''}`
@@ -166,9 +196,11 @@ export const HostCard = ({ summary, className }: HostCardProps) => {
       <header className={styles.header}>
         <h3 className={styles.name}>{summary.name}</h3>
         <p className={styles.ip}>{summary.ip}</p>
-        {/* status is stated in text, never by color alone */}
+        {/* status is stated in text, never by color alone: the tile restates
+          the word beside it and is hidden from the accessibility tree */}
         {!!statusText && (
           <p className={staleStatus ? `${styles.status} ${styles.statusStale}` : styles.status}>
+            {!!mark && <IconTile name={mark.name} tone={mark.tone} size="sm" />}
             {statusText}
           </p>
         )}
@@ -179,13 +211,11 @@ export const HostCard = ({ summary, className }: HostCardProps) => {
           host's samples at 7 days this state is reached again, and the
           stronger claim would then be false */}
         {summary.status === 'unknown' && (
-          <p className={styles.note}>
-            No current readings for this host. Every reading below is absent, not zero.
-          </p>
+          <Note>No current readings for this host. Every reading below is absent, not zero.</Note>
         )}
 
         {!!staleStatus && (
-          <p className={styles.note}>
+          <Note>
             {/* the age is absent when nothing reported inside the monitor's age
               window, or when a clock step left a reading stamped ahead of now;
               "unknown old" would be worse than saying it cannot be dated */}
@@ -204,7 +234,7 @@ export const HostCard = ({ summary, className }: HostCardProps) => {
                 history, not the present.
               </>
             )}
-          </p>
+          </Note>
         )}
 
         {/* The two metered readings share the first row and the two bare ones
@@ -214,6 +244,7 @@ export const HostCard = ({ summary, className }: HostCardProps) => {
         <dl className={styles.stats}>
           <Stat
             label="Memory"
+            icon="memory"
             reading={usageReading({
               percent: summary.memoryPercent,
               total: summary.memoryTotalBytes,
@@ -222,11 +253,13 @@ export const HostCard = ({ summary, className }: HostCardProps) => {
           />
           <Stat
             label="Disk"
+            icon="disk"
             reading={usageReading({ percent: summary.diskPercent, total: summary.diskTotalBytes })}
             meterPercent={summary.diskPercent}
           />
           <Stat
             label="Load / core"
+            icon="gauge"
             reading={{
               value: summary.loadPerCore === null ? '--' : summary.loadPerCore.toFixed(2),
               context: coreContext,
@@ -235,6 +268,7 @@ export const HostCard = ({ summary, className }: HostCardProps) => {
           />
           <Stat
             label="Uptime"
+            icon="pulse"
             // never measured is unknown, never a perfect score
             reading={{
               value: summary.uptimePercent === null ? 'Unknown' : `${summary.uptimePercent}%`,
@@ -254,6 +288,7 @@ export const HostCard = ({ summary, className }: HostCardProps) => {
         <footer className={styles.footer}>
           {!!summary.hasGpu && (
             <p className={styles.meta}>
+              <IconTile name="gpu" tone="muted" size="sm" />
               <span className={styles.metaLabel}>GPU</span>
               <span className={styles.metaValue}>Intel iGPU present</span>
             </p>
@@ -265,8 +300,12 @@ export const HostCard = ({ summary, className }: HostCardProps) => {
                 hides the roster but never the finding: a host with something
                 down, or with no container data at all, says so while shut. */}
               <summary className={styles.containersSummary}>
+                <IconTile name="box" tone="muted" size="sm" />
                 <span className={styles.metaLabel}>Containers</span>
                 <span className={styles.metaValue}>{containerTally(summary.containers)}</span>
+                {/* drawn rather than left to the native marker, which
+                  `display: grid` takes away from a summary */}
+                <Icon name="chevron" size={12} strokeWidth={2} className={styles.chevron} />
               </summary>
               {summary.containers.length > 0 ? (
                 <ul className={styles.containerList}>
@@ -278,10 +317,10 @@ export const HostCard = ({ summary, className }: HostCardProps) => {
                   ))}
                 </ul>
               ) : (
-                <p className={styles.note}>
+                <Note>
                   Container data not collected. The Docker endpoint is not reporting, so this is
                   missing data rather than a host with no containers.
-                </p>
+                </Note>
               )}
             </details>
           )}

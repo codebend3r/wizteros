@@ -1,4 +1,5 @@
 import { useId, type ChangeEvent } from 'react'
+import { IconTile } from '@/components/IconTile/IconTile'
 import styles from '@/pages/Fleet/UpdateRateSlider.module.scss'
 import { DEFAULT_UPDATE_INTERVAL_MS, UPDATE_INTERVAL_STOPS_MS } from '@/stores/fleetPrefsStore'
 
@@ -23,6 +24,9 @@ export const UpdateRateSlider = ({ intervalMs, onChange }: UpdateRateSliderProps
 
   return (
     <div className={styles.control}>
+      {/* ahead of the label, never part of it: the slider's accessible name
+        stays the two words a reader can find it by */}
+      <IconTile name="refresh" tone="muted" />
       <label className={styles.label} htmlFor={id}>
         Update every
       </label>

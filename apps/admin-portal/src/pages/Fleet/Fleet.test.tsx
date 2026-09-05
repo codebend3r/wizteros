@@ -115,8 +115,44 @@ afterEach(() => {
     // the selected tab is persisted too, so a test that switched charts would
     // otherwise hand the next one a GPU panel
     chartKind: DEFAULT_CHART_KIND,
+    chartExpanded: false,
   })
   localStorage.removeItem('wz-fleet-prefs')
+})
+
+test('Fleet grows the chart to its tall height on the toggle, and shrinks it back', async () => {
+  stubFleetFetch({
+    fleet: { collected_at: '2026-08-15T00:00:00+00:00', stale: false, hosts: [host] },
+    incidents: { open: [], recent: [] },
+    cpu: {
+      kind: 'cpu',
+      unit: 'percent',
+      window_minutes: 60,
+      hosts: [
+        {
+          name: 'vermithor',
+          points: [
+            { at: new Date(Date.now() - 60_000).toISOString(), value: 12.5 },
+            { at: new Date(Date.now() - 30_000).toISOString(), value: 37.5 },
+          ],
+        },
+      ],
+    },
+  })
+  const { container } = renderFleet()
+  await screen.findByRole('img', { name: /CPU by host over the last hour/ })
+
+  // collapsed is the default: the short box keeps the host cards on screen
+  expect(container.querySelector('.recharts-surface')).toHaveAttribute('height', '240')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Expand chart' }))
+
+  expect(container.querySelector('.recharts-surface')).toHaveAttribute('height', '600')
+  expect(useFleetPrefsStore.getState().chartExpanded).toBe(true)
+
+  fireEvent.click(screen.getByRole('button', { name: 'Collapse chart' }))
+
+  expect(container.querySelector('.recharts-surface')).toHaveAttribute('height', '240')
 })
 
 test('HostCard names the host and its status in text, not by color alone', () => {
@@ -575,6 +611,52 @@ test('HostCard draws no bar under the readings that have no scale', () => {
   expect(meterUnder('Uptime')).toBeNull()
 })
 
+// The tile beside a reading wears the host's chart colour, which the card
+// border already states, and stands for the label beside it, which the label
+// already states: it is a second reading of two facts, so it is hidden whole.
+const tileBeside = (label: string): Element | null =>
+  screen.getByText(label).parentElement?.querySelector('.tile') ?? null
+
+test('HostCard sets a hidden tile in the host colour beside every reading', () => {
+  render(<HostCard summary={summary} />)
+
+  const tiles = ['Memory', 'Disk', 'Load / core', 'Uptime'].map(tileBeside)
+  expect(tiles.map((tile) => tile?.getAttribute('aria-hidden'))).toEqual([
+    'true',
+    'true',
+    'true',
+    'true',
+  ])
+  expect(tiles.every((tile) => tile?.classList.contains('series') ?? false)).toBe(true)
+})
+
+test('HostCard marks a healthy status with a tile the word beside it already states', () => {
+  render(<HostCard summary={{ ...summary, status: 'ok' }} />)
+
+  const tile = screen.getByText('Healthy').closest('p')?.querySelector('.tile')
+  expect(tile).toHaveAttribute('aria-hidden', 'true')
+  expect(tile).toHaveClass('ok')
+})
+
+// Never collected is an absence, not a health: its tile must not borrow the
+// healthy tone and let a reader's eye file the card as fine.
+test('HostCard marks an uncollected status in the muted tone, not the healthy one', () => {
+  render(<HostCard summary={{ ...summary, status: 'unknown' }} />)
+
+  const tile = screen.getByText('Not collected').closest('p')?.querySelector('.tile')
+  expect(tile).toHaveClass('muted')
+  expect(tile).not.toHaveClass('ok')
+})
+
+test('HostCard leads each inventory row with a hidden tile and keeps the label in text', () => {
+  render(<HostCard summary={summary} />)
+
+  expect(tileBeside('GPU')).toHaveClass('muted')
+  expect(tileBeside('GPU')).toHaveAttribute('aria-hidden', 'true')
+  expect(tileBeside('Containers')).toHaveClass('muted')
+  expect(screen.getByText('Intel iGPU present')).toBeInTheDocument()
+})
+
 test('Fleet asks the monitor for the chosen range, and marks it on the picker', async () => {
   // the picker's own suite covers the click reaching onChange; what this one
   // pins is the other half - a chosen range reaching the query, not the
@@ -590,9 +672,10 @@ test('Fleet asks the monitor for the chosen range, and marks it on the picker', 
 
   // the CPU query's own result, not the section heading: that heading renders
   // while all three queries are still in flight, so waiting on it waits for
-  // nothing. The stub echoes the monitor's window_minutes, so the prose here
-  // names the stub's hour rather than the week that was asked for.
-  await screen.findByText(/No CPU readings/)
+  // nothing
+  await screen.findByText(/No CPU readings in the last week/)
+  // a week is the monitor's ceiling, so the lead-in minute every other range
+  // asks for is clamped away here rather than refused
   expect(globalThis.fetch).toHaveBeenCalledWith('/fleet/cpu?minutes=10080', expect.anything())
   expect(screen.getByRole('button', { name: '1 week' })).toHaveAttribute('aria-pressed', 'true')
 })
@@ -633,13 +716,14 @@ test('Fleet asks the monitor only for the chart the tab strip selects', async ()
   renderFleet()
   await screen.findByText(/No CPU readings/)
 
-  expect(globalThis.fetch).toHaveBeenCalledWith('/fleet/cpu?minutes=60', expect.anything())
-  expect(globalThis.fetch).not.toHaveBeenCalledWith('/fleet/gpu?minutes=60', expect.anything())
+  // an hour drawn, an hour and a lead-in minute fetched
+  expect(globalThis.fetch).toHaveBeenCalledWith('/fleet/cpu?minutes=61', expect.anything())
+  expect(globalThis.fetch).not.toHaveBeenCalledWith('/fleet/gpu?minutes=61', expect.anything())
 
   fireEvent.click(screen.getByRole('tab', { name: 'GPU' }))
 
   await waitFor(() =>
-    expect(globalThis.fetch).toHaveBeenCalledWith('/fleet/gpu?minutes=60', expect.anything()),
+    expect(globalThis.fetch).toHaveBeenCalledWith('/fleet/gpu?minutes=61', expect.anything()),
   )
   expect(screen.getByRole('tab', { name: 'GPU' })).toHaveAttribute('aria-selected', 'true')
 })

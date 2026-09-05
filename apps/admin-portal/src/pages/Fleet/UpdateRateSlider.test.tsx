@@ -16,6 +16,15 @@ test('UpdateRateSlider is a labelled slider reading out the current interval', (
   expect(screen.getByText('1 s')).toBeInTheDocument()
 })
 
+// The mark sits ahead of the label but never becomes part of it: the slider's
+// accessible name stays the two words a reader can find it by.
+test('UpdateRateSlider leads with a refresh mark that stays out of the label', () => {
+  render(<UpdateRateSlider intervalMs={1000} onChange={() => {}} />)
+
+  const slider = screen.getByLabelText('Update every')
+  expect(slider.parentElement?.firstElementChild).toHaveAttribute('aria-hidden', 'true')
+})
+
 test('UpdateRateSlider reads sub-second stops in milliseconds', () => {
   render(<UpdateRateSlider intervalMs={100} onChange={() => {}} />)
 

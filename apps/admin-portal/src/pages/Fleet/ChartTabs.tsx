@@ -1,12 +1,27 @@
 import { useRef, type KeyboardEvent, type ReactNode } from 'react'
+import { Icon, type IconName } from '@/components/Icon/Icon'
 import type { MetricKind } from '@/lib/fleetApi'
 import styles from '@/pages/Fleet/ChartTabs.module.scss'
 import { METRIC_COPY } from '@/pages/Fleet/metricCopy'
+
+// Over the title on a tab, and alone on the action: both are read at 20px,
+// where the hairline stroke drawn for 16px goes thin.
+const CONTROL_GLYPH_PX = 20
+const CONTROL_STROKE = 1.75
 
 type ChartTabsProps = {
   readonly kinds: readonly MetricKind[]
   readonly active: MetricKind
   readonly onSelect: (kind: MetricKind) => void
+  /** One control that applies to whichever chart is showing, drawn at the far
+      end of the strip. Outside the tablist on purpose: the arrow keys walk
+      tabs, and a button among them would be a stop they skip. Icon-only, so
+      the label is its accessible name and its tooltip rather than a caption. */
+  readonly action?: {
+    readonly label: string
+    readonly icon: IconName
+    readonly onClick: () => void
+  }
   readonly children: ReactNode
 }
 
@@ -40,7 +55,7 @@ const nextIndex = ({
  * mounted would keep its own per-second timer running for a chart nobody is
  * looking at.
  */
-export const ChartTabs = ({ kinds, active, onSelect, children }: ChartTabsProps) => {
+export const ChartTabs = ({ kinds, active, onSelect, action, children }: ChartTabsProps) => {
   const strip = useRef<HTMLDivElement | null>(null)
 
   const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>): void => {
@@ -58,28 +73,48 @@ export const ChartTabs = ({ kinds, active, onSelect, children }: ChartTabsProps)
 
   return (
     <div className={styles.tabs}>
-      <div className={styles.strip} role="tablist" aria-label="Fleet charts" ref={strip}>
-        {kinds.map((kind) => (
+      <div className={styles.header}>
+        <div className={styles.strip} role="tablist" aria-label="Fleet charts" ref={strip}>
+          {kinds.map((kind) => (
+            <button
+              key={kind}
+              type="button"
+              role="tab"
+              id={`chart-tab-${kind}`}
+              className={styles.tab}
+              aria-selected={kind === active}
+              aria-controls={`chart-panel-${kind}`}
+              // one stop for the whole strip: Tab reaches the selected tab, and
+              // the arrow keys move within it
+              tabIndex={kind === active ? 0 : -1}
+              onClick={() => onSelect(kind)}
+              // on the tab rather than the strip: the strip is not focusable in
+              // this pattern, so a handler there would only ever fire by bubbling
+              // from here anyway
+              onKeyDown={onKeyDown}
+            >
+              {/* the glyph is hidden, so the tab's name stays the title alone */}
+              <Icon
+                name={METRIC_COPY[kind].icon}
+                size={CONTROL_GLYPH_PX}
+                strokeWidth={CONTROL_STROKE}
+              />
+              <span>{METRIC_COPY[kind].title}</span>
+            </button>
+          ))}
+        </div>
+
+        {!!action && (
           <button
-            key={kind}
             type="button"
-            role="tab"
-            id={`chart-tab-${kind}`}
-            className={styles.tab}
-            aria-selected={kind === active}
-            aria-controls={`chart-panel-${kind}`}
-            // one stop for the whole strip: Tab reaches the selected tab, and
-            // the arrow keys move within it
-            tabIndex={kind === active ? 0 : -1}
-            onClick={() => onSelect(kind)}
-            // on the tab rather than the strip: the strip is not focusable in
-            // this pattern, so a handler there would only ever fire by bubbling
-            // from here anyway
-            onKeyDown={onKeyDown}
+            className={styles.action}
+            aria-label={action.label}
+            title={action.label}
+            onClick={action.onClick}
           >
-            {METRIC_COPY[kind].title}
+            <Icon name={action.icon} size={CONTROL_GLYPH_PX} strokeWidth={CONTROL_STROKE} />
           </button>
-        ))}
+        )}
       </div>
 
       <div

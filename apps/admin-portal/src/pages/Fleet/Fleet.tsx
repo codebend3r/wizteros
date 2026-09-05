@@ -2,7 +2,14 @@ import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { AdminGate } from '@/components/AdminGate/AdminGate'
 import { AdminLayout } from '@/components/AdminLayout/AdminLayout'
-import { fetchFleet, fetchIncidents, fetchMetricHistory, toHostSummary } from '@/lib/fleetApi'
+import {
+  fetchFleet,
+  fetchIncidents,
+  fetchMetricHistory,
+  historyMinutes,
+  toHostSummary,
+} from '@/lib/fleetApi'
+import { chartHeight } from '@/pages/Fleet/chartFrame'
 import { ChartTabs } from '@/pages/Fleet/ChartTabs'
 import { HostCard } from '@/pages/Fleet/HostCard'
 import { METRIC_COPY } from '@/pages/Fleet/metricCopy'
@@ -109,6 +116,12 @@ const FleetInner = () => {
   const setRangeMinutes = useFleetPrefsStore((state) => state.setRangeMinutes)
   const chartKind = useFleetPrefsStore((state) => state.chartKind)
   const setChartKind = useFleetPrefsStore((state) => state.setChartKind)
+  const chartExpanded = useFleetPrefsStore((state) => state.chartExpanded)
+  const setChartExpanded = useFleetPrefsStore((state) => state.setChartExpanded)
+  // One number for the chart and its placeholder both, so a toggle mid-load
+  // cannot leave the two at different heights and jump the page when the
+  // readings land.
+  const plotHeight = chartHeight({ expanded: chartExpanded })
   // One query, for the chart on screen. Four charts polling at once cost four
   // requests an interval for three answers nobody was looking at, and at the
   // fastest stop that is forty a second against a NAS behind a Funnel.
@@ -118,7 +131,9 @@ const FleetInner = () => {
   // while a week reloads.
   const chart = useQuery({
     queryKey: ['fleet-metric', chartKind, rangeMinutes],
-    queryFn: () => fetchMetricHistory({ kind: chartKind, minutes: rangeMinutes }),
+    // a minute more than the frame, so the reading just before its left edge
+    // comes along and the line can be drawn in from the edge
+    queryFn: () => fetchMetricHistory({ kind: chartKind, minutes: historyMinutes(rangeMinutes) }),
     refetchInterval: chartIntervalMs,
   })
   const chartCopy = METRIC_COPY[chartKind]
@@ -170,7 +185,16 @@ const FleetInner = () => {
           query={chart}
           errorSuffix={`No ${chartCopy.reading} history is available.`}
           controls={
-            <ChartTabs kinds={CHART_KINDS} active={chartKind} onSelect={setChartKind}>
+            <ChartTabs
+              kinds={CHART_KINDS}
+              active={chartKind}
+              onSelect={setChartKind}
+              action={{
+                label: chartExpanded ? 'Collapse chart' : 'Expand chart',
+                icon: chartExpanded ? 'collapse' : 'expand',
+                onClick: () => setChartExpanded(!chartExpanded),
+              }}
+            >
               {!!chart.data && (
                 <MetricChart
                   // remounted per kind on purpose: percentages and throughputs
@@ -179,9 +203,12 @@ const FleetInner = () => {
                   // point into the new tab at a moment picked in the old one
                   key={chartKind}
                   hosts={chart.data.hosts}
-                  windowMinutes={chart.data.window_minutes}
+                  // the chosen range, not the payload's window: the payload
+                  // carries a lead-in minute the frame must not widen to show
+                  windowMinutes={rangeMinutes}
                   unit={chart.data.unit}
                   copy={chartCopy}
+                  height={plotHeight}
                 />
               )}
               {/* No data for this tab and range yet, and no error to explain
@@ -193,6 +220,7 @@ const FleetInner = () => {
                   copy={chartCopy}
                   windowMinutes={rangeMinutes}
                   hostNames={hostNames}
+                  height={plotHeight}
                 />
               )}
             </ChartTabs>
