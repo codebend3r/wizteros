@@ -12,6 +12,20 @@ the version recorded in the tree at that commit. That was not always true; the
 history was rewritten on 2026-08-08 to make it so. See
 [The 2026-08-08 history rewrite](#the-2026-08-08-history-rewrite).
 
+## v0.3.6 (2026-09-04)
+
+- Refine the fleet chart frame and axis: label the time axis at round minutes,
+  capped at twelve and dated past a day, fetch a lead-in minute so each line
+  enters from the frame edge, and size the value axis from its widest label
+- Add a chart expand toggle to the fleet preferences, persisted like the rest
+- Add an Icon primitive drawn on one 16px stroke grid and hidden from assistive
+  tech, plus an IconTile that tints a square in the muted, healthy, or series
+  tone, with a new small-chrome radius token
+- Put icon tiles on the fleet controls and host cards: chart tabs stack a glyph
+  over the title, the expand toggle becomes an icon-only button, the range
+  picker and update slider lead with a mark, and host cards tile every reading
+  in the host colour alongside the status pill and inventory rows
+
 ## v0.3.5 (2026-09-04)
 
 - Add an income analytics dashboard to the admin portal, with current monthly
