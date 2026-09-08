@@ -176,7 +176,7 @@
 }
 
 .tagInCode {
-  font-family: var(--font-pixel);
+  font-family: var(--font-mono);
   font-size: 0.5625rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -187,7 +187,7 @@
 }
 
 .tagProposed {
-  font-family: var(--font-pixel);
+  font-family: var(--font-mono);
   font-size: 0.5625rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -308,6 +308,7 @@
 .samplePixel {
   font-family: var(--font-pixel);
   font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-pixel);
   letter-spacing: 0.14em;
 }
 

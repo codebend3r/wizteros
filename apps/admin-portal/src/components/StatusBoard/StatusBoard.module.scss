@@ -34,8 +34,8 @@
 // The pixel-caps header treatment shared with the members table.
 .eyebrow {
   font-family: var(--font-pixel);
-  font-size: var(--font-size-xs);
-  font-weight: 400;
+  font-size: var(--font-size-pixel);
+  font-weight: var(--font-weight-pixel);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--color-accent);

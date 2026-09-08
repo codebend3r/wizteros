@@ -21,7 +21,8 @@
 // the split the ledger bar charts, in the same order.
 .number {
   font-family: var(--font-pixel);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-pixel);
+  font-weight: var(--font-weight-pixel);
   letter-spacing: 0.12em;
   color: var(--color-accent);
 }

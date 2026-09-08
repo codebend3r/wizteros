@@ -9,7 +9,8 @@
 .legend {
   padding: 0;
   font-family: var(--font-pixel);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-pixel);
+  font-weight: var(--font-weight-pixel);
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--color-accent);
@@ -62,7 +63,8 @@
 
 .optionLabel {
   font-family: var(--font-pixel);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-pixel);
+  font-weight: var(--font-weight-pixel);
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }

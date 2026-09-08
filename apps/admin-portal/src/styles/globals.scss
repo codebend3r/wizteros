@@ -49,9 +49,13 @@
 
   --font-display: 'Bricolage Grotesque Variable', system-ui, sans-serif;
   --font-brand: 'Lily Script One', 'Bricolage Grotesque Variable', system-ui, sans-serif;
-  --font-body: 'Instrument Sans Variable', system-ui, sans-serif;
-  --font-pixel: 'Silkscreen', monospace;
+  --font-body: 'Nunito Sans Variable', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+  // Doto is a dot-matrix face: it needs a heavy weight and a step above xs to
+  // resolve, so pixel surfaces take these two instead of the generic tokens.
+  --font-pixel: 'Doto Variable', monospace;
+  --font-size-pixel: 0.85rem;
+  --font-weight-pixel: 800;
 
   --font-size-hero: clamp(2.5rem, 6vw, 4rem);
   // The one figure a dashboard leads with (the income page's monthly total):

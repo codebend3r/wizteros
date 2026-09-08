@@ -14,13 +14,13 @@
     },
     "apps/admin-portal": {
       "name": "admin-portal",
-      "version": "0.3.3",
+      "version": "0.3.6",
       "dependencies": {
         "@fontsource-variable/bricolage-grotesque": "5.2.10",
-        "@fontsource-variable/instrument-sans": "5.2.8",
+        "@fontsource-variable/doto": "5.3.0",
         "@fontsource-variable/jetbrains-mono": "5.2.8",
+        "@fontsource-variable/nunito-sans": "5.3.0",
         "@fontsource/lily-script-one": "5.2.8",
-        "@fontsource/silkscreen": "5.2.8",
         "@supabase/supabase-js": "2.110.8",
         "@tanstack/query-sync-storage-persister": "5.101.2",
         "@tanstack/react-query": "5.101.2",
@@ -174,13 +174,13 @@
 
     "@fontsource-variable/bricolage-grotesque": ["@fontsource-variable/bricolage-grotesque@5.2.10", "", {}, "sha512-5EDsCqgGpKVcJWE4sg9ydli+t5WM97mISYw5lla/Ev4z71FwXh1oN0YUU8xjkRW9+wBCGD9R+ntAvI8G4bUFJg=="],
 
-    "@fontsource-variable/instrument-sans": ["@fontsource-variable/instrument-sans@5.2.8", "", {}, "sha512-mTCaukbdIjjoipj2E3Q5XoZM3ZxJWdzyHevf/LG/0PHlfF9Q85pxOM7B7A9MerFyxmRzz5kVlumgIvgDSG4CPg=="],
+    "@fontsource-variable/doto": ["@fontsource-variable/doto@5.3.0", "", {}, "sha512-mzvYblQT8AD0tOdBvni6+5E25LMKXKDVqbUutGafV78rIIq1w9s4G1IBpDcHJp+u2+dzsO3zCSm75mBQLguJjw=="],
 
     "@fontsource-variable/jetbrains-mono": ["@fontsource-variable/jetbrains-mono@5.2.8", "", {}, "sha512-WBA9elru6Jdp5df2mES55wuOO0WIrn3kpXnI4+W2ek5u3ZgLS9XS4gmIlcQhiZOWEKl95meYdvK7xI+ETLCq/Q=="],
 
-    "@fontsource/lily-script-one": ["@fontsource/lily-script-one@5.2.8", "", {}, "sha512-vGUM0yD1JsrwH8JsR4iQ5ckjsui28GGHJFo5FXkFl1kS1JqKzvKM65F7rm5Ia5ibQa4IGofCgtZWyUkpEhNCQA=="],
+    "@fontsource-variable/nunito-sans": ["@fontsource-variable/nunito-sans@5.3.0", "", {}, "sha512-Vk1PSfckNDwgw2yGcsvJP3o/0zEW8Rp6KzbD8Ql/6iRHQshnhhAjt+cSIfAUyp5vQuSlleGHFW2LfYaaex0diw=="],
 
-    "@fontsource/silkscreen": ["@fontsource/silkscreen@5.2.8", "", {}, "sha512-PfVe2BRZdjY/UIEXsrpzCo/W8FIGo6jEEMHuQiKfma+E5LXb6WfFFBfCEsO89ZWOSwl2mLE1Yq0d8gagmcaBpQ=="],
+    "@fontsource/lily-script-one": ["@fontsource/lily-script-one@5.2.8", "", {}, "sha512-vGUM0yD1JsrwH8JsR4iQ5ckjsui28GGHJFo5FXkFl1kS1JqKzvKM65F7rm5Ia5ibQa4IGofCgtZWyUkpEhNCQA=="],
 
     "@happy-dom/global-registrator": ["@happy-dom/global-registrator@20.11.1", "", { "dependencies": { "@types/node": ">=20.0.0", "happy-dom": "^20.11.1" } }, "sha512-1C0wwHiyMlEdsbrJqff5ORE2PwaXBOam5rMqkZVOReAezd5nt6Tl/WGg28UAo75Ziuwchs0KaF8lvnn2oAtvJA=="],
 

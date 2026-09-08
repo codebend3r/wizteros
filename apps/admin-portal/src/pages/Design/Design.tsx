@@ -53,11 +53,11 @@ const TYPE_FAMILIES = [
   { token: '--font-display', family: 'Bricolage Grotesque', sample: 'Members' },
   {
     token: '--font-body',
-    family: 'Instrument Sans',
+    family: 'Nunito Sans',
     sample: 'Rewrites the recorded tier instantly; no new invite is sent.',
   },
   { token: '--font-mono', family: 'JetBrains Mono', sample: 'amolsharma@me.com · 4 / 28' },
-  { token: '--font-pixel', family: 'Silkscreen', sample: 'PRICING EYEBROWS ONLY' },
+  { token: '--font-pixel', family: 'Doto', sample: 'TICKER, BADGES AND EYEBROWS' },
   { token: '--font-brand', family: 'Lily Script One', sample: 'Westeroz' },
 ] as const
 

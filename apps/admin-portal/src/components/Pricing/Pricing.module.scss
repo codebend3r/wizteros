@@ -25,8 +25,8 @@
 
 .eyebrow {
   font-family: var(--font-pixel);
-  font-size: var(--font-size-xs);
-  font-weight: 400;
+  font-size: var(--font-size-pixel);
+  font-weight: var(--font-weight-pixel);
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--color-accent);
@@ -95,7 +95,8 @@
   background: transparent;
   color: var(--metal);
   font-family: var(--font-pixel);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-pixel);
+  font-weight: var(--font-weight-pixel);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   cursor: pointer;
