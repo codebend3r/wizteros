@@ -293,8 +293,18 @@
   color: var(--color-accent);
 }
 
-.tickerLive {
+// Each item is dealt one of three tones per pass; all three clear AA on the
+// accent-text ground.
+.toneGold {
+  color: var(--color-accent);
+}
+
+.toneGreen {
   color: var(--color-state-shared);
+}
+
+.toneRose {
+  color: var(--color-youth);
 }
 
 .tickerDot {

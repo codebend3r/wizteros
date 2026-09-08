@@ -5,7 +5,9 @@ import { App } from '@/App'
 
 test('renders the marquee headline', () => {
   render(<App />)
-  expect(screen.getByRole('heading', { name: "It's up. Come on in." })).toBeInTheDocument()
+  expect(
+    screen.getByRole('heading', { name: "Everything you'd stream. Nothing you'd skip." }),
+  ).toBeInTheDocument()
 })
 
 test('hero CTA scrolls to the pricing section', () => {

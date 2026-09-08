@@ -107,8 +107,9 @@ const toChecklist = ({
 export const resolveConfig = ({ env }: { env: RawEnv }): SiteConfig => ({
   brandName: 'Westeroz',
   tagline:
-    'Get access to the media servers, kept online by the people who use them. ' +
-    'Your contribution covers hosting, storage and bandwidth, nothing else.',
+    'One Plex login, a huge library of movies and TV, and not a single commercial. ' +
+    'Request any show or movie you want to see. ' +
+    'Members chip in each month to cover hosting, storage and bandwidth.',
   memberUrl: env.VITE_MEMBER_URL ?? null,
   billingPortalUrl: env.VITE_BILLING_PORTAL_URL ?? null,
   stripeDashboardUrl: env.VITE_STRIPE_DASHBOARD_URL ?? null,

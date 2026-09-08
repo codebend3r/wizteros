@@ -1,5 +1,5 @@
 import { expect, test } from '@/test/vi'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { Hero } from '@/components/Hero/Hero'
 
 const props = {
@@ -11,7 +11,9 @@ const props = {
 
 test('renders the headline, brand, and tagline with a link to pricing', () => {
   render(<Hero {...props} />)
-  expect(screen.getByRole('heading', { name: "It's up. Come on in." })).toBeInTheDocument()
+  expect(
+    screen.getByRole('heading', { name: "Everything you'd stream. Nothing you'd skip." }),
+  ).toBeInTheDocument()
   expect(screen.getByText('Westeroz')).toBeInTheDocument()
   expect(screen.getByText('Get access to the media servers.')).toBeInTheDocument()
   const cta = screen.getByRole('link', { name: 'Choose a plan' })
@@ -44,4 +46,49 @@ test('links sign-in to the member url when provided', () => {
     'href',
     'https://app.plex.tv',
   )
+})
+
+const tickerRows = (container: HTMLElement) =>
+  [...container.querySelectorAll('.tickerRow')].map((row) =>
+    [...row.querySelectorAll('.tickerItem')].map(
+      (item) => `${item.textContent}|${tickerTone(item)}`,
+    ),
+  )
+
+const labelsOf = (row: ReadonlyArray<string> | undefined) =>
+  (row ?? []).map((entry) => entry.split('|')[0]).sort()
+
+const TONES = ['toneGold', 'toneGreen', 'toneRose'] as const
+
+const tickerTone = (item: Element) => TONES.filter((tone) => item.classList.contains(tone)).join()
+
+const tickerTrack = (container: HTMLElement) => {
+  const track = container.querySelector('.tickerTrack')
+  if (!track) throw new Error('missing ticker track')
+  return track
+}
+
+test('renders the trailing ticker row in a different order from the leading row', () => {
+  const { container } = render(<Hero {...props} />)
+  const [lead, trail] = tickerRows(container)
+  expect(trail).not.toEqual(lead)
+  expect(labelsOf(lead)).toEqual(labelsOf(trail))
+})
+
+test('hands the trailing ticker order to the leading row on every animation pass', () => {
+  const { container } = render(<Hero {...props} />)
+  const [, trailBefore] = tickerRows(container)
+  fireEvent.animationIteration(tickerTrack(container))
+  const [leadAfter, trailAfter] = tickerRows(container)
+  expect(leadAfter).toEqual(trailBefore)
+  expect(trailAfter).not.toEqual(leadAfter)
+})
+
+test('paints every ticker item in exactly one of three tones', () => {
+  const { container } = render(<Hero {...props} />)
+  const items = [...container.querySelectorAll('.tickerItem')]
+  expect(items.length).toBeGreaterThan(0)
+  const tones = items.map(tickerTone)
+  expect(tones.every((tone) => TONES.some((known) => known === tone))).toBe(true)
+  expect(new Set(tones).size).toBeGreaterThan(1)
 })
