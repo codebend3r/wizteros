@@ -11,25 +11,37 @@ PRIVATE_NAME_RE = re.compile(r"^9\d\.")
 # every library worth sharing, so bronze, silver and youth resolve here alone.
 SHARE_SERVER = "Meleys"
 
-# Gold reaches past it, across the rest of the live fleet. These servers hold
-# libraries Meleys does not mirror, and gold grants all of them.
-GOLD_SHARE_SERVERS = frozenset({"Meleys", "Vermithor", "Vhagar", "Syrax"})
+# The servers every tier below gold shares from. A frozenset rather than the
+# bare name so the entry rule reads the same shape as gold's.
+ENTRY_SHARE_SERVERS = frozenset({SHARE_SERVER})
 
 # Retired outright: no tier may resolve a library here and no member may keep a
-# record on it. Listed separately from the per-tier sets so widening a tier can
-# never quietly readmit it.
+# record on it. Listed separately from the per-tier rules so widening a tier can
+# never quietly readmit it, and it is the ONLY thing holding gold back.
 RETIRED_SERVERS = frozenset({"Caraxes"})
 
 
-def tier_share_servers(tier: str) -> frozenset:
-    """The Plex servers a tier may share from, retired servers already removed."""
-    wanted = GOLD_SHARE_SERVERS if tier == "gold" else frozenset({SHARE_SERVER})
+def tier_share_servers(*, tier: str, libraries: list) -> frozenset:
+    """The Plex servers a tier may share from, retired servers already removed.
+
+    Gold is every server the fleet has except the retired ones, so its answer
+    is read off the library list rather than declared: a NAS added to the fleet
+    is in gold's scope the moment Wizarr lists its libraries, with no code
+    change and no chance of the constant drifting behind the hardware. That
+    makes gold the one denylisted tier, which is why RETIRED_SERVERS is the
+    thing to edit to hold a server back, never a per-tier set. Every other tier
+    stays an exact allowlist match against ENTRY_SHARE_SERVERS.
+    """
+    wanted = (frozenset(lib.get("server_name") for lib in libraries
+                        if lib.get("server_name"))
+              if tier == "gold" else ENTRY_SHARE_SERVERS)
     return wanted - RETIRED_SERVERS
 
 
-def all_share_servers() -> frozenset:
+def all_share_servers(*, libraries: list) -> frozenset:
     """Every server some tier may share from: the only ones an invite can name."""
-    return frozenset().union(*(tier_share_servers(tier) for tier in TIER_DOWNLOADS))
+    return frozenset().union(*(tier_share_servers(tier=tier, libraries=libraries)
+                               for tier in TIER_DOWNLOADS))
 
 # Youth allowlist, matched on library title alone — every shareable library is
 # on SHARE_SERVER, so the server half of the key added nothing but a second
@@ -98,11 +110,19 @@ def _is_4k(library: dict) -> bool:
 def _is_on_share_server(library: dict, tier: str) -> bool:
     """Whether a library sits on a server this tier is allowed to share from.
 
-    Exact match on server_name, so a library with a null or renamed server
-    fails closed rather than leaking a retired server's copy into a tier.
+    A missing or null server_name fails closed on every tier, and a retired
+    server is refused before the tier is even consulted, so neither a rename
+    nor a widened tier can leak a retired box's copy.
+
+    Gold needs no allowlist membership beyond that: it spans the whole fleet,
+    so anything not retired is in scope. Reading it off the library row rather
+    than off tier_share_servers keeps this a per-library test with no need to
+    thread the whole list down here.
     """
     server = library.get("server_name")
-    return bool(server) and server in tier_share_servers(tier)
+    if not server or server in RETIRED_SERVERS:
+        return False
+    return tier == "gold" or server in ENTRY_SHARE_SERVERS
 
 
 def _tier_wants(tier: str, library: dict) -> bool:
@@ -176,7 +196,7 @@ def tier_scope_problems(*, libraries: list) -> dict:
     for tier in TIER_DOWNLOADS:
         shareable = _shareable_libraries(tier=tier, libraries=libraries)
         if not shareable:
-            servers = ", ".join(sorted(tier_share_servers(tier)))
+            servers = ", ".join(sorted(tier_share_servers(tier=tier, libraries=libraries)))
             problems[tier] = (
                 f"no libraries resolved on {servers}: checkouts for this "
                 f"tier will fail and retry forever"
@@ -212,7 +232,7 @@ def stale_libraries(*, libraries: list, live: dict | None) -> list:
     """
     if not live:
         return []
-    shareable = all_share_servers()
+    shareable = all_share_servers(libraries=libraries)
     stale = []
     for lib in libraries:
         server = lib.get("server_name")

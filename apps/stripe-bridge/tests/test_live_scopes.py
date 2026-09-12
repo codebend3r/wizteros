@@ -65,8 +65,33 @@ def test_every_entry_tier_stays_on_the_share_server(tier):
     assert scope(tier)["server_names"] == [tiers.SHARE_SERVER]
 
 
-def test_gold_spans_the_live_fleet():
-    assert set(scope("gold")["server_names"]) == set(tiers.GOLD_SHARE_SERVERS)
+def test_gold_spans_every_server_except_the_retired_ones():
+    # Gold is a denylist: every server the snapshot names, minus RETIRED_SERVERS.
+    # A new NAS therefore joins gold's scope with no code change, which is the
+    # whole point of deriving the set instead of declaring it.
+    fleet = {lib["server_name"] for lib in LIBRARIES}
+    assert set(scope("gold")["server_names"]) == fleet - tiers.RETIRED_SERVERS
+    assert len(fleet & tiers.RETIRED_SERVERS) == 1, "snapshot must still carry a retired server"
+
+
+def test_a_new_fleet_server_lands_in_gold_and_nowhere_else():
+    # The regression the hardcoded fleet set used to allow: a NAS added to
+    # Wizarr stayed out of gold until someone remembered to edit the constant.
+    added = [*LIBRARIES, {"id": 9001, "name": "01. Movies", "server_id": 99,
+                          "server_name": "Dreamfyre", "enabled": True}]
+    gold = tiers.resolve_tier_access(tier="gold", libraries=added)
+    assert "Dreamfyre" in gold["server_names"]
+    assert 9001 in gold["library_ids"]
+    for tier in set(tiers.TIER_DOWNLOADS) - {"gold"}:
+        assert tiers.resolve_tier_access(tier=tier, libraries=added)["server_names"] \
+            == [tiers.SHARE_SERVER], tier
+
+
+def test_a_retired_server_stays_out_of_gold_however_the_fleet_grows():
+    retired = next(iter(tiers.RETIRED_SERVERS))
+    added = [*LIBRARIES, {"id": 9002, "name": "01. Movies", "server_id": 98,
+                          "server_name": retired, "enabled": True}]
+    assert 9002 not in tiers.resolve_tier_access(tier="gold", libraries=added)["library_ids"]
 
 
 @pytest.mark.parametrize("tier", sorted(tiers.TIER_DOWNLOADS))
@@ -107,7 +132,7 @@ def test_gold_grants_every_shareable_library_across_its_servers():
     shareable = sorted(
         lib["name"] for lib in LIBRARIES
         if lib["enabled"]
-        and lib["server_name"] in tiers.GOLD_SHARE_SERVERS
+        and lib["server_name"] not in tiers.RETIRED_SERVERS
         and not tiers.PRIVATE_NAME_RE.match(lib["name"])
     )
     assert all_names("gold") == shareable

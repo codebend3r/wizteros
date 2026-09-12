@@ -53,11 +53,23 @@ def test_an_empty_library_list_reports_every_tier():
     assert set(problems) == set(tiers.TIER_DOWNLOADS)
 
 
-def test_the_share_server_vanishing_reports_every_tier():
-    # Meleys renamed or dropped out of Wizarr -> nothing is shareable at all.
+def test_the_share_server_vanishing_reports_every_entry_tier():
+    # Meleys renamed or dropped out of Wizarr -> nothing the entry tiers are
+    # pinned to is shareable any more, and all three alarm.
     moved = [{**lib, "server_name": "Somewhere Else"} for lib in HEALTHY]
     problems = tiers.tier_scope_problems(libraries=moved)
-    assert set(problems) == set(tiers.TIER_DOWNLOADS)
+    assert set(problems) == set(tiers.TIER_DOWNLOADS) - {"gold"}
+
+
+def test_gold_follows_the_fleet_through_a_rename_instead_of_alarming():
+    # The other half of making gold a denylist: it is not pinned to a name, so
+    # a renamed server keeps resolving rather than emptying the tier. Gold only
+    # alarms when there is genuinely nothing left to share, which is what
+    # test_an_empty_library_list_reports_every_tier covers.
+    moved = [{**lib, "server_name": "Somewhere Else"} for lib in HEALTHY]
+    assert "gold" not in tiers.tier_scope_problems(libraries=moved)
+    assert tiers.resolve_tier_access(tier="gold", libraries=moved)["server_names"] \
+        == ["Somewhere Else"]
 
 
 def test_problems_are_keyed_by_tier_with_readable_reasons():
