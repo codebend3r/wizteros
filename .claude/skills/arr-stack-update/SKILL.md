@@ -1,6 +1,6 @@
 ---
 name: arr-stack-update
-description: Use when the media stack containers on the Synology docker hosts need to move to their latest images — Sonarr, Radarr, Sabnzbd, Prowlarr, Lidarr, Seerr, Audiobookshelf, Bookshelf. Triggers include "update the arr stack", "update sonarr and radarr", "pull the latest images on Meleys", "are the containers out of date", "update docker images on the NAS", "the arr apps are stale". Covers both Meleys and Vermithor. Only applies to the wizteros repo.
+description: Use when the media stack containers on the Synology docker hosts need to move to their latest images — Sonarr, Radarr, Sabnzbd, Prowlarr, Lidarr, Seerr, Audiobookshelf, Bookshelf, or Jellyfin. Triggers include "update the arr stack", "update sonarr and radarr", "pull the latest images on Meleys", "are the containers out of date", "update docker images on the NAS", "the arr apps are stale", "update Jellyfin on Vhagar". Covers Meleys, Vermithor, and Vhagar. Only applies to the wizteros repo.
 ---
 
 # Update the *arr stack
@@ -19,18 +19,26 @@ no version to bump anywhere in this repo.
 pulled, and belongs to the `deploy-nas` skill. `wizarr` and `tautulli` hold live state
 and are excluded by default — see Stateful Services below.
 
-## The two stacks
+## The stacks
 
-Both are single compose projects, discovered at runtime from container labels — never
-hardcode the paths, they have moved before.
+Meleys and Vermithor each keep their stack in one compose project, discovered at runtime
+from container labels — never hardcode the paths, they have moved before.
 
-| Host        | Project    | Directory                  | Services                                                                                 |
-| ----------- | ---------- | -------------------------- | ---------------------------------------------------------------------------------------- |
-| `meleys`    | `westeroz` | `/volume1/docker/westeroz` | sonarr, radarr, sabnzbd (+ wizarr, tautulli)                                             |
-| `vermithor` | `essoz`    | `/volume1/docker/essoz`    | sonarr, radarr, lidarr, prowlarr, sabnzbd, seerr, audiobookshelf, bookshelf (+ tautulli) |
+| Host        | Project      | Directory                  | Services                                                                                 |
+| ----------- | ------------ | -------------------------- | ---------------------------------------------------------------------------------------- |
+| `meleys`    | `westeroz`   | `/volume1/docker/westeroz` | sonarr, radarr, sabnzbd (+ wizarr, tautulli)                                             |
+| `vermithor` | `essoz`      | `/volume1/docker/essoz`    | sonarr, radarr, lidarr, prowlarr, sabnzbd, seerr, audiobookshelf, bookshelf (+ tautulli) |
+| `vhagar`    | _unverified_ | _unverified_               | jellyfin (expected)                                                                      |
 
-Both hosts run a `sonarr`, a `radarr` and a `sabnzbd`. **Always name the host** — never
+Meleys and Vermithor both run a `sonarr`, a `radarr` and a `sabnzbd`. **Always name the host** — never
 say "the sonarr container".
+
+**Vhagar is wired up but unproven.** Its SSH target (`crivas@192.168.50.4`) is confirmed
+reachable, but `sudo` there needs a password and the stored keychain credential is
+rejected, so the stack has never actually been enumerated — the project name, directory,
+and service list above are assumptions, not observations. Fix the sudo first (a NOPASSWD
+rule for `/usr/local/bin/docker`, matching meleys, is the reliable option), then run
+`--check` and fill this row in from what discovery actually reports.
 
 Full inventory, ports, and volume layout: `docs/arr-stack.md`.
 
@@ -61,7 +69,9 @@ you to update it.
 2. **Discovers the stack** from `com.docker.compose.*` labels: service names, project
    directory, published ports. Filters out the stateful and non-pulled services.
 3. **Records a rollback point** — the image ID each container is currently running.
-4. **Pulls** the tags for the selected services.
+4. **Pulls** the tags for the selected services, and **aborts the whole run if the pull
+   fails** — see Hard-Won Details, a swallowed pull failure is indistinguishable from an
+   up-to-date stack.
 5. **Compares** each tag's image ID before and after. Exits early when nothing moved,
    which is the common case on a stack updated last week.
 6. **Recreates only the changed services** — `compose up -d <changed>`. Untouched
@@ -84,11 +94,37 @@ Before ever passing `--include-stateful`:
 - For Wizarr specifically, prefer the `wizarr-upgrade` skill, which judges whether a
   given release is safe to take and knows the rollback shape.
 
-`stripe-bridge` is filtered out unconditionally. It is built from this repo, `compose
-pull` has nothing to fetch for it, and `deploy-nas` owns its lifecycle.
+`stripe-bridge`, `fleet-monitor` and `fleet-collector` are filtered out unconditionally.
+They are built from this repo, `compose pull` has nothing to fetch for them, `deploy-nas`
+owns their lifecycle, and on meleys they sit in a second compose project whose directory
+would otherwise clobber the media project's.
 
 ## Hard-Won Details (do not "simplify" these away)
 
+- **A failed pull must be loud, or nothing ever updates.** This is the one that bit
+  hardest. `compose pull` is all-or-nothing: give it one bad service name and it aborts
+  having fetched _nothing_. Every image ID then sits unmoved — which the comparison step
+  cannot tell apart from a genuinely current stack, so it cheerfully prints "already
+  current" for all of them and exits 0. The pull's exit status is checked and `die`s on
+  failure for exactly this reason. Never restore the old `| grep … || true` shape that
+  swallowed both the error text and the exit code.
+- **Distrust a blanket "every service is already on the latest image."** On a stack that
+  has not been touched in weeks that verdict is far more likely to be a silent pull
+  failure than the truth. Confirm by rerunning one service with `--services`: if that
+  reports NEW, the full-stack pull was broken, not the stack.
+- **Discovery fields are `|`-separated, and tab would be a bug.** Tab is IFS _whitespace_,
+  so bash collapses a run of tabs into one delimiter. A container with empty compose
+  labels — `fleet-docker-proxy` has none on both hosts — therefore shifts every field
+  left, and `svc` comes out holding the image name `tecnativa/docker-socket-proxy`. That
+  bogus name is what aborted the pull above. The `--filter label=com.docker.compose.service`
+  drops such containers at the source; the `|` separator keeps the survivors aligned even
+  if a label is empty. Do not "tidy" either back to tabs.
+- **Meleys hosts two compose projects, not one.** `westeroz` is the media stack;
+  `stripe-bridge`, `fleet-monitor` and `fleet-collector` live in `/volume1/docker/stripe-bridge`,
+  are built from this repo rather than pulled, and belong to `deploy-nas`. All three are in
+  `NEVER`. They were not always, and the loop's last-wins `workdir` assignment then pointed
+  the pull at the wrong directory. The script now `die`s if the selected services span two
+  project dirs rather than guessing.
 - **`sudo` needs the literal path `/usr/local/bin/docker`.** Docker is not on the
   non-interactive `PATH`, so a plain `ssh host docker ps` returns `command not found`,
   and the socket is `root:root` so every call needs sudo.
@@ -123,6 +159,8 @@ If the user asked about only one host, do not silently update the other.
 
 ## Red Flags
 
+- Reporting "already current" for an entire stack without having seen a `… Pulled` line
+  per service in the pull step → the pull did not run. Do not report it as up to date.
 - About to pass `--include-stateful` with no snapshot taken → STOP, run `nas-state-backup`.
 - Reaching for this skill to ship `stripe-bridge` → wrong skill, use `deploy-nas`.
 - A service fails its health check and the instinct is to rerun with `--no-rollback` to

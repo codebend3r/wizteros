@@ -20,11 +20,14 @@ DOCKER="$DOCKER_BIN"
 SSH="ssh -o BatchMode=yes -o ConnectTimeout=10"
 KEYCHAIN_SERVICE="${WZ_NAS_KEYCHAIN:-synology-nas}"
 
-# Only these two boxes run docker. Each keeps its media stack in one compose
+# Only these three boxes run docker. Each keeps its media stack in one compose
 # project, discovered at runtime from container labels rather than hardcoded.
-ALL_HOSTS="meleys vermithor"
+ALL_HOSTS="meleys vermithor vhagar"
 STATEFUL="wizarr tautulli"
-NEVER="stripe-bridge"
+# Built from this repo, not pulled. compose pull has nothing to fetch for them,
+# and they sit in a second compose project (/volume1/docker/stripe-bridge) whose
+# dir would otherwise clobber the media project's. deploy-nas owns their lifecycle.
+NEVER="stripe-bridge fleet-monitor fleet-collector"
 
 # A service is "up" if it answers at all — some *arr UIs 200, some redirect to a
 # login, some 401. Only a connection failure or a 5xx means broken.
@@ -37,7 +40,7 @@ usage() {
   cat <<'EOF'
 usage: update-arr-stack.sh <host|all> [flags]
 
-  host            meleys | vermithor | all
+  host            meleys | vermithor | vhagar | all
 
   --check                 Pull images and report what is newer; do not recreate
   --services "a b"        Update only these compose services
@@ -64,13 +67,14 @@ ssh_target() {
   case "$1" in
     meleys)    printf '%s' "${WZ_MELEYS_SSH:-crivas@192.168.50.2}" ;;
     vermithor) printf '%s' "${WZ_VERMITHOR_SSH:-crivas@192.168.50.3}" ;;
-    *)         die "unknown host: $1 (docker runs only on meleys and vermithor)" ;;
+    vhagar)    printf '%s' "${WZ_VHAGAR_SSH:-crivas@192.168.50.4}" ;;
+    *)         die "unknown host: $1 (docker runs only on meleys, vermithor, and vhagar)" ;;
   esac
 }
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    meleys|vermithor)   HOSTS="$HOSTS $1" ;;
+    meleys|vermithor|vhagar) HOSTS="$HOSTS $1" ;;
     all)                HOSTS="$ALL_HOSTS" ;;
     --check)            CHECK_ONLY=1 ;;
     --services)         shift; ONLY_SERVICES="${1:-}" ;;
@@ -160,17 +164,30 @@ update_host() {
 
   # ─── discover the stack from container labels ───────────────────────────────
   step "Discovering the compose stack"
-  inventory="$(docker_on "$host" "ps -a --format '{{.Names}}\t{{.Label \"com.docker.compose.service\"}}\t{{.Label \"com.docker.compose.project.working_dir\"}}\t{{.Image}}\t{{.Ports}}'")"
+  # Fields are '|'-separated, not tab: tab is IFS whitespace, so bash collapses a
+  # run of them and every field after an empty label shifts left. A container with
+  # no compose labels then yields svc="<image name>", which compose rejects with
+  # "no such service" and the whole pull aborts having fetched nothing. The label
+  # filter drops those containers at the source; '|' keeps the rest aligned anyway.
+  inventory="$(docker_on "$host" "ps -a --filter 'label=com.docker.compose.service' --format '{{.Names}}|{{.Label \"com.docker.compose.service\"}}|{{.Label \"com.docker.compose.project.working_dir\"}}|{{.Image}}|{{.Ports}}'")"
 
   names=(); services=(); images=(); ports=(); workdir=""
-  while IFS=$'\t' read -r name svc dir image portspec; do
+  while IFS='|' read -r name svc dir image portspec; do
     [ -n "${svc:-}" ] && [ -n "${dir:-}" ] || continue
-    in_list "$name" $NEVER && continue
+    if in_list "$name" $NEVER; then
+      say "  · skipping $svc (built from this repo — deploy-nas owns it)"
+      continue
+    fi
     if [ -n "$ONLY_SERVICES" ]; then
       in_list "$svc" $ONLY_SERVICES || continue
     elif [ "$INCLUDE_STATEFUL" = 0 ] && in_list "$svc" $STATEFUL; then
       say "  · skipping $svc (live state — use --include-stateful, and snapshot it first)"
       continue
+    fi
+    # One compose project per run. Meleys really does host two, so a stray service
+    # from the other one would silently send the pull to the wrong directory.
+    if [ -n "$workdir" ] && [ "$dir" != "$workdir" ]; then
+      die "$host: selected services span two compose projects ($workdir and $dir). Narrow with --services, or add the other project's services to NEVER."
     fi
     workdir="$dir"
     port="$(printf '%s' "${portspec:-}" | sed -n 's/.*0\.0\.0\.0:\([0-9]*\)->.*/\1/p' | head -1)"
@@ -205,8 +222,14 @@ update_host() {
 
   # ─── pull ───────────────────────────────────────────────────────────────────
   step "Pulling latest images"
-  run_remote "$host" "cd '$workdir' && $DOCKER compose pull ${services[*]}" 2>&1 |
-    grep -Ei 'pulled|error|denied|not found' | sed 's/^/  /' || true
+  # Never swallow this. A pull that aborts leaves every image ID unmoved, which
+  # the comparison below cannot tell apart from a genuinely up-to-date stack — so
+  # a silent failure gets reported as "already current" and nothing ever updates.
+  if ! pull_log="$(run_remote "$host" "cd '$workdir' && $DOCKER compose pull ${services[*]}" 2>&1)"; then
+    printf '%s\n' "$pull_log" | sed 's/^/  /'
+    die "$host: compose pull failed, so nothing was fetched. Do NOT read the comparison below as 'up to date' — fix the above and rerun."
+  fi
+  printf '%s\n' "$pull_log" | grep -Ei 'pulled|error|denied|not found' | sed 's/^/  /' || true
 
   # ─── which tags actually moved ──────────────────────────────────────────────
   changed=""
