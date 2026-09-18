@@ -12,6 +12,23 @@ the version recorded in the tree at that commit. That was not always true; the
 history was rewritten on 2026-08-08 to make it so. See
 [The 2026-08-08 history rewrite](#the-2026-08-08-history-rewrite).
 
+## v0.3.7 (2026-09-17)
+
+- Sweep Stripe for missed payments on a schedule and mail the admin a dunning
+  report, with a signup alert on every tier checkout
+- Keep access when a member holds a second Stripe customer at the same address
+  and that sibling subscription is still paying
+- Surface missed payments and lost access on the member page, in its own
+  callout component
+- Make operator alerts never raise, so a mail failure cannot take down a webhook
+- Move the sweeps into their own module and share one payment-state table
+  between the sweep and the webhook, with the alert bodies pulled out of the
+  dispatcher
+- Scope the gold tier to the whole fleet minus the retired servers
+- Rewrite the landing hero copy, deal the ticker in three tones, and swap the
+  body and pixel faces to Nunito Sans and Doto
+- Fix the arr stack pull failing silently, and label the CI workflows with emoji
+
 ## v0.3.6 (2026-09-04)
 
 - Refine the fleet chart frame and axis: label the time axis at round minutes,
