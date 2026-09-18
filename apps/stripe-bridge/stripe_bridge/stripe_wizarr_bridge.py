@@ -9,8 +9,18 @@ import stripe
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from stripe_bridge import __version__, admin, baseline, plex, store, tiers
+from stripe_bridge import (
+    __version__,
+    admin,
+    baseline,
+    members,
+    plex,
+    store,
+    sweeps,
+    tiers,
+)
 from stripe_bridge.mailer import send_alert_email, send_invite_email
+from stripe_bridge.members import resolve_user_ids
 from stripe_bridge.wizarr import WizarrClient
 
 STRIPE_API_KEY = os.environ["STRIPE_API_KEY"]
@@ -37,35 +47,6 @@ logging.basicConfig(level=logging.INFO)
 client = WizarrClient(WIZARR_BASE_URL, WIZARR_API_KEY)
 store.init_db(MAP_DB_PATH)
 
-# Last set of tier problems alerted on, so a standing breakage mails once
-# rather than every sweep. A change in the problem set (or a recovery followed
-# by a relapse) alerts again.
-_last_tier_problems: dict = {}
-
-
-# Last set of VIPs alerted on as holding no access, so a standing problem mails
-# once rather than every sweep.
-_last_vips_without_access: list = []
-
-# What a Stripe subscription status means for the member's dunning flag. A
-# status absent here (canceled, incomplete, paused) says nothing about the
-# flag: the end of a subscription belongs to the cancel handler.
-_PAYMENT_STATE = {"active": None, "trialing": None, "past_due": "past_due", "unpaid": "past_due"}
-
-# When one customer holds several subscriptions (an old canceled one next to
-# the live one), the one that is paying, or failing to, is the one that counts.
-_SUB_STATUS_RANK = {"active": 2, "trialing": 2, "past_due": 1, "unpaid": 1}
-
-
-def _stripe_status_by_customer() -> dict[str, str]:
-    """Every customer's best subscription status, straight from Stripe."""
-    best: dict[str, str] = {}
-    for sub in stripe.Subscription.list(status="all", limit=100).auto_paging_iter():
-        cus, status = sub["customer"], sub["status"]
-        if _SUB_STATUS_RANK.get(status, 0) > _SUB_STATUS_RANK.get(best.get(cus, ""), 0):
-            best[cus] = status
-    return best
-
 
 def _money(amount: object, currency: object) -> str:
     """Stripe's minor-unit integer as '8.00 CAD'; 'unknown amount' when absent."""
@@ -82,20 +63,6 @@ def _describe_invoice(obj: dict) -> str:
     when = (datetime.fromtimestamp(retry, tz=timezone.utc).date().isoformat()
             if retry else "none scheduled; Stripe has given up on this invoice")
     return f"{money}, attempt {attempts}, next retry {when} (invoice {obj.get('id')})"
-
-
-def _access_line(customer_id: str | None, email: str) -> str:
-    """One sentence on whether the member can watch right now, for an alert body."""
-    try:
-        held = bool(resolve_user_ids(client, MAP_DB_PATH, customer_id, email))
-    except Exception:
-        log.exception("could not read Wizarr records for %s", email)
-        return "Whether they hold server access could not be checked (Wizarr unreachable)."
-    if held:
-        return ("They still hold server access for the period already paid; it lapses "
-                "at their expiry if the retries keep failing.")
-    return ("They hold NO server access on any server right now: either their invite "
-            "was never redeemed or their records already lapsed.")
 
 
 def _signup_alert(*, email: str, tier: str, session: dict, code: str) -> None:
@@ -118,142 +85,11 @@ def _payment_failed_alert(*, email: str, invoice: dict) -> None:
         f"{email} missed a payment",
         f"Stripe could not charge {email}.\n\n"
         f"  {_describe_invoice(invoice)}\n\n"
-        f"{_access_line(invoice.get('customer'), email)}\n\n"
+        f"{members.access_line(client=client, db_path=MAP_DB_PATH,
+                               customer_id=invoice.get('customer'), email=email)}\n\n"
         f"Access is not changed by a failed charge. If the retries all fail, "
         f"Stripe cancels the subscription and the bridge disables them then.\n",
     )
-
-
-def _dunning_sweep_alert(found: list[tuple[str, str, str]]) -> None:
-    """One mail for every member the sweep newly found past due."""
-    body = "\n".join(f"- {email}: subscription {status}. {line}" for email, status, line in found)
-    send_alert_email(
-        f"{len(found)} member(s) missed a payment",
-        f"Stripe has these members in dunning, and no payment_failed webhook ever "
-        f"reached the bridge for them:\n\n{body}\n\n"
-        f"Nothing was changed except the admin UI now reads them as Payment Failed. "
-        f"Check the card on file with them before Stripe's last retry cancels the "
-        f"subscription.\n",
-    )
-
-
-def check_payment_states() -> list:
-    """Mirror Stripe's own dunning state onto the store; alert on what the webhooks missed.
-
-    invoice.payment_failed only reaches the bridge when Stripe delivers it, and
-    a member found past due by this sweep is one whose failure arrived by no
-    other route: the event type was not enabled, the Funnel was down, the
-    retries ran out. Access is never touched here; that stays the cancel
-    handler's job. Alerts once per newly found member, because writing the
-    flag is what stops the next sweep repeating it. Never raises: an
-    unreachable Stripe is not a missed payment.
-    """
-    try:
-        by_customer = _stripe_status_by_customer()
-    except Exception:
-        log.exception("payment state check: could not list subscriptions from Stripe")
-        return []
-    found = []
-    for email, row in store.all_customer_rows(MAP_DB_PATH).items():
-        status = by_customer.get(row["customer_id"])
-        if not row["subscribed"] or status not in _PAYMENT_STATE:
-            continue
-        state = _PAYMENT_STATE[status]
-        if state == row["payment_state"]:
-            continue
-        store.set_payment_state(MAP_DB_PATH, email, state)
-        if state:
-            log.warning("payment state check: %s is %s in Stripe; no webhook said so", email, status)
-            store.record_event(MAP_DB_PATH, email, "Payment failed",
-                               f"Stripe reports the subscription {status}; found by the sweep, "
-                               f"no webhook was received")
-            found.append((email, status, _access_line(row["customer_id"], email)))
-        else:
-            log.info("payment state check: %s is paying again", email)
-            store.record_event(MAP_DB_PATH, email, "Payment recovered",
-                               "Stripe reports the subscription active again")
-    if found:
-        _dunning_sweep_alert(found)
-    return [email for email, _status, _line in found]
-
-
-def check_vip_access() -> list:
-    """VIPs holding no Wizarr record at all; alert on the set changing.
-
-    A VIP is a standing grant, so "no records" is never a normal resting state
-    for one: it means an invite was issued and never redeemed, or something
-    disabled them. Guards stop the causes the bridge knows about, and this is
-    the net under the ones it does not (a manual disable, a Plex-side unshare,
-    an invite that quietly expired). Never raises: it runs inside the reconcile
-    loop, and an unreachable Wizarr is not a lockout.
-    """
-    global _last_vips_without_access
-    tags = store.all_member_tags(MAP_DB_PATH)
-    vips = sorted(email for email, tag in tags.items() if tag == "vip")
-    if not vips:
-        _last_vips_without_access = []
-        return []
-    try:
-        users = client.list_users()
-    except Exception:
-        log.exception("vip access check: could not read users from Wizarr")
-        return []
-    held = {(u.get("email") or "").lower() for u in users}
-    stranded = [email for email in vips if email not in held]
-    if not stranded:
-        _last_vips_without_access = []
-        return []
-    log.error("vip access check: %d VIP(s) hold no records: %s", len(stranded), stranded)
-    if stranded != _last_vips_without_access:
-        _last_vips_without_access = stranded
-        body = "\n".join(f"- {email}" for email in stranded)
-        send_alert_email(
-            f"{len(stranded)} VIP(s) hold no server access",
-            f"These VIP members have no Wizarr record on any server:\n\n{body}\n\n"
-            f"VIP access is meant to be permanent. Either they never redeemed "
-            f"their invite, or something disabled them.\n",
-        )
-    return stranded
-
-
-def check_tier_scopes() -> dict:
-    """Verify every tier still resolves against the live library list; alert on drift.
-
-    The tier rules match Plex library names, so a rename on the server silently
-    empties a tier with no code change and no failing test — that is exactly how
-    the youth tier died unnoticed. The same rename also leaves a stale name in
-    Wizarr's own library cache until someone rescans it, and Plex rejects every
-    invite carrying that name whole at redemption, so the cache is checked
-    against plex.tv's live sections here too. Returns the problems found
-    (empty when healthy). Never raises: it runs inside the reconcile loop, and
-    neither a down Wizarr nor a down SMTP may take that loop out. A Wizarr or
-    plex.tv that cannot be reached is reported as healthy — unreachable is not
-    misconfigured, and the next sweep will try again.
-    """
-    global _last_tier_problems
-    try:
-        libraries = client.list_libraries()
-    except Exception:
-        log.exception("tier scope check: could not read libraries from Wizarr")
-        return {}
-    problems = {
-        **tiers.tier_scope_problems(libraries=libraries),
-        **tiers.library_cache_problems(libraries=libraries, live=plex.live_sections_or_none()),
-    }
-    if not problems:
-        _last_tier_problems = {}
-        return {}
-    for tier, reason in problems.items():
-        log.error("tier scope check: %s -> %s", tier, reason)
-    if problems != _last_tier_problems:
-        _last_tier_problems = problems
-        body = "\n".join(f"- {tier}: {reason}" for tier, reason in sorted(problems.items()))
-        send_alert_email(
-            f"{len(problems)} invite scope problem(s)",
-            f"Invites no longer line up with the live library list:\n\n{body}\n\n"
-            f"Members cannot sign up cleanly until the names line up again.\n",
-        )
-    return problems
 
 
 def reconcile_pending_expiries() -> int:
@@ -334,15 +170,16 @@ async def _reconcile_loop() -> None:
     """
     while True:
         try:
-            await asyncio.to_thread(check_tier_scopes)
+            await asyncio.to_thread(sweeps.check_tier_scopes, client=client)
         except Exception:
             log.exception("tier scope check failed")
         try:
-            await asyncio.to_thread(check_vip_access)
+            await asyncio.to_thread(sweeps.check_vip_access, client=client, db_path=MAP_DB_PATH)
         except Exception:
             log.exception("vip access check failed")
         try:
-            await asyncio.to_thread(check_payment_states)
+            await asyncio.to_thread(sweeps.check_payment_states, client=client,
+                                    db_path=MAP_DB_PATH)
         except Exception:
             log.exception("payment state check failed")
         try:
@@ -447,33 +284,6 @@ def access_expiry_iso() -> str:
     return (datetime.now(timezone.utc) + timedelta(days=int(ACCESS_DURATION))).isoformat()
 
 
-def resolve_user_ids(client, store_path: str, customer_id: str | None,
-                     email: str | None) -> list[int]:
-    """All Wizarr record ids for a member (one per server), resolved live.
-
-    Prefer email, then the address an admin linked this one to, then the
-    stored invite code (the Stripe email may differ from the Plex account
-    email). The linked address comes second on purpose: it is a stated fact
-    about who this customer is, while the invite code only infers it from a
-    redemption. It is also the only thing that answers for a member who
-    re-subscribed under a re-typed address without ever redeeming the invite
-    that checkout issued: their renewal would otherwise find nothing to
-    extend and mint yet another invite they have no reason to click.
-    """
-    ids = client.find_user_ids_by_email(email) if email else []
-    if not ids and email:
-        linked = store.get_member_link(store_path, email)
-        if linked:
-            ids = client.find_user_ids_by_email(linked)
-            if ids:
-                log.info("resolved %s through its linked address %s", email, linked)
-    if not ids and customer_id:
-        m = store.get_mapping(store_path, customer_id)
-        if m and m["invite_code"]:
-            ids = client.find_user_ids_by_invite(m["invite_code"])
-    return ids
-
-
 def linked_addresses(store_path: str, email: str) -> set[str]:
     """Every address belonging to the same person as `email`, lowercased.
 
@@ -570,8 +380,8 @@ def restore_access(*, email: str, customer_id: str | None, tier: str | None) -> 
 
 def sync_payment_state(*, email: str | None, status: str) -> None:
     """Mirror a Stripe subscription status onto the member's dunning flag."""
-    if email and status in _PAYMENT_STATE:
-        store.set_payment_state(MAP_DB_PATH, email, _PAYMENT_STATE[status])
+    if email and status in store.PAYMENT_STATE_BY_STATUS:
+        store.set_payment_state(MAP_DB_PATH, email, store.PAYMENT_STATE_BY_STATUS[status])
 
 
 def handle_event(event: dict) -> None:

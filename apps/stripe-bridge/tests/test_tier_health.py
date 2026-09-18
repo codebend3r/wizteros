@@ -80,20 +80,25 @@ def test_problems_are_keyed_by_tier_with_readable_reasons():
 # --- the alerting side ------------------------------------------------------
 
 
-def _bridge(monkeypatch, tmp_path):
-    """The bridge module with a temp db, a mocked Wizarr client and a mocked alert mail."""
+def _sweeps(monkeypatch):
+    """The sweeps module with a mocked alert mail, plus a mocked Wizarr client."""
     import importlib
 
-    from stripe_bridge import store
-    from stripe_bridge import stripe_wizarr_bridge as b
-    importlib.reload(b)
-    dbp = str(tmp_path / "bridge.db")
-    store.init_db(dbp)
-    monkeypatch.setattr(b, "MAP_DB_PATH", dbp)
-    b.client = MagicMock()
+    from stripe_bridge import sweeps as b
+    importlib.reload(b)  # resets the last-alerted state between tests
     monkeypatch.setattr(b, "send_alert_email", MagicMock())
     # No plex.tv by default: the cache is trusted unless a test says otherwise.
     monkeypatch.setattr(b.plex, "live_sections_or_none", lambda: None)
+    return b, MagicMock()
+
+
+def _bridge(monkeypatch):
+    """The bridge module with a mocked Wizarr client, for the checkout-side scope resolver."""
+    import importlib
+
+    from stripe_bridge import stripe_wizarr_bridge as b
+    importlib.reload(b)
+    b.client = MagicMock()
     return b
 
 
@@ -105,10 +110,10 @@ RENAMED_ON_PLEX = {"Meleys": {**LIVE_MELEYS, "x29": "22. Kid Shows"}}
 
 
 def test_health_check_alerts_when_a_tier_breaks(tmp_path, monkeypatch, caplog):
-    b = _bridge(monkeypatch, tmp_path)
-    b.client.list_libraries.return_value = [lib for lib in HEALTHY if lib["id"] not in (25, 26, 29)]
+    b, client = _sweeps(monkeypatch)
+    client.list_libraries.return_value = [lib for lib in HEALTHY if lib["id"] not in (25, 26, 29)]
     with caplog.at_level(logging.ERROR):
-        broken = b.check_tier_scopes()
+        broken = b.check_tier_scopes(client=client)
     assert "youth" in broken
     b.send_alert_email.assert_called_once()
     _subject, body = b.send_alert_email.call_args.args
@@ -116,46 +121,46 @@ def test_health_check_alerts_when_a_tier_breaks(tmp_path, monkeypatch, caplog):
 
 
 def test_health_check_stays_quiet_while_healthy(tmp_path, monkeypatch):
-    b = _bridge(monkeypatch, tmp_path)
-    b.client.list_libraries.return_value = HEALTHY
-    assert b.check_tier_scopes() == {}
+    b, client = _sweeps(monkeypatch)
+    client.list_libraries.return_value = HEALTHY
+    assert b.check_tier_scopes(client=client) == {}
     b.send_alert_email.assert_not_called()
 
 
 def test_health_check_does_not_re_alert_for_an_unchanged_problem(tmp_path, monkeypatch):
     # The sweep runs hourly; a standing breakage must not mail hourly.
-    b = _bridge(monkeypatch, tmp_path)
-    b.client.list_libraries.return_value = [lib for lib in HEALTHY if lib["id"] not in (25, 26, 29)]
-    b.check_tier_scopes()
-    b.check_tier_scopes()
-    b.check_tier_scopes()
+    b, client = _sweeps(monkeypatch)
+    client.list_libraries.return_value = [lib for lib in HEALTHY if lib["id"] not in (25, 26, 29)]
+    b.check_tier_scopes(client=client)
+    b.check_tier_scopes(client=client)
+    b.check_tier_scopes(client=client)
     assert b.send_alert_email.call_count == 1
 
 
 def test_health_check_re_alerts_when_the_problem_changes(tmp_path, monkeypatch):
-    b = _bridge(monkeypatch, tmp_path)
-    b.client.list_libraries.return_value = [lib for lib in HEALTHY if lib["id"] not in (25, 26, 29)]
-    b.check_tier_scopes()
-    b.client.list_libraries.return_value = []  # every tier now broken
-    b.check_tier_scopes()
+    b, client = _sweeps(monkeypatch)
+    client.list_libraries.return_value = [lib for lib in HEALTHY if lib["id"] not in (25, 26, 29)]
+    b.check_tier_scopes(client=client)
+    client.list_libraries.return_value = []  # every tier now broken
+    b.check_tier_scopes(client=client)
     assert b.send_alert_email.call_count == 2
 
 
 def test_health_check_alerts_again_after_a_recovery(tmp_path, monkeypatch):
-    b = _bridge(monkeypatch, tmp_path)
-    b.client.list_libraries.return_value = [lib for lib in HEALTHY if lib["id"] not in (25, 26, 29)]
-    b.check_tier_scopes()
-    b.client.list_libraries.return_value = HEALTHY   # recovered
-    b.check_tier_scopes()
-    b.client.list_libraries.return_value = [lib for lib in HEALTHY if lib["id"] not in (25, 26, 29)]
-    b.check_tier_scopes()                            # broke again -> alert again
+    b, client = _sweeps(monkeypatch)
+    client.list_libraries.return_value = [lib for lib in HEALTHY if lib["id"] not in (25, 26, 29)]
+    b.check_tier_scopes(client=client)
+    client.list_libraries.return_value = HEALTHY   # recovered
+    b.check_tier_scopes(client=client)
+    client.list_libraries.return_value = [lib for lib in HEALTHY if lib["id"] not in (25, 26, 29)]
+    b.check_tier_scopes(client=client)                            # broke again -> alert again
     assert b.send_alert_email.call_count == 2
 
 
 def test_health_check_survives_wizarr_being_down(tmp_path, monkeypatch):
-    b = _bridge(monkeypatch, tmp_path)
-    b.client.list_libraries.side_effect = OSError("wizarr down")
-    assert b.check_tier_scopes() == {}
+    b, client = _sweeps(monkeypatch)
+    client.list_libraries.side_effect = OSError("wizarr down")
+    assert b.check_tier_scopes(client=client) == {}
     b.send_alert_email.assert_not_called()  # unreachable != misconfigured
 
 
@@ -166,11 +171,11 @@ def test_health_check_reports_a_stale_wizarr_cache(tmp_path, monkeypatch, caplog
     # The 2026-09-04 bronze signup: Wizarr still said "33. Formula 1", Plex
     # said "22. Formula 1", and every invite carrying the old name was
     # rejected whole at redemption. Neither tier rule nor test could see it.
-    b = _bridge(monkeypatch, tmp_path)
-    b.client.list_libraries.return_value = CACHED
+    b, client = _sweeps(monkeypatch)
+    client.list_libraries.return_value = CACHED
     monkeypatch.setattr(b.plex, "live_sections_or_none", lambda: RENAMED_ON_PLEX)
     with caplog.at_level(logging.ERROR):
-        problems = b.check_tier_scopes()
+        problems = b.check_tier_scopes(client=client)
     assert "wizarr cache on Meleys" in problems
     assert "14. Kid Shows" in problems["wizarr cache on Meleys"]
     b.send_alert_email.assert_called_once()
@@ -179,24 +184,24 @@ def test_health_check_reports_a_stale_wizarr_cache(tmp_path, monkeypatch, caplog
 
 
 def test_health_check_trusts_the_cache_when_plex_tv_is_down(tmp_path, monkeypatch):
-    b = _bridge(monkeypatch, tmp_path)
-    b.client.list_libraries.return_value = CACHED
+    b, client = _sweeps(monkeypatch)
+    client.list_libraries.return_value = CACHED
     monkeypatch.setattr(b.plex, "live_sections_or_none", lambda: None)
-    assert b.check_tier_scopes() == {}
+    assert b.check_tier_scopes(client=client) == {}
     b.send_alert_email.assert_not_called()
 
 
 def test_health_check_is_quiet_when_the_cache_matches_plex(tmp_path, monkeypatch):
-    b = _bridge(monkeypatch, tmp_path)
-    b.client.list_libraries.return_value = CACHED
+    b, client = _sweeps(monkeypatch)
+    client.list_libraries.return_value = CACHED
     monkeypatch.setattr(b.plex, "live_sections_or_none", lambda: {"Meleys": LIVE_MELEYS})
-    assert b.check_tier_scopes() == {}
+    assert b.check_tier_scopes(client=client) == {}
     b.send_alert_email.assert_not_called()
 
 
 def test_checkout_scope_drops_a_library_plex_would_reject(tmp_path, monkeypatch, caplog):
     # The member gets everything Plex will accept instead of nothing.
-    b = _bridge(monkeypatch, tmp_path)
+    b = _bridge(monkeypatch)
     b.client.list_libraries.return_value = CACHED
     monkeypatch.setattr(b.plex, "live_sections_or_none", lambda: RENAMED_ON_PLEX)
     with caplog.at_level(logging.ERROR):
@@ -207,7 +212,7 @@ def test_checkout_scope_drops_a_library_plex_would_reject(tmp_path, monkeypatch,
 
 
 def test_checkout_scope_keeps_everything_when_plex_tv_is_down(tmp_path, monkeypatch):
-    b = _bridge(monkeypatch, tmp_path)
+    b = _bridge(monkeypatch)
     b.client.list_libraries.return_value = CACHED
     monkeypatch.setattr(b.plex, "live_sections_or_none", lambda: None)
     access = b.resolve_tier_scope("bronze", context="checkout cs_test")

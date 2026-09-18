@@ -269,6 +269,14 @@ def set_subscribed(path: str, email: str, value: bool) -> None:
         )
 
 
+# What a Stripe subscription status means for payment_state. A status absent
+# here (canceled, incomplete, paused) says nothing about the flag: the end of
+# a subscription belongs to the cancel handler.
+PAYMENT_STATE_BY_STATUS = {
+    "active": None, "trialing": None, "past_due": "past_due", "unpaid": "past_due",
+}
+
+
 def set_payment_state(path: str, email: str, state: str | None) -> None:
     """Record (or clear) an outstanding Stripe payment problem for an email.
 
