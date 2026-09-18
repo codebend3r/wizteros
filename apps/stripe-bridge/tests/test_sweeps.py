@@ -9,7 +9,7 @@ os.environ.update({
     "SMTP_PASS": "p", "FROM_ADDR": "server@test",
 })
 
-from stripe_bridge import store, sweeps
+from stripe_bridge import members, store, sweeps
 
 
 @pytest.fixture
@@ -29,7 +29,7 @@ def alert(monkeypatch):
 def _stripe_subs(monkeypatch, subs):
     listing = MagicMock()
     listing.auto_paging_iter.return_value = subs
-    monkeypatch.setattr(sweeps.stripe.Subscription, "list", MagicMock(return_value=listing))
+    monkeypatch.setattr(members.stripe.Subscription, "list", MagicMock(return_value=listing))
 
 
 # --- payment states -----------------------------------------------------------
@@ -112,7 +112,7 @@ def test_payment_state_check_leaves_unsubscribed_and_unknown_rows_alone(db, aler
 
 def test_payment_state_check_survives_stripe_being_down(db, alert, monkeypatch):
     store.upsert_pending(db, "cus_1", "a@x.com", "abc", tier="bronze")
-    monkeypatch.setattr(sweeps.stripe.Subscription, "list",
+    monkeypatch.setattr(members.stripe.Subscription, "list",
                         MagicMock(side_effect=RuntimeError("stripe down")))
     # Unreachable is not a missed payment, and this runs inside the sweep.
     assert sweeps.check_payment_states(client=MagicMock(), db_path=db) == []

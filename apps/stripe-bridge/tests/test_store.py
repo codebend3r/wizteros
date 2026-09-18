@@ -361,3 +361,12 @@ def test_all_events_spans_every_member_newest_first(tmp_path):
     assert [(e["email"], e["action"]) for e in events] == [
         ("a@x.com", "Canceled"), ("b@x.com", "Signed up"), ("a@x.com", "Signed up")]
     assert store.all_events(db, limit=1)[0]["action"] == "Canceled"
+
+
+def test_customer_ids_for_email_lists_every_real_customer_row(tmp_path):
+    db = str(tmp_path / "bridge.db")
+    store.init_db(db)
+    store.upsert_pending(db, "cus_old", "A@x.com", "old", tier="bronze")
+    store.upsert_pending(db, "cus_new", "a@x.com", "new", tier="silver")
+    assert store.customer_ids_for_email(db, "a@X.com") == ["cus_old", "cus_new"]
+    assert store.customer_ids_for_email(db, "nobody@x.com") == []

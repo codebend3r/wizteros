@@ -72,6 +72,21 @@ bridge has no branch for falls through `_dispatch` and is then written to
 first, confirm `GET /stripe/version`, and only then enable
 `invoice.payment_failed` and `customer.subscription.updated` in Stripe.
 
+## One address, two customers
+
+The second shape of the same person paying twice: a member whose card is failing
+re-checks out from scratch instead of fixing it, and lands as a **new** Stripe
+customer under the **same** email. The old subscription then dies in dunning a
+day later. `subscribed` and `payment_state` are per email, so the store cannot
+tell the two customers apart, and the cancel handler used to clear both flags
+and disable the records the new subscription had just paid for.
+
+`members.live_sibling_customer` closes it: on `customer.subscription.deleted`,
+if the address has another `cus_` row, the bridge asks Stripe whether that
+customer is still `active`/`trialing`. If so, the cancel is recorded as
+"access kept, still paying under cus_...", the dunning flag is cleared, and
+nothing is disabled. One Stripe call, only when a sibling row exists.
+
 ## The sweep behind the webhook
 
 `check_payment_states` runs in the reconcile loop (at boot, then every

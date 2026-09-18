@@ -565,7 +565,16 @@ def _dispatch(etype: str, obj: dict) -> None:
         customer_id = obj["customer"]
         m = store.get_mapping(MAP_DB_PATH, customer_id)
         email = (m and m["email"]) or customer_email(customer_id)
-        if email:
+        # This customer really did stop, but the person behind it may not
+        # have: a second customer at the same address (they re-checked out
+        # from scratch), or a linked second address (they pay under another
+        # email). subscribed and payment_state are per email, so they only
+        # move when nothing of theirs at this address still pays.
+        sibling = (members.live_sibling_customer(
+            db_path=MAP_DB_PATH, email=email, dead_customer=customer_id) if email else None)
+        if email and sibling:
+            store.set_payment_state(MAP_DB_PATH, email, None)
+        elif email:
             store.set_subscribed(MAP_DB_PATH, email, False)
         # A VIP's access is a standing grant, not something the subscription
         # buys. The renewal handler already leaves their expiry alone and the
@@ -575,8 +584,7 @@ def _dispatch(etype: str, obj: dict) -> None:
             store.record_event(MAP_DB_PATH, email, "Canceled",
                                "subscription ended; access kept, VIP")
             return
-        # This customer really did stop, but the person behind it may not have.
-        paying = still_subscribed_elsewhere(MAP_DB_PATH, email) if email else None
+        paying = sibling or (still_subscribed_elsewhere(MAP_DB_PATH, email) if email else None)
         if paying:
             log.info("cancel: %s still pays under %s; access left alone", email, paying)
             store.record_event(

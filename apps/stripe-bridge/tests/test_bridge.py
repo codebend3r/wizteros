@@ -867,6 +867,76 @@ def test_checkout_clears_a_dunning_flag_left_by_the_previous_cycle(bridge):
     assert store.all_customer_rows(bridge.MAP_DB_PATH)["a@x.com"]["payment_state"] is None
 
 
+def _stripe_subs(bridge, monkeypatch, subs):
+    listing = MagicMock()
+    listing.auto_paging_iter.return_value = subs
+    mock = MagicMock(return_value=listing)
+    monkeypatch.setattr(bridge.stripe.Subscription, "list", mock)
+    return mock
+
+
+def test_cancel_keeps_access_when_a_second_customer_at_the_same_address_pays(bridge, monkeypatch):
+    """Danny's shape: re-checked out from scratch instead of fixing the card.
+
+    Two customers, one email. The old one dies in dunning the night after the
+    new one paid. The cancel used to clear the per-email flags and disable the
+    records the new subscription had just bought.
+    """
+    from stripe_bridge import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_old", "a@x.com", "old", tier="bronze")
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_new", "a@x.com", "new", tier="silver")
+    store.set_payment_state(bridge.MAP_DB_PATH, "a@x.com", "past_due")
+    _stripe_subs(bridge, monkeypatch, [
+        {"customer": "cus_old", "status": "canceled"},
+        {"customer": "cus_new", "status": "active"},
+    ])
+    bridge.client.find_user_ids_by_email.return_value = [303, 304, 305]
+    bridge.handle_event({
+        "type": "customer.subscription.deleted",
+        "id": "evt_cancel_old_sibling",
+        "data": {"object": {"customer": "cus_old"}},
+    })
+    bridge.client.disable_user.assert_not_called()
+    row = store.all_customer_rows(bridge.MAP_DB_PATH)["a@x.com"]
+    assert row["subscribed"] is True
+    assert row["payment_state"] is None  # the dead customer's dunning is over
+    events = store.events_for_email(bridge.MAP_DB_PATH, "a@x.com")
+    assert events[0]["action"] == "Canceled"
+    assert "still paying under cus_new" in events[0]["detail"]
+
+
+def test_cancel_disables_when_the_other_customer_at_the_address_is_not_paying(bridge, monkeypatch):
+    from stripe_bridge import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_old", "a@x.com", "old", tier="bronze")
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_new", "a@x.com", "new", tier="silver")
+    _stripe_subs(bridge, monkeypatch, [
+        {"customer": "cus_old", "status": "canceled"},
+        {"customer": "cus_new", "status": "past_due"},
+    ])
+    bridge.client.find_user_ids_by_email.return_value = [9]
+    bridge.handle_event({
+        "type": "customer.subscription.deleted",
+        "id": "evt_cancel_both_dead",
+        "data": {"object": {"customer": "cus_old"}},
+    })
+    bridge.client.disable_user.assert_called_once_with(9)
+    assert store.all_customer_rows(bridge.MAP_DB_PATH)["a@x.com"]["subscribed"] is False
+
+
+def test_cancel_asks_stripe_nothing_when_the_address_has_one_customer(bridge, monkeypatch):
+    from stripe_bridge import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "a@x.com", "abc")
+    listing = _stripe_subs(bridge, monkeypatch, [])
+    bridge.client.find_user_ids_by_email.return_value = [9]
+    bridge.handle_event({
+        "type": "customer.subscription.deleted",
+        "id": "evt_cancel_only_customer",
+        "data": {"object": {"customer": "cus_1"}},
+    })
+    listing.assert_not_called()
+    bridge.client.disable_user.assert_called_once_with(9)
+
+
 def test_cancel_with_no_records_is_noop(bridge, monkeypatch):
     monkeypatch.setattr(bridge, "customer_email", lambda cid: "ghost@x.com")
     bridge.client.find_user_ids_by_email.return_value = []

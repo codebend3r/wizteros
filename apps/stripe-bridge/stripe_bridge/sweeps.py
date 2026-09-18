@@ -8,11 +8,9 @@ tests, and any one-off script call them the same way.
 
 import logging
 
-import stripe
-
 from stripe_bridge import plex, store, tiers
 from stripe_bridge.mailer import send_alert_email
-from stripe_bridge.members import access_line
+from stripe_bridge.members import access_line, stripe_status_by_customer
 
 log = logging.getLogger("bridge")
 
@@ -25,20 +23,6 @@ _last_tier_problems: dict = {}
 # Last set of VIPs alerted on as holding no access, so a standing problem mails
 # once rather than every sweep.
 _last_vips_without_access: list = []
-
-# When one customer holds several subscriptions (an old canceled one next to
-# the live one), the one that is paying, or failing to, is the one that counts.
-_SUB_STATUS_RANK = {"active": 2, "trialing": 2, "past_due": 1, "unpaid": 1}
-
-
-def _stripe_status_by_customer() -> dict[str, str]:
-    """Every customer's best subscription status, straight from Stripe."""
-    best: dict[str, str] = {}
-    for sub in stripe.Subscription.list(status="all", limit=100).auto_paging_iter():
-        cus, status = sub["customer"], sub["status"]
-        if _SUB_STATUS_RANK.get(status, 0) > _SUB_STATUS_RANK.get(best.get(cus, ""), 0):
-            best[cus] = status
-    return best
 
 
 def _dunning_sweep_alert(found: list[tuple[str, str, str]]) -> None:
@@ -66,7 +50,7 @@ def check_payment_states(*, client, db_path: str) -> list:
     unreachable Stripe is not a missed payment.
     """
     try:
-        by_customer = _stripe_status_by_customer()
+        by_customer = stripe_status_by_customer()
     except Exception:
         log.exception("payment state check: could not list subscriptions from Stripe")
         return []

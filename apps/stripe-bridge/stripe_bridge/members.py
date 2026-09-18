@@ -7,6 +7,8 @@ module globals.
 
 import logging
 
+import stripe
+
 from stripe_bridge import store
 
 log = logging.getLogger("bridge")
@@ -51,3 +53,36 @@ def access_line(*, client, db_path: str, customer_id: str | None, email: str) ->
                 "at their expiry if the retries keep failing.")
     return ("They hold NO server access on any server right now: either their invite "
             "was never redeemed or their records already lapsed.")
+
+
+# A subscription Stripe is still charging for, or trying to.
+LIVE_STATUSES = frozenset({"active", "trialing"})
+
+# When one customer holds several subscriptions (an old canceled one next to
+# the live one), the one that is paying, or failing to, is the one that counts.
+_SUB_STATUS_RANK = {"active": 2, "trialing": 2, "past_due": 1, "unpaid": 1}
+
+
+def stripe_status_by_customer() -> dict[str, str]:
+    """Every customer's best subscription status, straight from Stripe."""
+    best: dict[str, str] = {}
+    for sub in stripe.Subscription.list(status="all", limit=100).auto_paging_iter():
+        cus, status = sub["customer"], sub["status"]
+        if _SUB_STATUS_RANK.get(status, 0) > _SUB_STATUS_RANK.get(best.get(cus, ""), 0):
+            best[cus] = status
+    return best
+
+
+def live_sibling_customer(*, db_path: str, email: str, dead_customer: str) -> str | None:
+    """Another Stripe customer at the same address that Stripe still says is paying.
+
+    A member who re-checks out from scratch instead of fixing their card ends
+    up as two customers under one email: the old one dying in dunning, the new
+    one paying. `subscribed` is per email, so the store cannot tell the two
+    apart; Stripe can. One Stripe call, and only when a sibling row exists.
+    """
+    siblings = [c for c in store.customer_ids_for_email(db_path, email) if c != dead_customer]
+    if not siblings:
+        return None
+    status = stripe_status_by_customer()
+    return next((c for c in siblings if status.get(c) in LIVE_STATUSES), None)
