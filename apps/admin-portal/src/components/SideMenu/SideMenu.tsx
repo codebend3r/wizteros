@@ -12,6 +12,7 @@ export const menuRoutes = [
   { label: 'Invite', path: '/invite' },
   { label: 'Email', path: '/email' },
   { label: 'Fleet', path: '/fleet' },
+  { label: 'Play history', path: '/plays' },
   { label: 'Design', path: '/design' },
 ] as const
 

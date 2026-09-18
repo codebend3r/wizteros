@@ -26,6 +26,12 @@ const Income = lazy(async () => {
   return { default: module.Income }
 })
 
+// And the play history page draws its timeline with it.
+const Plays = lazy(async () => {
+  const module = await import('@/pages/Plays/Plays')
+  return { default: module.Plays }
+})
+
 export const AppRoutes = () => (
   <Routes>
     <Route path="/" element={<App />} />
@@ -47,6 +53,14 @@ export const AppRoutes = () => (
       element={
         <Suspense fallback={<p>Loading the income page.</p>}>
           <Income />
+        </Suspense>
+      }
+    />
+    <Route
+      path="/plays"
+      element={
+        <Suspense fallback={<p>Loading play history.</p>}>
+          <Plays />
         </Suspense>
       }
     />

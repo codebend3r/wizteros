@@ -101,6 +101,37 @@ test('serves the income page at /income once past the gate', async () => {
   expect(await screen.findByRole('heading', { level: 1, name: 'Income' })).toBeInTheDocument()
 })
 
+// /plays is lazily loaded like the other two chart pages, and its every read
+// goes to the fleet monitor, so fetch is held in flight here as well.
+const renderPlaysRoute = () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => new Promise(() => {})),
+  )
+  render(
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      <MemoryRouter initialEntries={['/plays']}>
+        <AppRoutes />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+}
+
+test('gates /plays behind the Supabase login when signed out', async () => {
+  useAuthStore.setState({ enabled: true, status: 'signed-out' })
+  renderPlaysRoute()
+  expect(await screen.findByRole('button', { name: 'Sign in' })).toBeInTheDocument()
+  expect(screen.queryByRole('heading', { level: 1, name: 'Play history' })).toBeNull()
+})
+
+test('serves the play history page at /plays once past the gate', async () => {
+  useAuthStore.setState({ enabled: false })
+  renderPlaysRoute()
+  expect(await screen.findByRole('heading', { level: 1, name: 'Play history' })).toBeInTheDocument()
+})
+
 test('serves the single login page at /login', () => {
   useAuthStore.setState({ enabled: true, status: 'signed-out' })
   render(

@@ -1,0 +1,135 @@
+// The one table every list view draws: the viewers, a viewer's history, the
+// two rankings and the never-played list share these classes so a reader
+// learns one shape.
+.wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+}
+
+// Only the table scrolls sideways; the pagers above and below stay put.
+.scroller {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+
+  // macOS auto-hides overlay scrollbars, which makes an overflowing last
+  // column look deleted. Force a visible track so overflow is obvious.
+  &::-webkit-scrollbar {
+    height: 8px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: var(--radius-md);
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+
+  th,
+  td {
+    padding: var(--space-1) var(--space-2);
+    border-block-end: 1px solid var(--color-border);
+    text-align: start;
+    vertical-align: top;
+  }
+
+  th {
+    color: var(--color-muted);
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  tbody tr:last-child td,
+  tbody tr:last-child th {
+    border-block-end: none;
+  }
+}
+
+// Counts and dates: mono, tabular, ranged right so a column of figures lines
+// up on its digits.
+.numeric {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+  white-space: nowrap;
+}
+
+// The row's subject, allowed to wrap: it is the one cell that can be long,
+// and the page must never scroll sideways for it.
+.primary {
+  min-width: 12rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+// What scopes the subject: a show's season and episode, an album's artist,
+// a year. Set quieter and smaller so the subject stays the subject.
+.secondary {
+  display: block;
+  color: var(--color-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.muted {
+  color: var(--color-muted);
+}
+
+// A name that opens a viewer's history: a real button, set as a link so the
+// row reads as a place to go rather than a control to press.
+.rowButton {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-weight: 600;
+  text-align: start;
+  text-decoration: underline;
+  text-decoration-color: var(--color-muted);
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+
+  &:hover {
+    color: var(--color-accent);
+    text-decoration-color: var(--color-accent);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+}
+
+// A small mark beside a figure, for the rank column.
+.rank {
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+}
+
+.empty {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
