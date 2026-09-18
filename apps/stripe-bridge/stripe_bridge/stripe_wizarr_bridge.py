@@ -631,6 +631,21 @@ def _dispatch(etype: str, obj: dict) -> None:
                 store.mark_session_invite_emailed(MAP_DB_PATH, session_id)
             store.record_event(MAP_DB_PATH, email, "Signed up",
                                f"{tier} tier — invite emailed")
+            # Inside the once-per-checkout branch on purpose: a Stripe retry of
+            # a session whose invite already went out must not mail twice.
+            try:
+                send_alert_email(
+                    f"{email} signed up for {tier}",
+                    f"{email} completed a {tier} checkout for "
+                    f"{_money(obj.get('amount_total'), obj.get('currency'))}.\n\n"
+                    f"  session  {session_id}\n"
+                    f"  customer {customer_id}\n"
+                    f"  invite   {PUBLIC_INVITE_BASE}/j/{code}\n\n"
+                    f"The invite link has been emailed to them; they hold no new access "
+                    f"until they open it.\n",
+                )
+            except Exception:
+                log.exception("signup alert email failed for %s", email)
         # VIP access is never time-boxed or reshuffled — a VIP's checkout is
         # just a contribution, so their records stay exactly as they are (no
         # disable, no expiry stamp).

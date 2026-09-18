@@ -39,8 +39,8 @@ def bridge(tmp_path, monkeypatch):
     store.init_db(dbp)
     b.client = MagicMock()
     monkeypatch.setattr(b, "send_invite_email", MagicMock())
-    # Operator alerts are mocked for every test: a failed payment now mails
-    # the admin, and nothing here may reach a real SMTP host.
+    # Operator alerts are mocked for every test: a checkout now mails the
+    # admin, and nothing here may reach a real SMTP host.
     monkeypatch.setattr(b, "send_alert_email", MagicMock())
     # No plex.tv by default: the library list is trusted as given.
     monkeypatch.setattr(b.plex, "live_sections_or_none", lambda: None)
@@ -1376,3 +1376,52 @@ def test_payment_state_check_survives_stripe_being_down(bridge, monkeypatch):
     assert bridge.check_payment_states() == []
     assert store.all_customer_rows(bridge.MAP_DB_PATH)["a@x.com"]["payment_state"] is None
     alert.assert_not_called()
+
+
+def test_checkout_mails_the_admin_once_per_signup(bridge):
+    # The operator hears about every tier signup, with enough to act on it
+    # (who, what tier, how much, and the same link the member got) without
+    # opening Stripe.
+    bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
+    bridge.client.create_invite.return_value = {"code": "abc", "url": "http://x/j/abc"}
+    bridge.client.find_users_by_email.return_value = []
+    bridge.client.find_user_ids_by_email.return_value = []
+    session = {"id": "cs_1", "customer": "cus_1", "amount_total": 800, "currency": "cad",
+               "customer_details": {"email": "a@x.com"}, "metadata": {"tier": "silver"}}
+    bridge.handle_event({"type": "checkout.session.completed", "id": "evt_signup_1",
+                         "data": {"object": session}})
+
+    bridge.send_alert_email.assert_called_once()
+    subject, body = bridge.send_alert_email.call_args.args
+    assert subject == "a@x.com signed up for silver"
+    assert "8.00 CAD" in body
+    assert "cs_1" in body and "cus_1" in body
+    assert "http://inv.test/j/abc" in body
+
+    # Stripe re-delivers the same session under a new event id after a
+    # timeout: the invite is reused, the member is not re-mailed, and
+    # neither is the admin.
+    bridge.handle_event({"type": "checkout.session.completed", "id": "evt_signup_1_retry",
+                         "data": {"object": session}})
+    bridge.client.create_invite.assert_called_once()
+    bridge.send_invite_email.assert_called_once()
+    bridge.send_alert_email.assert_called_once()
+
+
+def test_checkout_still_completes_when_the_signup_alert_fails(bridge):
+    # The member's invite is the part that matters; a dead SMTP for the
+    # operator copy must not leave the event unprocessed for Stripe to retry.
+    from stripe_bridge import store
+    bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
+    bridge.client.create_invite.return_value = {"code": "abc", "url": "http://x/j/abc"}
+    bridge.client.find_users_by_email.return_value = []
+    bridge.client.find_user_ids_by_email.return_value = []
+    bridge.send_alert_email.side_effect = OSError("smtp down")
+    bridge.handle_event({
+        "type": "checkout.session.completed", "id": "evt_signup_smtp",
+        "data": {"object": {"id": "cs_2", "customer": "cus_2",
+                            "customer_details": {"email": "b@x.com"},
+                            "metadata": {"tier": "bronze"}}},
+    })
+    bridge.send_invite_email.assert_called_once()
+    assert store.is_event_processed(bridge.MAP_DB_PATH, "evt_signup_smtp")

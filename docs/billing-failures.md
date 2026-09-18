@@ -52,7 +52,7 @@ handler for them is dead code:
 
 | Event                           | What the bridge does                                                                       |
 | ------------------------------- | ------------------------------------------------------------------------------------------ |
-| `checkout.session.completed`    | issue a tier-scoped invite, mail it, clear any dunning flag                                |
+| `checkout.session.completed`    | issue a tier-scoped invite, mail it, mail the admin the signup, clear any dunning flag     |
 | `invoice.paid`                  | clear the dunning flag, extend expiry, **or recover access if there is nothing to extend** |
 | `invoice.payment_failed`        | flag `past_due`, mail the admin what Stripe knows; access untouched                        |
 | `customer.subscription.updated` | mirror `past_due` / `unpaid` / `active` onto the flag                                      |
