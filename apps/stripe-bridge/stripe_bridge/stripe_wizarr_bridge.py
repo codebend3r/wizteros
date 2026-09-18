@@ -47,9 +47,24 @@ _last_tier_problems: dict = {}
 # once rather than every sweep.
 _last_vips_without_access: list = []
 
-# How a subscription status ranks when one customer holds several (an old
-# canceled one next to the live one): the best one is what they are paying.
-_SUB_STATUS_RANK = {"active": 3, "trialing": 3, "past_due": 2, "unpaid": 2}
+# What a Stripe subscription status means for the member's dunning flag. A
+# status absent here (canceled, incomplete, paused) says nothing about the
+# flag: the end of a subscription belongs to the cancel handler.
+_PAYMENT_STATE = {"active": None, "trialing": None, "past_due": "past_due", "unpaid": "past_due"}
+
+# When one customer holds several subscriptions (an old canceled one next to
+# the live one), the one that is paying, or failing to, is the one that counts.
+_SUB_STATUS_RANK = {"active": 2, "trialing": 2, "past_due": 1, "unpaid": 1}
+
+
+def _stripe_status_by_customer() -> dict[str, str]:
+    """Every customer's best subscription status, straight from Stripe."""
+    best: dict[str, str] = {}
+    for sub in stripe.Subscription.list(status="all", limit=100).auto_paging_iter():
+        cus, status = sub["customer"], sub["status"]
+        if _SUB_STATUS_RANK.get(status, 0) > _SUB_STATUS_RANK.get(best.get(cus, ""), 0):
+            best[cus] = status
+    return best
 
 
 def _money(amount: object, currency: object) -> str:
@@ -128,38 +143,32 @@ def check_payment_states() -> list:
     invoice.payment_failed only reaches the bridge when Stripe delivers it, and
     a member found past due by this sweep is one whose failure arrived by no
     other route: the event type was not enabled, the Funnel was down, the
-    retries ran out. Reads every subscription, takes the best status per
-    customer, and for each subscribed row flips payment_state to past_due (or
-    clears it once Stripe says active again). Access is never touched here;
-    that stays the cancel handler's job. Alerts once per newly found member,
-    because writing the flag is what stops the next sweep repeating it. Never
-    raises: an unreachable Stripe is not a missed payment.
+    retries ran out. Access is never touched here; that stays the cancel
+    handler's job. Alerts once per newly found member, because writing the
+    flag is what stops the next sweep repeating it. Never raises: an
+    unreachable Stripe is not a missed payment.
     """
     try:
-        subs = list(stripe.Subscription.list(status="all", limit=100).auto_paging_iter())
+        by_customer = _stripe_status_by_customer()
     except Exception:
         log.exception("payment state check: could not list subscriptions from Stripe")
         return []
-    best: dict[str, str] = {}
-    for sub in subs:
-        cus, status = sub["customer"], sub["status"]
-        if _SUB_STATUS_RANK.get(status, 0) > _SUB_STATUS_RANK.get(best.get(cus, ""), 0):
-            best[cus] = status
-    rows = store.all_customer_rows(MAP_DB_PATH)
     found = []
-    for email, row in rows.items():
-        status = best.get(row["customer_id"] or "")
-        if not row["subscribed"] or status is None:
+    for email, row in store.all_customer_rows(MAP_DB_PATH).items():
+        status = by_customer.get(row["customer_id"])
+        if not row["subscribed"] or status not in _PAYMENT_STATE:
             continue
-        if status in ("past_due", "unpaid") and row["payment_state"] != "past_due":
-            store.set_payment_state(MAP_DB_PATH, email, "past_due")
+        state = _PAYMENT_STATE[status]
+        if state == row["payment_state"]:
+            continue
+        store.set_payment_state(MAP_DB_PATH, email, state)
+        if state:
             log.warning("payment state check: %s is %s in Stripe; no webhook said so", email, status)
             store.record_event(MAP_DB_PATH, email, "Payment failed",
                                f"Stripe reports the subscription {status}; found by the sweep, "
                                f"no webhook was received")
             found.append((email, status, _access_line(row["customer_id"], email)))
-        elif status in ("active", "trialing") and row["payment_state"] == "past_due":
-            store.set_payment_state(MAP_DB_PATH, email, None)
+        else:
             log.info("payment state check: %s is paying again", email)
             store.record_event(MAP_DB_PATH, email, "Payment recovered",
                                "Stripe reports the subscription active again")
@@ -561,12 +570,8 @@ def restore_access(*, email: str, customer_id: str | None, tier: str | None) -> 
 
 def sync_payment_state(*, email: str | None, status: str) -> None:
     """Mirror a Stripe subscription status onto the member's dunning flag."""
-    if not email:
-        return
-    if status in ("past_due", "unpaid"):
-        store.set_payment_state(MAP_DB_PATH, email, "past_due")
-    elif status in ("active", "trialing"):
-        store.set_payment_state(MAP_DB_PATH, email, None)
+    if email and status in _PAYMENT_STATE:
+        store.set_payment_state(MAP_DB_PATH, email, _PAYMENT_STATE[status])
 
 
 def handle_event(event: dict) -> None:
