@@ -69,23 +69,57 @@ def _describe_invoice(obj: dict) -> str:
     return f"{money}, attempt {attempts}, next retry {when} (invoice {obj.get('id')})"
 
 
-def _holds_access(customer_id: str | None, email: str) -> bool | None:
-    """Whether the member holds any Wizarr record; None when Wizarr cannot say."""
+def _access_line(customer_id: str | None, email: str) -> str:
+    """One sentence on whether the member can watch right now, for an alert body."""
     try:
-        return bool(resolve_user_ids(client, MAP_DB_PATH, customer_id or "", email))
+        held = bool(resolve_user_ids(client, MAP_DB_PATH, customer_id, email))
     except Exception:
         log.exception("could not read Wizarr records for %s", email)
-        return None
-
-
-def _access_line(held: bool | None) -> str:
-    if held is None:
         return "Whether they hold server access could not be checked (Wizarr unreachable)."
     if held:
         return ("They still hold server access for the period already paid; it lapses "
                 "at their expiry if the retries keep failing.")
     return ("They hold NO server access on any server right now: either their invite "
             "was never redeemed or their records already lapsed.")
+
+
+def _signup_alert(*, email: str, tier: str, session: dict, code: str) -> None:
+    """Tell the admin who just signed up, with the same link the member got."""
+    send_alert_email(
+        f"{email} signed up for {tier}",
+        f"{email} completed a {tier} checkout for "
+        f"{_money(session.get('amount_total'), session.get('currency'))}.\n\n"
+        f"  session  {session.get('id')}\n"
+        f"  customer {session.get('customer')}\n"
+        f"  invite   {PUBLIC_INVITE_BASE}/j/{code}\n\n"
+        f"The invite link has been emailed to them; they hold no new access "
+        f"until they open it.\n",
+    )
+
+
+def _payment_failed_alert(*, email: str, invoice: dict) -> None:
+    """Tell the admin about one declined attempt; each is a day closer to a cancel."""
+    send_alert_email(
+        f"{email} missed a payment",
+        f"Stripe could not charge {email}.\n\n"
+        f"  {_describe_invoice(invoice)}\n\n"
+        f"{_access_line(invoice.get('customer'), email)}\n\n"
+        f"Access is not changed by a failed charge. If the retries all fail, "
+        f"Stripe cancels the subscription and the bridge disables them then.\n",
+    )
+
+
+def _dunning_sweep_alert(found: list[tuple[str, str, str]]) -> None:
+    """One mail for every member the sweep newly found past due."""
+    body = "\n".join(f"- {email}: subscription {status}. {line}" for email, status, line in found)
+    send_alert_email(
+        f"{len(found)} member(s) missed a payment",
+        f"Stripe has these members in dunning, and no payment_failed webhook ever "
+        f"reached the bridge for them:\n\n{body}\n\n"
+        f"Nothing was changed except the admin UI now reads them as Payment Failed. "
+        f"Check the card on file with them before Stripe's last retry cancels the "
+        f"subscription.\n",
+    )
 
 
 def check_payment_states() -> list:
@@ -123,24 +157,15 @@ def check_payment_states() -> list:
             store.record_event(MAP_DB_PATH, email, "Payment failed",
                                f"Stripe reports the subscription {status}; found by the sweep, "
                                f"no webhook was received")
-            found.append((email, status, _holds_access(row["customer_id"], email)))
+            found.append((email, status, _access_line(row["customer_id"], email)))
         elif status in ("active", "trialing") and row["payment_state"] == "past_due":
             store.set_payment_state(MAP_DB_PATH, email, None)
             log.info("payment state check: %s is paying again", email)
             store.record_event(MAP_DB_PATH, email, "Payment recovered",
                                "Stripe reports the subscription active again")
     if found:
-        body = "\n".join(f"- {email}: subscription {status}. {_access_line(held)}"
-                         for email, status, held in found)
-        send_alert_email(
-            f"{len(found)} member(s) missed a payment",
-            f"Stripe has these members in dunning, and no payment_failed webhook ever "
-            f"reached the bridge for them:\n\n{body}\n\n"
-            f"Nothing was changed except the admin UI now reads them as Payment Failed. "
-            f"Check the card on file with them before Stripe's last retry cancels the "
-            f"subscription.\n",
-        )
-    return [email for email, _status, _held in found]
+        _dunning_sweep_alert(found)
+    return [email for email, _status, _line in found]
 
 
 def check_vip_access() -> list:
@@ -413,7 +438,8 @@ def access_expiry_iso() -> str:
     return (datetime.now(timezone.utc) + timedelta(days=int(ACCESS_DURATION))).isoformat()
 
 
-def resolve_user_ids(client, store_path: str, customer_id: str, email: str | None) -> list[int]:
+def resolve_user_ids(client, store_path: str, customer_id: str | None,
+                     email: str | None) -> list[int]:
     """All Wizarr record ids for a member (one per server), resolved live.
 
     Prefer email, then the address an admin linked this one to, then the
@@ -432,7 +458,7 @@ def resolve_user_ids(client, store_path: str, customer_id: str, email: str | Non
             ids = client.find_user_ids_by_email(linked)
             if ids:
                 log.info("resolved %s through its linked address %s", email, linked)
-    if not ids:
+    if not ids and customer_id:
         m = store.get_mapping(store_path, customer_id)
         if m and m["invite_code"]:
             ids = client.find_user_ids_by_invite(m["invite_code"])
@@ -618,16 +644,7 @@ def _dispatch(etype: str, obj: dict) -> None:
                                f"{tier} tier — invite emailed")
             # Inside the once-per-checkout branch on purpose: a Stripe retry of
             # a session whose invite already went out must not mail twice.
-            send_alert_email(
-                f"{email} signed up for {tier}",
-                f"{email} completed a {tier} checkout for "
-                f"{_money(obj.get('amount_total'), obj.get('currency'))}.\n\n"
-                f"  session  {session_id}\n"
-                f"  customer {customer_id}\n"
-                f"  invite   {PUBLIC_INVITE_BASE}/j/{code}\n\n"
-                f"The invite link has been emailed to them; they hold no new access "
-                f"until they open it.\n",
-            )
+            _signup_alert(email=email, tier=tier, session=obj, code=code)
         # VIP access is never time-boxed or reshuffled — a VIP's checkout is
         # just a contribution, so their records stay exactly as they are (no
         # disable, no expiry stamp).
@@ -719,17 +736,7 @@ def _dispatch(etype: str, obj: dict) -> None:
         store.record_event(MAP_DB_PATH, email, "Payment failed",
                            f"Stripe charge declined; access held while it retries "
                            f"({_describe_invoice(obj)})")
-        # The admin hears about every declined attempt, not just the first:
-        # each one is a day closer to Stripe cancelling the subscription, and
-        # the body says whether the member can even watch right now.
-        send_alert_email(
-            f"{email} missed a payment",
-            f"Stripe could not charge {email}.\n\n"
-            f"  {_describe_invoice(obj)}\n\n"
-            f"{_access_line(_holds_access(customer_id, email))}\n\n"
-            f"Access is not changed by a failed charge. If the retries all fail, "
-            f"Stripe cancels the subscription and the bridge disables them then.\n",
-        )
+        _payment_failed_alert(email=email, invoice=obj)
 
     elif etype == "customer.subscription.updated":
         customer_id = obj.get("customer")
