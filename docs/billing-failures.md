@@ -54,7 +54,7 @@ handler for them is dead code:
 | ------------------------------- | ------------------------------------------------------------------------------------------ |
 | `checkout.session.completed`    | issue a tier-scoped invite, mail it, clear any dunning flag                                |
 | `invoice.paid`                  | clear the dunning flag, extend expiry, **or recover access if there is nothing to extend** |
-| `invoice.payment_failed`        | flag `past_due`; access untouched                                                          |
+| `invoice.payment_failed`        | flag `past_due`, mail the admin what Stripe knows; access untouched                        |
 | `customer.subscription.updated` | mirror `past_due` / `unpaid` / `active` onto the flag                                      |
 | `customer.subscription.deleted` | clear `subscribed`, disable records                                                        |
 
@@ -71,6 +71,23 @@ bridge has no branch for falls through `_dispatch` and is then written to
 `processed_events`, so it is swallowed and never reprocessed. Deploy the bridge
 first, confirm `GET /stripe/version`, and only then enable
 `invoice.payment_failed` and `customer.subscription.updated` in Stripe.
+
+## The sweep behind the webhook
+
+`check_payment_states` runs in the reconcile loop (at boot, then every
+`RECONCILE_INTERVAL_SECONDS`). It lists every Stripe subscription, keeps the
+best status per customer (an old canceled one next to the live one counts as
+the live one), and for each `subscribed` row mirrors `past_due` / `unpaid` onto
+`payment_state`, or clears it once Stripe says `active` again. It is the net
+under everything above: a member whose `payment_failed` events never arrived
+(the type not enabled, the Funnel down, the retries exhausted) is found here
+from Stripe's own record instead of from a webhook that never came.
+
+Each member the sweep newly finds past due is mailed to the admin once, in one
+message, with whether they hold any server record at all. Writing the flag is
+what stops the next sweep repeating it. The sweep never touches access: that
+stays the cancel handler's job. The webhook handler mails on every declined
+attempt separately, with the amount, the attempt count, and the next retry.
 
 ## `payment_state`: the flag between paid and cancelled
 

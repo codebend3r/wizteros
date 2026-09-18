@@ -47,6 +47,104 @@ _last_tier_problems: dict = {}
 # once rather than every sweep.
 _last_vips_without_access: list = []
 
+# How a subscription status ranks when one customer holds several (an old
+# canceled one next to the live one): the best one is what they are paying.
+_SUB_STATUS_RANK = {"active": 3, "trialing": 3, "past_due": 2, "unpaid": 2}
+
+
+def _money(amount: object, currency: object) -> str:
+    """Stripe's minor-unit integer as '8.00 CAD'; 'unknown amount' when absent."""
+    if not isinstance(amount, int):
+        return "unknown amount"
+    return f"{amount / 100:.2f} {str(currency or '').upper()}".strip()
+
+
+def _describe_invoice(obj: dict) -> str:
+    """One line of what Stripe knows about a failed invoice, for an alert body."""
+    money = _money(obj.get("amount_due"), obj.get("currency"))
+    attempts = obj.get("attempt_count") or 0
+    retry = obj.get("next_payment_attempt")
+    when = (datetime.fromtimestamp(retry, tz=timezone.utc).date().isoformat()
+            if retry else "none scheduled; Stripe has given up on this invoice")
+    return f"{money}, attempt {attempts}, next retry {when} (invoice {obj.get('id')})"
+
+
+def _holds_access(customer_id: str | None, email: str) -> bool | None:
+    """Whether the member holds any Wizarr record; None when Wizarr cannot say."""
+    try:
+        return bool(resolve_user_ids(client, MAP_DB_PATH, customer_id or "", email))
+    except Exception:
+        log.exception("could not read Wizarr records for %s", email)
+        return None
+
+
+def _access_line(held: bool | None) -> str:
+    if held is None:
+        return "Whether they hold server access could not be checked (Wizarr unreachable)."
+    if held:
+        return ("They still hold server access for the period already paid; it lapses "
+                "at their expiry if the retries keep failing.")
+    return ("They hold NO server access on any server right now: either their invite "
+            "was never redeemed or their records already lapsed.")
+
+
+def check_payment_states() -> list:
+    """Mirror Stripe's own dunning state onto the store; alert on what the webhooks missed.
+
+    invoice.payment_failed only reaches the bridge when Stripe delivers it, and
+    a member found past due by this sweep is one whose failure arrived by no
+    other route: the event type was not enabled, the Funnel was down, the
+    retries ran out. Reads every subscription, takes the best status per
+    customer, and for each subscribed row flips payment_state to past_due (or
+    clears it once Stripe says active again). Access is never touched here;
+    that stays the cancel handler's job. Alerts once per newly found member,
+    because writing the flag is what stops the next sweep repeating it. Never
+    raises: an unreachable Stripe is not a missed payment.
+    """
+    try:
+        subs = list(stripe.Subscription.list(status="all", limit=100).auto_paging_iter())
+    except Exception:
+        log.exception("payment state check: could not list subscriptions from Stripe")
+        return []
+    best: dict[str, str] = {}
+    for sub in subs:
+        cus, status = sub["customer"], sub["status"]
+        if _SUB_STATUS_RANK.get(status, 0) > _SUB_STATUS_RANK.get(best.get(cus, ""), 0):
+            best[cus] = status
+    rows = store.all_customer_rows(MAP_DB_PATH)
+    found = []
+    for email, row in rows.items():
+        status = best.get(row["customer_id"] or "")
+        if not row["subscribed"] or status is None:
+            continue
+        if status in ("past_due", "unpaid") and row["payment_state"] != "past_due":
+            store.set_payment_state(MAP_DB_PATH, email, "past_due")
+            log.warning("payment state check: %s is %s in Stripe; no webhook said so", email, status)
+            store.record_event(MAP_DB_PATH, email, "Payment failed",
+                               f"Stripe reports the subscription {status}; found by the sweep, "
+                               f"no webhook was received")
+            found.append((email, status, _holds_access(row["customer_id"], email)))
+        elif status in ("active", "trialing") and row["payment_state"] == "past_due":
+            store.set_payment_state(MAP_DB_PATH, email, None)
+            log.info("payment state check: %s is paying again", email)
+            store.record_event(MAP_DB_PATH, email, "Payment recovered",
+                               "Stripe reports the subscription active again")
+    if found:
+        body = "\n".join(f"- {email}: subscription {status}. {_access_line(held)}"
+                         for email, status, held in found)
+        try:
+            send_alert_email(
+                f"{len(found)} member(s) missed a payment",
+                f"Stripe has these members in dunning, and no payment_failed webhook ever "
+                f"reached the bridge for them:\n\n{body}\n\n"
+                f"Nothing was changed except the admin UI now reads them as Payment Failed. "
+                f"Check the card on file with them before Stripe's last retry cancels the "
+                f"subscription.\n",
+            )
+        except Exception:
+            log.exception("missed payment alert email failed")
+    return [email for email, _status, _held in found]
+
 
 def check_vip_access() -> list:
     """VIPs holding no Wizarr record at all; alert on the set changing.
@@ -218,6 +316,10 @@ async def _reconcile_loop() -> None:
             await asyncio.to_thread(check_vip_access)
         except Exception:
             log.exception("vip access check failed")
+        try:
+            await asyncio.to_thread(check_payment_states)
+        except Exception:
+            log.exception("payment state check failed")
         try:
             await asyncio.to_thread(reconcile_pending_expiries)
         except Exception:
@@ -618,7 +720,22 @@ def _dispatch(etype: str, obj: dict) -> None:
         store.set_payment_state(MAP_DB_PATH, email, "past_due")
         log.warning("payment failed for %s (invoice %s)", email, obj.get("id"))
         store.record_event(MAP_DB_PATH, email, "Payment failed",
-                           "Stripe charge declined; access held while it retries")
+                           f"Stripe charge declined; access held while it retries "
+                           f"({_describe_invoice(obj)})")
+        # The admin hears about every declined attempt, not just the first:
+        # each one is a day closer to Stripe cancelling the subscription, and
+        # the body says whether the member can even watch right now.
+        try:
+            send_alert_email(
+                f"{email} missed a payment",
+                f"Stripe could not charge {email}.\n\n"
+                f"  {_describe_invoice(obj)}\n\n"
+                f"{_access_line(_holds_access(customer_id, email))}\n\n"
+                f"Access is not changed by a failed charge. If the retries all fail, "
+                f"Stripe cancels the subscription and the bridge disables them then.\n",
+            )
+        except Exception:
+            log.exception("missed payment alert email failed for %s", email)
 
     elif etype == "customer.subscription.updated":
         customer_id = obj.get("customer")

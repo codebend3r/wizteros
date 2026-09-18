@@ -39,6 +39,9 @@ def bridge(tmp_path, monkeypatch):
     store.init_db(dbp)
     b.client = MagicMock()
     monkeypatch.setattr(b, "send_invite_email", MagicMock())
+    # Operator alerts are mocked for every test: a failed payment now mails
+    # the admin, and nothing here may reach a real SMTP host.
+    monkeypatch.setattr(b, "send_alert_email", MagicMock())
     # No plex.tv by default: the library list is trusted as given.
     monkeypatch.setattr(b.plex, "live_sections_or_none", lambda: None)
     return b
@@ -1204,3 +1207,172 @@ def test_reconcile_skips_banned_members(bridge):
 
     assert bridge.reconcile_pending_expiries() == 0
     bridge.client.set_expiry.assert_not_called()
+
+
+def test_payment_failed_mails_the_admin_with_what_stripe_knows(bridge, monkeypatch):
+    # A declined charge used to be a store flag and a log line. The admin has
+    # to hear about it, and the mail has to say whether the member can even
+    # watch right now: the one who paid once and never redeemed is the one
+    # whose card failing nobody would otherwise notice.
+    from stripe_bridge import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "a@x.com", "abc", tier="bronze")
+    bridge.client.find_user_ids_by_email.return_value = []
+    bridge.client.find_user_ids_by_invite.return_value = []
+    alert = MagicMock()
+    monkeypatch.setattr(bridge, "send_alert_email", alert)
+    bridge.handle_event({
+        "type": "invoice.payment_failed",
+        "id": "evt_failed_mail",
+        "data": {"object": {"id": "in_9", "customer": "cus_1", "customer_email": "a@x.com",
+                            "amount_due": 800, "currency": "cad", "attempt_count": 3,
+                            "next_payment_attempt": 1789689600}},
+    })
+    alert.assert_called_once()
+    subject, body = alert.call_args.args
+    assert subject == "a@x.com missed a payment"
+    assert "8.00 CAD" in body
+    assert "attempt 3" in body
+    assert "2026-09-18" in body
+    assert "in_9" in body
+    assert "NO server access" in body
+    # The history row carries the same facts, so the member page tells it too.
+    events = store.events_for_email(bridge.MAP_DB_PATH, "a@x.com")
+    assert "8.00 CAD" in events[0]["detail"]
+
+
+def test_payment_failed_mail_says_when_access_is_still_held(bridge, monkeypatch):
+    from stripe_bridge import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "a@x.com", "abc", tier="bronze")
+    bridge.client.find_user_ids_by_email.return_value = [7]
+    alert = MagicMock()
+    monkeypatch.setattr(bridge, "send_alert_email", alert)
+    bridge.handle_event({
+        "type": "invoice.payment_failed",
+        "id": "evt_failed_held",
+        "data": {"object": {"id": "in_10", "customer": "cus_1", "customer_email": "a@x.com",
+                            "amount_due": 800, "currency": "cad", "attempt_count": 1,
+                            "next_payment_attempt": None}},
+    })
+    body = alert.call_args.args[1]
+    assert "still hold server access" in body
+    assert "Stripe has given up" in body
+
+
+def test_payment_failed_still_flags_dunning_when_the_mail_fails(bridge, monkeypatch):
+    # SMTP down must not leave the event unprocessed: Stripe would retry it
+    # and the flag is the part that matters.
+    from stripe_bridge import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "a@x.com", "abc", tier="bronze")
+    bridge.client.find_user_ids_by_email.return_value = [7]
+    monkeypatch.setattr(bridge, "send_alert_email", MagicMock(side_effect=OSError("smtp down")))
+    bridge.handle_event({
+        "type": "invoice.payment_failed",
+        "id": "evt_failed_smtp",
+        "data": {"object": {"id": "in_11", "customer": "cus_1", "customer_email": "a@x.com"}},
+    })
+    assert store.all_customer_rows(bridge.MAP_DB_PATH)["a@x.com"]["payment_state"] == "past_due"
+    assert store.is_event_processed(bridge.MAP_DB_PATH, "evt_failed_smtp")
+
+
+def _stripe_subs(bridge, monkeypatch, subs):
+    listing = MagicMock()
+    listing.auto_paging_iter.return_value = subs
+    monkeypatch.setattr(bridge.stripe.Subscription, "list", MagicMock(return_value=listing))
+
+
+def test_payment_state_check_finds_the_member_the_webhook_never_reported(bridge, monkeypatch):
+    """The sweep is the net under the webhook.
+
+    A member whose payment_failed events never reached the bridge (the event
+    type was not enabled on the endpoint for weeks) sat as Subscribed Monthly
+    while Stripe declined them three times. Stripe's own subscription status
+    is the truth the sweep reads back.
+    """
+    from stripe_bridge import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_due", "due@x.com", "abc", tier="bronze")
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_ok", "ok@x.com", "def", tier="bronze")
+    bridge.client.find_user_ids_by_email.return_value = []
+    bridge.client.find_user_ids_by_invite.return_value = []
+    alert = MagicMock()
+    monkeypatch.setattr(bridge, "send_alert_email", alert)
+    _stripe_subs(bridge, monkeypatch, [
+        {"customer": "cus_due", "status": "past_due"},
+        {"customer": "cus_ok", "status": "active"},
+    ])
+
+    assert bridge.check_payment_states() == ["due@x.com"]
+    rows = store.all_customer_rows(bridge.MAP_DB_PATH)
+    assert rows["due@x.com"]["payment_state"] == "past_due"
+    assert rows["ok@x.com"]["payment_state"] is None
+    assert rows["due@x.com"]["subscribed"] is True  # access is never the sweep's to take
+    bridge.client.disable_user.assert_not_called()
+    alert.assert_called_once()
+    subject, body = alert.call_args.args
+    assert "1 member(s) missed a payment" == subject
+    assert "due@x.com" in body and "NO server access" in body
+    assert "ok@x.com" not in body
+    actions = [e["action"] for e in store.events_for_email(bridge.MAP_DB_PATH, "due@x.com")]
+    assert "Payment failed" in actions
+    # Writing the flag is what silences the next sweep: no second mail.
+    assert bridge.check_payment_states() == []
+    alert.assert_called_once()
+
+
+def test_payment_state_check_clears_the_flag_once_stripe_says_active(bridge, monkeypatch):
+    from stripe_bridge import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "a@x.com", "abc", tier="bronze")
+    store.set_payment_state(bridge.MAP_DB_PATH, "a@x.com", "past_due")
+    alert = MagicMock()
+    monkeypatch.setattr(bridge, "send_alert_email", alert)
+    _stripe_subs(bridge, monkeypatch, [{"customer": "cus_1", "status": "active"}])
+
+    assert bridge.check_payment_states() == []
+    assert store.all_customer_rows(bridge.MAP_DB_PATH)["a@x.com"]["payment_state"] is None
+    alert.assert_not_called()
+    actions = [e["action"] for e in store.events_for_email(bridge.MAP_DB_PATH, "a@x.com")]
+    assert "Payment recovered" in actions
+
+
+def test_payment_state_check_reads_the_live_subscription_past_a_dead_one(bridge, monkeypatch):
+    # A member who lapsed and re-subscribed holds a canceled sub next to the
+    # live one; the live one is what they are paying.
+    from stripe_bridge import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "a@x.com", "abc", tier="bronze")
+    monkeypatch.setattr(bridge, "send_alert_email", MagicMock())
+    _stripe_subs(bridge, monkeypatch, [
+        {"customer": "cus_1", "status": "canceled"},
+        {"customer": "cus_1", "status": "active"},
+    ])
+    assert bridge.check_payment_states() == []
+    assert store.all_customer_rows(bridge.MAP_DB_PATH)["a@x.com"]["payment_state"] is None
+
+
+def test_payment_state_check_leaves_unsubscribed_and_unknown_rows_alone(bridge, monkeypatch):
+    from stripe_bridge import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_gone", "gone@x.com", "abc", tier="bronze")
+    store.set_subscribed(bridge.MAP_DB_PATH, "gone@x.com", False)
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_unlisted", "quiet@x.com", "def", tier="bronze")
+    alert = MagicMock()
+    monkeypatch.setattr(bridge, "send_alert_email", alert)
+    # The canceled member's old sub is past_due in Stripe's history; the other
+    # member has no subscription in the listing at all.
+    _stripe_subs(bridge, monkeypatch, [{"customer": "cus_gone", "status": "past_due"}])
+
+    assert bridge.check_payment_states() == []
+    rows = store.all_customer_rows(bridge.MAP_DB_PATH)
+    assert rows["gone@x.com"]["payment_state"] is None
+    assert rows["quiet@x.com"]["payment_state"] is None
+    alert.assert_not_called()
+
+
+def test_payment_state_check_survives_stripe_being_down(bridge, monkeypatch):
+    from stripe_bridge import store
+    store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "a@x.com", "abc", tier="bronze")
+    monkeypatch.setattr(bridge.stripe.Subscription, "list",
+                        MagicMock(side_effect=RuntimeError("stripe down")))
+    alert = MagicMock()
+    monkeypatch.setattr(bridge, "send_alert_email", alert)
+    # Unreachable is not a missed payment, and this runs inside the sweep.
+    assert bridge.check_payment_states() == []
+    assert store.all_customer_rows(bridge.MAP_DB_PATH)["a@x.com"]["payment_state"] is None
+    alert.assert_not_called()
