@@ -152,14 +152,6 @@ def test_health_check_alerts_again_after_a_recovery(tmp_path, monkeypatch):
     assert b.send_alert_email.call_count == 2
 
 
-def test_health_check_survives_a_failing_alert(tmp_path, monkeypatch):
-    # SMTP being down must not take out the reconcile loop that calls this.
-    b = _bridge(monkeypatch, tmp_path)
-    b.send_alert_email.side_effect = OSError("smtp down")
-    b.client.list_libraries.return_value = []
-    assert b.check_tier_scopes()  # returns the problems, does not raise
-
-
 def test_health_check_survives_wizarr_being_down(tmp_path, monkeypatch):
     b = _bridge(monkeypatch, tmp_path)
     b.client.list_libraries.side_effect = OSError("wizarr down")

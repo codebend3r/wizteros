@@ -4,6 +4,7 @@ Lives outside stripe_wizarr_bridge so admin.py can send invites without a
 circular import (the bridge app imports admin to mount its routes).
 """
 
+import logging
 import os
 import smtplib
 from email.message import EmailMessage
@@ -16,6 +17,7 @@ SMTP_USER = os.environ["SMTP_USER"]
 SMTP_PASS = os.environ["SMTP_PASS"]
 FROM_ADDR = os.environ.get("FROM_ADDR", SMTP_USER)
 INVITE_DAYS = int(os.environ.get("INVITE_EXPIRES_DAYS", "14"))
+log = logging.getLogger("bridge.mailer")
 # Where operational alerts go. Falls back to the admin allowlist so a fresh
 # deploy still reaches someone without another env var to remember.
 ALERT_ADDRS = [
@@ -26,7 +28,13 @@ ALERT_ADDRS = [
 
 
 def send_alert_email(subject: str, body: str) -> None:
-    """Mail an operational alert to the admins; no-op when no address is configured.
+    """Mail an operational alert to the admins; never raises.
+
+    No-op when no address is configured, and a dead SMTP host is logged and
+    swallowed: an alert is a copy for the operator, and the flow it reports on
+    (a signup, a sweep, a failed charge) must complete whether or not the copy
+    gets out. Contrast send_invite_email, which raises on purpose so Stripe
+    retries the one mail the member cannot do without.
 
     Plain text on purpose — these are for the operator, not members, and must
     stay readable in any client and quotable into an incident note.
@@ -38,10 +46,13 @@ def send_alert_email(subject: str, body: str) -> None:
     msg["From"] = FROM_ADDR
     msg["To"] = ", ".join(ALERT_ADDRS)
     msg.set_content(body)
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as s:
-        s.starttls()
-        s.login(SMTP_USER, SMTP_PASS)
-        s.send_message(msg)
+    try:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as s:
+            s.starttls()
+            s.login(SMTP_USER, SMTP_PASS)
+            s.send_message(msg)
+    except Exception:
+        log.exception("alert email failed: %s", subject)
 
 
 def send_invite_email(to_addr: str, invite_url: str) -> None:

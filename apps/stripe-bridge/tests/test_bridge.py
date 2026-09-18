@@ -1258,22 +1258,6 @@ def test_payment_failed_mail_says_when_access_is_still_held(bridge, monkeypatch)
     assert "Stripe has given up" in body
 
 
-def test_payment_failed_still_flags_dunning_when_the_mail_fails(bridge, monkeypatch):
-    # SMTP down must not leave the event unprocessed: Stripe would retry it
-    # and the flag is the part that matters.
-    from stripe_bridge import store
-    store.upsert_pending(bridge.MAP_DB_PATH, "cus_1", "a@x.com", "abc", tier="bronze")
-    bridge.client.find_user_ids_by_email.return_value = [7]
-    monkeypatch.setattr(bridge, "send_alert_email", MagicMock(side_effect=OSError("smtp down")))
-    bridge.handle_event({
-        "type": "invoice.payment_failed",
-        "id": "evt_failed_smtp",
-        "data": {"object": {"id": "in_11", "customer": "cus_1", "customer_email": "a@x.com"}},
-    })
-    assert store.all_customer_rows(bridge.MAP_DB_PATH)["a@x.com"]["payment_state"] == "past_due"
-    assert store.is_event_processed(bridge.MAP_DB_PATH, "evt_failed_smtp")
-
-
 def _stripe_subs(bridge, monkeypatch, subs):
     listing = MagicMock()
     listing.auto_paging_iter.return_value = subs
@@ -1406,22 +1390,3 @@ def test_checkout_mails_the_admin_once_per_signup(bridge):
     bridge.client.create_invite.assert_called_once()
     bridge.send_invite_email.assert_called_once()
     bridge.send_alert_email.assert_called_once()
-
-
-def test_checkout_still_completes_when_the_signup_alert_fails(bridge):
-    # The member's invite is the part that matters; a dead SMTP for the
-    # operator copy must not leave the event unprocessed for Stripe to retry.
-    from stripe_bridge import store
-    bridge.client.list_libraries.return_value = FIXTURE_LIBRARIES
-    bridge.client.create_invite.return_value = {"code": "abc", "url": "http://x/j/abc"}
-    bridge.client.find_users_by_email.return_value = []
-    bridge.client.find_user_ids_by_email.return_value = []
-    bridge.send_alert_email.side_effect = OSError("smtp down")
-    bridge.handle_event({
-        "type": "checkout.session.completed", "id": "evt_signup_smtp",
-        "data": {"object": {"id": "cs_2", "customer": "cus_2",
-                            "customer_details": {"email": "b@x.com"},
-                            "metadata": {"tier": "bronze"}}},
-    })
-    bridge.send_invite_email.assert_called_once()
-    assert store.is_event_processed(bridge.MAP_DB_PATH, "evt_signup_smtp")

@@ -132,17 +132,14 @@ def check_payment_states() -> list:
     if found:
         body = "\n".join(f"- {email}: subscription {status}. {_access_line(held)}"
                          for email, status, held in found)
-        try:
-            send_alert_email(
-                f"{len(found)} member(s) missed a payment",
-                f"Stripe has these members in dunning, and no payment_failed webhook ever "
-                f"reached the bridge for them:\n\n{body}\n\n"
-                f"Nothing was changed except the admin UI now reads them as Payment Failed. "
-                f"Check the card on file with them before Stripe's last retry cancels the "
-                f"subscription.\n",
-            )
-        except Exception:
-            log.exception("missed payment alert email failed")
+        send_alert_email(
+            f"{len(found)} member(s) missed a payment",
+            f"Stripe has these members in dunning, and no payment_failed webhook ever "
+            f"reached the bridge for them:\n\n{body}\n\n"
+            f"Nothing was changed except the admin UI now reads them as Payment Failed. "
+            f"Check the card on file with them before Stripe's last retry cancels the "
+            f"subscription.\n",
+        )
     return [email for email, _status, _held in found]
 
 
@@ -176,15 +173,12 @@ def check_vip_access() -> list:
     if stranded != _last_vips_without_access:
         _last_vips_without_access = stranded
         body = "\n".join(f"- {email}" for email in stranded)
-        try:
-            send_alert_email(
-                f"{len(stranded)} VIP(s) hold no server access",
-                f"These VIP members have no Wizarr record on any server:\n\n{body}\n\n"
-                f"VIP access is meant to be permanent. Either they never redeemed "
-                f"their invite, or something disabled them.\n",
-            )
-        except Exception:
-            log.exception("vip access alert email failed")
+        send_alert_email(
+            f"{len(stranded)} VIP(s) hold no server access",
+            f"These VIP members have no Wizarr record on any server:\n\n{body}\n\n"
+            f"VIP access is meant to be permanent. Either they never redeemed "
+            f"their invite, or something disabled them.\n",
+        )
     return stranded
 
 
@@ -220,14 +214,11 @@ def check_tier_scopes() -> dict:
     if problems != _last_tier_problems:
         _last_tier_problems = problems
         body = "\n".join(f"- {tier}: {reason}" for tier, reason in sorted(problems.items()))
-        try:
-            send_alert_email(
-                f"{len(problems)} invite scope problem(s)",
-                f"Invites no longer line up with the live library list:\n\n{body}\n\n"
-                f"Members cannot sign up cleanly until the names line up again.\n",
-            )
-        except Exception:
-            log.exception("tier scope alert email failed")
+        send_alert_email(
+            f"{len(problems)} invite scope problem(s)",
+            f"Invites no longer line up with the live library list:\n\n{body}\n\n"
+            f"Members cannot sign up cleanly until the names line up again.\n",
+        )
     return problems
 
 
@@ -531,17 +522,14 @@ def restore_access(*, email: str, customer_id: str | None, tier: str | None) -> 
     log.error("payment for %s found no records; reissued %s invite %s", email, resolved, code)
     store.record_event(MAP_DB_PATH, email, "Access restored",
                        f"paid with no active records; {resolved} invite reissued")
-    try:
-        send_alert_email(
-            f"reissued access for {email}",
-            f"{email} paid but held no Wizarr records, so the bridge issued a fresh "
-            f"{resolved} invite and emailed it.\n\n"
-            f"They are locked out until they open that link. If they were paying under "
-            f"a second Stripe customer or a different Plex address, reconcile the two "
-            f"before the next renewal.\n",
-        )
-    except Exception:
-        log.exception("access recovery alert email failed for %s", email)
+    send_alert_email(
+        f"reissued access for {email}",
+        f"{email} paid but held no Wizarr records, so the bridge issued a fresh "
+        f"{resolved} invite and emailed it.\n\n"
+        f"They are locked out until they open that link. If they were paying under "
+        f"a second Stripe customer or a different Plex address, reconcile the two "
+        f"before the next renewal.\n",
+    )
     return True
 
 
@@ -596,16 +584,13 @@ def _dispatch(etype: str, obj: dict) -> None:
             log.error("checkout %s by banned member %s; no invite issued", session_id, email)
             store.record_event(MAP_DB_PATH, email, "Checkout blocked",
                                f"banned member paid for {tier}; no invite issued")
-            try:
-                send_alert_email(
-                    f"banned member {email} checked out",
-                    f"{email} is banned but completed a {tier} checkout "
-                    f"(session {session_id}, customer {customer_id}).\n\n"
-                    f"No invite was issued and no access was granted. Refund or "
-                    f"cancel the subscription in Stripe.\n",
-                )
-            except Exception:
-                log.exception("banned checkout alert email failed for %s", email)
+            send_alert_email(
+                f"banned member {email} checked out",
+                f"{email} is banned but completed a {tier} checkout "
+                f"(session {session_id}, customer {customer_id}).\n\n"
+                f"No invite was issued and no access was granted. Refund or "
+                f"cancel the subscription in Stripe.\n",
+            )
             return
         access = resolve_tier_scope(tier, context=f"checkout {session_id}")
         # Everything below the invite can raise (a slow Wizarr write, SMTP), and
@@ -633,19 +618,16 @@ def _dispatch(etype: str, obj: dict) -> None:
                                f"{tier} tier — invite emailed")
             # Inside the once-per-checkout branch on purpose: a Stripe retry of
             # a session whose invite already went out must not mail twice.
-            try:
-                send_alert_email(
-                    f"{email} signed up for {tier}",
-                    f"{email} completed a {tier} checkout for "
-                    f"{_money(obj.get('amount_total'), obj.get('currency'))}.\n\n"
-                    f"  session  {session_id}\n"
-                    f"  customer {customer_id}\n"
-                    f"  invite   {PUBLIC_INVITE_BASE}/j/{code}\n\n"
-                    f"The invite link has been emailed to them; they hold no new access "
-                    f"until they open it.\n",
-                )
-            except Exception:
-                log.exception("signup alert email failed for %s", email)
+            send_alert_email(
+                f"{email} signed up for {tier}",
+                f"{email} completed a {tier} checkout for "
+                f"{_money(obj.get('amount_total'), obj.get('currency'))}.\n\n"
+                f"  session  {session_id}\n"
+                f"  customer {customer_id}\n"
+                f"  invite   {PUBLIC_INVITE_BASE}/j/{code}\n\n"
+                f"The invite link has been emailed to them; they hold no new access "
+                f"until they open it.\n",
+            )
         # VIP access is never time-boxed or reshuffled — a VIP's checkout is
         # just a contribution, so their records stay exactly as they are (no
         # disable, no expiry stamp).
@@ -740,17 +722,14 @@ def _dispatch(etype: str, obj: dict) -> None:
         # The admin hears about every declined attempt, not just the first:
         # each one is a day closer to Stripe cancelling the subscription, and
         # the body says whether the member can even watch right now.
-        try:
-            send_alert_email(
-                f"{email} missed a payment",
-                f"Stripe could not charge {email}.\n\n"
-                f"  {_describe_invoice(obj)}\n\n"
-                f"{_access_line(_holds_access(customer_id, email))}\n\n"
-                f"Access is not changed by a failed charge. If the retries all fail, "
-                f"Stripe cancels the subscription and the bridge disables them then.\n",
-            )
-        except Exception:
-            log.exception("missed payment alert email failed for %s", email)
+        send_alert_email(
+            f"{email} missed a payment",
+            f"Stripe could not charge {email}.\n\n"
+            f"  {_describe_invoice(obj)}\n\n"
+            f"{_access_line(_holds_access(customer_id, email))}\n\n"
+            f"Access is not changed by a failed charge. If the retries all fail, "
+            f"Stripe cancels the subscription and the bridge disables them then.\n",
+        )
 
     elif etype == "customer.subscription.updated":
         customer_id = obj.get("customer")
