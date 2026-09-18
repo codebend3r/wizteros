@@ -80,3 +80,65 @@ def test_the_collectors_probe_timeouts_are_the_configured_ones():
         collector.collect_host.__kwdefaults__["timeout"] == config.VITALS_TIMEOUT
     )
     assert collector.collect_slow.__kwdefaults__["timeout"] == config.SLOW_TIMEOUT
+
+
+def test_every_host_has_a_plex_url():
+    # Plex runs natively on all five boxes (measured 2026-09-18), so an empty
+    # url here would silently drop a server from every play-history view
+    assert {h.name for h in config.HOSTS if h.plex_url} == {
+        "vermithor", "meleys", "syrax", "vhagar", "caraxes"
+    }
+
+
+def test_the_two_secure_only_servers_are_addressed_over_https():
+    # vermithor and vhagar close a plain-http socket without a response
+    # (measured 2026-09-18); the other three answer on http
+    by_name = {h.name: h.plex_url for h in config.HOSTS}
+    assert by_name["vermithor"] == "https://192.168.50.3:32400"
+    assert by_name["vhagar"] == "https://192.168.50.6:32400"
+    assert by_name["meleys"] == "http://192.168.50.2:32400"
+    assert by_name["caraxes"] == "http://192.168.50.4:32400"
+    assert by_name["syrax"] == "http://192.168.50.5:32400"
+
+
+def test_a_host_defaults_to_no_plex():
+    # the default keeps every existing Host(...) construction valid, and
+    # matches the docker_url contract: empty means the capability is absent
+    host = config.Host(name="ghost", ip="192.0.2.1", has_gpu=False, docker_url="")
+
+    assert host.plex_url == ""
+
+
+def test_plex_token_prefers_the_monitor_prefix_then_the_shared_name(monkeypatch):
+    monkeypatch.delenv("FM_PLEX_TOKEN", raising=False)
+    monkeypatch.delenv("PLEX_TOKEN", raising=False)
+    assert config.plex_token() == ""
+
+    # the bridge's token is in the same .env every compose service reads, so
+    # the monitor works with no new variable at all
+    monkeypatch.setenv("PLEX_TOKEN", "shared")
+    assert config.plex_token() == "shared"
+
+    monkeypatch.setenv("FM_PLEX_TOKEN", "own")
+    assert config.plex_token() == "own"
+
+
+def test_plex_lookback_days_defaults_to_a_year_and_survives_junk(monkeypatch):
+    monkeypatch.delenv("FM_PLEX_LOOKBACK_DAYS", raising=False)
+    assert config.plex_lookback_days() == 365
+
+    monkeypatch.setenv("FM_PLEX_LOOKBACK_DAYS", "730")
+    assert config.plex_lookback_days() == 730
+
+    # a typo must not turn into a zero-day backfill or a crash at boot
+    monkeypatch.setenv("FM_PLEX_LOOKBACK_DAYS", "a year")
+    assert config.plex_lookback_days() == 365
+
+    monkeypatch.setenv("FM_PLEX_LOOKBACK_DAYS", "-3")
+    assert config.plex_lookback_days() == 365
+
+
+def test_the_plex_cadences_are_whole_seconds_and_the_inventory_is_the_slow_one():
+    assert config.PLEX_HISTORY_INTERVAL == 300
+    assert config.PLEX_LIBRARY_INTERVAL == 6 * 3600
+    assert config.PLEX_LIBRARY_INTERVAL % config.PLEX_HISTORY_INTERVAL == 0

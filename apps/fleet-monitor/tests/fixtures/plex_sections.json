@@ -1,0 +1,12 @@
+{
+  "MediaContainer": {
+    "size": 5,
+    "Directory": [
+      {"key": "13", "type": "movie", "title": "01. 4K Movies", "agent": "tv.plex.agents.movie"},
+      {"key": "6", "type": "show", "title": "03. 4K TV Shows"},
+      {"key": "21", "type": "artist", "title": "20. Music Lossless"},
+      {"key": "40", "type": "photo", "title": "Photos"},
+      {"type": "movie", "title": "no key"}
+    ]
+  }
+}

@@ -25,11 +25,21 @@ def _classify(error: Exception) -> str:
 
 
 async def get_json(
-    url: str, *, timeout: float = 8.0, headers: dict[str, str] | None = None
+    url: str,
+    *,
+    timeout: float = 8.0,
+    headers: dict[str, str] | None = None,
+    verify: bool = True,
 ) -> HttpResult:
-    """GET a URL, never raising. A dead endpoint degrades that target only."""
+    """GET a URL, never raising. A dead endpoint degrades that target only.
+
+    `verify` is off only for the two Plex servers that insist on https: they
+    present Plex's *.plex.direct wildcard certificate on a LAN ip, which no
+    verifier can accept, and the owner token is what authorizes the request
+    on either transport. Everything else keeps the default.
+    """
     try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(timeout=timeout, verify=verify) as client:
             response = await client.get(url, headers=headers or {})
     except Exception as error:
         return HttpResult(ok=False, status=0, body="", reason=_classify(error))

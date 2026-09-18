@@ -1,0 +1,100 @@
+{
+  "MediaContainer": {
+    "size": 3,
+    "Metadata": [
+      {
+        "ratingKey": "57240",
+        "key": "/library/metadata/57240",
+        "type": "movie",
+        "title": "Paddington 2",
+        "year": 2017,
+        "librarySectionID": 11,
+        "librarySectionTitle": "05. Family Movies",
+        "duration": 9141664,
+        "addedAt": 1700000000,
+        "thumb": "/library/metadata/57240/thumb/1700000000",
+        "Media": [
+          {
+            "id": 1,
+            "videoResolution": "1080",
+            "width": 1920,
+            "height": 796,
+            "bitrate": 16323,
+            "duration": 9141664,
+            "videoCodec": "hevc",
+            "audioCodec": "eac3",
+            "container": "mkv",
+            "Part": [{"id": 1, "key": "/library/parts/1/file.mkv", "duration": 9141664}]
+          }
+        ]
+      },
+      {
+        "ratingKey": "41210",
+        "key": "/library/metadata/41210",
+        "type": "episode",
+        "title": "Smoke",
+        "index": 1,
+        "parentIndex": 4,
+        "year": 2018,
+        "parentRatingKey": "41200",
+        "parentTitle": "Season 4",
+        "grandparentRatingKey": "41000",
+        "grandparentTitle": "Better Call Saul",
+        "librarySectionID": 6,
+        "duration": 3420000,
+        "addedAt": 1690000000,
+        "thumb": "/library/metadata/41210/thumb/1690000000",
+        "Media": [
+          {
+            "id": 2,
+            "videoResolution": "4k",
+            "width": 3840,
+            "height": 2160,
+            "bitrate": 40000,
+            "duration": 3420000,
+            "videoCodec": "hevc",
+            "Part": [{"id": 2, "key": "/library/parts/2/file.mkv", "duration": 3420000}]
+          },
+          {
+            "id": 3,
+            "videoResolution": "1080",
+            "width": 1920,
+            "height": 1080,
+            "bitrate": 8000,
+            "duration": 3420000,
+            "videoCodec": "h264",
+            "Part": [{"id": 3, "key": "/library/parts/3/file.mkv", "duration": 3420000}]
+          }
+        ]
+      },
+      {
+        "ratingKey": "90001",
+        "key": "/library/metadata/90001",
+        "type": "track",
+        "title": "Everything In Its Right Place",
+        "index": 1,
+        "parentIndex": 1,
+        "parentRatingKey": "90000",
+        "parentTitle": "Kid A",
+        "parentYear": 2000,
+        "grandparentRatingKey": "89000",
+        "grandparentTitle": "Radiohead",
+        "librarySectionID": 21,
+        "duration": 251000,
+        "addedAt": 1680000000,
+        "thumb": "/library/metadata/90000/thumb/1680000000",
+        "Media": [
+          {
+            "id": 4,
+            "duration": 251000,
+            "bitrate": 1100,
+            "audioCodec": "flac",
+            "audioChannels": 2,
+            "container": "flac",
+            "Part": [{"id": 4, "key": "/library/parts/4/file.flac", "duration": 251000}]
+          }
+        ]
+      }
+    ]
+  }
+}

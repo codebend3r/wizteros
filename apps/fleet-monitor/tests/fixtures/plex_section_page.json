@@ -1,0 +1,33 @@
+{
+  "MediaContainer": {
+    "size": 2,
+    "totalSize": 1197,
+    "offset": 0,
+    "librarySectionID": 8,
+    "librarySectionTitle": "04. Movies",
+    "Metadata": [
+      {
+        "ratingKey": "100",
+        "key": "/library/metadata/100",
+        "type": "movie",
+        "title": "Heat",
+        "year": 1995,
+        "librarySectionID": 8,
+        "duration": 10200000,
+        "addedAt": 1600000000,
+        "thumb": "/library/metadata/100/thumb/1",
+        "Media": [
+          {"id": 10, "videoResolution": "720", "width": 1280, "height": 544, "duration": 10200000}
+        ]
+      },
+      {
+        "ratingKey": "101",
+        "key": "/library/metadata/101",
+        "type": "movie",
+        "title": "Unreachable Media",
+        "year": 2001,
+        "addedAt": 1600000001
+      }
+    ]
+  }
+}

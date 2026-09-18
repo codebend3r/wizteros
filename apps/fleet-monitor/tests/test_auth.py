@@ -9,8 +9,20 @@ SUPABASE_URL = "https://project.supabase.co"
 ADMIN_EMAIL = "admin@example.com"
 
 # Every route the portal calls. /health is deliberately absent: the container
-# healthcheck and the Funnel both probe it without a session.
-GATED = ("/fleet", "/fleet/cpu", "/incidents")
+# healthcheck and the Funnel both probe it without a session. The play history
+# routes carry every member's completed plays, which is admin data, so they
+# sit behind the same gate.
+GATED = (
+    "/fleet",
+    "/fleet/cpu",
+    "/incidents",
+    "/plays/overview",
+    "/plays/users",
+    "/plays/users/1/history",
+    "/plays/top",
+    "/plays/never-played",
+    "/plays/sync",
+)
 
 
 @pytest.fixture

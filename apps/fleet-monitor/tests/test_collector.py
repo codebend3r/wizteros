@@ -292,7 +292,7 @@ def test_a_cancelled_job_is_never_swallowed():
     # CancelledError is the process being torn down, not a job that failed;
     # absorbing it makes graceful shutdown impossible
     with pytest.raises(asyncio.CancelledError):
-        collector._log_raised("tick", (asyncio.CancelledError(),))
+        collector.log_raised("tick", (asyncio.CancelledError(),))
 
 
 async def test_collect_host_stamps_an_aware_utc_timestamp(tmp_path, monkeypatch):

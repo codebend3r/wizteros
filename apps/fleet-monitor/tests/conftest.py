@@ -1,6 +1,6 @@
 import pytest
 
-from fleet_monitor import api, incidents, rollups, store
+from fleet_monitor import api, incidents, plays, rollups, store
 from fleet_monitor import db as fleet_db
 
 
@@ -26,6 +26,7 @@ def db(db_path):
         store.init_db(connection)
         rollups.init_db(connection)
         incidents.init_db(connection)
+        plays.init_db(connection)
         yield connection
 
 
