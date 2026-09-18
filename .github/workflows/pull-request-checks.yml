@@ -20,6 +20,8 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v7
 
+      # No bun-version input on purpose: setup-bun reads `packageManager` from
+      # the root package.json, so the pin lives in one place.
       - name: 🥟 Set up Bun
         uses: oven-sh/setup-bun@v2
 
