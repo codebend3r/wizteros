@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AdminGate, useAdminAuth } from '@/components/AdminGate/AdminGate'
 import { AdminLayout } from '@/components/AdminLayout/AdminLayout'
+import { MemberProblems } from '@/components/MemberProblems/MemberProblems'
 import { ConfirmActionModal } from '@/components/ConfirmActionModal/ConfirmActionModal'
 import { ConfirmInviteModal } from '@/components/ConfirmInviteModal/ConfirmInviteModal'
 import { Preloader } from '@/components/Preloader/Preloader'
@@ -28,20 +29,20 @@ import {
   type PaidTier,
   type PlexAccess,
 } from '@/lib/adminApi'
+import { DAY_MS, parseTimestamp } from '@/lib/dates'
 import {
   INVITE_LINK_DAYS,
+  inviteWindowEnd,
   isPaidTier,
   PAID_TIERS,
   TIER_DOWNLOADS,
   TIER_LABELS,
 } from '@/lib/inviteRules'
 import { buildServerAccess, stateLabel, type LibraryAccessState } from '@/lib/libraryAccess'
-import { deriveProblems, deriveStatus, STATUS_EMOJI } from '@/lib/memberStatus'
+import { deriveStatus, STATUS_EMOJI } from '@/lib/memberStatus'
 import { MEMBERS_QUERY_KEY } from '@/pages/Manage/Manage'
 import { siteConfig } from '@/site.config'
 import styles from '@/pages/User/User.module.scss'
-
-const DAY_MS = 24 * 60 * 60 * 1000
 
 const STATE_CLASS: Record<LibraryAccessState, string | undefined> = {
   shared: styles.shared,
@@ -55,19 +56,6 @@ const TAG_LABELS: Record<MemberTag, string> = {
   hvu: '⭐ HVU',
   banned: '⛔ Banned',
 }
-
-const parseTimestamp = (value: string | null): Date | null => {
-  if (!value) {
-    return null
-  }
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? null : date
-}
-
-// The invite link stops working INVITE_LINK_DAYS after it was sent, which is
-// also when the status ages from Invited into Declined Invite.
-const inviteWindowEnd = (invitedAt: Date): Date =>
-  new Date(invitedAt.getTime() + INVITE_LINK_DAYS * DAY_MS)
 
 const pad = (value: number): string => String(value).padStart(2, '0')
 
@@ -97,48 +85,6 @@ const formatDownloads = (downloads: boolean | null): string => {
 const formatLibraryCount = (count: number): string =>
   `${count} ${count === 1 ? 'library' : 'libraries'}`
 
-const inviteNote = ({ member }: { member: Member }): string => {
-  const invitedAt = parseTimestamp(member.invited_at)
-  if (!invitedAt) {
-    return 'No invite is on record.'
-  }
-  const inviteExpiry = inviteWindowEnd(invitedAt)
-  return inviteExpiry.getTime() < Date.now()
-    ? `Their invite expired on ${inviteExpiry.toLocaleDateString()} without being redeemed.`
-    : `Their invite is open until ${inviteExpiry.toLocaleDateString()}.`
-}
-
-// What is wrong with the member, above the fold. The status row still shows
-// one label, but a missed payment and a member holding no server record are
-// separate facts, and the one who has both is the one nobody used to notice.
-const MemberProblems = ({ member }: { member: Member }) => {
-  const problems = deriveProblems({ member })
-  return (
-    !!problems.length && (
-      <section className={styles.problems} aria-label="Needs attention">
-        {problems.includes('payment-failed') && (
-          <p className={`${styles.problem} ${styles.problemPayment}`}>
-            <span aria-hidden="true">🟠</span>
-            <span>
-              <strong>Missed payment.</strong> Stripe could not charge this member and is retrying.
-              The subscription is cancelled if every retry fails.
-            </span>
-          </p>
-        )}
-        {problems.includes('no-access') && (
-          <p className={`${styles.problem} ${styles.problemAccess}`}>
-            <span aria-hidden="true">🔒</span>
-            <span>
-              <strong>No server access.</strong> This member holds no record on any server.{' '}
-              {inviteNote({ member })}
-            </span>
-          </p>
-        )}
-      </section>
-    )
-  )
-}
-
 const MemberDetails = ({
   member,
   plexAccess,
@@ -159,7 +105,7 @@ const MemberDetails = ({
   const invitedAt = parseTimestamp(member.invited_at)
   // A member with no server records and no expiry has nothing but their open
   // invite, so the invite's own deadline is the expiry that matters to them.
-  const inviteExpiry = invitedAt ? inviteWindowEnd(invitedAt) : null
+  const inviteExpiry = invitedAt ? inviteWindowEnd({ invitedAt }) : null
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {

@@ -157,18 +157,18 @@ test('clearing the dunning flag returns a member to Subscribed Monthly', () => {
 test('a declined charge and no server record are both called out for one member', () => {
   // The member who paid once, never redeemed, and then had a card fail.
   const member = makeMember({ subscribed: true, payment_state: 'past_due', servers: [] })
-  expect(deriveProblems({ member })).toEqual(['payment-failed', 'no-access'])
+  expect(deriveProblems({ member })).toEqual({ paymentFailed: true, noAccess: true })
 })
 
 test('a subscriber holding records on a healthy card has nothing to call out', () => {
   const member = makeMember({ subscribed: true, expires: '2099-01-01T00:00:00+00:00' })
-  expect(deriveProblems({ member })).toEqual([])
+  expect(deriveProblems({ member })).toEqual({ paymentFailed: false, noAccess: false })
 })
 
 test('a member who has not joined yet is not a lockout', () => {
   const invitedAt = new Date(Date.now() - 1 * DAY_MS).toISOString()
   const member = makeMember({ servers: [], invited_at: invitedAt })
-  expect(deriveProblems({ member })).toEqual([])
+  expect(deriveProblems({ member })).toEqual({ paymentFailed: false, noAccess: false })
 })
 
 test('a subscriber with no records is a lockout even while the invite is open', () => {
@@ -176,12 +176,12 @@ test('a subscriber with no records is a lockout even while the invite is open', 
   // matters, and the page says how long the invite has left separately.
   const invitedAt = new Date(Date.now() - 1 * DAY_MS).toISOString()
   const member = makeMember({ subscribed: true, servers: [], invited_at: invitedAt })
-  expect(deriveProblems({ member })).toEqual(['no-access'])
+  expect(deriveProblems({ member })).toEqual({ paymentFailed: false, noAccess: true })
 })
 
 test('a VIP holding no record is a lockout', () => {
   const member = makeMember({ servers: [], tag: 'vip' })
-  expect(deriveProblems({ member })).toEqual(['no-access'])
+  expect(deriveProblems({ member })).toEqual({ paymentFailed: false, noAccess: true })
 })
 
 test('a banned member is never called out', () => {
@@ -191,5 +191,5 @@ test('a banned member is never called out', () => {
     servers: [],
     tag: 'banned',
   })
-  expect(deriveProblems({ member })).toEqual([])
+  expect(deriveProblems({ member })).toEqual({ paymentFailed: false, noAccess: false })
 })

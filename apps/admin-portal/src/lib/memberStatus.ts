@@ -1,4 +1,5 @@
 import type { Member } from '@/lib/adminApi'
+import { DAY_MS } from '@/lib/dates'
 import { INVITE_GRACE_DAYS } from '@/lib/inviteRules'
 
 export type MemberStatus =
@@ -11,7 +12,7 @@ export type MemberStatus =
   | 'VIP'
   | 'Expired Member'
 
-const GRACE_MS = INVITE_GRACE_DAYS * 24 * 60 * 60 * 1000
+const GRACE_MS = INVITE_GRACE_DAYS * DAY_MS
 
 // Status is always emoji plus text, never colour or emoji alone; shared by
 // the members table, the member page, and the design reference.
@@ -71,7 +72,12 @@ export const deriveStatus = ({ member }: { member: Member }): MemberStatus => {
   return 'Uninvited'
 }
 
-export type MemberProblem = 'payment-failed' | 'no-access'
+export type MemberProblems = {
+  /** Stripe declined the last charge and is still retrying. */
+  paymentFailed: boolean
+  /** Owed access, but holds no record on any server. */
+  noAccess: boolean
+}
 
 // Statuses under which holding no server record is a lockout rather than a
 // member who simply has not joined yet.
@@ -83,17 +89,14 @@ const ACCESS_EXPECTED: ReadonlySet<MemberStatus> = new Set([
 
 /**
  * The problems the member page calls out above the details, independent of
- * the single status label: a charge Stripe declined and is still retrying,
- * and a member who is owed access but holds no record on any server. Both at
- * once is exactly the member who paid, never redeemed the invite, and then
- * had a card fail, which nothing on the page used to say out loud.
+ * the single status label. Both at once is exactly the member who paid, never
+ * redeemed the invite, and then had a card fail, which nothing on the page
+ * used to say out loud.
  */
-export const deriveProblems = ({ member }: { member: Member }): MemberProblem[] => {
+export const deriveProblems = ({ member }: { member: Member }): MemberProblems => {
   const status = deriveStatus({ member })
-  const paymentFailed = member.payment_state === 'past_due' && member.tag !== 'banned'
-  const noAccess = member.servers.length === 0 && ACCESS_EXPECTED.has(status)
-  return [
-    ...(paymentFailed ? (['payment-failed'] as const) : []),
-    ...(noAccess ? (['no-access'] as const) : []),
-  ]
+  return {
+    paymentFailed: status !== 'Banned' && member.payment_state === 'past_due',
+    noAccess: member.servers.length === 0 && ACCESS_EXPECTED.has(status),
+  }
 }
