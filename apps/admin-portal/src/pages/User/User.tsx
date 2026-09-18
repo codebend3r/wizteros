@@ -36,7 +36,7 @@ import {
   TIER_LABELS,
 } from '@/lib/inviteRules'
 import { buildServerAccess, stateLabel, type LibraryAccessState } from '@/lib/libraryAccess'
-import { deriveStatus, STATUS_EMOJI } from '@/lib/memberStatus'
+import { deriveProblems, deriveStatus, STATUS_EMOJI } from '@/lib/memberStatus'
 import { MEMBERS_QUERY_KEY } from '@/pages/Manage/Manage'
 import { siteConfig } from '@/site.config'
 import styles from '@/pages/User/User.module.scss'
@@ -96,6 +96,48 @@ const formatDownloads = (downloads: boolean | null): string => {
 
 const formatLibraryCount = (count: number): string =>
   `${count} ${count === 1 ? 'library' : 'libraries'}`
+
+const inviteNote = ({ member }: { member: Member }): string => {
+  const invitedAt = parseTimestamp(member.invited_at)
+  if (!invitedAt) {
+    return 'No invite is on record.'
+  }
+  const inviteExpiry = inviteWindowEnd(invitedAt)
+  return inviteExpiry.getTime() < Date.now()
+    ? `Their invite expired on ${inviteExpiry.toLocaleDateString()} without being redeemed.`
+    : `Their invite is open until ${inviteExpiry.toLocaleDateString()}.`
+}
+
+// What is wrong with the member, above the fold. The status row still shows
+// one label, but a missed payment and a member holding no server record are
+// separate facts, and the one who has both is the one nobody used to notice.
+const MemberProblems = ({ member }: { member: Member }) => {
+  const problems = deriveProblems({ member })
+  return (
+    !!problems.length && (
+      <section className={styles.problems} aria-label="Needs attention">
+        {problems.includes('payment-failed') && (
+          <p className={`${styles.problem} ${styles.problemPayment}`}>
+            <span aria-hidden="true">🟠</span>
+            <span>
+              <strong>Missed payment.</strong> Stripe could not charge this member and is retrying.
+              The subscription is cancelled if every retry fails.
+            </span>
+          </p>
+        )}
+        {problems.includes('no-access') && (
+          <p className={`${styles.problem} ${styles.problemAccess}`}>
+            <span aria-hidden="true">🔒</span>
+            <span>
+              <strong>No server access.</strong> This member holds no record on any server.{' '}
+              {inviteNote({ member })}
+            </span>
+          </p>
+        )}
+      </section>
+    )
+  )
+}
 
 const MemberDetails = ({
   member,
@@ -635,6 +677,7 @@ const UserInner = () => {
           <Preloader message="Loading member… (this can take ~15s)" />
         )}
         {member === null && <p className={styles.notice}>No member found for {email}.</p>}
+        {!!member && <MemberProblems member={member} />}
         {!!member && (
           <div className={styles.columns}>
             <MemberDetails

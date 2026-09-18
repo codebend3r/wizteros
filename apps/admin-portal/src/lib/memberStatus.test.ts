@@ -1,6 +1,6 @@
 import { expect, test } from '@/test/vi'
 import type { Member } from '@/lib/adminApi'
-import { deriveStatus } from '@/lib/memberStatus'
+import { deriveProblems, deriveStatus } from '@/lib/memberStatus'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -152,4 +152,44 @@ test('a VIP is never relabelled by a failed charge', () => {
 test('clearing the dunning flag returns a member to Subscribed Monthly', () => {
   const member = makeMember({ subscribed: true, payment_state: null })
   expect(deriveStatus({ member })).toBe('Subscribed Monthly')
+})
+
+test('a declined charge and no server record are both called out for one member', () => {
+  // The member who paid once, never redeemed, and then had a card fail.
+  const member = makeMember({ subscribed: true, payment_state: 'past_due', servers: [] })
+  expect(deriveProblems({ member })).toEqual(['payment-failed', 'no-access'])
+})
+
+test('a subscriber holding records on a healthy card has nothing to call out', () => {
+  const member = makeMember({ subscribed: true, expires: '2099-01-01T00:00:00+00:00' })
+  expect(deriveProblems({ member })).toEqual([])
+})
+
+test('a member who has not joined yet is not a lockout', () => {
+  const invitedAt = new Date(Date.now() - 1 * DAY_MS).toISOString()
+  const member = makeMember({ servers: [], invited_at: invitedAt })
+  expect(deriveProblems({ member })).toEqual([])
+})
+
+test('a subscriber with no records is a lockout even while the invite is open', () => {
+  // Subscribed Monthly means they paid; holding nothing is the fact that
+  // matters, and the page says how long the invite has left separately.
+  const invitedAt = new Date(Date.now() - 1 * DAY_MS).toISOString()
+  const member = makeMember({ subscribed: true, servers: [], invited_at: invitedAt })
+  expect(deriveProblems({ member })).toEqual(['no-access'])
+})
+
+test('a VIP holding no record is a lockout', () => {
+  const member = makeMember({ servers: [], tag: 'vip' })
+  expect(deriveProblems({ member })).toEqual(['no-access'])
+})
+
+test('a banned member is never called out', () => {
+  const member = makeMember({
+    subscribed: true,
+    payment_state: 'past_due',
+    servers: [],
+    tag: 'banned',
+  })
+  expect(deriveProblems({ member })).toEqual([])
 })

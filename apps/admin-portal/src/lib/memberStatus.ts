@@ -70,3 +70,30 @@ export const deriveStatus = ({ member }: { member: Member }): MemberStatus => {
   }
   return 'Uninvited'
 }
+
+export type MemberProblem = 'payment-failed' | 'no-access'
+
+// Statuses under which holding no server record is a lockout rather than a
+// member who simply has not joined yet.
+const ACCESS_EXPECTED: ReadonlySet<MemberStatus> = new Set([
+  'Subscribed Monthly',
+  'Payment Failed',
+  'VIP',
+])
+
+/**
+ * The problems the member page calls out above the details, independent of
+ * the single status label: a charge Stripe declined and is still retrying,
+ * and a member who is owed access but holds no record on any server. Both at
+ * once is exactly the member who paid, never redeemed the invite, and then
+ * had a card fail, which nothing on the page used to say out loud.
+ */
+export const deriveProblems = ({ member }: { member: Member }): MemberProblem[] => {
+  const status = deriveStatus({ member })
+  const paymentFailed = member.payment_state === 'past_due' && member.tag !== 'banned'
+  const noAccess = member.servers.length === 0 && ACCESS_EXPECTED.has(status)
+  return [
+    ...(paymentFailed ? (['payment-failed'] as const) : []),
+    ...(noAccess ? (['no-access'] as const) : []),
+  ]
+}

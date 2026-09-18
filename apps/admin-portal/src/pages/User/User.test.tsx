@@ -887,3 +887,61 @@ test('omits the Stripe address row when both addresses match', async () => {
   await screen.findByRole('heading', { name: 'max' })
   expect(screen.queryByText('Stripe email')).not.toBeInTheDocument()
 })
+
+test('calls out a missed payment and a member with no server access above the details', async () => {
+  // The member who paid, never redeemed the invite, and then had a card
+  // decline three times while the page called them Subscribed Monthly.
+  const invitedAt = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000)
+  vi.mocked(fetchMember).mockResolvedValue({
+    ...member,
+    payment_state: 'past_due',
+    expires: null,
+    servers: [],
+    libraries: {},
+    invited_at: invitedAt.toISOString(),
+  })
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  const problems = screen.getByRole('region', { name: 'Needs attention' })
+  expect(within(problems).getByText('Missed payment.')).toBeInTheDocument()
+  expect(within(problems).getByText('No server access.')).toBeInTheDocument()
+  const inviteEnd = new Date(invitedAt.getTime() + 14 * 24 * 60 * 60 * 1000)
+  expect(
+    within(problems).getByText(
+      `Their invite expired on ${inviteEnd.toLocaleDateString()} without being redeemed.`,
+      { exact: false },
+    ),
+  ).toBeInTheDocument()
+  expect(screen.getByText('Payment Failed')).toBeInTheDocument()
+})
+
+test('a locked-out member whose invite is still open is told how long it has left', async () => {
+  const invitedAt = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)
+  vi.mocked(fetchMember).mockResolvedValue({
+    ...member,
+    expires: null,
+    servers: [],
+    libraries: {},
+    invited_at: invitedAt.toISOString(),
+  })
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  const problems = screen.getByRole('region', { name: 'Needs attention' })
+  expect(within(problems).queryByText('Missed payment.')).not.toBeInTheDocument()
+  const inviteEnd = new Date(invitedAt.getTime() + 14 * 24 * 60 * 60 * 1000)
+  expect(
+    within(problems).getByText(`Their invite is open until ${inviteEnd.toLocaleDateString()}.`, {
+      exact: false,
+    }),
+  ).toBeInTheDocument()
+})
+
+test('a healthy member has nothing called out', async () => {
+  vi.mocked(fetchMember).mockResolvedValue(member)
+  renderUser({ email: 'max@y.com' })
+
+  await screen.findByRole('heading', { name: 'max' })
+  expect(screen.queryByRole('region', { name: 'Needs attention' })).not.toBeInTheDocument()
+})
