@@ -12,6 +12,20 @@ the version recorded in the tree at that commit. That was not always true; the
 history was rewritten on 2026-08-08 to make it so. See
 [The 2026-08-08 history rewrite](#the-2026-08-08-history-rewrite).
 
+## v0.3.8 (2026-09-18)
+
+- Update every dependency to its latest release, majors included: React 19.3,
+  Vite 8.3, TypeScript 7.0, `@vitejs/plugin-react` 6.1, Nx 23.2, and
+  `@testing-library/jest-dom` 7, plus a ruff repin to 0.16.8 in both Python apps
+- Drop the scss `api` option from the Vite config, which Vite 8 removed
+- Freeze the clock per mount on the Income and User pages, moving the
+  render-time `Date.now()` calls into lazy state initializers so the headline
+  and the untouched expiry draft cannot drift while the page sits open
+- Sign out before setting the rejection message in the login gate, so the
+  message lands on the signed-out form instead of the screen being left
+- Pin Bun to 1.4.2, with CI and Netlify both reading the pin from
+  `packageManager` and the guard script rejecting a mismatched Bun
+
 ## v0.3.7 (2026-09-17)
 
 - Sweep Stripe for missed payments on a schedule and mail the admin a dunning
