@@ -25,10 +25,16 @@ export const LoginGate = ({ title, children }: LoginGateProps) => {
   const blocked = enabled && status === 'signed-in' && !allowed
 
   useEffect(() => {
-    if (blocked) {
-      setError('This account is not allowed here')
-      void signOut()
+    if (!blocked) {
+      return
     }
+    // Sign out first, then explain: the message belongs on the form that the
+    // signed-out state renders, not on the screen we are about to leave.
+    const reject = async () => {
+      await signOut()
+      setError('This account is not allowed here')
+    }
+    void reject()
   }, [blocked, signOut])
 
   if (!enabled) {

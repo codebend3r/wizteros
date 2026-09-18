@@ -32,14 +32,13 @@ export const IncomeHero = ({ income, previous }: IncomeHeroProps) => {
         <li className={styles.qualifier}>
           {plural({ count: income.paying, unit: 'paying member' })}
         </li>
-        {delta !== null &&
-          previous !== undefined && (
-            // The sign is stated, so the colour only underlines it.
-            <li className={delta < 0 ? styles.down : styles.up}>
-              {delta < 0 ? '-' : '+'}
-              {formatMoney(Math.abs(delta))} vs {monthLabel(previous.month)}
-            </li>
-          )}
+        {delta !== null && previous !== undefined && (
+          // The sign is stated, so the colour only underlines it.
+          <li className={delta < 0 ? styles.down : styles.up}>
+            {delta < 0 ? '-' : '+'}
+            {formatMoney(Math.abs(delta))} vs {monthLabel(previous.month)}
+          </li>
+        )}
         {income.atRisk.count > 0 && (
           <li className={styles.risk}>
             {formatMoney(income.atRisk.amount)} at risk:{' '}

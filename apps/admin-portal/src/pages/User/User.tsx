@@ -557,9 +557,10 @@ const UserInner = () => {
     },
   })
 
+  // Frozen at mount: the untouched draft must not drift while the page sits open.
+  const [defaultExpiry] = useState(() => new Date(Date.now() + DAY_MS))
   const expiryValue =
-    expiryDraft ??
-    toExpiryDraft(parseTimestamp(member?.expires ?? null) ?? new Date(Date.now() + DAY_MS))
+    expiryDraft ?? toExpiryDraft(parseTimestamp(member?.expires ?? null) ?? defaultExpiry)
   const expiryValid = !Number.isNaN(new Date(expiryValue).getTime())
 
   const savedNotes = memberNotes?.notes ?? ''

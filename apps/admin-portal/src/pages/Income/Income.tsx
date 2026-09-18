@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { AdminGate } from '@/components/AdminGate/AdminGate'
 import { AdminLayout } from '@/components/AdminLayout/AdminLayout'
@@ -34,8 +35,8 @@ const IncomeInner = () => {
     queryFn: () => fetchIncidents({ hours: OUTAGE_HOURS }),
   })
 
-  // One clock per render, so the headline and the last month cannot disagree.
-  const now = Date.now()
+  // One clock per mount, so the headline and the last month cannot disagree.
+  const [now] = useState(() => Date.now())
   const events = toIncomeEvents({
     events: log.data ?? [],
     outages: outages.data?.recent ?? [],
