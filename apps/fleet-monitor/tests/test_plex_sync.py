@@ -617,3 +617,157 @@ async def test_inventory_rows_carry_the_section_they_were_listed_under(path, mon
     assert {(row.title, row.library) for row in page.rows} == {
         ("Heat", "Films"), ("Better Call Saul", "Shows"),
     }
+
+
+# --- excluded libraries ---------------------------------------------------
+
+# caraxes indexes a scratch tree as four movie libraries (measured 2026-09-19)
+SCRATCH_SECTIONS = [
+    {"key": "8", "type": "movie", "title": "Films",
+     "Location": [{"path": "/volume1/Caraxes/Media/Movies"}]},
+    {"key": "16", "type": "movie", "title": "99. Tutorials",
+     "Location": [{"path": "/volume1/Caraxes/tmp/Tutorials"}]},
+    {"key": "20", "type": "movie", "title": "97. Home Videos",
+     "Location": [{"path": "/volume1/Caraxes/tmp/Home Videos"}]},
+]
+
+
+def _section(section_id, *locations, kind="movie"):
+    return plex.Section(section_id=section_id, title=section_id, kind=kind, locations=locations)
+
+
+def _scratch_play(history_id, rating_key, *, section_id, viewed_at):
+    return {**_play(history_id, rating_key, viewed_at=viewed_at), "librarySectionID": section_id}
+
+
+def _scratch_movie(rating_key, title, *, section_id):
+    return {**_movie(rating_key, title), "librarySectionID": section_id}
+
+
+@pytest.mark.parametrize(
+    "location, excluded",
+    [
+        ("/volume1/Caraxes/tmp", True),
+        ("/volume1/Caraxes/tmp/", True),
+        ("/volume1/Caraxes/tmp/Tutorials", True),
+        ("/volume1/Caraxes/tmp/Home Videos/2019", True),
+        ("/VOLUME1/CARAXES/TMP/Tutorials", True),
+        # a sibling folder whose name merely starts the same way
+        ("/volume1/Caraxes/tmp-restore/Tutorials", False),
+        ("/volume1/Caraxes/Media/Movies", False),
+        ("/volume1/Meleys/Caraxes/Media/TV/A", False),
+    ],
+)
+def test_a_location_is_excluded_only_when_it_is_inside_the_folder(location, excluded):
+    ids = plex_sync.excluded_sections(
+        (_section("16", location),), folders=("/volume1/Caraxes/tmp",)
+    )
+
+    assert ("16" in ids) is excluded
+
+
+def test_a_library_is_excluded_only_when_every_one_of_its_folders_is():
+    sections = (
+        _section("16", "/volume1/Caraxes/tmp/Tutorials"),
+        # both folders excluded
+        _section("19", "/volume1/Caraxes/tmp/Documents", "/volume1/Caraxes/tmp/Assignments"),
+        # one real folder among them: the page still has to count it
+        _section("8", "/volume1/Caraxes/tmp/Extras", "/volume1/Caraxes/Media/Movies"),
+        # a section the server answers for with no folder behind it
+        _section("30"),
+    )
+
+    assert plex_sync.excluded_sections(sections, folders=("/volume1/Caraxes/tmp",)) == frozenset(
+        {"16", "19"}
+    )
+
+
+def test_no_excluded_folders_excludes_nothing():
+    assert plex_sync.excluded_sections((_section("16", "/anything"),), folders=()) == frozenset()
+
+
+async def test_an_inventory_marks_the_excluded_libraries_and_never_pages_them(path, monkeypatch):
+    monkeypatch.setenv("FM_PLEX_EXCLUDED_PATHS", "/volume1/Caraxes/tmp")
+    fake = _fake(
+        monkeypatch,
+        FakePlex(
+            sections=SCRATCH_SECTIONS,
+            section_items={
+                "8": [_movie("100", "Heat")],
+                "16": [_scratch_movie("900", "How to grep", section_id="16")],
+                "20": [_scratch_movie("901", "Birthday", section_id="20")],
+            },
+        ),
+    )
+
+    complete = await plex_sync.sync_library(HOST, path, now=T0, token="tok")
+
+    assert complete is True
+    assert [p for p, _, _ in fake.requests if p.endswith("/all")] == ["/library/sections/8/all"]
+    assert _rows(path, "SELECT rating_key FROM plex_items ORDER BY 1") == [("100",)]
+    # the sections themselves stay, carrying the flag the history pass reads
+    assert _rows(path, "SELECT section_id, excluded FROM plex_sections ORDER BY 1") == [
+        ("16", 1), ("20", 1), ("8", 0),
+    ]
+
+
+async def test_an_inventory_purges_what_an_earlier_pass_stored(path, monkeypatch):
+    monkeypatch.setenv("FM_PLEX_EXCLUDED_PATHS", "/volume1/Caraxes/tmp")
+    # the state the loop was in before the rule existed: a tutorial watched
+    # twice, its item inventoried, beside a film that stays
+    _fake(
+        monkeypatch,
+        FakePlex(
+            history=[
+                _scratch_play(1, "900", section_id="16", viewed_at=NOW - 3 * DAY),
+                _scratch_play(2, "900", section_id="16", viewed_at=NOW - 2 * DAY),
+                _play(3, "100", viewed_at=NOW - DAY),
+            ],
+            items={
+                "100": _movie("100", "Heat"),
+                "900": _scratch_movie("900", "How to grep", section_id="16"),
+            },
+            sections=SCRATCH_SECTIONS,
+            section_items={
+                "8": [_movie("100", "Heat")],
+                "16": [_scratch_movie("900", "How to grep", section_id="16")],
+            },
+        ),
+    )
+    await plex_sync.sync_history(HOST, path, now=T0, token="tok", lookback_days=365)
+    assert _rows(path, "SELECT COUNT(*) FROM plex_plays") == [(3,)]
+
+    await plex_sync.sync_library(HOST, path, now=T0, token="tok")
+
+    assert _rows(path, "SELECT rating_key FROM plex_plays ORDER BY 1") == [("100",)]
+    assert _rows(path, "SELECT rating_key FROM plex_items ORDER BY 1") == [("100",)]
+
+
+async def test_a_history_pass_drops_the_excluded_plays_and_still_moves_the_cursor(
+    path, monkeypatch
+):
+    monkeypatch.setenv("FM_PLEX_EXCLUDED_PATHS", "/volume1/Caraxes/tmp")
+    _fake(
+        monkeypatch,
+        FakePlex(
+            history=[
+                _play(1, "100", viewed_at=NOW - 3 * DAY),
+                _scratch_play(2, "900", section_id="16", viewed_at=NOW - DAY),
+            ],
+            items={"100": _movie("100", "Heat")},
+            sections=SCRATCH_SECTIONS,
+            section_items={"8": [_movie("100", "Heat")]},
+        ),
+    )
+    # the inventory is what marks them, and it runs on the loop's first round
+    await plex_sync.sync_library(HOST, path, now=T0, token="tok")
+
+    check = await plex_sync.sync_history(HOST, path, now=T0, token="tok", lookback_days=365)
+
+    assert check.ok is True
+    assert _rows(path, "SELECT rating_key FROM plex_plays ORDER BY 1") == [("100",)]
+    # the newest play read, excluded or not: re-reading that page would only
+    # drop the same row again
+    assert _cursor(path) == NOW - DAY
+    # and nothing asks the metadata endpoint about an item nobody kept
+    assert _rows(path, "SELECT rating_key FROM plex_items ORDER BY 1") == [("100",)]

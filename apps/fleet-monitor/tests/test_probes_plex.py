@@ -235,11 +235,23 @@ def test_parse_devices_keeps_every_row_with_an_id():
 def test_parse_sections_keeps_the_three_playable_library_types():
     sections = plex.parse_sections(_load("plex_sections.json"))
 
-    # the photo library is skipped, so is a directory with no key
+    # the photo library is skipped, so is a directory with no key; a library
+    # pointed at two folders carries both, and one pointed at none carries no
+    # location rather than a guessed one
     assert sections == (
-        plex.Section(section_id="13", title="01. 4K Movies", kind="movie"),
-        plex.Section(section_id="6", title="03. 4K TV Shows", kind="episode"),
-        plex.Section(section_id="21", title="20. Music Lossless", kind="track"),
+        plex.Section(
+            section_id="13",
+            title="01. 4K Movies",
+            kind="movie",
+            locations=("/volume1/Meleys/Media/4K Movies", "/volume1/Meleys/Vhagar/Media/4K Movies"),
+        ),
+        plex.Section(
+            section_id="6",
+            title="03. 4K TV Shows",
+            kind="episode",
+            locations=("/volume1/Meleys/Media/4K TV",),
+        ),
+        plex.Section(section_id="21", title="20. Music Lossless", kind="track", locations=()),
     )
 
 

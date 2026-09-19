@@ -234,6 +234,12 @@ def seeded(db):
     return db
 
 
+def _column(connection, sql, params=()):
+    """One column of a query, as a list, for the tests that assert on rows the
+    store deleted rather than on anything it returns."""
+    return [row[0] for row in connection.execute(sql, params).fetchall()]
+
+
 def _never(connection, filters=plays.Filters(), *, page=1, page_size=50, q="", now=T0):
     return plays.never_played(
         connection, filters, hosts=HOSTS, page=page, page_size=page_size, q=q, now=now
@@ -853,3 +859,115 @@ def test_never_played_sorts_an_impossible_addition_date_with_the_undated(seeded)
     # printing a nonsense date at the bottom is more honest than one hiding it
     ahead = next(row for row in page.rows if row.title == "Stamped Ahead")
     assert ahead.added_at == _utc(_at(-26_000))
+
+
+# --- excluded libraries ---------------------------------------------------
+
+
+def test_sections_carry_whether_the_page_counts_them(db):
+    plays.upsert_sections(
+        db,
+        "caraxes",
+        (
+            Section(section_id="2", title="02. Stand Up Comedy", kind="movie"),
+            Section(section_id="16", title="99. Tutorials", kind="movie"),
+            Section(section_id="20", title="97. Home Videos", kind="movie"),
+        ),
+        excluded_ids=frozenset({"16", "20"}),
+    )
+
+    assert plays.excluded_section_ids(db, "caraxes") == frozenset({"16", "20"})
+    # the flag is per host: another server's section 16 is its own question
+    assert plays.excluded_section_ids(db, "meleys") == frozenset()
+
+
+def test_a_section_that_stops_being_excluded_is_counted_again(db):
+    sections = (Section(section_id="16", title="99. Tutorials", kind="movie"),)
+    plays.upsert_sections(db, "caraxes", sections, excluded_ids=frozenset({"16"}))
+
+    plays.upsert_sections(db, "caraxes", sections)
+
+    assert plays.excluded_section_ids(db, "caraxes") == frozenset()
+
+
+def test_purging_a_section_takes_its_plays_and_its_items(db):
+    plays.upsert_items(
+        db,
+        "caraxes",
+        (
+            _item("900", title="How to grep", section_id="16"),
+            _item("901", title="Birthday", section_id="20"),
+            _item("100", title="Heat", section_id="2"),
+        ),
+        seen_at=T0,
+    )
+    plays.insert_plays(
+        db,
+        "caraxes",
+        (
+            _play(1, "900", section_id="16"),
+            _play(2, "901", section_id="20"),
+            _play(3, "100", section_id="2"),
+        ),
+    )
+
+    purged = plays.purge_sections(db, "caraxes", frozenset({"16", "20"}))
+
+    assert (purged.plays, purged.items) == (2, 2)
+    assert _column(db, "SELECT rating_key FROM plex_plays ORDER BY 1") == ["100"]
+    assert _column(db, "SELECT rating_key FROM plex_items ORDER BY 1") == ["100"]
+
+
+def test_purging_takes_a_play_whose_section_only_its_item_knows(db):
+    # the ledger does record rows without a librarySectionID; the item behind
+    # one still says which library it came from
+    plays.upsert_items(db, "caraxes", (_item("900", section_id="16"),), seen_at=T0)
+    plays.insert_plays(db, "caraxes", (_play(1, "900", section_id=None),))
+
+    assert plays.purge_sections(db, "caraxes", frozenset({"16"})).plays == 1
+    assert _column(db, "SELECT rating_key FROM plex_plays") == []
+
+
+def test_purging_nothing_touches_nothing(db):
+    plays.upsert_items(db, "caraxes", (_item("100"),), seen_at=T0)
+    plays.insert_plays(db, "caraxes", (_play(1, "100"),))
+
+    purged = plays.purge_sections(db, "caraxes", frozenset())
+
+    assert (purged.plays, purged.items) == (0, 0)
+    assert _column(db, "SELECT rating_key FROM plex_plays") == ["100"]
+
+
+def test_purging_leaves_another_hosts_rows_alone(db):
+    plays.upsert_items(db, "meleys", (_item("900", section_id="16"),), seen_at=T0)
+    plays.insert_plays(db, "meleys", (_play(1, "900", section_id="16"),))
+
+    plays.purge_sections(db, "caraxes", frozenset({"16"}))
+
+    assert _column(db, "SELECT rating_key FROM plex_plays") == ["900"]
+
+
+def test_a_database_written_before_the_rule_gains_the_column(tmp_path):
+    # CREATE TABLE IF NOT EXISTS never widens a table, so an existing file
+    # would answer every section read with "no such column"
+    path = str(tmp_path / "old.db")
+    with fleet_db.session(path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE plex_sections (
+                host TEXT NOT NULL, section_id TEXT NOT NULL,
+                title TEXT NOT NULL DEFAULT '', kind TEXT NOT NULL,
+                PRIMARY KEY (host, section_id)
+            )
+            """
+        )
+        connection.execute(
+            "INSERT INTO plex_sections (host, section_id, title, kind) VALUES (?, ?, ?, ?)",
+            ("caraxes", "16", "99. Tutorials", "movie"),
+        )
+
+    with fleet_db.session(path) as connection:
+        plays.init_db(connection)
+
+        # nothing is excluded by the backfill; the next inventory says so
+        assert plays.excluded_section_ids(connection, "caraxes") == frozenset()

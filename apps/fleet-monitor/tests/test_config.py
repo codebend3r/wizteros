@@ -142,3 +142,19 @@ def test_the_plex_cadences_are_whole_seconds_and_the_inventory_is_the_slow_one()
     assert config.PLEX_HISTORY_INTERVAL == 300
     assert config.PLEX_LIBRARY_INTERVAL == 6 * 3600
     assert config.PLEX_LIBRARY_INTERVAL % config.PLEX_HISTORY_INTERVAL == 0
+
+
+def test_the_caraxes_scratch_tree_is_excluded_by_default(monkeypatch):
+    # four movie libraries of tutorials, home videos, documents and
+    # assignments (measured 2026-09-19); none of them is what the page counts
+    monkeypatch.delenv("FM_PLEX_EXCLUDED_PATHS", raising=False)
+    assert config.plex_excluded_paths() == ("/volume1/Caraxes/tmp",)
+
+
+def test_excluded_paths_can_be_replaced_or_switched_off(monkeypatch):
+    monkeypatch.setenv("FM_PLEX_EXCLUDED_PATHS", "/volume1/A/tmp, /volume1/B/scratch")
+    assert config.plex_excluded_paths() == ("/volume1/A/tmp", "/volume1/B/scratch")
+
+    # an empty value is "count everything", not "fall back to the default"
+    monkeypatch.setenv("FM_PLEX_EXCLUDED_PATHS", "")
+    assert config.plex_excluded_paths() == ()

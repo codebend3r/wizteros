@@ -118,9 +118,15 @@ class Device:
 
 @dataclass(frozen=True, slots=True)
 class Section:
+    """One library, named by the leaf kind it holds, with the folders it is
+    pointed at. `locations` is what the exclusion rule reads: a library is
+    known by its title on the page but by its path in the rule, and a title
+    can be renamed underneath either one."""
+
     section_id: str
     title: str
     kind: Kind
+    locations: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -379,11 +385,32 @@ def parse_sections(payload: object) -> tuple[Section, ...]:
     named by the leaf kind they hold. Photo and other libraries hold nothing
     the ledger logs and are skipped."""
     return tuple(
-        Section(section_id=section_id, title=_text(row.get("title")) or "", kind=kind)
+        Section(
+            section_id=section_id,
+            title=_text(row.get("title")) or "",
+            kind=kind,
+            locations=_locations(row),
+        )
         for row in _rows(payload, "Directory")
         for section_id in (_key(row.get("key")),)
         for kind in (_SECTION_KIND.get(str(row.get("type"))),)
         if section_id is not None and kind is not None
+    )
+
+
+def _locations(row: Mapping[str, object]) -> tuple[str, ...]:
+    """The folders one section row names. A library with several is listed
+    several times; one with none (a section the server answers for but no
+    longer has a folder behind) is an empty tuple, not a guess."""
+    rows = row.get("Location")
+    if not isinstance(rows, list):
+        return ()
+    return tuple(
+        path
+        for location in rows
+        if isinstance(location, Mapping)
+        for path in (_text(location.get("path")),)
+        if path is not None
     )
 
 

@@ -20,7 +20,7 @@ them:
 """
 
 import sqlite3
-from collections.abc import Iterable, Sequence
+from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Literal
@@ -97,6 +97,7 @@ CREATE TABLE IF NOT EXISTS plex_sections (
     section_id TEXT NOT NULL,
     title      TEXT NOT NULL DEFAULT '',
     kind       TEXT NOT NULL,
+    excluded   INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (host, section_id)
 )
 """
@@ -400,6 +401,14 @@ class NeverPlayedPage:
 
 
 @dataclass(frozen=True, slots=True)
+class Purged:
+    """What one purge of the excluded libraries removed."""
+
+    plays: int
+    items: int
+
+
+@dataclass(frozen=True, slots=True)
 class ServerStatus:
     host: str
     friendly_name: str | None
@@ -414,6 +423,11 @@ class ServerStatus:
 
 
 def init_db(connection: sqlite3.Connection) -> None:
+    """Every table this module writes, and the one column a database written
+    before the exclusion rule existed does not have. CREATE TABLE IF NOT
+    EXISTS never widens an existing table, so the column is added by hand or
+    every section read answers "no such column". Nothing is excluded by the
+    backfill: the next inventory pass says which sections are."""
     for statement in (
         _SERVERS_SCHEMA,
         _ACCOUNTS_SCHEMA,
@@ -424,6 +438,11 @@ def init_db(connection: sqlite3.Connection) -> None:
         *_INDEXES,
     ):
         connection.execute(statement)
+    columns = {row["name"] for row in connection.execute("PRAGMA table_info(plex_sections)")}
+    if "excluded" not in columns:
+        connection.execute(
+            "ALTER TABLE plex_sections ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0"
+        )
 
 
 # --- writes ---------------------------------------------------------------
@@ -539,16 +558,73 @@ def upsert_devices(connection: sqlite3.Connection, host: str, devices: Iterable[
 
 
 def upsert_sections(
-    connection: sqlite3.Connection, host: str, sections: Iterable[Section]
+    connection: sqlite3.Connection,
+    host: str,
+    sections: Iterable[Section],
+    *,
+    excluded_ids: Collection[str] = (),
 ) -> None:
+    """The libraries this server holds, each carrying whether the play page
+    counts it. The flag is stored rather than recomputed per query because the
+    history pass has to drop a play before it lands, and it reads the store,
+    not the server's section listing."""
     connection.executemany(
         """
-        INSERT INTO plex_sections (host, section_id, title, kind) VALUES (?, ?, ?, ?)
+        INSERT INTO plex_sections (host, section_id, title, kind, excluded)
+        VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(host, section_id) DO UPDATE SET
-            title = excluded.title, kind = excluded.kind
+            title = excluded.title, kind = excluded.kind, excluded = excluded.excluded
         """,
-        [(host, s.section_id, s.title, s.kind) for s in sections],
+        [
+            (host, s.section_id, s.title, s.kind, 1 if s.section_id in excluded_ids else 0)
+            for s in sections
+        ],
     )
+
+
+def excluded_section_ids(connection: sqlite3.Connection, host: str) -> frozenset[str]:
+    """The sections on this host the page leaves out, as the last inventory
+    pass marked them. Empty until one has run, which is the safe direction:
+    a play kept for one round is purged by that pass, a play dropped in error
+    is gone for good."""
+    rows = connection.execute(
+        "SELECT section_id FROM plex_sections WHERE host = ? AND excluded = 1", (host,)
+    ).fetchall()
+    return frozenset(row["section_id"] for row in rows)
+
+
+def purge_sections(
+    connection: sqlite3.Connection, host: str, section_ids: Collection[str]
+) -> Purged:
+    """Delete every play and item belonging to these sections. Returns how
+    many of each went.
+
+    Plays first, by their own section and by their item's: the ledger names
+    the section on most rows, but a row that does not carries the item that
+    does, and an excluded library must not survive on the technicality.
+    """
+    if not section_ids:
+        return Purged(plays=0, items=0)
+    marks = ", ".join("?" for _ in section_ids)
+    ids = tuple(section_ids)
+    plays_gone = connection.execute(
+        f"""
+        DELETE FROM plex_plays
+        WHERE host = ? AND (
+            section_id IN ({marks})
+            OR rating_key IN (
+                SELECT rating_key FROM plex_items
+                WHERE host = ? AND section_id IN ({marks})
+            )
+        )
+        """,
+        (host, *ids, host, *ids),
+    ).rowcount
+    items_gone = connection.execute(
+        f"DELETE FROM plex_items WHERE host = ? AND section_id IN ({marks})",
+        (host, *ids),
+    ).rowcount
+    return Purged(plays=plays_gone, items=items_gone)
 
 
 def upsert_items(

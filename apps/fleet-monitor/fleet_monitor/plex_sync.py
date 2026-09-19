@@ -61,6 +61,37 @@ TIMEOUT = 90.0
 CHECK_GAP = timedelta(seconds=config.PLEX_HISTORY_INTERVAL * 3)
 
 
+def _under(path: str, folder: str) -> bool:
+    """True when `path` is the excluded folder or something inside it.
+
+    Compared on whole segments, so /volume1/Caraxes/tmp never matches a
+    sibling called tmp-restore, and case-insensitively, because the servers
+    spell the same share both ways and the mount is case-preserving either
+    way.
+    """
+    inside = path.rstrip("/").lower()
+    folder = folder.rstrip("/").lower()
+    return inside == folder or inside.startswith(f"{folder}/")
+
+
+def excluded_sections(
+    sections: Sequence[plex.Section], *, folders: Sequence[str]
+) -> frozenset[str]:
+    """The section ids whose every folder sits under an excluded one.
+
+    Every, not any: a library pointed at both a scratch folder and a real one
+    is a library the page still has to count, and dropping it whole because
+    one of its paths matched would lose plays nobody asked to lose. A section
+    with no folder at all is never excluded, since there is no path to judge.
+    """
+    return frozenset(
+        section.section_id
+        for section in sections
+        if section.locations
+        and all(any(_under(path, folder) for folder in folders) for path in section.locations)
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class Fetched:
     """One Plex answer, decoded, or the reason there is none. `reason` is
@@ -149,7 +180,7 @@ def _failed(path: str, host: Host, at: datetime, reason: str) -> CheckResult:
 
 
 async def _page_history(
-    host: Host, path: str, *, token: str, since: int, page_size: int
+    host: Host, path: str, *, token: str, since: int, page_size: int, excluded: frozenset[str]
 ) -> str:
     """Page the ledger from `since` upward, committing each page with the
     cursor it advanced. Returns the failure reason, or empty when the last
@@ -159,6 +190,10 @@ async def _page_history(
     is a page nobody has to read again. A play landing on the server while
     the pass runs appends past the last page rather than shifting the pages
     already read.
+
+    A play in an excluded library is dropped before it is stored, but it
+    still moves the cursor: the page was read, and re-reading it next pass
+    would only drop the same rows again.
     """
     start = 0
     while True:
@@ -173,9 +208,10 @@ async def _page_history(
         if fetched.payload is None:
             return fetched.reason
         entries = plex.parse_history(fetched.payload)
+        kept = tuple(entry for entry in entries if entry.section_id not in excluded)
         info = plex.page_info(fetched.payload)
         with db.session(path) as connection:
-            inserted = plays.insert_plays(connection, host.name, entries)
+            inserted = plays.insert_plays(connection, host.name, kept)
             if entries:
                 plays.set_history_cursor(
                     connection, host.name, max(entry.viewed_at for entry in entries)
@@ -287,6 +323,7 @@ async def sync_history(
     with db.session(path) as connection:
         plays.upsert_server(connection, host.name, info=info)
         cursor = plays.history_cursor(connection, host.name)
+        excluded = plays.excluded_section_ids(connection, host.name)
 
     accounts = await fetch(host, "/accounts", token=token)
     devices = await fetch(host, "/devices", token=token)
@@ -301,7 +338,9 @@ async def sync_history(
         if cursor is not None
         else int((now - timedelta(days=lookback_days)).timestamp())
     )
-    reason = await _page_history(host, path, token=token, since=since, page_size=page_size)
+    reason = await _page_history(
+        host, path, token=token, since=since, page_size=page_size, excluded=excluded
+    )
     if reason:
         return _failed(path, host, now, reason)
     if enrich:
@@ -363,6 +402,12 @@ async def sync_library(
     Items are retired only after a complete run. A section that failed on
     page three left its remaining items unseen this run, and retiring them
     would make a third of a library look deleted because a request timed out.
+
+    This is also where the exclusion rule is applied, because this is the one
+    pass that reads the section listing and so the one that can tell which
+    library sits in an excluded folder. Excluded sections are marked, their
+    plays and items deleted, and their listings never paged, so the history
+    pass that runs before the next inventory already knows to drop them.
     """
     if not host.plex_url or not token:
         return False
@@ -373,11 +418,22 @@ async def sync_library(
         log.warning("inventory for %s failed: %s", host.name, sections.reason)
         return False
     parsed = plex.parse_sections(sections.payload)
+    excluded = excluded_sections(parsed, folders=config.plex_excluded_paths())
     with db.session(path) as connection:
-        plays.upsert_sections(connection, host.name, parsed)
+        plays.upsert_sections(connection, host.name, parsed, excluded_ids=excluded)
+        purged = plays.purge_sections(connection, host.name, excluded)
+    if purged.plays or purged.items:
+        log.info(
+            "inventory for %s purged %d plays and %d items from excluded libraries",
+            host.name,
+            purged.plays,
+            purged.items,
+        )
 
     failure = ""
     for section in parsed:
+        if section.section_id in excluded:
+            continue
         reason = await _page_section(
             host, path, token=token, section=section, now=now, page_size=page_size
         )

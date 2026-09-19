@@ -35,6 +35,15 @@ PLEX_LIBRARY_INTERVAL = 6 * 3600
 
 _DEFAULT_PLEX_LOOKBACK_DAYS = 365
 
+# Library folders the play page is not about. Caraxes keeps a scratch tree of
+# tutorials, home videos, documents and assignments under /volume1/Caraxes/tmp
+# that Plex indexes as four movie libraries; their plays and their items are
+# neither shared nor interesting, and they crowd the page's own numbers.
+#
+# A path, not a library name, because a library is renamed far more easily
+# than it is moved, and the rule is about the folder.
+_DEFAULT_PLEX_EXCLUDED_PATHS = ("/volume1/Caraxes/tmp",)
+
 
 @dataclass(frozen=True, slots=True)
 class Host:
@@ -130,3 +139,16 @@ def plex_lookback_days() -> int:
     except ValueError:
         return _DEFAULT_PLEX_LOOKBACK_DAYS
     return days if days > 0 else _DEFAULT_PLEX_LOOKBACK_DAYS
+
+
+def plex_excluded_paths() -> tuple[str, ...]:
+    """Library folders whose plays and items the ledger never keeps.
+
+    A comma-separated FM_PLEX_EXCLUDED_PATHS replaces the default list, and an
+    empty one switches the rule off entirely: an operator who wants everything
+    counted says so with an empty value rather than by editing this file.
+    """
+    raw = os.environ.get("FM_PLEX_EXCLUDED_PATHS")
+    if raw is None:
+        return _DEFAULT_PLEX_EXCLUDED_PATHS
+    return tuple(part.strip() for part in raw.split(",") if part.strip())

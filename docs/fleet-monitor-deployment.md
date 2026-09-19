@@ -103,7 +103,21 @@ addresses are fixed in `fleet_monitor/config.py` beside the Docker endpoints.
 `FM_PLEX_LOOKBACK_DAYS` bounds only the first backfill on a fresh database.
 Every later pass continues from the newest play it stored, re-reading a two
 day overlap so a collector outage is a delay rather than a hole. Nothing is
-pruned.
+pruned by age.
+
+Some libraries are not what the page is about. `FM_PLEX_EXCLUDED_PATHS` is a
+comma-separated list of folders whose libraries the collector leaves out
+entirely, defaulting to `/volume1/Caraxes/tmp`: the scratch tree caraxes
+indexes as four movie libraries (tutorials, home videos, documents,
+assignments). A library is excluded when every folder it points at sits inside
+an excluded one, so a library straddling a scratch folder and a real one is
+still counted. The rule is applied by the inventory pass, which runs on the
+first round after a restart: it marks those libraries, deletes the plays and
+items already stored for them, and never lists them again. The history pass
+reads the marks and drops their plays before storing anything. An empty value
+switches the rule off again, and the next inventory re-lists those libraries,
+but plays a purge already deleted do not come back: the history cursor only
+moves forward, so the ledger is never re-read that far back.
 
 ### 3. Deploy the containers
 
