@@ -169,10 +169,16 @@ export const usePlaysParams = (): PlaysParams => {
   // sees the same identity and a repaint does not refetch
   const view = useMemo(() => readPlaysView(searchParams), [searchParams])
 
-  // replace, not push: a filter press is a view tweak, and one history entry
-  // per click would bury the page the admin arrived from
-  const apply = (next: PlaysView) =>
-    setSearchParams((params) => writePlaysView({ params, view: next }), { replace: true })
+  // push, not replace: every knob is a place the admin was, so the back
+  // button walks them in reverse, a range press and a title opened alike.
+  // A press that changes nothing (the range already selected, the tab
+  // already open) writes no entry, or the back button would appear to do
+  // nothing on the way through it.
+  const apply = (next: PlaysView) => {
+    const written = writePlaysView({ params: searchParams, view: next })
+    if (written.toString() === searchParams.toString()) return
+    setSearchParams(written)
+  }
 
   const reset = (next: Partial<PlaysView>): PlaysView => ({ ...view, ...next, page: 1 })
   const setFilters = (filters: Partial<PlaysFilters>) =>

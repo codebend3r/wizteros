@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter, useLocation } from 'react-router-dom'
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, expect, test, vi } from '@/test/vi'
 import type {
@@ -303,6 +303,19 @@ const LocationSearch = () => <span data-testid="location-search">{useLocation().
 
 const search = (): string => screen.getByTestId('location-search').textContent ?? ''
 
+// Stands in for the browser's back button: the router keeps the history a
+// MemoryRouter would have pushed, and this walks it one entry back.
+const HistoryBack = () => {
+  const navigate = useNavigate()
+  return (
+    <button type="button" onClick={() => navigate(-1)}>
+      history back
+    </button>
+  )
+}
+
+const goBack = () => fireEvent.click(screen.getByRole('button', { name: 'history back' }))
+
 // AdminLayout brings the header, sidebar and footer, so the page needs a
 // router; the gate is dormant while Supabase is unconfigured, as in every
 // other page suite.
@@ -314,6 +327,7 @@ const renderPlays = (entry = '/plays') => {
       <MemoryRouter initialEntries={[entry]}>
         <Plays />
         <LocationSearch />
+        <HistoryBack />
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -477,6 +491,61 @@ test('Plays sends a pressed filter to the monitor and marks it on the toolbar', 
   fireEvent.click(screen.getByRole('button', { name: 'All' }))
   fireEvent.change(screen.getByRole('combobox', { name: 'Server' }), { target: { value: '' } })
   await waitFor(() => expect(search()).toBe(''))
+})
+
+test('Plays writes every change as a history entry, so the back button retraces them', async () => {
+  stubPlaysFetch()
+  renderPlays('/plays?view=rewatched&title=show%3Abetter+call+saul')
+  await screen.findByRole('heading', { name: 'Title history' })
+
+  // a range press on an open title, then another: two places the admin was
+  fireEvent.click(screen.getByRole('button', { name: '30 days' }))
+  await waitFor(() =>
+    expect(search()).toBe('?view=rewatched&title=show%3Abetter+call+saul&range=30d'),
+  )
+  fireEvent.click(screen.getByRole('button', { name: '90 days' }))
+  await waitFor(() =>
+    expect(search()).toBe('?view=rewatched&title=show%3Abetter+call+saul&range=90d'),
+  )
+
+  goBack()
+  await waitFor(() =>
+    expect(search()).toBe('?view=rewatched&title=show%3Abetter+call+saul&range=30d'),
+  )
+  expect(screen.getByRole('button', { name: '30 days' })).toHaveAttribute('aria-pressed', 'true')
+  goBack()
+  await waitFor(() => expect(search()).toBe('?view=rewatched&title=show%3Abetter+call+saul'))
+  expect(screen.getByRole('heading', { name: 'Title history' })).toBeInTheDocument()
+
+  // a tab, a viewer and a title are entries too, and so is a turned page
+  fireEvent.click(screen.getByRole('tab', { name: 'Viewers' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'cj, view history' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Heat (1995), view play history' }))
+  await waitFor(() => expect(search()).toBe('?view=viewers&user=1&title=movie%3Aheat%3A1995'))
+
+  goBack()
+  await waitFor(() => expect(search()).toBe('?view=viewers&user=1'))
+  expect(await screen.findByRole('heading', { name: 'Viewer history' })).toBeInTheDocument()
+  goBack()
+  await waitFor(() => expect(search()).toBe('?view=viewers'))
+  goBack()
+  await waitFor(() => expect(search()).toBe('?view=rewatched&title=show%3Abetter+call+saul'))
+})
+
+test('Plays writes no history entry for a press that changes nothing', async () => {
+  stubPlaysFetch()
+  renderPlays('/plays?range=30d')
+  await screen.findByText('8,341')
+
+  // the range already selected, and the tab already open
+  fireEvent.click(screen.getByRole('button', { name: '30 days' }))
+  fireEvent.click(screen.getByRole('tab', { name: 'Overview' }))
+  fireEvent.click(screen.getByRole('button', { name: '7 days' }))
+  await waitFor(() => expect(search()).toBe('?range=7d'))
+
+  // one step back is the page as it opened, not a copy of it
+  goBack()
+  await waitFor(() => expect(search()).toBe('?range=30d'))
 })
 
 test('Plays opens a viewer from the viewers table, keeps them in the url, and comes back', async () => {
