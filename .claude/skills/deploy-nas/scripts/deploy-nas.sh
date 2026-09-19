@@ -39,9 +39,12 @@ say()  { printf '%s\n' "$*"; }
 step() { printf '\n▸ %s\n' "$*"; }
 die()  { printf '\n✗ %s\n' "$*" >&2; exit 1; }
 
-# Everything the NAS container is actually built from. A main that only moved
+# Everything the NAS containers are actually built from. A main that only moved
 # apps/admin-portal/ or docs/ needs no rebuild, Netlify owns the SPA.
-NAS_PATHS=(apps/stripe-bridge docker-compose.yml scripts package.json)
+# apps/fleet-monitor is here because the compose project builds it too: the
+# monitor API and the collector are two containers off that one image, and a
+# commit touching only them used to read as "nothing to do" and need --force.
+NAS_PATHS=(apps/stripe-bridge apps/fleet-monitor docker-compose.yml scripts package.json)
 
 say "═══════════════════════════════════════════"
 say "deploy-nas — wizteros stripe-bridge"
