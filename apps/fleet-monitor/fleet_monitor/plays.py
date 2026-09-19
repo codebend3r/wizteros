@@ -17,6 +17,14 @@ them:
 - A rewatch is the same viewer finishing the same item again. It is counted
   per (viewer, item) as plays minus one and summed over the group, so a
   viewer working through ten episodes has rewatched nothing.
+- One viewing is one play, however many times Plex logged it. The server
+  writes a history row each time an item is marked watched, and some clients
+  mark a single viewing twice: once at the watched threshold, again at the
+  stop (measured 2026-09-19: 222 of 6,253 rows fleet-wide, mostly iOS and
+  tvOS, a minute or less apart in half of them). A completion that lands
+  before the same viewer could even have replayed the item in full is the
+  same viewing, and every read here drops it. The ledger keeps the row, so
+  the rule can change without a resync.
 """
 
 import sqlite3
@@ -211,9 +219,33 @@ _BASE_SELECT = f"""
            END AS group_context,
            CASE p.kind WHEN 'movie' THEN i.year END AS group_year,
            {_QUALITY_RANK_SQL.format(column="i.quality")} AS quality_rank
-    FROM plex_plays p
+    FROM (
+        SELECT *,
+               LAG(viewed_at) OVER (
+                   PARTITION BY host, rating_key, account_id
+                   ORDER BY viewed_at, history_id
+               ) AS prev_viewed_at
+        FROM plex_plays
+    ) p
     LEFT JOIN plex_items i ON i.host = p.host AND i.rating_key = p.rating_key
 """
+
+# A completion the same viewer logged against the same item on the same
+# server, sooner after the previous one than the item runs for, is that
+# previous viewing marked watched again, not a second viewing. The first row
+# is the one kept: it is when the item became watched. An item whose runtime
+# is not known (gone from the library, never described) keeps every row, since
+# a guess would delete a play a viewer may really have made.
+#
+# The predecessor is the row before by time, kept or not, so a chain of
+# markings inside one runtime collapses to its head. The one shape this
+# misjudges is a real replay finished within a runtime of a dropped marking
+# rather than of the kept head; it costs one rewatch and needs a viewer to
+# restart an item the moment it ends.
+_ONE_VIEWING_SQL = (
+    "(p.prev_viewed_at IS NULL OR i.duration_ms IS NULL "
+    "OR (p.viewed_at - p.prev_viewed_at) * 1000 >= i.duration_ms)"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -873,10 +905,12 @@ def _conditions(filters: Filters) -> tuple[list[str], list[object]]:
 
 
 def _base_cte(filters: Filters, *, extra: Sequence[str] = ()) -> tuple[str, list[object]]:
+    """The `base` CTE every aggregate reads: each play joined to its item,
+    narrowed by the filters, with a viewing Plex logged twice counted once."""
     clauses, params = _conditions(filters)
     clauses.extend(extra)
-    where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
-    return f"WITH base AS ({_BASE_SELECT}{where})", params
+    clauses.append(_ONE_VIEWING_SQL)
+    return f"WITH base AS ({_BASE_SELECT} WHERE {' AND '.join(clauses)})", params
 
 
 def _utc(epoch: int) -> datetime:
@@ -1598,10 +1632,14 @@ def sync_status(
             """
         )
     }
+    # through the same base every view reads, so the count on the sync line
+    # is the count the overview totals to, not the ledger's raw row count
+    cte, params = _base_cte(Filters())
     plays = {
         row["host"]: (row["plays"], row["since"])
         for row in connection.execute(
-            "SELECT host, COUNT(*) AS plays, MIN(viewed_at) AS since FROM plex_plays GROUP BY host"
+            f"{cte} SELECT host, COUNT(*) AS plays, MIN(viewed_at) AS since FROM base GROUP BY host",
+            params,
         )
     }
     items = dict(

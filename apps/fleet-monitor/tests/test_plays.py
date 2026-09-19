@@ -646,6 +646,104 @@ def test_user_history_rows_carry_the_key_their_title_is_ranked_under(seeded):
     assert rows[0].group_key == "movie:heat:1995"
 
 
+# --- one viewing, logged twice --------------------------------------------
+
+SECONDS = 1 / DAY
+
+
+def _twice(db, rating_key, item, *, kind, gap_seconds, account_id=1, days_ago=1.0):
+    """One item and two completions of it by one viewer, `gap_seconds` apart."""
+    plays.upsert_items(db, "meleys", (item,), seen_at=T0)
+    plays.insert_plays(
+        db,
+        "meleys",
+        (
+            _play(1, rating_key, kind=kind, account_id=account_id, days_ago=days_ago),
+            _play(2, rating_key, kind=kind, account_id=account_id,
+                  days_ago=days_ago - gap_seconds * SECONDS),
+        ),
+    )
+
+
+def test_a_viewing_plex_logged_twice_inside_one_runtime_counts_once_everywhere(db):
+    # Plex writes a history row each time an item is marked watched, and some
+    # clients mark one viewing twice: at the watched threshold, then again at
+    # the stop. A 44 minute episode cannot be finished twice in a minute.
+    _twice(db, "201", _episode("201", "200", "Better Call Saul", 1, duration_ms=2_677_024),
+           kind="episode", gap_seconds=60)
+    plays.upsert_sections(db, "meleys", (Section(section_id="6", title="TV", kind="episode"),))
+
+    everything = plays.Filters()
+    summary = plays.overview(db, everything, hosts=HOSTS, now=T0)
+    assert summary.totals.plays == 1
+    assert summary.by_kind[1].plays == 1
+    assert sum(point.plays for point in summary.timeline.points) == 1
+    title = plays.top_titles(db, everything, metric="plays", limit=5)[0]
+    assert (title.plays, title.rewatches, title.top_rewatcher) == (1, 0, None)
+    assert plays.top_titles(db, everything, metric="rewatches", limit=5) == ()
+    assert plays.users(db, everything)[0].plays == 1
+    history = plays.user_history(db, everything, account_id=1, page=1, page_size=10)
+    assert history.total == 1
+    # the row kept is the first, the moment the item became watched
+    assert history.rows[0].viewed_at == _utc(_at(1))
+    by_title = plays.title_history(db, everything, key="show:better call saul", page=1,
+                                   page_size=10)
+    assert (by_title.total, by_title.rewatches, len(by_title.rows)) == (1, 0, 1)
+    assert plays.sync_status(db, hosts=(("meleys", "http://meleys:32400"),))[0].plays == 1
+
+    # finishing it again the next day is a real rewatch, and still counts
+    plays.insert_plays(db, "meleys", (_play(3, "201", kind="episode", days_ago=0),))
+    title = plays.top_titles(db, everything, metric="plays", limit=5)[0]
+    assert (title.plays, title.rewatches) == (2, 1)
+
+
+def test_a_repeat_no_faster_than_the_runtime_is_a_real_play(db):
+    # a four minute track on repeat finishes again five minutes later
+    _twice(db, "301", _track("301", "300", "Kid A", "Radiohead", 1), kind="track",
+           gap_seconds=300)
+
+    assert plays.overview(db, plays.Filters(), hosts=HOSTS, now=T0).totals.plays == 2
+    assert plays.top_titles(db, plays.Filters(), metric="plays", limit=5)[0].rewatches == 1
+
+
+def test_a_second_completion_by_another_viewer_is_not_a_duplicate(db):
+    plays.upsert_items(db, "meleys", (_item("100", title="Heat", year=1995),), seen_at=T0)
+    plays.insert_plays(
+        db,
+        "meleys",
+        (_play(1, "100", account_id=1, days_ago=1),
+         _play(2, "100", account_id=7, days_ago=1 - 30 * SECONDS)),
+    )
+
+    assert plays.overview(db, plays.Filters(), hosts=HOSTS, now=T0).totals.plays == 2
+
+
+def test_a_play_whose_runtime_is_unknown_is_never_collapsed(db):
+    # the item is gone from the library, so nothing says how long it was, and
+    # a guess would delete a play a viewer may really have made
+    plays.insert_plays(
+        db,
+        "meleys",
+        (_play(1, "555", title="Deleted film", days_ago=1),
+         _play(2, "555", title="Deleted film", days_ago=1 - 30 * SECONDS)),
+    )
+
+    assert plays.overview(db, plays.Filters(), hosts=HOSTS, now=T0).totals.plays == 2
+
+
+def test_a_chain_of_markings_inside_one_runtime_is_one_play(db):
+    plays.upsert_items(db, "meleys", (_item("100", title="Heat", year=1995),), seen_at=T0)
+    plays.insert_plays(
+        db,
+        "meleys",
+        (_play(1, "100", days_ago=1),
+         _play(2, "100", days_ago=1 - 40 * SECONDS),
+         _play(3, "100", days_ago=1 - 3_000 * SECONDS)),
+    )
+
+    assert plays.overview(db, plays.Filters(), hosts=HOSTS, now=T0).totals.plays == 1
+
+
 # --- top titles -----------------------------------------------------------
 
 

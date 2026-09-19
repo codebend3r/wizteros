@@ -170,6 +170,16 @@ Rewatches are counted per viewer per item: a viewer who watched ten different ep
 has rewatched nothing, and one who watched the same episode three times has rewatched it twice.
 `rewatches = sum over (viewer, item) of (plays - 1)`.
 
+One viewing is one play, however many history rows Plex wrote for it. The server logs a row each
+time an item is marked watched, and some clients (iOS and tvOS above all) mark a single viewing
+twice, at the watched threshold and again at the stop; measured 2026-09-19, 222 of 6,253 rows
+fleet-wide were a second marking of a viewing already logged, half of them a minute or less
+after the first. Every read collapses a completion that lands sooner after the same viewer's
+previous completion of the same item, on the same server, than the item runs for: the earlier
+row is kept, since it is when the item became watched. An item with no known runtime keeps every
+row. The ledger itself is never deduplicated, so the rule can change without a resync, and the
+sync line counts through the same rule so its figure matches the overview.
+
 ### Sync design
 
 Two cadences per host, both in `plex_sync.run_forever`, which `collector.__main__` runs alongside

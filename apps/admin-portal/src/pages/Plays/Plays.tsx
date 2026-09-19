@@ -174,7 +174,7 @@ const PlaysInner = () => {
           <p className={styles.lede}>
             Completed plays from every Plex server&apos;s own ledger, kept here for at least a year.
             A play counts once Plex marks it watched, so a film abandoned halfway is not in these
-            figures.
+            figures, and a viewing Plex marked watched twice counts once.
           </p>
           {!!sync.isPending && (
             <p className={styles.sync} aria-live="polite">
