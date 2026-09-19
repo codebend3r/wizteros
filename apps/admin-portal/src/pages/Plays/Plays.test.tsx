@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, expect, test, vi } from '@/test/vi'
 import type {
@@ -14,7 +14,6 @@ import type {
 } from '@/lib/playsApi'
 import { Plays } from '@/pages/Plays/Plays'
 import { useAuthStore } from '@/stores/authStore'
-import { DEFAULT_RANGE_DAYS, DEFAULT_TAB, usePlaysPrefsStore } from '@/stores/playsPrefsStore'
 
 const HOSTS = ['meleys', 'vermithor', 'caraxes', 'syrax', 'vhagar'] as const
 
@@ -241,6 +240,12 @@ const calledPaths = (): readonly string[] =>
     .mocked(globalThis.fetch)
     .mock.calls.flatMap((call) => (typeof call[0] === 'string' ? [call[0]] : []))
 
+// Reads the live query string back out of the router, so a test can assert
+// what the address bar would show, and therefore what a refresh would reopen.
+const LocationSearch = () => <span data-testid="location-search">{useLocation().search}</span>
+
+const search = (): string => screen.getByTestId('location-search').textContent ?? ''
+
 // AdminLayout brings the header, sidebar and footer, so the page needs a
 // router; the gate is dormant while Supabase is unconfigured, as in every
 // other page suite.
@@ -251,6 +256,7 @@ const renderPlays = (entry = '/plays') => {
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[entry]}>
         <Plays />
+        <LocationSearch />
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -258,16 +264,6 @@ const renderPlays = (entry = '/plays') => {
 
 afterEach(() => {
   vi.restoreAllMocks()
-  // the prefs store is a module singleton shared by every test in the file,
-  // and the selected tab and filters persist
-  usePlaysPrefsStore.setState({
-    rangeDays: DEFAULT_RANGE_DAYS,
-    host: '',
-    kind: '',
-    quality: '',
-    tab: DEFAULT_TAB,
-  })
-  localStorage.removeItem('wz-plays-prefs')
 })
 
 test('Plays says it is loading while the first payloads are in flight', () => {
@@ -375,7 +371,23 @@ test('Plays offers five views and mounts only the selected one', async () => {
   expect(await screen.findByRole('button', { name: 'cj, view history' })).toBeInTheDocument()
   expect(screen.getByText('Better Call Saul')).toBeInTheDocument()
   expect(screen.queryByText('8,341')).toBeNull()
-  expect(usePlaysPrefsStore.getState().tab).toBe('viewers')
+  expect(search()).toBe('?view=viewers')
+})
+
+test('Plays reopens the view a url names, so a refresh lands where the admin was', async () => {
+  stubPlaysFetch()
+  renderPlays('/plays?view=top&range=30d&type=movie&quality=4k&server=syrax')
+
+  await waitFor(() =>
+    expect(calledPaths()).toContain(
+      '/plays/top?days=30&host=syrax&kind=movie&quality=4k&metric=plays&limit=25',
+    ),
+  )
+  expect(screen.getByRole('tab', { name: 'Most played' })).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getByRole('button', { name: '30 days' })).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByRole('button', { name: 'Movies' })).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByRole('button', { name: '4K' })).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByRole('combobox', { name: 'Server' })).toHaveValue('syrax')
 })
 
 test('Plays sends a pressed filter to the monitor and marks it on the toolbar', async () => {
@@ -400,15 +412,22 @@ test('Plays sends a pressed filter to the monitor and marks it on the toolbar', 
   await waitFor(() =>
     expect(calledPaths()).toContain('/plays/overview?days=30&host=syrax&kind=movie&quality=4k'),
   )
-  expect(usePlaysPrefsStore.getState().host).toBe('syrax')
+  // every press is in the address bar, and a default is left out of it
+  expect(search()).toBe('?range=30d&type=movie&quality=4k&server=syrax')
+
+  fireEvent.click(screen.getByRole('button', { name: '1 year' }))
+  fireEvent.click(screen.getByRole('button', { name: 'All types' }))
+  fireEvent.click(screen.getByRole('button', { name: 'All' }))
+  fireEvent.change(screen.getByRole('combobox', { name: 'Server' }), { target: { value: '' } })
+  await waitFor(() => expect(search()).toBe(''))
 })
 
 test('Plays opens a viewer from the viewers table, keeps them in the url, and comes back', async () => {
   stubPlaysFetch()
-  usePlaysPrefsStore.setState({ tab: 'viewers' })
-  renderPlays()
+  renderPlays('/plays?view=viewers')
 
   fireEvent.click(await screen.findByRole('button', { name: 'cj, view history' }))
+  expect(search()).toBe('?view=viewers&user=1')
 
   await waitFor(() =>
     expect(calledPaths()).toContain('/plays/users/1/history?days=365&page=1&page_size=50'),
@@ -424,14 +443,13 @@ test('Plays opens a viewer from the viewers table, keeps them in the url, and co
 
   expect(await screen.findByRole('button', { name: 'cj, view history' })).toBeInTheDocument()
   expect(screen.queryByRole('heading', { name: 'Viewer history' })).toBeNull()
+  expect(search()).toBe('?view=viewers')
 })
 
-test('Plays lands on a viewer named in the url, whatever tab was remembered', async () => {
+test('Plays lands on a viewer named in the url, whatever tab the url names', async () => {
   stubPlaysFetch()
-  // a shared link has to open on the viewer it names, not on the tab the
-  // browser last had open
-  usePlaysPrefsStore.setState({ tab: 'never' })
-  renderPlays('/plays?user=1')
+  // a shared link has to open on the viewer it names, not on the tab beside it
+  renderPlays('/plays?view=never&user=1')
 
   expect(await screen.findByRole('heading', { name: 'Viewer history' })).toBeInTheDocument()
   expect(screen.getByText(/2 completed plays over the last year/)).toBeInTheDocument()
@@ -450,8 +468,7 @@ test('Plays ranks titles by the chosen metric and says why a rewatch count is em
   stubPlaysFetch({
     top: (url) => (url.includes('metric=rewatches') ? { metric: 'rewatches', titles: [] } : TOP),
   })
-  usePlaysPrefsStore.setState({ tab: 'rewatched' })
-  renderPlays()
+  renderPlays('/plays?view=rewatched')
 
   await waitFor(() =>
     expect(calledPaths()).toContain('/plays/top?days=365&metric=rewatches&limit=25'),
@@ -468,8 +485,7 @@ test('Plays ranks titles by the chosen metric and says why a rewatch count is em
 
 test('Plays lists what was never played with its counts, and searches it', async () => {
   stubPlaysFetch()
-  usePlaysPrefsStore.setState({ tab: 'never' })
-  renderPlays()
+  renderPlays('/plays?view=never')
 
   expect(await screen.findByText('Dune (2021)')).toBeInTheDocument()
   expect(screen.getByText(/No completed play in the last year/)).toBeInTheDocument()
@@ -487,6 +503,31 @@ test('Plays lists what was never played with its counts, and searches it', async
   await waitFor(() =>
     expect(calledPaths()).toContain('/plays/never-played?days=365&page=1&page_size=50&q=dune'),
   )
+  // a submitted term is in the address bar; leaving the view drops it, since
+  // it is the only view that searches
+  expect(search()).toBe('?view=never&q=dune')
+
+  fireEvent.click(screen.getByRole('tab', { name: 'Overview' }))
+  await waitFor(() => expect(search()).toBe(''))
+})
+
+test('Plays keeps a turned page in the url, and starts over when a filter changes', async () => {
+  stubPlaysFetch({ never: { ...NEVER, total: 120 } })
+  renderPlays('/plays?view=never&page=2')
+
+  await waitFor(() =>
+    expect(calledPaths()).toContain('/plays/never-played?days=365&page=2&page_size=50'),
+  )
+  expect(await screen.findByText('Dune (2021)')).toBeInTheDocument()
+
+  const next = screen.getAllByRole('button', { name: 'Next' })[0]
+  if (next === undefined) throw new Error('no pager on the never-played list')
+  fireEvent.click(next)
+  await waitFor(() => expect(search()).toBe('?view=never&page=3'))
+
+  // page three of the old list is not a page of the new one
+  fireEvent.click(screen.getByRole('button', { name: '30 days' }))
+  await waitFor(() => expect(search()).toBe('?view=never&range=30d'))
 })
 
 test('Plays says so when nothing on the shelves is unplayed', async () => {
@@ -498,8 +539,7 @@ test('Plays says so when nothing on the shelves is unplayed', async () => {
       rows: [],
     },
   })
-  usePlaysPrefsStore.setState({ tab: 'never' })
-  renderPlays()
+  renderPlays('/plays?view=never')
 
   expect(
     await screen.findByText('Everything on the shelves has been played at least once.'),

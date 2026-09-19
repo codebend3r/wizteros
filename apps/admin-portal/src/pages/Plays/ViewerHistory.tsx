@@ -1,8 +1,6 @@
-import { useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import {
   fetchViewerHistory,
-  playsQuery,
   windowProse,
   type PlaysFilters,
   type ViewerHistoryRow,
@@ -23,6 +21,10 @@ import styles from '@/pages/Plays/DataTable.module.scss'
 type ViewerHistoryProps = {
   readonly filters: PlaysFilters
   readonly accountId: number
+  /** The page being read, 1 based. It lives in the url beside the viewer, so
+      a refresh comes back to the same page of the same history. */
+  readonly page: number
+  readonly onPageChange: (page: number) => void
   readonly onBack: () => void
 }
 
@@ -51,15 +53,13 @@ const kindLabel = (kind: string): string =>
   kind === 'movie' || kind === 'episode' || kind === 'track' ? KIND_LABEL[kind] : kind
 
 /** One viewer's completed plays, newest first, a page at a time. */
-export const ViewerHistory = ({ filters, accountId, onBack }: ViewerHistoryProps) => {
-  // The page is kept beside the filters it was turned under: a filter press
-  // starts the new list from its first page rather than from page four of
-  // the old one. Read on render, so no effect has to chase the change.
-  const filtersKey = playsQuery(filters)
-  const [paging, setPaging] = useState({ key: filtersKey, page: 1 })
-  const page = paging.key === filtersKey ? paging.page : 1
-  const setPage = (next: number) => setPaging({ key: filtersKey, page: next })
-
+export const ViewerHistory = ({
+  filters,
+  accountId,
+  page,
+  onPageChange,
+  onBack,
+}: ViewerHistoryProps) => {
   const history = useQuery({
     queryKey: viewerKey({ accountId, filters, page }),
     queryFn: () => fetchViewerHistory({ filters, accountId, page, pageSize: PAGE_SIZE }),
@@ -93,7 +93,7 @@ export const ViewerHistory = ({ filters, accountId, onBack }: ViewerHistoryProps
               <p className={styles.empty}>Nothing completed {windowProse(filters.days)}.</p>
             ) : (
               <>
-                <Pager page={page} pageCount={pageCount} onPageChange={setPage} />
+                <Pager page={page} pageCount={pageCount} onPageChange={onPageChange} />
                 <div className={styles.scroller}>
                   <table className={styles.table}>
                     <thead>
@@ -134,7 +134,7 @@ export const ViewerHistory = ({ filters, accountId, onBack }: ViewerHistoryProps
                     </tbody>
                   </table>
                 </div>
-                <Pager page={page} pageCount={pageCount} onPageChange={setPage} />
+                <Pager page={page} pageCount={pageCount} onPageChange={onPageChange} />
               </>
             )}
           </div>

@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { fetchNeverPlayed, playsQuery, rangeProse, type PlaysFilters } from '@/lib/playsApi'
+import { fetchNeverPlayed, rangeProse, type PlaysFilters } from '@/lib/playsApi'
 import { AsyncSection } from '@/pages/Plays/AsyncSection'
 import { BreakdownList } from '@/pages/Plays/BreakdownList'
 import { Pager } from '@/pages/Plays/Pager'
@@ -13,19 +13,26 @@ import styles from '@/pages/Plays/NeverPlayedPanel.module.scss'
 
 type NeverPlayedPanelProps = {
   readonly filters: PlaysFilters
+  /** The page being read, 1 based, and the term it is filtered by: both live
+      in the url, so a refresh lands on the page and search that were open. */
+  readonly page: number
+  readonly onPageChange: (page: number) => void
+  readonly search: string
+  readonly onSearch: (search: string) => void
 }
 
 /** What is on the shelves with no completed play against it: movies by
     item, TV by show, audio by album, newest additions first. */
-export const NeverPlayedPanel = ({ filters }: NeverPlayedPanelProps) => {
-  const [draft, setDraft] = useState('')
-  const [q, setQ] = useState('')
-  // The page is kept beside the filters and the term it was turned under, so
-  // a new search or a filter press starts from the first page.
-  const listKey = `${playsQuery(filters)}|${q}`
-  const [paging, setPaging] = useState({ key: listKey, page: 1 })
-  const page = paging.key === listKey ? paging.page : 1
-  const setPage = (next: number) => setPaging({ key: listKey, page: next })
+export const NeverPlayedPanel = ({
+  filters,
+  page,
+  onPageChange,
+  search: q,
+  onSearch,
+}: NeverPlayedPanelProps) => {
+  // What is being typed is the box's own, not the page's: only a submitted
+  // term becomes a url the refresh would come back to.
+  const [draft, setDraft] = useState(q)
 
   const never = useQuery({
     queryKey: neverKey({ filters, page, q }),
@@ -38,7 +45,7 @@ export const NeverPlayedPanel = ({ filters }: NeverPlayedPanelProps) => {
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setQ(draft.trim())
+    onSearch(draft.trim())
   }
 
   return (
@@ -113,7 +120,7 @@ export const NeverPlayedPanel = ({ filters }: NeverPlayedPanelProps) => {
                 <Pager
                   page={page}
                   pageCount={pageCount}
-                  onPageChange={setPage}
+                  onPageChange={onPageChange}
                   summary={`${formatCount(data.total)} titles`}
                 />
                 <div className={tableStyles.scroller}>
@@ -155,7 +162,7 @@ export const NeverPlayedPanel = ({ filters }: NeverPlayedPanelProps) => {
                     </tbody>
                   </table>
                 </div>
-                <Pager page={page} pageCount={pageCount} onPageChange={setPage} />
+                <Pager page={page} pageCount={pageCount} onPageChange={onPageChange} />
               </div>
             )}
           </div>

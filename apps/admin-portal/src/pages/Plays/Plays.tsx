@@ -1,32 +1,20 @@
-import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
 import { AdminGate } from '@/components/AdminGate/AdminGate'
 import { AdminLayout } from '@/components/AdminLayout/AdminLayout'
-import { fetchPlaySync, type PlaySyncServer, type PlaysFilters } from '@/lib/playsApi'
+import { fetchPlaySync, type PlaySyncServer } from '@/lib/playsApi'
 import { errorMessage } from '@/pages/Plays/AsyncSection'
 import { NeverPlayedPanel } from '@/pages/Plays/NeverPlayedPanel'
 import { OverviewPanel } from '@/pages/Plays/OverviewPanel'
 import { PlaysFilters as FilterBar } from '@/pages/Plays/PlaysFilters'
 import { TAB_COPY } from '@/pages/Plays/playsCopy'
 import { formatAgeSince, formatCount, monthYear } from '@/pages/Plays/playsFormat'
+import { PLAYS_TABS, usePlaysParams, type PlaysTab } from '@/pages/Plays/playsParams'
 import { REFETCH_MS, SYNC_KEY } from '@/pages/Plays/playsQueries'
 import { TopTitlesPanel } from '@/pages/Plays/TopTitlesPanel'
 import { ViewerHistory } from '@/pages/Plays/ViewerHistory'
 import { ViewersPanel } from '@/pages/Plays/ViewersPanel'
 import { ViewTabs } from '@/pages/Plays/ViewTabs'
-import { PLAYS_TABS, usePlaysPrefsStore, type PlaysTab } from '@/stores/playsPrefsStore'
 import styles from '@/pages/Plays/Plays.module.scss'
-
-// The viewer being read lives in the URL rather than the store, so a viewer's
-// history is a link that can be sent, and a refresh lands on the same person.
-const VIEWER_PARAM = 'user'
-
-const parseAccountId = (value: string | null): number | null => {
-  if (value === null || value.length === 0) return null
-  const parsed = Number(value)
-  return Number.isInteger(parsed) && parsed >= 0 ? parsed : null
-}
 
 const TABS = PLAYS_TABS.map((id) => ({ id, title: TAB_COPY[id].title, icon: TAB_COPY[id].icon }))
 
@@ -98,25 +86,24 @@ const SyncLine = ({ servers, readAt }: SyncLineProps) => {
 }
 
 const PlaysInner = () => {
-  const rangeDays = usePlaysPrefsStore((state) => state.rangeDays)
-  const setRangeDays = usePlaysPrefsStore((state) => state.setRangeDays)
-  const host = usePlaysPrefsStore((state) => state.host)
-  const setHost = usePlaysPrefsStore((state) => state.setHost)
-  const kind = usePlaysPrefsStore((state) => state.kind)
-  const setKind = usePlaysPrefsStore((state) => state.setKind)
-  const quality = usePlaysPrefsStore((state) => state.quality)
-  const setQuality = usePlaysPrefsStore((state) => state.setQuality)
-  const tab = usePlaysPrefsStore((state) => state.tab)
-  const setTab = usePlaysPrefsStore((state) => state.setTab)
-  const [searchParams, setSearchParams] = useSearchParams()
-  const viewer = parseAccountId(searchParams.get(VIEWER_PARAM))
-
-  // One object per distinct filter set, so every query key and every panel
-  // sees the same identity and a repaint does not refetch.
-  const filters = useMemo<PlaysFilters>(
-    () => ({ days: rangeDays, host, kind, quality }),
-    [rangeDays, host, kind, quality],
-  )
+  // Every knob on this page is a query parameter, so a refresh, a bookmark
+  // and a pasted link all reopen the exact view that was on screen.
+  const {
+    tab,
+    filters,
+    viewer,
+    page,
+    search,
+    setRangeDays,
+    setKind,
+    setQuality,
+    setHost,
+    setTab,
+    openViewer,
+    closeViewer,
+    setPage,
+    setSearch,
+  } = usePlaysParams()
 
   const sync = useQuery({
     queryKey: SYNC_KEY,
@@ -129,59 +116,41 @@ const PlaysInner = () => {
       label: server.friendly_name ?? server.host,
     })) ?? []
 
-  // replace, not push: opening a viewer is a view tweak, and one history
-  // entry per click would bury the page the admin arrived from
-  const selectViewer = (accountId: number) => {
-    setTab('viewers')
-    setSearchParams(
-      (params) => {
-        const next = new URLSearchParams(params)
-        next.set(VIEWER_PARAM, String(accountId))
-        return next
-      },
-      { replace: true },
-    )
-  }
-  const clearViewer = () => {
-    setSearchParams(
-      (params) => {
-        const next = new URLSearchParams(params)
-        next.delete(VIEWER_PARAM)
-        return next
-      },
-      { replace: true },
-    )
-  }
-
-  // A viewer named in the url is the view, whatever tab the browser last
-  // remembered: a link to someone's history has to open on it. Choosing
-  // another tab lets the viewer go, so the url and the strip never disagree.
-  const activeTab: PlaysTab = viewer === null ? tab : 'viewers'
-  const chooseTab = (next: PlaysTab) => {
-    setTab(next)
-    if (viewer !== null && next !== 'viewers') clearViewer()
-  }
-
   const panelFor = (active: PlaysTab) => {
     if (active === 'overview') {
       return (
         <OverviewPanel
           filters={filters}
-          onSelectViewer={selectViewer}
-          onShowRanking={() => chooseTab('top')}
+          onSelectViewer={openViewer}
+          onShowRanking={() => setTab('top')}
         />
       )
     }
     if (active === 'viewers') {
       return viewer === null ? (
-        <ViewersPanel filters={filters} onSelect={selectViewer} />
+        <ViewersPanel filters={filters} onSelect={openViewer} />
       ) : (
-        <ViewerHistory key={viewer} filters={filters} accountId={viewer} onBack={clearViewer} />
+        <ViewerHistory
+          key={viewer}
+          filters={filters}
+          accountId={viewer}
+          page={page}
+          onPageChange={setPage}
+          onBack={closeViewer}
+        />
       )
     }
     if (active === 'top') return <TopTitlesPanel filters={filters} metric="plays" />
     if (active === 'rewatched') return <TopTitlesPanel filters={filters} metric="rewatches" />
-    return <NeverPlayedPanel filters={filters} />
+    return (
+      <NeverPlayedPanel
+        filters={filters}
+        page={page}
+        onPageChange={setPage}
+        search={search}
+        onSearch={setSearch}
+      />
+    )
   }
 
   return (
@@ -219,8 +188,8 @@ const PlaysInner = () => {
           onHost={setHost}
         />
 
-        <ViewTabs tabs={TABS} active={activeTab} onSelect={chooseTab} label="Play history views">
-          {panelFor(activeTab)}
+        <ViewTabs tabs={TABS} active={tab} onSelect={setTab} label="Play history views">
+          {panelFor(tab)}
         </ViewTabs>
       </main>
     </AdminLayout>

@@ -1,6 +1,6 @@
 import type { IconName } from '@/components/Icon/Icon'
 import type { NeverPlayedKind, PlayKind, PlayQuality } from '@/lib/playsApi'
-import type { PlaysTab } from '@/stores/playsPrefsStore'
+import type { PlaysTab } from '@/pages/Plays/playsParams'
 
 /** The words one view needs that the other four do not. Everything the views
     say in common lives in the components; this is only what differs. */

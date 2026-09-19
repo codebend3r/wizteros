@@ -33,13 +33,15 @@ export type PlaysFilters = {
 }
 
 /** How far back a view looks, narrowest first, all time last. `prose` is the
-    span as it reads mid-sentence. */
+    span as it reads mid-sentence, and `slug` is how the range is written in
+    the address bar: `days=0` would read as no window at all, where `all` says
+    what it means. */
 export const PLAY_RANGES = [
-  { days: 7, label: '7 days', prose: '7 days' },
-  { days: 30, label: '30 days', prose: '30 days' },
-  { days: 90, label: '90 days', prose: '90 days' },
-  { days: 365, label: '1 year', prose: 'year' },
-  { days: 0, label: 'All time', prose: 'all time' },
+  { days: 7, slug: '7d', label: '7 days', prose: '7 days' },
+  { days: 30, slug: '30d', label: '30 days', prose: '30 days' },
+  { days: 90, slug: '90d', label: '90 days', prose: '90 days' },
+  { days: 365, slug: '1y', label: '1 year', prose: 'year' },
+  { days: 0, slug: 'all', label: 'All time', prose: 'all time' },
 ] as const
 
 export const PLAY_KINDS = [
