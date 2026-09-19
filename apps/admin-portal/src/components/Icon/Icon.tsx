@@ -15,8 +15,11 @@ export type IconName =
   | 'history'
   | 'memory'
   | 'network'
+  | 'play'
   | 'pulse'
   | 'refresh'
+  | 'unplayed'
+  | 'users'
   | 'warn'
 
 // One 16-unit grid, strokes only, round caps and joins: the geometry every
@@ -86,11 +89,33 @@ const GLYPHS: Record<IconName, ReactElement> = {
     </>
   ),
   network: <path d="M5 13.5V3M2.5 5.5L5 3l2.5 2.5M11 2.5V13M8.5 10.5L11 13l2.5-2.5" />,
+  play: (
+    <>
+      <circle cx="8" cy="8" r="6.5" />
+      <path d="M6.5 5.5v5l4.25-2.5z" />
+    </>
+  ),
   pulse: <path d="M1.5 8.5h3l2-5 3 9 2-4h3" />,
   refresh: (
     <>
       <path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9" />
       <path d="M13.5 2.5v3h-3" />
+    </>
+  ),
+  // The play mark struck through: what has never been started.
+  unplayed: (
+    <>
+      <circle cx="8" cy="8" r="6.5" />
+      <path d="M6.5 5.5v5l4.25-2.5z" />
+      <path d="M3.5 12.5l9-9" />
+    </>
+  ),
+  users: (
+    <>
+      <circle cx="6" cy="5.5" r="2.5" />
+      <path d="M1.5 13.5a4.5 4.5 0 0 1 9 0" />
+      <path d="M10.5 3.5a2.5 2.5 0 0 1 0 4.6" />
+      <path d="M12 9.75a4.5 4.5 0 0 1 2.5 3.75" />
     </>
   ),
   warn: (

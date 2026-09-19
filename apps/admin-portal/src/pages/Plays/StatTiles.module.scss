@@ -1,0 +1,72 @@
+// min(100%, 13rem) keeps four tiles from forcing a 320px screen sideways:
+// they stack there instead. Thirteen rather than eleven, because at eleven a
+// phone fit two tiles a row and a five-digit figure broke down the middle,
+// "6,6" over "63". A figure is never wrapped; the tile makes room for it.
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: var(--space-2);
+  margin: 0;
+}
+
+// The tile leads and spans both rows, so the label sits level with its top
+// and the figure hangs under the label rather than under the tile.
+.tile {
+  display: grid;
+  align-content: start;
+  align-items: start;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    'mark label'
+    'mark value';
+  gap: var(--space-0) var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.mark {
+  grid-area: mark;
+}
+
+.label {
+  grid-area: label;
+  color: var(--color-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.value {
+  display: grid;
+  grid-area: value;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-0);
+  margin: 0;
+}
+
+// The figure is the thing the eye lands on: the mono face every
+// machine-reported number on these pages is set in, at the section size.
+.figure {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  white-space: nowrap;
+
+  // A phone shows one tile a row, and the section size still lets a figure
+  // in the tens of thousands sit beside its tile with room to spare.
+  @media (max-width: 48rem) {
+    font-size: var(--font-size-lg);
+  }
+}
+
+.qualifier {
+  color: var(--color-muted);
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
+}

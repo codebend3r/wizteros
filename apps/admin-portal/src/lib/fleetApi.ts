@@ -292,7 +292,11 @@ const authHeader = async (): Promise<Record<string, string>> => {
 // With VITE_FLEET_BASE unset the monitor call is relative, and /fleet is also
 // this SPA's own route: the host answers it with index.html at 200. Name that
 // instead of letting it surface later as an opaque JSON parse error.
-const requestJson = async (path: string): Promise<unknown> => {
+//
+// Exported for the other monitor-backed modules (play history reads the same
+// service through the same bearer), so the 401 wording and the JSON check
+// live in one place.
+export const requestJson = async (path: string): Promise<unknown> => {
   const response = await fetch(`${FLEET_BASE}${path}`, { headers: await authHeader() })
   // The page renders behind AdminGate, so reaching here signed out means the
   // session lapsed mid-visit or this build points at a monitor that does not

@@ -2,15 +2,16 @@ import asyncio
 import json
 import logging
 import sqlite3
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from datetime import datetime, timezone
 
-from fleet_monitor import config, db, incidents, rollups, store
+from fleet_monitor import config, db, incidents, plays, plex_sync, rollups, store
 from fleet_monitor.config import Host
 from fleet_monitor.incidents import CheckResult
 from fleet_monitor.probes import docker, proc, script, system
 from fleet_monitor.probes.docker import ContainerState
 from fleet_monitor.probes.types import Sample
+from fleet_monitor.tasks import log_raised
 from fleet_monitor.transport import http, ssh
 
 log = logging.getLogger("fleet.collector")
@@ -66,36 +67,6 @@ def samples_from_sections(sections: dict[str, str]) -> tuple[Sample, ...]:
         if name in sections
         for sample in _section_samples(name, parser, sections[name])
     )
-
-
-def _log_raised[T](label: str, outcomes: Iterable[T | BaseException]) -> tuple[T, ...]:
-    """Name any job that raised and return only the ones that produced a value.
-
-    gather(return_exceptions=True) is what keeps one wedged host from taking
-    the whole round down, but a swallowed exception is a silent hole, so every
-    one of them is logged here before being dropped.
-
-    Only `Exception` is swallowed. A BaseException that is not one is the
-    process being torn down - CancelledError above all - and absorbing that
-    makes graceful shutdown impossible, so it is re-raised instead.
-    """
-    collected = tuple(outcomes)
-    fatal = next(
-        (
-            item
-            for item in collected
-            if isinstance(item, BaseException) and not isinstance(item, Exception)
-        ),
-        None,
-    )
-    if fatal is not None:
-        raise fatal
-    raised = tuple(item for item in collected if isinstance(item, Exception))
-    if raised:
-        log.warning(
-            "%s: %d job(s) raised: %s", label, len(raised), "; ".join(map(repr, raised))
-        )
-    return tuple(item for item in collected if not isinstance(item, Exception))
 
 
 async def _probe(host: Host, body: str, timeout: int) -> ssh.SshResult:
@@ -268,7 +239,7 @@ async def tick(at: datetime, path: str) -> tuple[CheckResult, ...]:
         collect_containers(host, at, path) for host in config.HOSTS if host.docker_url
     )
     outcomes = await asyncio.gather(*host_jobs, *docker_jobs, return_exceptions=True)
-    completed = _log_raised("tick", outcomes)
+    completed = log_raised("tick", outcomes)
 
     with db.session(path) as connection:
         store.write_heartbeat(connection, at)
@@ -298,11 +269,17 @@ def compact_and_prune(path: str, now: datetime) -> None:
 
 
 def init_db(path: str) -> None:
-    """Create every table this process writes. Idempotent, order-independent."""
+    """Create every table this process writes. Idempotent, order-independent.
+
+    The play-history tables are here too, although the vitals loop never
+    writes them: the API reads them, and a fresh FM_DB_PATH would otherwise
+    turn the first /plays read into a 500 on a missing table.
+    """
     with db.session(path) as connection:
         store.init_db(connection)
         rollups.init_db(connection)
         incidents.init_db(connection)
+        plays.init_db(connection)
 
 
 async def run_forever(path: str) -> None:
@@ -315,7 +292,7 @@ async def run_forever(path: str) -> None:
         now = datetime.now(tz=timezone.utc)
         await tick(now, path)
         if is_slow_round(rounds):
-            _log_raised(
+            log_raised(
                 "slow tier",
                 await asyncio.gather(
                     *(collect_slow(host, now, path) for host in config.HOSTS),
@@ -333,9 +310,17 @@ async def run_forever(path: str) -> None:
         await asyncio.sleep(max(0.0, due - loop.time()))
 
 
+async def run_all(path: str) -> None:
+    """Both loops in one process: the vitals every 30 seconds, the play
+    history on its own clock. They share the file and nothing else, and
+    sqlite's write lock plus the session's busy timeout is what keeps a
+    thousand-row inventory page from failing a vitals tick outright."""
+    await asyncio.gather(run_forever(path), plex_sync.run_forever(path))
+
+
 if __name__ == "__main__":
-    # `python -m fleet_monitor.collector` runs the loop against the same
+    # `python -m fleet_monitor.collector` runs the loops against the same
     # database the API reads. Where and how it is actually scheduled is a
     # deployment decision, and deliberately not one this module makes.
     logging.basicConfig(level=logging.INFO)
-    asyncio.run(run_forever(config.db_path()))
+    asyncio.run(run_all(config.db_path()))

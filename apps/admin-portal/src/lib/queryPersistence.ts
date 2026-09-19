@@ -1,6 +1,7 @@
 // Query keys whose value is a live reading of the fleet, not a slow lookup
-// worth caching across a reload.
-const LIVE_KEYS = new Set(['fleet', 'fleet-incidents'])
+// worth caching across a reload. The play history aggregates are history and
+// restore fine; the sync status is the one reading there that says "now".
+const LIVE_KEYS = new Set(['fleet', 'fleet-incidents', 'plays-sync'])
 
 /** Whether a query key holds a live reading that must never be restored from
  * storage.

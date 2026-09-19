@@ -23,6 +23,18 @@ SLOW_TIMEOUT = 30
 # which is a number telling you it wants one home.
 MAX_ROUND_SECONDS = (VITALS_TIMEOUT + SLOW_TIMEOUT) * CAPTURE_FACTOR
 
+# The two play-history cadences. History is Plex's own ledger of completed
+# views, cheap to re-read (500 rows in a tenth of a second), so five minutes
+# keeps the page within a coffee of the present. The inventory pages every
+# section of every server - tens of thousands of episodes and tracks on
+# meleys alone - so it runs six-hourly: a title added this morning shows up
+# under never-played by the afternoon, and the servers are not asked to list
+# their whole libraries a dozen times a day for that.
+PLEX_HISTORY_INTERVAL = 300
+PLEX_LIBRARY_INTERVAL = 6 * 3600
+
+_DEFAULT_PLEX_LOOKBACK_DAYS = 365
+
 
 @dataclass(frozen=True, slots=True)
 class Host:
@@ -30,6 +42,9 @@ class Host:
     ip: str
     has_gpu: bool
     docker_url: str
+    # Empty means "no Plex here", the same contract docker_url follows. It has
+    # a default so the older four-field constructions in the tests stay valid.
+    plex_url: str = ""
 
 
 # Measured 2026-08-10, GPU absence re-verified 2026-08-11.
@@ -56,15 +71,27 @@ class Host:
 # tick until all three have a reachable TCP endpoint. That failure is recorded
 # against the docker: target only - the containers behind it are never
 # observed, so no container result is recorded either way. See collector.
+#
+# plex_url: Plex Media Server runs natively on all five (measured 2026-09-18,
+# all on 1.43.4). vermithor and vhagar require secure connections and close a
+# plain-http socket without a response, so they are addressed over https;
+# the certificate they present is Plex's *.plex.direct wildcard, which cannot
+# verify against a LAN ip, so plex_sync connects to an https url with
+# verification off. The owner token still authorizes every request.
 HOSTS = (
     Host(name="meleys", ip="192.168.50.2", has_gpu=False,
-         docker_url="http://192.168.50.2:2375"),
+         docker_url="http://192.168.50.2:2375",
+         plex_url="http://192.168.50.2:32400"),
     Host(name="vermithor", ip="192.168.50.3", has_gpu=True,
-         docker_url="http://192.168.50.3:2375"),
-    Host(name="caraxes", ip="192.168.50.4", has_gpu=False, docker_url=""),
-    Host(name="syrax", ip="192.168.50.5", has_gpu=False, docker_url=""),
+         docker_url="http://192.168.50.3:2375",
+         plex_url="https://192.168.50.3:32400"),
+    Host(name="caraxes", ip="192.168.50.4", has_gpu=False, docker_url="",
+         plex_url="http://192.168.50.4:32400"),
+    Host(name="syrax", ip="192.168.50.5", has_gpu=False, docker_url="",
+         plex_url="http://192.168.50.5:32400"),
     Host(name="vhagar", ip="192.168.50.6", has_gpu=True,
-         docker_url="http://192.168.50.6:2375"),
+         docker_url="http://192.168.50.6:2375",
+         plex_url="https://192.168.50.6:32400"),
 )
 
 
@@ -76,3 +103,30 @@ def db_path() -> str:
 def ssh_user() -> str:
     """The unprivileged account that holds the shared key on all five boxes."""
     return os.environ.get("FM_SSH_USER", "crivas")
+
+
+def plex_token() -> str:
+    """The Plex owner token, or empty when none is configured.
+
+    The monitor prefixes its own config FM_, but the bridge already keeps this
+    exact token as PLEX_TOKEN in the .env every compose service reads, so the
+    fallback means the play-history collector works with no new variable. An
+    empty answer is "not configured": plex_sync idles on it rather than
+    sending unauthenticated requests that every server would refuse.
+    """
+    return os.environ.get("FM_PLEX_TOKEN") or os.environ.get("PLEX_TOKEN") or ""
+
+
+def plex_lookback_days() -> int:
+    """How far back the first history backfill reaches, in days.
+
+    Bounds only the initial pull; nothing stored is ever pruned by it. A value
+    that is not a positive integer falls back to a year rather than turning a
+    typo into a zero-day backfill or a crash at container start.
+    """
+    raw = os.environ.get("FM_PLEX_LOOKBACK_DAYS", "")
+    try:
+        days = int(raw)
+    except ValueError:
+        return _DEFAULT_PLEX_LOOKBACK_DAYS
+    return days if days > 0 else _DEFAULT_PLEX_LOOKBACK_DAYS
