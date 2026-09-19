@@ -28,9 +28,10 @@ container as `/fleet/cpu`.
 ## What is exposed, and what protects it
 
 Funnel is the public internet. `/fleet`, the four history routes (`/fleet/cpu`,
-`/fleet/memory`, `/fleet/gpu`, `/fleet/network`), `/incidents` and the six play
-history routes (`/plays/overview`, `/plays/users`, `/plays/users/{id}/history`,
-`/plays/top`, `/plays/never-played`, `/plays/sync`) all require
+`/fleet/memory`, `/fleet/gpu`, `/fleet/network`), `/incidents` and the seven
+play history routes (`/plays/overview`, `/plays/users`,
+`/plays/users/{id}/history`, `/plays/title`, `/plays/top`,
+`/plays/never-played`, `/plays/sync`) all require
 `Authorization: Bearer <supabase jwt>` whose ES256 signature verifies against
 the project's published keys and whose email is in `FM_ADMIN_ALLOWED_EMAILS`.
 Unset config rejects rather than passes: a half-configured container is shut,

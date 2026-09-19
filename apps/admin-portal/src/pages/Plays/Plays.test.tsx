@@ -8,6 +8,7 @@ import type {
   PlaySyncServer,
   PlayUsers,
   PlaysOverview,
+  TitleHistory,
   TopTitle,
   TopTitles,
   ViewerHistory,
@@ -119,6 +120,7 @@ const HISTORY: ViewerHistory = {
       viewed_at: '2026-09-17T20:11:00+00:00',
       host: 'meleys',
       kind: 'movie',
+      group_key: 'movie:heat:1995',
       title: 'Heat',
       parent_title: null,
       grandparent_title: null,
@@ -134,6 +136,7 @@ const HISTORY: ViewerHistory = {
       viewed_at: '2026-09-16T21:00:00+00:00',
       host: 'meleys',
       kind: 'episode',
+      group_key: 'show:better call saul',
       title: 'Smoke',
       parent_title: 'Season 4',
       grandparent_title: 'Better Call Saul',
@@ -149,6 +152,56 @@ const HISTORY: ViewerHistory = {
 }
 
 const TOP: TopTitles = { metric: 'plays', titles: [heat] }
+
+const TITLE: TitleHistory = {
+  key: 'movie:heat:1995',
+  kind: 'movie',
+  title: 'Heat',
+  context: null,
+  year: 1995,
+  quality: '4k',
+  viewers: 2,
+  items: 1,
+  rewatches: 1,
+  first_viewed_at: '2026-01-02T20:11:00+00:00',
+  last_viewed_at: '2026-09-17T20:11:00+00:00',
+  hosts: ['meleys', 'syrax'],
+  total: 3,
+  page: 1,
+  page_size: 50,
+  rows: [
+    {
+      viewed_at: '2026-09-17T20:11:00+00:00',
+      host: 'meleys',
+      kind: 'movie',
+      account_id: 1,
+      viewer: 'cj',
+      title: 'Heat',
+      index: null,
+      parent_index: null,
+      year: 1995,
+      quality: '4k',
+      device: 'Apple TV',
+      library: '01. 4K Movies',
+      duration_ms: 10_000_000,
+    },
+    {
+      viewed_at: '2026-06-02T21:00:00+00:00',
+      host: 'syrax',
+      kind: 'movie',
+      account_id: 42,
+      viewer: 'Ann',
+      title: 'Heat',
+      index: null,
+      parent_index: null,
+      year: 1995,
+      quality: '720p',
+      device: null,
+      library: 'Films',
+      duration_ms: 10_000_000,
+    },
+  ],
+}
 
 const NEVER: NeverPlayed = {
   summary: {
@@ -206,6 +259,9 @@ type Payloads = {
   /** Answered per request, because the same route serves both rankings and
       the fetcher refuses a payload ranked by the other metric. */
   readonly top?: (url: string) => unknown
+  /** Answered per request for the same reason: the fetcher refuses a payload
+      keyed to a title other than the one asked for. */
+  readonly title?: (url: string) => unknown
   readonly never?: unknown
 }
 
@@ -229,6 +285,7 @@ const stubPlaysFetch = (payloads: Payloads = {}) =>
         return jsonResponse(payloads.history ?? HISTORY)
       }
       if (url.startsWith('/plays/users')) return jsonResponse(payloads.users ?? USERS)
+      if (url.startsWith('/plays/title')) return jsonResponse(payloads.title?.(url) ?? TITLE)
       if (url.startsWith('/plays/top')) return jsonResponse(payloads.top?.(url) ?? TOP)
       if (url.startsWith('/plays/never-played')) return jsonResponse(payloads.never ?? NEVER)
       throw new Error(`unexpected request ${url}`)
@@ -481,6 +538,85 @@ test('Plays ranks titles by the chosen metric and says why a rewatch count is em
 
   expect(await screen.findByText('Heat (1995)')).toBeInTheDocument()
   expect(screen.getByText(/most by cj, 3 plays/)).toBeInTheDocument()
+})
+
+test('Plays opens a title from the ranking, keeps it in the url, and comes back', async () => {
+  stubPlaysFetch()
+  renderPlays('/plays?view=top')
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Heat (1995), view play history' }))
+  expect(search()).toBe('?view=top&title=movie%3Aheat%3A1995')
+
+  await waitFor(() =>
+    expect(calledPaths()).toContain(
+      '/plays/title?days=365&key=movie%3Aheat%3A1995&page=1&page_size=50',
+    ),
+  )
+  expect(await screen.findByRole('heading', { name: 'Title history' })).toBeInTheDocument()
+  // the figures that scope the title, then who finished it and where
+  expect(screen.getByText('Rewatches')).toBeInTheDocument()
+  expect(screen.getByText('finished again by the same viewer')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'cj, view history' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Ann, view history' })).toBeInTheDocument()
+  expect(screen.getByText('Apple TV')).toBeInTheDocument()
+  // the same film on two servers is one title, so both servers' plays are here
+  expect(screen.getByText('Films')).toBeInTheDocument()
+  expect(screen.getByText('01. 4K Movies')).toBeInTheDocument()
+  // the ranking it was opened from is the ranking it leads back to
+  fireEvent.click(screen.getByRole('button', { name: 'Back to most played' }))
+
+  expect(await screen.findByText(/most by cj, 3 plays/)).toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: 'Title history' })).toBeNull()
+  expect(search()).toBe('?view=top')
+})
+
+test('Plays opens a title from a viewer’s history and leads back to that viewer', async () => {
+  stubPlaysFetch()
+  renderPlays('/plays?view=viewers&user=1')
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Heat (1995), view play history' }))
+
+  expect(search()).toBe('?view=viewers&user=1&title=movie%3Aheat%3A1995')
+  expect(await screen.findByRole('heading', { name: 'Title history' })).toBeInTheDocument()
+
+  // a viewer in the title's history opens their own history, title dropped
+  fireEvent.click(screen.getByRole('button', { name: 'Ann, view history' }))
+  expect(search()).toBe('?view=viewers&user=42')
+  expect(await screen.findByRole('heading', { name: 'Viewer history' })).toBeInTheDocument()
+})
+
+test('Plays reopens a title a url names, and says when the key names nothing', async () => {
+  stubPlaysFetch({
+    title: (url) =>
+      url.includes('movie%3Agone%3A1970')
+        ? {
+            ...TITLE,
+            key: 'movie:gone:1970',
+            kind: null,
+            title: '',
+            year: null,
+            quality: null,
+            viewers: 0,
+            items: 0,
+            rewatches: 1,
+            first_viewed_at: null,
+            last_viewed_at: null,
+            hosts: [],
+            total: 0,
+            rows: [],
+          }
+        : TITLE,
+  })
+  renderPlays('/plays?title=movie%3Agone%3A1970')
+
+  expect(await screen.findByText('A title the ledger no longer holds')).toBeInTheDocument()
+  expect(screen.getByText('Nobody completed it over the last year.')).toBeInTheDocument()
+  // it sits over the overview, which is the view behind it
+  expect(screen.getByRole('button', { name: 'Back to overview' })).toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Back to overview' }))
+  expect(await screen.findByText('8,341')).toBeInTheDocument()
+  expect(search()).toBe('')
 })
 
 test('Plays lists what was never played with its counts, and searches it', async () => {

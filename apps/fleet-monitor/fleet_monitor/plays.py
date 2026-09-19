@@ -330,6 +330,9 @@ class HistoryRow:
     viewed_at: datetime
     host: str
     kind: Kind
+    #: The group the play belongs to, so a row can link to that title's own
+    #: history without the page having to rebuild the key from the columns.
+    group_key: str
     title: str
     parent_title: str | None
     grandparent_title: str | None
@@ -350,6 +353,57 @@ class HistoryPage:
     page: int
     page_size: int
     rows: tuple[HistoryRow, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class TitleHistoryRow:
+    """One completion of one item under a title, named by who finished it.
+
+    `title` is the item, not the group: the episode, the track, the film. The
+    group's own name is on the page around it.
+    """
+
+    viewed_at: datetime
+    host: str
+    kind: Kind
+    account_id: int
+    viewer: str
+    title: str
+    index: int | None
+    parent_index: int | None
+    year: int | None
+    quality: Quality | None
+    device: str | None
+    library: str | None
+    duration_ms: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class TitleHistoryPage:
+    """Every completed play of one title, with the figures that scope them.
+
+    `kind` and `title` are None and empty only for a key nothing in the ledger
+    answers to, which is a stale link rather than an error. They are read
+    outside the window when the window holds no play, so a narrowed filter
+    leaves the page named rather than blank.
+    """
+
+    key: str
+    kind: Kind | None
+    title: str
+    context: str | None
+    year: int | None
+    quality: Quality | None
+    viewers: int
+    items: int
+    rewatches: int
+    first_viewed_at: datetime | None
+    last_viewed_at: datetime | None
+    hosts: tuple[str, ...]
+    total: int
+    page: int
+    page_size: int
+    rows: tuple[TitleHistoryRow, ...]
 
 
 NeverKind = Literal["movie", "show", "album"]
@@ -1155,7 +1209,7 @@ def user_history(
     rows = connection.execute(
         f"""
         {cte}
-        SELECT b.viewed_at, b.host, b.kind, b.item_title AS title, b.parent_title,
+        SELECT b.viewed_at, b.host, b.kind, b.group_key, b.item_title AS title, b.parent_title,
                b.grandparent_title, b.item_index, b.parent_index, b.year, b.quality,
                b.duration_ms, d.name AS device, s.title AS library
         FROM base b
@@ -1178,9 +1232,142 @@ def user_history(
                 viewed_at=_utc(row["viewed_at"]),
                 host=row["host"],
                 kind=row["kind"],
+                group_key=row["group_key"],
                 title=row["title"],
                 parent_title=row["parent_title"],
                 grandparent_title=row["grandparent_title"],
+                index=row["item_index"],
+                parent_index=row["parent_index"],
+                year=row["year"],
+                quality=row["quality"],
+                device=row["device"],
+                library=row["library"],
+                duration_ms=row["duration_ms"],
+            )
+            for row in rows
+        ),
+    )
+
+
+# --- title history --------------------------------------------------------
+
+# What names a group, read from its most recent play. Used on its own, with
+# no window, so a title stays named under a filter that holds none of its
+# plays: the page has only the key, and an unnamed heading would read as a
+# title that had been deleted rather than one nobody watched this month.
+_TITLE_IDENTITY_SQL = """
+    SELECT kind, group_title, group_context, group_year, quality_rank
+    FROM base
+    WHERE group_key = ?
+    ORDER BY viewed_at DESC, history_id DESC
+    LIMIT 1
+"""
+
+
+def title_history(
+    connection: sqlite3.Connection,
+    filters: Filters,
+    *,
+    key: str,
+    page: int,
+    page_size: int,
+) -> TitleHistoryPage:
+    """Every completed play of one title, newest first, a page at a time.
+
+    The key is a group key as `top_titles` and `user_history` hand it out: a
+    film, a show, an album, or a single item whose metadata never arrived. An
+    unknown key is an empty page rather than an error, because a link older
+    than the library it names is a stale link, not a fault.
+    """
+    cte, params = _base_cte(filters)
+    scoped = [*params, key]
+    summary = connection.execute(
+        f"""
+        {cte},
+        scoped AS (SELECT * FROM base WHERE group_key = ?),
+        per_item AS (
+            SELECT account_id, host, rating_key, COUNT(*) AS plays
+            FROM scoped
+            GROUP BY account_id, host, rating_key
+        )
+        SELECT COUNT(*) AS total,
+               COUNT(DISTINCT account_id) AS viewers,
+               COUNT(DISTINCT host || ':' || rating_key) AS items,
+               MIN(viewed_at) AS first_viewed_at,
+               MAX(viewed_at) AS last_viewed_at,
+               MAX(quality_rank) AS quality_rank,
+               GROUP_CONCAT(DISTINCT host) AS hosts,
+               MIN(kind) AS kind,
+               MIN(group_title) AS title,
+               MIN(group_context) AS context,
+               MIN(group_year) AS year,
+               (SELECT COALESCE(SUM(plays - 1), 0) FROM per_item) AS rewatches
+        FROM scoped
+        """,
+        scoped,
+    ).fetchone()
+
+    kind = summary["kind"]
+    title = summary["title"]
+    context = summary["context"]
+    year = summary["year"]
+    quality_rank = summary["quality_rank"]
+    if kind is None:
+        # nothing under the filters: name the title from the ledger at large
+        unfiltered, _ = _base_cte(Filters())
+        named = connection.execute(f"{unfiltered} {_TITLE_IDENTITY_SQL}", (key,)).fetchone()
+        if named is not None:
+            kind = named["kind"]
+            title = named["group_title"]
+            context = named["group_context"]
+            year = named["group_year"]
+            quality_rank = named["quality_rank"]
+
+    names, _ = _identities(connection)
+    rows = connection.execute(
+        f"""
+        {cte}
+        SELECT b.viewed_at, b.host, b.kind, b.account_id, b.item_title AS title,
+               b.item_index, b.parent_index, b.year, b.quality, b.duration_ms,
+               d.name AS device, s.title AS library
+        FROM base b
+        LEFT JOIN plex_devices d ON d.host = b.host AND d.device_id = b.device_id
+        LEFT JOIN plex_sections s ON s.host = b.host AND s.section_id = b.section_id
+        WHERE b.group_key = ?
+        ORDER BY b.viewed_at DESC, b.history_id DESC
+        LIMIT ? OFFSET ?
+        """,
+        (*scoped, page_size, (page - 1) * page_size),
+    ).fetchall()
+
+    return TitleHistoryPage(
+        key=key,
+        kind=kind,
+        title=title or "",
+        context=context,
+        year=year,
+        quality=_quality(quality_rank),
+        viewers=summary["viewers"],
+        items=summary["items"],
+        rewatches=summary["rewatches"],
+        first_viewed_at=(
+            _utc(summary["first_viewed_at"]) if summary["first_viewed_at"] is not None else None
+        ),
+        last_viewed_at=(
+            _utc(summary["last_viewed_at"]) if summary["last_viewed_at"] is not None else None
+        ),
+        hosts=_hosts(summary["hosts"]),
+        total=summary["total"],
+        page=page,
+        page_size=page_size,
+        rows=tuple(
+            TitleHistoryRow(
+                viewed_at=_utc(row["viewed_at"]),
+                host=row["host"],
+                kind=row["kind"],
+                account_id=row["account_id"],
+                viewer=_name(names, row["account_id"]),
+                title=row["title"],
                 index=row["item_index"],
                 parent_index=row["parent_index"],
                 year=row["year"],

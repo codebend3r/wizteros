@@ -10,6 +10,7 @@ import { TAB_COPY } from '@/pages/Plays/playsCopy'
 import { formatAgeSince, formatCount, monthYear } from '@/pages/Plays/playsFormat'
 import { PLAYS_TABS, usePlaysParams, type PlaysTab } from '@/pages/Plays/playsParams'
 import { REFETCH_MS, SYNC_KEY } from '@/pages/Plays/playsQueries'
+import { TitleHistory } from '@/pages/Plays/TitleHistory'
 import { TopTitlesPanel } from '@/pages/Plays/TopTitlesPanel'
 import { ViewerHistory } from '@/pages/Plays/ViewerHistory'
 import { ViewersPanel } from '@/pages/Plays/ViewersPanel'
@@ -85,6 +86,9 @@ const SyncLine = ({ servers, readAt }: SyncLineProps) => {
   )
 }
 
+/** The view a title was opened from, as the back button names it. */
+const backTo = (tab: PlaysTab): string => TAB_COPY[tab].title.toLowerCase()
+
 const PlaysInner = () => {
   // Every knob on this page is a query parameter, so a refresh, a bookmark
   // and a pasted link all reopen the exact view that was on screen.
@@ -92,6 +96,7 @@ const PlaysInner = () => {
     tab,
     filters,
     viewer,
+    title,
     page,
     search,
     setRangeDays,
@@ -101,6 +106,8 @@ const PlaysInner = () => {
     setTab,
     openViewer,
     closeViewer,
+    openTitle,
+    closeTitle,
     setPage,
     setSearch,
   } = usePlaysParams()
@@ -122,6 +129,7 @@ const PlaysInner = () => {
         <OverviewPanel
           filters={filters}
           onSelectViewer={openViewer}
+          onSelectTitle={openTitle}
           onShowRanking={() => setTab('top')}
         />
       )
@@ -137,11 +145,16 @@ const PlaysInner = () => {
           page={page}
           onPageChange={setPage}
           onBack={closeViewer}
+          onSelectTitle={openTitle}
         />
       )
     }
-    if (active === 'top') return <TopTitlesPanel filters={filters} metric="plays" />
-    if (active === 'rewatched') return <TopTitlesPanel filters={filters} metric="rewatches" />
+    if (active === 'top') {
+      return <TopTitlesPanel filters={filters} metric="plays" onSelectTitle={openTitle} />
+    }
+    if (active === 'rewatched') {
+      return <TopTitlesPanel filters={filters} metric="rewatches" onSelectTitle={openTitle} />
+    }
     return (
       <NeverPlayedPanel
         filters={filters}
@@ -189,7 +202,22 @@ const PlaysInner = () => {
         />
 
         <ViewTabs tabs={TABS} active={tab} onSelect={setTab} label="Play history views">
-          {panelFor(tab)}
+          {title === null ? (
+            panelFor(tab)
+          ) : (
+            // a title sits over whichever view opened it, and leads back to
+            // that view rather than to a view of its own
+            <TitleHistory
+              key={title}
+              filters={filters}
+              titleKey={title}
+              page={page}
+              onPageChange={setPage}
+              onBack={closeTitle}
+              backLabel={viewer === null ? `Back to ${backTo(tab)}` : 'Back to the viewer'}
+              onSelectViewer={openViewer}
+            />
+          )}
         </ViewTabs>
       </main>
     </AdminLayout>

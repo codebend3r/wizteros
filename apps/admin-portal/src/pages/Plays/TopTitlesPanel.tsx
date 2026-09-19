@@ -21,6 +21,7 @@ import styles from '@/pages/Plays/DataTable.module.scss'
 type TopTitlesPanelProps = {
   readonly filters: PlaysFilters
   readonly metric: TopMetric
+  readonly onSelectTitle: (key: string) => void
 }
 
 /** What scopes a ranked title: the artist for an album, and how many distinct
@@ -39,7 +40,7 @@ const context = (title: TopTitle): string => {
 }
 
 /** Titles ranked by completed plays or by rewatches, one table for both. */
-export const TopTitlesPanel = ({ filters, metric }: TopTitlesPanelProps) => {
+export const TopTitlesPanel = ({ filters, metric, onSelectTitle }: TopTitlesPanelProps) => {
   const titles = useQuery({
     queryKey: topKey({ metric, filters }),
     queryFn: () => fetchTopTitles({ filters, metric, limit: TOP_LIMIT }),
@@ -92,11 +93,19 @@ export const TopTitlesPanel = ({ filters, metric }: TopTitlesPanelProps) => {
               <tbody>
                 {data.titles.map((title, index) => {
                   const scope = context(title)
+                  const name = titleWithYear({ title: title.title, year: title.year })
                   return (
                     <tr key={title.key}>
                       <td className={styles.rank}>{index + 1}</td>
                       <td className={styles.primary}>
-                        {titleWithYear({ title: title.title, year: title.year })}
+                        <button
+                          className={styles.rowButton}
+                          type="button"
+                          onClick={() => onSelectTitle(title.key)}
+                          aria-label={`${name}, view play history`}
+                        >
+                          {name}
+                        </button>
                         {scope.length > 0 && <span className={styles.secondary}>{scope}</span>}
                       </td>
                       <td>{KIND_LABEL[title.kind]}</td>

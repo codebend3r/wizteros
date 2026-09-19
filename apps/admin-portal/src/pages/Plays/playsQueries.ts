@@ -32,6 +32,16 @@ export const viewerKey = ({
   page: number
 }) => ['plays-viewer', accountId, filters, page] as const
 
+export const titleHistoryKey = ({
+  key,
+  filters,
+  page,
+}: {
+  key: string
+  filters: PlaysFilters
+  page: number
+}) => ['plays-title', key, filters, page] as const
+
 export const topKey = ({ metric, filters }: { metric: TopMetric; filters: PlaysFilters }) =>
   ['plays-top', metric, filters] as const
 

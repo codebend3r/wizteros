@@ -19,6 +19,7 @@ GATED = (
     "/plays/overview",
     "/plays/users",
     "/plays/users/1/history",
+    "/plays/title?key=movie:heat:1995",
     "/plays/top",
     "/plays/never-played",
     "/plays/sync",

@@ -26,6 +26,7 @@ type ViewerHistoryProps = {
   readonly page: number
   readonly onPageChange: (page: number) => void
   readonly onBack: () => void
+  readonly onSelectTitle: (key: string) => void
 }
 
 /** The row's subject and what scopes it: the show over the episode, the
@@ -59,6 +60,7 @@ export const ViewerHistory = ({
   page,
   onPageChange,
   onBack,
+  onSelectTitle,
 }: ViewerHistoryProps) => {
   const history = useQuery({
     queryKey: viewerKey({ accountId, filters, page }),
@@ -118,7 +120,14 @@ export const ViewerHistory = ({
                           >
                             <td className={styles.nowrap}>{formatDateTime(row.viewed_at)}</td>
                             <td className={styles.primary}>
-                              {primary}
+                              <button
+                                className={styles.rowButton}
+                                type="button"
+                                onClick={() => onSelectTitle(row.group_key)}
+                                aria-label={`${primary}, view play history`}
+                              >
+                                {primary}
+                              </button>
                               {secondary.length > 0 && (
                                 <span className={styles.secondary}>{secondary}</span>
                               )}

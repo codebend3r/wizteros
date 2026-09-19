@@ -568,6 +568,84 @@ def test_user_history_keeps_a_play_whose_item_is_gone(db):
     assert row.library is None
 
 
+# --- title history --------------------------------------------------------
+
+
+def test_title_history_gathers_one_title_across_hosts_with_who_finished_it(seeded):
+    page = plays.title_history(seeded, plays.Filters(), key="movie:heat:1995", page=1,
+                               page_size=50)
+
+    assert (page.kind, page.title, page.year, page.context) == ("movie", "Heat", 1995, None)
+    # the same film on two servers is one title: three viewers, two copies,
+    # and the best quality either copy was watched at
+    assert (page.total, page.viewers, page.items, page.rewatches) == (4, 3, 2, 1)
+    assert page.hosts == ("meleys", "syrax")
+    assert page.quality == "1080p"
+    assert page.first_viewed_at == _utc(_at(100))
+    assert page.last_viewed_at == _utc(_at(1))
+    assert [(row.viewer, row.host) for row in page.rows] == [
+        ("cj", "meleys"), ("danny", "meleys"), ("cj", "meleys"), ("freenow", "syrax")
+    ]
+    newest = page.rows[0]
+    assert (newest.account_id, newest.quality, newest.device, newest.library) == (
+        1, "1080p", "Chrome", "04. Movies"
+    )
+
+    # a show gathers its episodes, and moving on to the next one is no rewatch
+    show = plays.title_history(seeded, plays.Filters(), key="show:better call saul", page=1,
+                               page_size=50)
+    assert (show.kind, show.title, show.total, show.items, show.rewatches) == (
+        "episode", "Better Call Saul", 4, 2, 1
+    )
+    assert [(row.parent_index, row.index) for row in show.rows] == [(1, 1), (1, 1), (1, 2), (1, 1)]
+
+    album = plays.title_history(seeded, plays.Filters(), key="album:kid a:radiohead", page=1,
+                                page_size=50)
+    assert (album.kind, album.title, album.context, album.total) == (
+        "track", "Kid A", "Radiohead", 1
+    )
+
+
+def test_title_history_pages_and_stays_named_under_a_filter_that_holds_no_play(seeded):
+    second = plays.title_history(seeded, plays.Filters(), key="movie:heat:1995", page=2,
+                                 page_size=3)
+    assert (second.page, second.page_size, second.total) == (2, 3, 4)
+    assert [row.host for row in second.rows] == ["syrax"]
+
+    windowed = plays.title_history(seeded, plays.Filters(since=_at(7)), key="movie:heat:1995",
+                                   page=1, page_size=50)
+    assert (windowed.total, windowed.viewers, windowed.rewatches) == (2, 2, 0)
+    assert windowed.hosts == ("meleys",)
+
+    # a filter the title has no play under still answers with the title: the
+    # page holds only the key, and a blank heading would read as a deletion
+    empty = plays.title_history(seeded, plays.Filters(host="vhagar"), key="movie:heat:1995",
+                                page=1, page_size=50)
+    assert (empty.kind, empty.title, empty.year, empty.quality) == ("movie", "Heat", 1995, "1080p")
+    assert (empty.total, empty.viewers, empty.rewatches, empty.rows) == (0, 0, 0, ())
+    assert (empty.hosts, empty.first_viewed_at, empty.last_viewed_at) == ((), None, None)
+
+
+def test_title_history_answers_a_key_nothing_in_the_ledger_carries(seeded):
+    stale = plays.title_history(seeded, plays.Filters(), key="movie:gone:1970", page=1,
+                                page_size=50)
+
+    assert (stale.key, stale.kind, stale.title, stale.total, stale.rows) == (
+        "movie:gone:1970", None, "", 0, ()
+    )
+
+
+def test_user_history_rows_carry_the_key_their_title_is_ranked_under(seeded):
+    rows = plays.user_history(seeded, plays.Filters(), account_id=1, page=1, page_size=50).rows
+    ranked = {title.key for title in plays.top_titles(seeded, plays.Filters(), metric="plays",
+                                                      limit=50)}
+
+    # the contract the page links on: every row names a title the rankings
+    # know, so a play can be opened as that title's own history
+    assert {row.group_key for row in rows} <= ranked
+    assert rows[0].group_key == "movie:heat:1995"
+
+
 # --- top titles -----------------------------------------------------------
 
 

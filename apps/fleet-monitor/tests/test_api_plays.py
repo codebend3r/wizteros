@@ -220,6 +220,47 @@ def test_top_titles_echo_their_metric_and_rewatches_omit_the_unrewatched(tmp_pat
     assert client.get("/plays/top?limit=101").status_code == 422
 
 
+def test_one_titles_whole_history_with_who_finished_it(tmp_path, monkeypatch):
+    client, db = _client(tmp_path, monkeypatch)
+    _seed(db)
+
+    body = client.get("/plays/title?key=movie:heat:1995&days=0").json()
+
+    assert (body["key"], body["kind"], body["title"], body["year"]) == (
+        "movie:heat:1995", "movie", "Heat", 1995,
+    )
+    assert (body["total"], body["viewers"], body["items"], body["rewatches"]) == (3, 2, 1, 1)
+    assert (body["page"], body["page_size"], body["hosts"]) == (1, 50, ["meleys"])
+    assert body["last_viewed_at"].startswith("2026-09-17")
+    assert body["first_viewed_at"].startswith("2026-09-15")
+    assert [(row["viewer"], row["account_id"]) for row in body["rows"]] == [
+        ("cj", 1), ("cj", 1), ("Ann", 42),
+    ]
+    assert body["rows"][0]["viewed_at"].startswith("2026-09-17")
+
+    # the key a viewer's row carries is the key that opens this page
+    row = client.get("/plays/users/1/history").json()["rows"][0]
+    assert row["group_key"] == "movie:heat:1995"
+
+    paged = client.get("/plays/title?key=movie:heat:1995&days=0&page=2&page_size=2").json()
+    assert (paged["page"], paged["total"], len(paged["rows"])) == (2, 3, 1)
+
+    # the window narrows the rows, and the title stays named without them
+    narrowed = client.get("/plays/title?key=show:better call saul").json()
+    assert (narrowed["title"], narrowed["kind"], narrowed["total"]) == (
+        "Better Call Saul", "episode", 0,
+    )
+    assert narrowed["rows"] == []
+
+    # a key nothing answers to is a stale link, not an error
+    stale = client.get("/plays/title?key=movie:gone:1970").json()
+    assert (stale["kind"], stale["title"], stale["total"], stale["rows"]) == (None, "", 0, [])
+
+    assert client.get("/plays/title").status_code == 422
+    assert client.get("/plays/title?key=").status_code == 422
+    assert client.get(f"/plays/title?key={'x' * 501}").status_code == 422
+
+
 def test_never_played_lists_what_has_no_play_in_the_window(tmp_path, monkeypatch):
     client, db = _client(tmp_path, monkeypatch)
     _seed(db)
@@ -291,5 +332,6 @@ def test_the_routes_answer_json_on_an_empty_ledger(tmp_path, monkeypatch):
     assert client.get("/plays/overview").json()["totals"]["plays"] == 0
     assert client.get("/plays/users").json() == {"users": []}
     assert client.get("/plays/top").json() == {"metric": "plays", "titles": []}
+    assert client.get("/plays/title?key=movie:heat:1995").json()["total"] == 0
     assert client.get("/plays/never-played").json()["total"] == 0
     assert all(not s["reachable"] for s in client.get("/plays/sync").json()["servers"])

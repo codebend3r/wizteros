@@ -541,6 +541,9 @@ MAX_PAGE_SIZE = 200
 DEFAULT_TOP_LIMIT = 25
 MAX_TOP_LIMIT = 100
 MAX_SEARCH_LENGTH = 200
+# A group key is `kind:title:year` over titles the library holds, so a
+# generous bound still refuses anything that cannot be one.
+MAX_KEY_LENGTH = 500
 
 
 @dataclass(frozen=True, slots=True)
@@ -676,6 +679,25 @@ def plays_user_history(
     with db.session(config.db_path()) as connection:
         return plays.user_history(
             connection, query.filters, account_id=account_id, page=page, page_size=page_size
+        )
+
+
+@app.get("/plays/title", dependencies=[Depends(require_admin)])
+def plays_title_history(
+    query: PlayQuery = Depends(play_query),
+    key: str = Query(min_length=1, max_length=MAX_KEY_LENGTH),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
+) -> plays.TitleHistoryPage:
+    """Every completed play of one title, newest first, a page at a time.
+
+    The key travels as a query parameter rather than a path segment because it
+    carries the title itself, slashes and all. A key nothing answers to is an
+    empty page: a link older than the library it names is stale, not wrong.
+    """
+    with db.session(config.db_path()) as connection:
+        return plays.title_history(
+            connection, query.filters, key=key, page=page, page_size=page_size
         )
 
 

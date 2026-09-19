@@ -4,6 +4,7 @@ import {
   fetchPlaySync,
   fetchPlayUsers,
   fetchPlaysOverview,
+  fetchTitleHistory,
   fetchTopTitles,
   fetchViewerHistory,
   PLAY_KINDS,
@@ -15,6 +16,7 @@ import {
   type NeverPlayed,
   type PlaysFilters,
   type PlaysOverview,
+  type TitleHistory,
   type TopTitle,
 } from '@/lib/playsApi'
 
@@ -188,6 +190,7 @@ test('fetchViewerHistory pages one viewer and refuses another viewer’s answer'
         viewed_at: '2026-09-17T20:11:00+00:00',
         host: 'meleys',
         kind: 'episode',
+        group_key: 'show:better call saul',
         title: 'Smoke',
         parent_title: 'Season 4',
         grandparent_title: 'Better Call Saul',
@@ -214,6 +217,57 @@ test('fetchViewerHistory pages one viewer and refuses another viewer’s answer'
   await expect(
     fetchViewerHistory({ filters: ALL, accountId: 7, page: 1, pageSize: 50 }),
   ).rejects.toThrow(/viewer 7 and got 42/)
+})
+
+test('fetchTitleHistory pages one title and refuses another title’s answer', async () => {
+  const history: TitleHistory = {
+    key: 'movie:heat:1995',
+    kind: 'movie',
+    title: 'Heat',
+    context: null,
+    year: 1995,
+    quality: '4k',
+    viewers: 2,
+    items: 1,
+    rewatches: 1,
+    first_viewed_at: '2026-01-02T20:11:00+00:00',
+    last_viewed_at: '2026-09-17T20:11:00+00:00',
+    hosts: ['meleys'],
+    total: 3,
+    page: 1,
+    page_size: 50,
+    rows: [
+      {
+        viewed_at: '2026-09-17T20:11:00+00:00',
+        host: 'meleys',
+        kind: 'movie',
+        account_id: 42,
+        viewer: 'danny',
+        title: 'Heat',
+        index: null,
+        parent_index: null,
+        year: 1995,
+        quality: '4k',
+        device: 'Chrome',
+        library: '01. 4K Movies',
+        duration_ms: 10_000_000,
+      },
+    ],
+  }
+  stubJson(history)
+
+  await expect(
+    fetchTitleHistory({ filters: ALL, titleKey: 'movie:heat:1995', page: 1, pageSize: 50 }),
+  ).resolves.toEqual(history)
+  // the key carries the title itself, so it has to reach the monitor encoded
+  expect(globalThis.fetch).toHaveBeenCalledWith(
+    '/plays/title?days=365&key=movie%3Aheat%3A1995&page=1&page_size=50',
+    expect.anything(),
+  )
+
+  await expect(
+    fetchTitleHistory({ filters: ALL, titleKey: 'show:qi', page: 1, pageSize: 50 }),
+  ).rejects.toThrow(/show:qi and got movie:heat:1995/)
 })
 
 test('fetchTopTitles asks for one metric and refuses the other', async () => {

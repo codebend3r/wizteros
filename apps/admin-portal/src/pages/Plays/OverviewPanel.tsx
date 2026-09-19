@@ -13,12 +13,18 @@ import styles from '@/pages/Plays/OverviewPanel.module.scss'
 type OverviewPanelProps = {
   readonly filters: PlaysFilters
   readonly onSelectViewer: (accountId: number) => void
+  readonly onSelectTitle: (key: string) => void
   readonly onShowRanking: () => void
 }
 
 /** The summary view: the totals, the timeline, the three breakdowns, and a
     short list each of who and what led the window. */
-export const OverviewPanel = ({ filters, onSelectViewer, onShowRanking }: OverviewPanelProps) => {
+export const OverviewPanel = ({
+  filters,
+  onSelectViewer,
+  onSelectTitle,
+  onShowRanking,
+}: OverviewPanelProps) => {
   const overview = useQuery({
     queryKey: overviewKey(filters),
     queryFn: () => fetchPlaysOverview({ filters }),
@@ -144,7 +150,13 @@ export const OverviewPanel = ({ filters, onSelectViewer, onShowRanking }: Overvi
                   {data.top_titles.map((title) => (
                     <li key={title.key} className={styles.item}>
                       <span className={styles.itemName}>
-                        {titleWithYear({ title: title.title, year: title.year })}
+                        <button
+                          className={styles.itemButton}
+                          type="button"
+                          onClick={() => onSelectTitle(title.key)}
+                        >
+                          {titleWithYear({ title: title.title, year: title.year })}
+                        </button>
                         {title.context !== null && (
                           <span className={styles.itemContext}>{title.context}</span>
                         )}

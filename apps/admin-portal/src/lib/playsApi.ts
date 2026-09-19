@@ -198,6 +198,9 @@ export type ViewerHistoryRow = {
   readonly viewed_at: string
   readonly host: string
   readonly kind: string
+  /** The title this play is ranked under, so the row can open that title's
+      own history without the page rebuilding the key from the columns. */
+  readonly group_key: string
   readonly title: string
   readonly parent_title: string | null
   readonly grandparent_title: string | null
@@ -222,6 +225,49 @@ export type ViewerHistory = {
 export type TopTitles = {
   readonly metric: TopMetric
   readonly titles: readonly TopTitle[]
+}
+
+/** One completion under a title, named by who finished it. `title` is the
+    item, not the group: the episode, the track, the film. */
+export type TitleHistoryRow = {
+  readonly viewed_at: string
+  readonly host: string
+  readonly kind: string
+  readonly account_id: number
+  readonly viewer: string
+  readonly title: string
+  readonly index: number | null
+  readonly parent_index: number | null
+  readonly year: number | null
+  readonly quality: string | null
+  readonly device: string | null
+  readonly library: string | null
+  readonly duration_ms: number | null
+}
+
+/** Every completed play of one title, with the figures that scope them.
+ *
+ * `kind` is null and `title` empty only for a key nothing in the ledger
+ * answers to, which is a link older than the library it names. The monitor
+ * names the title from outside the window when the window holds no play, so
+ * a narrowed filter leaves the page named rather than blank. */
+export type TitleHistory = {
+  readonly key: string
+  readonly kind: PlayKind | null
+  readonly title: string
+  readonly context: string | null
+  readonly year: number | null
+  readonly quality: string | null
+  readonly viewers: number
+  readonly items: number
+  readonly rewatches: number
+  readonly first_viewed_at: string | null
+  readonly last_viewed_at: string | null
+  readonly hosts: readonly string[]
+  readonly total: number
+  readonly page: number
+  readonly page_size: number
+  readonly rows: readonly TitleHistoryRow[]
 }
 
 export type NeverPlayedQualityCount = {
@@ -400,6 +446,7 @@ const isViewerHistoryRow = (value: unknown): value is ViewerHistoryRow =>
   typeof value.viewed_at === 'string' &&
   typeof value.host === 'string' &&
   typeof value.kind === 'string' &&
+  typeof value.group_key === 'string' &&
   typeof value.title === 'string' &&
   isStringOrNull(value.parent_title) &&
   isStringOrNull(value.grandparent_title) &&
@@ -426,6 +473,42 @@ const isTopTitles = (value: unknown): value is TopTitles =>
   isTopMetric(value.metric) &&
   Array.isArray(value.titles) &&
   value.titles.every(isTopTitle)
+
+const isTitleHistoryRow = (value: unknown): value is TitleHistoryRow =>
+  isRecord(value) &&
+  typeof value.viewed_at === 'string' &&
+  typeof value.host === 'string' &&
+  typeof value.kind === 'string' &&
+  typeof value.account_id === 'number' &&
+  typeof value.viewer === 'string' &&
+  typeof value.title === 'string' &&
+  isNumberOrNull(value.index) &&
+  isNumberOrNull(value.parent_index) &&
+  isNumberOrNull(value.year) &&
+  isStringOrNull(value.quality) &&
+  isStringOrNull(value.device) &&
+  isStringOrNull(value.library) &&
+  isNumberOrNull(value.duration_ms)
+
+const isTitleHistory = (value: unknown): value is TitleHistory =>
+  isRecord(value) &&
+  typeof value.key === 'string' &&
+  (value.kind === null || isPlayKind(value.kind)) &&
+  typeof value.title === 'string' &&
+  isStringOrNull(value.context) &&
+  isNumberOrNull(value.year) &&
+  isStringOrNull(value.quality) &&
+  typeof value.viewers === 'number' &&
+  typeof value.items === 'number' &&
+  typeof value.rewatches === 'number' &&
+  isStringOrNull(value.first_viewed_at) &&
+  isStringOrNull(value.last_viewed_at) &&
+  isStringArray(value.hosts) &&
+  typeof value.total === 'number' &&
+  typeof value.page === 'number' &&
+  typeof value.page_size === 'number' &&
+  Array.isArray(value.rows) &&
+  value.rows.every(isTitleHistoryRow)
 
 const isNeverPlayedQualityCount = (value: unknown): value is NeverPlayedQualityCount =>
   isRecord(value) && typeof value.quality === 'string' && typeof value.count === 'number'
@@ -576,6 +659,30 @@ export const fetchTopTitles = async ({
   // most played, with nothing on the page to say so.
   if (data.metric !== metric) {
     throw new Error(`Asked the fleet monitor for titles by ${metric} and got ${data.metric}`)
+  }
+  return data
+}
+
+export const fetchTitleHistory = async ({
+  filters,
+  titleKey,
+  page,
+  pageSize,
+}: {
+  filters: PlaysFilters
+  titleKey: string
+  page: number
+  pageSize: number
+}): Promise<TitleHistory> => {
+  const query = playsQuery({ ...filters, extra: { key: titleKey, page, page_size: pageSize } })
+  const data = await requestJson(`/plays/title?${query}`)
+  if (!isTitleHistory(data)) {
+    throw new Error('Unexpected title history response from the fleet monitor')
+  }
+  // A response for another title would print one film's plays under another's
+  // name, silently and plausibly.
+  if (data.key !== titleKey) {
+    throw new Error(`Asked the fleet monitor for ${titleKey} and got ${data.key}`)
   }
   return data
 }

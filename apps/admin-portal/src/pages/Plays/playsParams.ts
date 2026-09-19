@@ -33,6 +33,7 @@ export const PLAYS_PARAM = {
   quality: 'quality',
   host: 'server',
   viewer: 'user',
+  title: 'title',
   page: 'page',
   search: 'q',
 } as const
@@ -43,6 +44,10 @@ export type PlaysView = {
   readonly filters: PlaysFilters
   /** The viewer whose history is open, or null for the viewers table. */
   readonly viewer: number | null
+  /** The title whose history is open, or null for the view behind it. A
+      title can be opened from four of the five views, so it sits over
+      whichever one is selected rather than belonging to one of them. */
+  readonly title: string | null
   /** The page of whichever table the open view paginates, 1 based. */
   readonly page: number
   /** The never-played search term, empty for no search. */
@@ -67,6 +72,9 @@ const accountFromParam = (value: string | null): number | null => {
   const parsed = Number(value)
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : null
 }
+
+const titleFromParam = (value: string | null): string | null =>
+  value === null || value.length === 0 ? null : value
 
 const pageFromParam = (value: string | null): number => {
   if (value === null) return 1
@@ -96,6 +104,7 @@ export const readPlaysView = (params: URLSearchParams): PlaysView => {
       quality: isQualityFilter(quality) ? quality : '',
     },
     viewer,
+    title: titleFromParam(params.get(PLAYS_PARAM.title)),
     page: pageFromParam(params.get(PLAYS_PARAM.page)),
     search: params.get(PLAYS_PARAM.search) ?? '',
   }
@@ -128,6 +137,7 @@ export const writePlaysView = ({
   put(PLAYS_PARAM.quality, view.filters.quality, '')
   put(PLAYS_PARAM.host, view.filters.host, '')
   put(PLAYS_PARAM.viewer, view.viewer === null ? '' : String(view.viewer), '')
+  put(PLAYS_PARAM.title, view.title ?? '', '')
   put(PLAYS_PARAM.page, String(view.page), '1')
   put(PLAYS_PARAM.search, view.search, '')
   return next
@@ -141,6 +151,8 @@ type PlaysParams = PlaysView & {
   readonly setTab: (tab: PlaysTab) => void
   readonly openViewer: (accountId: number) => void
   readonly closeViewer: () => void
+  readonly openTitle: (key: string) => void
+  readonly closeTitle: () => void
   readonly setPage: (page: number) => void
   readonly setSearch: (search: string) => void
 }
@@ -174,9 +186,13 @@ export const usePlaysParams = (): PlaysParams => {
     setHost: (host) => setFilters({ host }),
     // the search belongs to the never-played view and the viewer to the
     // viewers view, so neither outlives the tab it was set on
-    setTab: (tab) => apply(reset({ tab, viewer: null, search: '' })),
-    openViewer: (accountId) => apply(reset({ tab: 'viewers', viewer: accountId })),
-    closeViewer: () => apply(reset({ tab: 'viewers', viewer: null })),
+    setTab: (tab) => apply(reset({ tab, viewer: null, title: null, search: '' })),
+    openViewer: (accountId) => apply(reset({ tab: 'viewers', viewer: accountId, title: null })),
+    closeViewer: () => apply(reset({ tab: 'viewers', viewer: null, title: null })),
+    // a title sits over the view it was opened from, so closing it drops
+    // only the title and lands back on that view, viewer and all
+    openTitle: (key) => apply(reset({ title: key })),
+    closeTitle: () => apply(reset({ title: null })),
     setPage: (page) => apply({ ...view, page }),
     setSearch: (search) => apply(reset({ search })),
   }

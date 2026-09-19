@@ -18,6 +18,7 @@ const DEFAULTS: PlaysView = {
   tab: DEFAULT_TAB,
   filters: { days: DEFAULT_RANGE_DAYS, host: '', kind: '', quality: '' },
   viewer: null,
+  title: null,
   page: 1,
   search: '',
 }
@@ -32,6 +33,7 @@ test('every knob on the page is read back from the query string', () => {
     tab: 'never',
     filters: { days: 30, host: 'syrax', kind: 'movie', quality: '4k' },
     viewer: null,
+    title: null,
     page: 3,
     search: 'dune',
   })
@@ -49,6 +51,18 @@ test('a viewer named in the address is the view, whatever tab the address says',
   expect(view.tab).toBe('viewers')
 })
 
+test('a title named in the address is the view, over whichever tab is selected', () => {
+  const view = read('view=top&title=movie%3Aheat%3A1995')
+  expect(view.title).toBe('movie:heat:1995')
+  expect(view.tab).toBe('top')
+  // the key carries the title itself, punctuation and all, so it has to
+  // survive the round trip through the address bar intact
+  expect(write({ ...DEFAULTS, title: 'album:kid a:radiohead' })).toBe(
+    'title=album%3Akid+a%3Aradiohead',
+  )
+  expect(read('title=').title).toBeNull()
+})
+
 test('a stale or hand-edited address falls back to the defaults, never to a filter the monitor would refuse', () => {
   expect(read('view=charts&range=14d&type=clip&quality=hd&user=-3&page=0')).toEqual(DEFAULTS)
   expect(read('page=two').page).toBe(1)
@@ -63,6 +77,7 @@ test('a default is left out of the address, so the same view is always the same 
       tab: 'top',
       filters: { days: 7, host: 'meleys', kind: 'episode', quality: '1080p' },
       viewer: null,
+      title: null,
       page: 2,
       search: 'qi',
     }),
@@ -80,6 +95,7 @@ test('what the address says round-trips back to the same view', () => {
     tab: 'viewers',
     filters: { days: 90, host: 'vhagar', kind: 'track', quality: 'other' },
     viewer: 7,
+    title: 'movie:heat:1995',
     page: 5,
     search: '',
   }
