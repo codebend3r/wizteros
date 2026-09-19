@@ -12,6 +12,33 @@ the version recorded in the tree at that commit. That was not always true; the
 history was rewritten on 2026-08-08 to make it so. See
 [The 2026-08-08 history rewrite](#the-2026-08-08-history-rewrite).
 
+## v0.3.9 (2026-09-19)
+
+- Add a Plex play history page to the admin portal, backed by a new collector
+  in fleet-monitor that reads each of the five servers' own completed-play
+  ledger: a year backfilled on first run, then polled every five minutes with
+  a two day overlap, enriched with show, album and source quality, and
+  inventoried for what has never been played
+- Serve the history through six admin-gated fleet-monitor routes (overview,
+  viewers, one viewer's history, most played, most rewatched, never played)
+  plus sync status, all behind one filter bar for range, type, quality and
+  server
+- Exclude the Caraxes scratch libraries from play history, matching whole
+  path segments under `FM_PLEX_EXCLUDED_PATHS`, and purge what was already
+  stored for them
+- Keep every play history view in the URL, page and search included, in
+  place of the persisted prefs store, so a refresh, a bookmark and a shared
+  link reopen the exact view
+- Open any title's own play history, grouped the way the rankings group, with
+  titles clickable from the rankings and a viewer's history, and the viewers
+  in a title's history clickable back
+- Push every play history change onto browser history, skipping a press that
+  changes nothing, so the back button retraces the admin's steps
+- Count a viewing Plex logged twice as one play: a completion the same viewer
+  logs against the same item sooner than it runs for is dropped on every
+  read, the ledger is left untouched, and the sync line counts through the
+  same rule
+
 ## v0.3.8 (2026-09-18)
 
 - Update every dependency to its latest release, majors included: React 19.3,
