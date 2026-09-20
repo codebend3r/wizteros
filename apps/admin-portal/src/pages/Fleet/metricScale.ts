@@ -1,52 +1,10 @@
+import { axisWidthFor, quarterTicks, type ChartScale } from '@/components/Chart/chartScale'
 import { formatBytes, type MetricUnit } from '@/lib/fleetApi'
-
-/** How one metric family's numbers become a y axis.
- *
- * The four charts share a component, so what differs between them has to be
- * data rather than branches inside the drawing code. A percent runs against a
- * fixed 0-100 whatever the readings do; a throughput has no natural ceiling at
- * all and takes one from the readings in view.
- */
-export type MetricScale = {
-  /** The top of the axis. */
-  readonly max: number
-  /** Where the gridlines sit, origin first. */
-  readonly ticks: readonly number[]
-  /** One value in words: the axis, the tooltip, the table and the screen
-      reader readout all print through this, so they cannot disagree. */
-  readonly format: (value: number) => string
-  /** Room the axis labels need. "125.0 MB/s" does not fit where "100%" does,
-      and a label wider than its margin is drawn over the plot. */
-  readonly axisWidth: number
-}
-
-const TICK_FRACTIONS = [0, 0.25, 0.5, 0.75, 1] as const
 
 // Ceilings worth landing on. 2.5 earns its place between 2 and 5: without it a
 // 2.4 MB/s peak rounds all the way up to 5 and spends the chart's whole top
 // half empty.
 const NICE_STEPS = [1, 2, 2.5, 5, 10] as const
-
-/** What one character of a label needs across at the axis's 12px font. Tabular
-    digits and the letters of a unit both sit near 0.6em; this is a little over,
-    so a measured width can only come in under the budget, never over it. */
-const LABEL_CHAR_PX = 7.5
-
-/** The margin Recharts keeps between tick and text, plus clear space between
-    the label's end and the plot. */
-const AXIS_PAD_PX = 12
-
-/** Room for the widest label the axis will draw, so Recharts never wraps one
-    onto a second line. It breaks a label at its space once the text outgrows
-    the axis, and "100.0" over "MB/s" reads as two ticks where there is one. */
-const axisWidthFor = ({
-  ticks,
-  format,
-}: {
-  ticks: readonly number[]
-  format: (value: number) => string
-}): number =>
-  Math.ceil(Math.max(...ticks.map((tick) => format(tick).length)) * LABEL_CHAR_PX + AXIS_PAD_PX)
 
 const formatPercent = (value: number): string => `${value}%`
 
@@ -85,10 +43,13 @@ export const niceCeiling = (peak: number): number => {
   return roundUpNicely(peak / unit) * unit
 }
 
-export const metricScale = ({ unit, peak }: { unit: MetricUnit; peak: number }): MetricScale => {
+/** A metric family's y axis. A percent runs against a fixed 0-100 whatever the
+    readings do; a throughput has no natural ceiling at all and takes one from
+    the readings in view. */
+export const metricScale = ({ unit, peak }: { unit: MetricUnit; peak: number }): ChartScale => {
   const percent = unit === 'percent'
   const max = percent ? 100 : niceCeiling(peak)
-  const ticks = TICK_FRACTIONS.map((fraction) => max * fraction)
+  const ticks = quarterTicks({ ceiling: max })
   const format = percent ? formatPercent : formatRate
-  return { max, ticks, format, axisWidth: axisWidthFor({ ticks, format }) }
+  return { min: 0, max, ticks, format, axisWidth: axisWidthFor({ ticks, format }) }
 }

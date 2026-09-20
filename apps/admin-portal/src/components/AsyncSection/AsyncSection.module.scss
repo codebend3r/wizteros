@@ -7,8 +7,9 @@
 }
 
 // The rule runs from the end of the title to the edge of the page, the same
-// device the fleet page uses: each section opens on a visible boundary. Drawn,
-// not marked up, so no screen reader has to announce a divider.
+// device on every admin page: each section opens on a visible boundary rather
+// than on another line of text at the weight of the one above it. Drawn, not
+// marked up, so no screen reader has to announce a divider.
 .title {
   display: grid;
   align-items: center;

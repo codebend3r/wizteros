@@ -18,6 +18,7 @@ import {
   type PlaysOverview,
   type TitleHistory,
   type TopTitle,
+  type ViewerHistory,
 } from '@/lib/playsApi'
 
 // The monitor authorizes every read off the Supabase session, so stub the
@@ -179,7 +180,7 @@ test('fetchPlayUsers sends the filters and accepts the spec shape', async () => 
 })
 
 test('fetchViewerHistory pages one viewer and refuses another viewer’s answer', async () => {
-  const history = {
+  const history: ViewerHistory = {
     account_id: 42,
     name: 'danny',
     total: 1,

@@ -1,14 +1,24 @@
 import { Area, CartesianGrid, ComposedChart, Line, Tooltip, XAxis, YAxis } from 'recharts'
+import { COLLAPSED_CHART_HEIGHT } from '@/components/Chart/chartFrame'
+import { ChartTooltip } from '@/components/Chart/ChartTooltip'
 import { formatMoney, monthLabel, type IncomeMonth } from '@/lib/income'
 import { useMeasuredWidth } from '@/lib/useMeasuredWidth'
-import { CHART_HEIGHT, niceCeiling, quarterTicks } from '@/pages/Income/chartFrame'
+import { moneyScale } from '@/pages/Income/moneyScale'
+import chrome from '@/components/Chart/chart.module.scss'
 import styles from '@/pages/Income/chart.module.scss'
 
 type GrowthChartProps = {
   readonly months: readonly IncomeMonth[]
 }
 
+// Wider at the top and the right than the shared margin: this chart carries a
+// direct label at its line's tip, and the figure needs room to sit above the
+// last point rather than over it.
 const MARGIN = { top: 20, right: 28, bottom: 4, left: 0 } as const
+
+// Room for "$1,000" on the axis, set by hand: this chart sits at a known
+// width, and a measured budget would only restate the number it already wears.
+const GROWTH_AXIS_PX = 56
 
 // Room under the axis for a second line when any month carries an outage.
 const AXIS_HEIGHT = 30
@@ -30,7 +40,7 @@ const monthTick =
     const outages = months.find((row) => row.month === month)?.outages ?? 0
     return (
       <g transform={`translate(${Number(x ?? 0)},${Number(y ?? 0)})`}>
-        <text className={styles.tickLabel} textAnchor="middle" dy={12}>
+        <text className={chrome.tickLabel} textAnchor="middle" dy={12}>
           {monthLabel(month)}
         </text>
         {outages > 0 && (
@@ -92,17 +102,10 @@ const GrowthTooltip = ({ months, active, label }: TooltipProps) => {
       : []),
   ]
   return (
-    <div className={styles.tooltip}>
-      <p className={styles.tooltipTitle}>{monthLabel(row.month)}</p>
-      <ul className={styles.tooltipRows}>
-        {lines.map((line) => (
-          <li key={line.name} className={styles.tooltipRow}>
-            <span className={styles.tooltipValue}>{line.value}</span>
-            <span className={styles.tooltipName}>{line.name}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
+    <ChartTooltip
+      title={monthLabel(row.month)}
+      rows={lines.map((line) => ({ key: line.name, value: line.value, name: line.name }))}
+    />
   )
 }
 
@@ -110,22 +113,25 @@ const GrowthTooltip = ({ months, active, label }: TooltipProps) => {
 export const GrowthChart = ({ months }: GrowthChartProps) => {
   const { ref, width } = useMeasuredWidth()
   const noted = months.some((row) => row.outages > 0)
-  const ceiling = niceCeiling(months.reduce((max, row) => Math.max(max, row.income), 0))
+  const scale = moneyScale({
+    peak: months.reduce((max, row) => Math.max(max, row.income), 0),
+    axisWidth: GROWTH_AXIS_PX,
+  })
 
   if (months.length === 0) {
-    return <p className={styles.empty}>No months to show yet.</p>
+    return <p className={chrome.empty}>No months to show yet.</p>
   }
 
   return (
-    <div className={styles.chart}>
-      <p className={styles.caption}>
+    <div className={chrome.chart}>
+      <p className={chrome.caption}>
         Income at the end of each month, from the first signup on record to today. Months with
         outages say so under the axis.
       </p>
-      <div className={styles.plotWrap} ref={ref}>
+      <div className={chrome.plotWrap} ref={ref}>
         <ComposedChart
           width={width}
-          height={CHART_HEIGHT + (noted ? AXIS_HEIGHT_WITH_NOTE - AXIS_HEIGHT : 0)}
+          height={COLLAPSED_CHART_HEIGHT + (noted ? AXIS_HEIGHT_WITH_NOTE - AXIS_HEIGHT : 0)}
           data={[...months]}
           margin={MARGIN}
           accessibilityLayer
@@ -133,29 +139,29 @@ export const GrowthChart = ({ months }: GrowthChartProps) => {
           aria-label="Monthly income by month"
           className={styles.income}
         >
-          <CartesianGrid className={styles.grid} vertical={false} />
+          <CartesianGrid className={chrome.grid} vertical={false} />
           <XAxis
             dataKey="month"
             tick={monthTick(months)}
             tickLine={false}
             height={noted ? AXIS_HEIGHT_WITH_NOTE : AXIS_HEIGHT}
             interval="preserveStartEnd"
-            className={styles.axis}
+            className={chrome.axis}
           />
           <YAxis
             type="number"
-            domain={[0, ceiling]}
-            ticks={[...quarterTicks({ ceiling })]}
-            tickFormatter={(value: number) => formatMoney(value)}
-            tick={{ className: styles.tickLabel }}
+            domain={[scale.min, scale.max]}
+            ticks={[...scale.ticks]}
+            tickFormatter={scale.format}
+            tick={{ className: chrome.tickLabel }}
             tickLine={false}
             axisLine={false}
-            width={56}
-            className={styles.axis}
+            width={scale.axisWidth}
+            className={chrome.axis}
           />
           <Tooltip
             isAnimationActive={false}
-            cursor={{ className: styles.crosshair }}
+            cursor={{ className: chrome.crosshair }}
             content={<GrowthTooltip months={months} />}
           />
           <Area

@@ -24,10 +24,6 @@ import { MEMBERS_QUERY_KEY, membersQueryOptions, patchMember } from '@/lib/membe
 import { deriveStatus, STATUS_EMOJI, type MemberStatus } from '@/lib/memberStatus'
 import styles from '@/pages/Manage/Manage.module.scss'
 
-// The key moved to lib, where every page that patches the list can reach it
-// without importing a page; re-exported so existing importers keep resolving.
-export { MEMBERS_QUERY_KEY }
-
 // The search term lives in the query string, so a refresh, a bookmark, or a
 // pasted link lands on the same filtered list the sender was looking at.
 const SEARCH_PARAM = 'search'

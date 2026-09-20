@@ -1,14 +1,16 @@
 import { Bar, BarChart, CartesianGrid, ReferenceLine, Tooltip, XAxis, YAxis } from 'recharts'
-import { formatMoney, monthLabel, type IncomeMonth } from '@/lib/income'
+import { ChartLegend } from '@/components/Chart/ChartLegend'
+import { CHART_MARGIN, COLLAPSED_CHART_HEIGHT } from '@/components/Chart/chartFrame'
+import { ChartTooltip } from '@/components/Chart/ChartTooltip'
+import { monthLabel, type IncomeMonth } from '@/lib/income'
 import { useMeasuredWidth } from '@/lib/useMeasuredWidth'
-import { CHART_HEIGHT, niceCeiling, quarterTicks } from '@/pages/Income/chartFrame'
+import { moneyScale, signed } from '@/pages/Income/moneyScale'
+import chrome from '@/components/Chart/chart.module.scss'
 import styles from '@/pages/Income/chart.module.scss'
 
 type MovementsChartProps = {
   readonly months: readonly IncomeMonth[]
 }
-
-const MARGIN = { top: 12, right: 16, bottom: 4, left: 0 } as const
 
 /** One series per kind of movement, gains above the baseline and losses
     below it. The order is the stacking order, gains firmest at the bottom. */
@@ -20,6 +22,10 @@ const SERIES = [
 ] as const
 
 type SeriesKey = (typeof SERIES)[number]['key']
+
+// Room for "-$1,000" and its sign, set by hand: this chart sits at a known
+// width, and a measured budget would only restate the number it already wears.
+const MOVEMENTS_AXIS_PX = 60
 
 type MovementRow = Record<SeriesKey, number> & { readonly month: string }
 
@@ -38,32 +44,22 @@ type TooltipProps = {
   readonly label?: unknown
 }
 
-const signed = (value: number): string =>
-  value === 0 ? formatMoney(0) : `${value > 0 ? '+' : '-'}${formatMoney(Math.abs(value))}`
-
 const MovementsTooltip = ({ rows, active, label }: TooltipProps) => {
   const row =
     typeof label === 'string' ? rows.find((candidate) => candidate.month === label) : undefined
   if (active !== true || row === undefined) return null
   const net = SERIES.reduce((sum, series) => sum + row[series.key], 0)
   return (
-    <div className={styles.tooltip}>
-      <p className={styles.tooltipTitle}>{monthLabel(row.month)}</p>
-      <ul className={styles.tooltipRows}>
-        {SERIES.map((series) => (
-          <li key={series.key} className={styles.tooltipRow}>
-            <span className={`${styles.swatch} ${series.className}`} aria-hidden="true" />
-            <span className={styles.tooltipValue}>{signed(row[series.key])}</span>
-            <span className={styles.tooltipName}>{series.label.toLowerCase()}</span>
-          </li>
-        ))}
-        <li className={styles.tooltipRow}>
-          <span className={styles.swatchGap} aria-hidden="true" />
-          <span className={styles.tooltipValue}>{signed(net)}</span>
-          <span className={styles.tooltipName}>net</span>
-        </li>
-      </ul>
-    </div>
+    <ChartTooltip
+      title={monthLabel(row.month)}
+      rows={SERIES.map((series) => ({
+        key: series.key,
+        value: signed(row[series.key]),
+        name: series.label.toLowerCase(),
+        swatchClass: series.className,
+      }))}
+      total={{ value: signed(net), name: 'net' }}
+    />
   )
 }
 
@@ -76,23 +72,23 @@ export const MovementsChart = ({ months }: MovementsChartProps) => {
     (max, row) => Math.max(max, row.signups + row.upgrades, -(row.downgrades + row.churn)),
     0,
   )
-  const ceiling = niceCeiling(reach)
+  const scale = moneyScale({ peak: reach, mirrored: true, axisWidth: MOVEMENTS_AXIS_PX })
 
   if (months.length === 0) {
-    return <p className={styles.empty}>No months to show yet.</p>
+    return <p className={chrome.empty}>No months to show yet.</p>
   }
 
   return (
-    <div className={styles.chart}>
-      <p className={styles.caption}>
+    <div className={chrome.chart}>
+      <p className={chrome.caption}>
         Monthly income gained above the line and lost below it, by what moved it.
       </p>
-      <div className={styles.plotWrap} ref={ref}>
+      <div className={chrome.plotWrap} ref={ref}>
         <BarChart
           width={width}
-          height={CHART_HEIGHT}
+          height={COLLAPSED_CHART_HEIGHT}
           data={rows}
-          margin={MARGIN}
+          margin={CHART_MARGIN}
           stackOffset="sign"
           barCategoryGap="35%"
           maxBarSize={24}
@@ -100,30 +96,30 @@ export const MovementsChart = ({ months }: MovementsChartProps) => {
           role="img"
           aria-label="Income gained and lost by month"
         >
-          <CartesianGrid className={styles.grid} vertical={false} />
+          <CartesianGrid className={chrome.grid} vertical={false} />
           <XAxis
             dataKey="month"
             tickFormatter={(value: string) => monthLabel(value)}
-            tick={{ className: styles.tickLabel }}
+            tick={{ className: chrome.tickLabel }}
             tickLine={false}
             interval="preserveStartEnd"
-            className={styles.axis}
+            className={chrome.axis}
           />
           <YAxis
             type="number"
-            domain={[-ceiling, ceiling]}
-            ticks={[...quarterTicks({ ceiling, mirrored: true })]}
-            tickFormatter={(value: number) => signed(value)}
-            tick={{ className: styles.tickLabel }}
+            domain={[scale.min, scale.max]}
+            ticks={[...scale.ticks]}
+            tickFormatter={scale.format}
+            tick={{ className: chrome.tickLabel }}
             tickLine={false}
             axisLine={false}
-            width={60}
-            className={styles.axis}
+            width={scale.axisWidth}
+            className={chrome.axis}
           />
           <ReferenceLine y={0} className={styles.baseline} />
           <Tooltip
             isAnimationActive={false}
-            cursor={{ className: styles.hoverBand }}
+            cursor={{ className: chrome.hoverBand }}
             content={<MovementsTooltip rows={rows} />}
           />
           {SERIES.map((series) => (
@@ -142,14 +138,13 @@ export const MovementsChart = ({ months }: MovementsChartProps) => {
           ))}
         </BarChart>
       </div>
-      <ul className={styles.legend}>
-        {SERIES.map((series) => (
-          <li key={series.key} className={styles.legendItem}>
-            <span className={`${styles.swatch} ${series.className}`} aria-hidden="true" />
-            <span>{series.label}</span>
-          </li>
-        ))}
-      </ul>
+      <ChartLegend
+        items={SERIES.map((series) => ({
+          key: series.key,
+          name: series.label,
+          swatchClass: series.className,
+        }))}
+      />
     </div>
   )
 }

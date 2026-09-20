@@ -1,3 +1,4 @@
+import { isNumberOrNull, isRecord, isStringOrNull } from '@/lib/guards'
 import { supabase } from '@/lib/supabaseClient'
 
 export type HostStatus = 'ok' | 'warn' | 'unknown'
@@ -191,15 +192,6 @@ export const toHostSummary = (host: FleetHost): HostSummary => ({
   })),
 })
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null
-
-const isNumberOrNull = (value: unknown): value is number | null =>
-  value === null || typeof value === 'number'
-
-const isStringOrNull = (value: unknown): value is string | null =>
-  value === null || typeof value === 'string'
-
 const isHostStatus = (value: unknown): value is HostStatus =>
   value === 'ok' || value === 'warn' || value === 'unknown'
 
@@ -293,10 +285,9 @@ const authHeader = async (): Promise<Record<string, string>> => {
 // this SPA's own route: the host answers it with index.html at 200. Name that
 // instead of letting it surface later as an opaque JSON parse error.
 //
-// Exported for the other monitor-backed modules (play history reads the same
-// service through the same bearer), so the 401 wording and the JSON check
-// live in one place.
-export const requestJson = async (path: string): Promise<unknown> => {
+// Private to this module: every caller goes through `readMonitor` below, so
+// the 401 wording, the JSON check and the schema check live in one place.
+const requestJson = async (path: string): Promise<unknown> => {
   const response = await fetch(`${FLEET_BASE}${path}`, { headers: await authHeader() })
   // The page renders behind AdminGate, so reaching here signed out means the
   // session lapsed mid-visit or this build points at a monitor that does not
@@ -312,11 +303,29 @@ export const requestJson = async (path: string): Promise<unknown> => {
   return await response.json()
 }
 
-export const fetchFleet = async (): Promise<FleetResponse> => {
-  const data = await requestJson('/fleet')
-  if (!isFleetResponse(data)) throw new Error('Unexpected fleet response from the fleet monitor')
+/** Read one monitor route and hand back a value the guard has vouched for.
+ *
+ * Every fetcher below, and every one in the play-history module, is the same
+ * three steps: request, check the shape, throw a sentence naming what came
+ * back wrong. Written out per route it was ten copies of those three lines,
+ * and the only thing that differed was the noun in the message.
+ */
+export const readMonitor = async <T>({
+  path,
+  is,
+  what,
+}: {
+  path: string
+  is: (value: unknown) => value is T
+  what: string
+}): Promise<T> => {
+  const data = await requestJson(path)
+  if (!is(data)) throw new Error(`Unexpected ${what} from the fleet monitor`)
   return data
 }
+
+export const fetchFleet = (): Promise<FleetResponse> =>
+  readMonitor({ path: '/fleet', is: isFleetResponse, what: 'fleet response' })
 
 /** One metric family's history. The kind is the route, so a new chart is a new
     kind on both sides rather than a second fetcher here. */
@@ -345,10 +354,11 @@ export const fetchMetricHistory = async ({
   kind: MetricKind
   minutes: number
 }): Promise<MetricHistory> => {
-  const data = await requestJson(`/fleet/${kind}?minutes=${minutes}`)
-  if (!isMetricHistory(data)) {
-    throw new Error(`Unexpected ${kind} history response from the fleet monitor`)
-  }
+  const data = await readMonitor({
+    path: `/fleet/${kind}?minutes=${minutes}`,
+    is: isMetricHistory,
+    what: `${kind} history response`,
+  })
   // A response that answered for a different family would paint one chart with
   // another's numbers, silently and plausibly.
   if (data.kind !== kind) {
@@ -357,10 +367,9 @@ export const fetchMetricHistory = async ({
   return data
 }
 
-export const fetchIncidents = async ({ hours }: { hours: number }): Promise<IncidentFeed> => {
-  const data = await requestJson(`/incidents?hours=${hours}`)
-  if (!isIncidentFeed(data)) {
-    throw new Error('Unexpected incidents response from the fleet monitor')
-  }
-  return data
-}
+export const fetchIncidents = ({ hours }: { hours: number }): Promise<IncidentFeed> =>
+  readMonitor({
+    path: `/incidents?hours=${hours}`,
+    is: isIncidentFeed,
+    what: 'incidents response',
+  })

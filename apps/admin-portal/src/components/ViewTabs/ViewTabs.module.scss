@@ -1,7 +1,7 @@
 .tabs {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-2);
+  gap: var(--space-3);
 }
 
 // The tab strip and the one action beside it: the strip takes the room and the
@@ -24,8 +24,8 @@
   gap: var(--space-1);
   overflow-x: auto;
 
-  // Four tabs and a phone: let them wrap into rows rather than grow a
-  // horizontal scrollbar under the chart.
+  // Five tabs and a phone: let them wrap into rows rather than grow a
+  // horizontal scrollbar under the panel.
   @media (max-width: 48rem) {
     grid-auto-flow: row;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -33,7 +33,7 @@
   }
 }
 
-// The tabs and the action beside them match the range picker's buttons,
+// The tabs and the action beside them match the filter and range buttons,
 // because they are the same kind of control sitting a few pixels apart, and
 // two shapes for one idea reads as two ideas.
 .tab,
@@ -58,14 +58,19 @@
   }
 }
 
-// The glyph sits over its title rather than beside it: four short words under
-// four marks make a strip of equal blocks, where a side-by-side layout left
-// "Network" nearly twice the width of "CPU" and the strip ragged.
+// The glyph sits over its title rather than beside it: short words under equal
+// marks make a strip of equal blocks, where a side-by-side layout left the
+// longest tab nearly twice the width of the shortest and the strip ragged.
 .tab {
   display: grid;
   justify-items: center;
   gap: var(--space-0);
-  min-width: 6rem;
+  min-width: 7rem;
+
+  @media (max-width: 48rem) {
+    min-width: 0;
+    white-space: normal;
+  }
 }
 
 // The selected tab is stated by aria-selected, so this is the visual half of
@@ -79,8 +84,8 @@
 }
 
 // Icon-only and square. Its name rides on aria-label and title rather than a
-// caption, so it is the same width whether it says expand or collapse and the
-// strip beside it never shifts on press. 2.75rem is the 44px hit target.
+// caption, so it is the same width whatever it says and the strip beside it
+// never shifts on press. 2.75rem is the 44px hit target.
 .action {
   display: grid;
   place-items: center;

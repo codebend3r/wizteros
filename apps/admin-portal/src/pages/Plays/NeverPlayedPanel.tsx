@@ -1,11 +1,17 @@
 import { useState, type FormEvent } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { fetchNeverPlayed, rangeProse, type PlaysFilters } from '@/lib/playsApi'
-import { AsyncSection } from '@/pages/Plays/AsyncSection'
+import { AsyncSection } from '@/components/AsyncSection/AsyncSection'
 import { BreakdownList } from '@/pages/Plays/BreakdownList'
-import { Pager } from '@/pages/Plays/Pager'
+import { PagedTable } from '@/pages/Plays/Pager'
 import { NEVER_KIND_LABEL, neverPlayedMeaning, TAB_COPY } from '@/pages/Plays/playsCopy'
-import { formatCount, formatDate, qualityLabel, titleWithYear } from '@/pages/Plays/playsFormat'
+import {
+  formatCount,
+  formatDate,
+  pageCountOf,
+  qualityLabel,
+  titleWithYear,
+} from '@/pages/Plays/playsFormat'
 import { neverKey, PAGE_SIZE, REFETCH_MS } from '@/pages/Plays/playsQueries'
 import { StatTiles } from '@/pages/Plays/StatTiles'
 import tableStyles from '@/pages/Plays/DataTable.module.scss'
@@ -76,7 +82,7 @@ export const NeverPlayedPanel = ({
       }
     >
       {(data) => {
-        const pageCount = Math.max(1, Math.ceil(data.total / data.page_size))
+        const pageCount = pageCountOf({ total: data.total, pageSize: data.page_size })
         return (
           <div className={styles.panel}>
             <p className={styles.meaning}>{neverPlayedMeaning({ days: filters.days, prose })}</p>
@@ -117,13 +123,12 @@ export const NeverPlayedPanel = ({
               </p>
             ) : (
               <div className={tableStyles.wrap}>
-                <Pager
+                <PagedTable
                   page={page}
                   pageCount={pageCount}
                   onPageChange={onPageChange}
                   summary={`${formatCount(data.total)} titles`}
-                />
-                <div className={tableStyles.scroller}>
+                >
                   <table className={tableStyles.table}>
                     <thead>
                       <tr>
@@ -161,8 +166,7 @@ export const NeverPlayedPanel = ({
                       ))}
                     </tbody>
                   </table>
-                </div>
-                <Pager page={page} pageCount={pageCount} onPageChange={onPageChange} />
+                </PagedTable>
               </div>
             )}
           </div>

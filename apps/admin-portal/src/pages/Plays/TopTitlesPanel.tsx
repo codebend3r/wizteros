@@ -6,7 +6,7 @@ import {
   type TopMetric,
   type TopTitle,
 } from '@/lib/playsApi'
-import { AsyncSection } from '@/pages/Plays/AsyncSection'
+import { AsyncSection } from '@/components/AsyncSection/AsyncSection'
 import { KIND_LABEL, TAB_COPY } from '@/pages/Plays/playsCopy'
 import {
   formatCount,

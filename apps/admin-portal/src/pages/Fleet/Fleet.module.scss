@@ -44,14 +44,6 @@
   font-size: var(--font-size-sm);
 }
 
-// Sections sit --space-4 apart and their own parts --space-2, so proximity
-// alone groups a heading with what it heads.
-.section {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-2);
-}
-
 // The two chart knobs, stacked on a phone and side by side once there is room
 // for both without either wrapping mid-control. Boxed, so they read as one
 // toolbar governing the charts below rather than as two loose controls.
@@ -64,27 +56,6 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
-}
-
-// The rule runs from the end of the title to the edge of the page, so each
-// section opens on a visible boundary instead of another line of text at the
-// same weight as the one above it. It is drawn, not marked up: a divider is
-// not a thing a screen reader should have to announce.
-.sectionTitle {
-  display: grid;
-  align-items: center;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: var(--space-2);
-  font-family: var(--font-display);
-  font-size: var(--font-size-lg);
-  font-weight: 700;
-  letter-spacing: -0.01em;
-
-  &::after {
-    content: '';
-    height: 1px;
-    background: var(--color-border);
-  }
 }
 
 .muted {

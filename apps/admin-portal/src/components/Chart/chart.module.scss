@@ -1,0 +1,177 @@
+// The chrome every chart in the admin portal wears: a recessive grid, one
+// tooltip box, one legend row. Written once here because three copies of it
+// is how two charts a page apart end up a token different from each other.
+.chart {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+}
+
+.caption {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+.empty {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+.plotWrap {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+
+  // The SVG is drawn at a measured pixel width, so between mount and the
+  // first measurement it may be wider than this box. Scrolling inside is the
+  // house rule for wide content: the mismatch must never widen the page.
+  overflow-x: auto;
+  padding: var(--space-1) 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+// Bars run to the edge of their own category, so a bar chart's box keeps its
+// horizontal padding at zero. A line chart has a stroke that can sit right on
+// the axis ceiling, and wants the same air all round.
+.plotWrapPadded {
+  padding: var(--space-2);
+}
+
+// Horizontal guides only, kept recessive: border-coloured hairlines sit
+// behind the data ink instead of competing with it. Recharts stamps the
+// class on every gridline element itself, so the stroke sits on the class
+// directly, not on a descendant.
+.grid {
+  stroke: var(--color-border);
+}
+
+// Only the baseline lives inside the classed axis group; the tick text is
+// hoisted into its own layer and classed per element via the tick prop.
+.axis {
+  line {
+    stroke: var(--color-border);
+  }
+}
+
+// Each tick's text element, reached through the axes' tick prop. Sized to
+// what the scale's axisWidth budgets for: at the page's body size a
+// "200.0 MB/s" label overruns the axis margin and clips. Tabular figures
+// keep times and rates the same width from tick to tick.
+.tickLabel {
+  fill: var(--color-muted);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+// A line chart's cursor: one hairline down the inspected moment.
+.crosshair {
+  stroke: var(--color-muted);
+  stroke-width: 1;
+}
+
+// A bar chart's cursor: the hovered column lifts against a wash, so the
+// reader sees which bar the tooltip belongs to.
+.hoverBand {
+  fill: var(--color-text);
+  fill-opacity: 0.06;
+}
+
+// Recharts measures this box and pins it beside the cursor, clamped to the
+// plot, so it must stay in normal flow: positioned absolutely it collapses
+// the measuring wrapper to zero size, the background never paints, and every
+// word wraps onto its own line down the y axis.
+.tooltip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  font-size: var(--font-size-xs);
+  pointer-events: none;
+}
+
+.tooltipTitle {
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.tooltipRows {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-0);
+  padding: 0;
+  list-style: none;
+}
+
+// The value leads and the name follows: at the tooltip the reader has already
+// chosen the moment and wants the number.
+.tooltipRow {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-1);
+}
+
+// A row on a chart whose series carry no mark of their own, where the swatch
+// column would only indent every value by a blank.
+.tooltipRowPlain {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.tooltipValue {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.tooltipName {
+  color: var(--color-muted);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  padding: 0;
+  list-style: none;
+  font-size: var(--font-size-sm);
+}
+
+.legendItem {
+  display: grid;
+  align-items: center;
+  grid-auto-flow: column;
+  gap: var(--space-1);
+}
+
+.legendNote {
+  color: var(--color-muted);
+  font-size: var(--font-size-xs);
+}
+
+// A filled square for a bar series, mirroring the mark it stands for. The
+// series colour comes from whichever palette class rides alongside this one;
+// identity is always also stated in words beside the swatch, never by colour
+// alone.
+.swatch {
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: 2px;
+  background: var(--series-color, var(--mark-color, var(--color-muted)));
+}
+
+// The same key for a line series: a short stroke rather than a block, so the
+// mark in the legend is the mark on the plot.
+.swatchLine {
+  height: 2px;
+  border-radius: 1px;
+}
+
+// Holds the swatch column open on a row that stands for no series, such as a
+// total.
+.swatchGap {
+  width: var(--space-2);
+}

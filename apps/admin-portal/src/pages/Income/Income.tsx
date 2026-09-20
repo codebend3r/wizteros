@@ -2,16 +2,17 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { AdminGate } from '@/components/AdminGate/AdminGate'
 import { AdminLayout } from '@/components/AdminLayout/AdminLayout'
+import { errorMessage } from '@/components/AsyncSection/AsyncSection'
 import { Preloader } from '@/components/Preloader/Preloader'
-import { fetchAllEvents, fetchMembers, loadErrorMessage } from '@/lib/adminApi'
+import { fetchAllEvents, loadErrorMessage } from '@/lib/adminApi'
 import { fetchIncidents } from '@/lib/fleetApi'
 import { currentIncome, monthlySeries, toIncomeEvents } from '@/lib/income'
+import { membersQueryOptions } from '@/lib/memberQueries'
 import { EventTimeline } from '@/pages/Income/EventTimeline'
 import { GrowthChart } from '@/pages/Income/GrowthChart'
 import { IncomeHero } from '@/pages/Income/IncomeHero'
 import { IncomeTable } from '@/pages/Income/IncomeTable'
 import { MovementsChart } from '@/pages/Income/MovementsChart'
-import { MEMBERS_QUERY_KEY } from '@/pages/Manage/Manage'
 import styles from '@/pages/Income/Income.module.scss'
 
 // How far back to ask the fleet monitor for outages: two years, well under
@@ -20,15 +21,8 @@ const OUTAGE_HOURS = 24 * 365 * 2
 
 export const INCOME_LOG_QUERY_KEY = ['member-log'] as const
 
-const errorText = (error: unknown): string =>
-  error instanceof Error && error.message.length > 0 ? error.message : 'unknown error'
-
 const IncomeInner = () => {
-  const members = useQuery({
-    queryKey: MEMBERS_QUERY_KEY,
-    queryFn: () => fetchMembers(),
-    staleTime: 5 * 60 * 1000,
-  })
+  const members = useQuery(membersQueryOptions())
   const log = useQuery({ queryKey: INCOME_LOG_QUERY_KEY, queryFn: fetchAllEvents })
   const outages = useQuery({
     queryKey: ['fleet-incidents', OUTAGE_HOURS],
@@ -65,9 +59,9 @@ const IncomeInner = () => {
 
         {log.isError && (
           <p className={styles.alert} role="alert">
-            History is unavailable: {errorText(log.error)}. Today&apos;s figure stands on the
-            members list alone; the months and the timeline need the bridge&apos;s event feed, which
-            an older bridge does not serve.
+            History is unavailable: {errorMessage({ error: log.error, fallback: 'unknown error' })}.
+            Today&apos;s figure stands on the members list alone; the months and the timeline need
+            the bridge&apos;s event feed, which an older bridge does not serve.
           </p>
         )}
         {outages.isError && (

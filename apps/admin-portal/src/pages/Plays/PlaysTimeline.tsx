@@ -1,14 +1,12 @@
 import { Bar, BarChart, CartesianGrid, Tooltip, XAxis, YAxis } from 'recharts'
+import { ChartLegend } from '@/components/Chart/ChartLegend'
+import { CHART_MARGIN, COLLAPSED_CHART_HEIGHT } from '@/components/Chart/chartFrame'
+import { ChartTooltip, type ChartKeyRow } from '@/components/Chart/ChartTooltip'
 import { windowProse, type HostCount, type Timeline } from '@/lib/playsApi'
 import { useMeasuredWidth } from '@/lib/useMeasuredWidth'
 import { seriesClass } from '@/pages/Fleet/seriesPalette'
 import { bucketLabel, formatCount } from '@/pages/Plays/playsFormat'
-import styles from '@/pages/Plays/PlaysTimeline.module.scss'
-
-/** The plot's height in pixels. Recharts draws to a pixel height, and the
-    overview's own layout reserves this box, so it lives here rather than in
-    a stylesheet. */
-export const TIMELINE_HEIGHT = 240
+import styles from '@/components/Chart/chart.module.scss'
 
 type PlaysTimelineProps = {
   readonly timeline: Timeline
@@ -26,8 +24,6 @@ type TimelineRow = Record<string, string | number>
 const START_KEY = 'start'
 
 const hostKey = (host: string): string => `host:${host}`
-
-const MARGIN = { top: 12, right: 16, bottom: 4, left: 0 } as const
 
 const toRows = ({
   timeline,
@@ -64,30 +60,25 @@ const TimelineTooltip = ({ timeline, hosts, active, label }: TimelineTooltipProp
       ? timeline.points.find((candidate) => candidate.start === label)
       : undefined
   if (active !== true || point === undefined) return null
-  const rows = hosts.flatMap((host, index) => {
+  const rows: readonly ChartKeyRow[] = hosts.flatMap((host, index) => {
     const plays = point.hosts[host.host] ?? 0
-    return plays > 0 ? [{ host: host.host, index, plays }] : []
+    return plays > 0
+      ? [
+          {
+            key: host.host,
+            value: formatCount(plays),
+            name: host.host,
+            swatchClass: seriesClass(index),
+          },
+        ]
+      : []
   })
   return (
-    <div className={styles.tooltip}>
-      <p className={styles.tooltipTitle}>
-        {bucketLabel({ start: point.start, bucket: timeline.bucket })}
-      </p>
-      <ul className={styles.tooltipRows}>
-        {rows.map((row) => (
-          <li key={row.host} className={styles.tooltipRow}>
-            <span className={`${styles.swatch} ${seriesClass(row.index)}`} aria-hidden="true" />
-            <span className={styles.tooltipValue}>{formatCount(row.plays)}</span>
-            <span className={styles.tooltipName}>{row.host}</span>
-          </li>
-        ))}
-        <li className={styles.tooltipRow}>
-          <span className={styles.swatchGap} aria-hidden="true" />
-          <span className={styles.tooltipValue}>{formatCount(point.plays)}</span>
-          <span className={styles.tooltipName}>plays</span>
-        </li>
-      </ul>
-    </div>
+    <ChartTooltip
+      title={bucketLabel({ start: point.start, bucket: timeline.bucket })}
+      rows={rows}
+      total={{ value: formatCount(point.plays), name: 'plays' }}
+    />
   )
 }
 
@@ -118,9 +109,9 @@ export const PlaysTimeline = ({ timeline, hosts, days }: PlaysTimelineProps) => 
       <div className={styles.plotWrap} ref={ref}>
         <BarChart
           width={width}
-          height={TIMELINE_HEIGHT}
+          height={COLLAPSED_CHART_HEIGHT}
           data={rows}
-          margin={MARGIN}
+          margin={CHART_MARGIN}
           barCategoryGap="25%"
           maxBarSize={40}
           // Recharts' own keyboard layer: the chart takes a tab stop and the
@@ -174,15 +165,14 @@ export const PlaysTimeline = ({ timeline, hosts, days }: PlaysTimelineProps) => 
           ))}
         </BarChart>
       </div>
-      <ul className={styles.legend}>
-        {hosts.map((host, index) => (
-          <li key={host.host} className={styles.legendItem}>
-            <span className={`${styles.swatch} ${seriesClass(index)}`} aria-hidden="true" />
-            <span>{host.host}</span>
-            {host.plays === 0 && <span className={styles.legendNote}>no plays</span>}
-          </li>
-        ))}
-      </ul>
+      <ChartLegend
+        items={hosts.map((host, index) => ({
+          key: host.host,
+          name: host.host,
+          swatchClass: seriesClass(index),
+          note: host.plays === 0 ? 'no plays' : undefined,
+        }))}
+      />
     </div>
   )
 }

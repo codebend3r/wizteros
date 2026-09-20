@@ -1,4 +1,5 @@
-import { requestJson } from '@/lib/fleetApi'
+import { readMonitor } from '@/lib/fleetApi'
+import { isNumberMap, isNumberOrNull, isRecord, isStringArray, isStringOrNull } from '@/lib/guards'
 
 /** The three things a completed play can be: the rule Plex's own ledger and
     Tautulli both keep. Anything else the server logged (a clip, a photo) never
@@ -43,6 +44,12 @@ export const PLAY_RANGES = [
   { days: 365, slug: '1y', label: '1 year', prose: 'year' },
   { days: 0, slug: 'all', label: 'All time', prose: 'all time' },
 ] as const
+
+/** The range a view opens on: a year, wide enough that a page opened cold
+    says something, narrow enough not to ask the monitor for everything. Taken
+    from the list rather than restated, so the default cannot name a range the
+    toolbar does not offer. */
+export const DEFAULT_PLAY_RANGE = PLAY_RANGES[3]
 
 export const PLAY_KINDS = [
   { kind: '', label: 'All types' },
@@ -197,7 +204,7 @@ export type PlayUsers = {
 export type ViewerHistoryRow = {
   readonly viewed_at: string
   readonly host: string
-  readonly kind: string
+  readonly kind: PlayKind
   /** The title this play is ranked under, so the row can open that title's
       own history without the page rebuilding the key from the columns. */
   readonly group_key: string
@@ -232,7 +239,7 @@ export type TopTitles = {
 export type TitleHistoryRow = {
   readonly viewed_at: string
   readonly host: string
-  readonly kind: string
+  readonly kind: PlayKind
   readonly account_id: number
   readonly viewer: string
   readonly title: string
@@ -332,21 +339,6 @@ export type PlaySync = {
   readonly servers: readonly PlaySyncServer[]
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null
-
-const isNumberOrNull = (value: unknown): value is number | null =>
-  value === null || typeof value === 'number'
-
-const isStringOrNull = (value: unknown): value is string | null =>
-  value === null || typeof value === 'string'
-
-const isStringArray = (value: unknown): value is readonly string[] =>
-  Array.isArray(value) && value.every((item) => typeof item === 'string')
-
-const isNumberMap = (value: unknown): value is Readonly<Record<string, number>> =>
-  isRecord(value) && Object.values(value).every((item) => typeof item === 'number')
-
 const isPlaysWindow = (value: unknown): value is PlaysWindow =>
   isRecord(value) &&
   typeof value.days === 'number' &&
@@ -445,7 +437,7 @@ const isViewerHistoryRow = (value: unknown): value is ViewerHistoryRow =>
   isRecord(value) &&
   typeof value.viewed_at === 'string' &&
   typeof value.host === 'string' &&
-  typeof value.kind === 'string' &&
+  isPlayKind(value.kind) &&
   typeof value.group_key === 'string' &&
   typeof value.title === 'string' &&
   isStringOrNull(value.parent_title) &&
@@ -478,7 +470,7 @@ const isTitleHistoryRow = (value: unknown): value is TitleHistoryRow =>
   isRecord(value) &&
   typeof value.viewed_at === 'string' &&
   typeof value.host === 'string' &&
-  typeof value.kind === 'string' &&
+  isPlayKind(value.kind) &&
   typeof value.account_id === 'number' &&
   typeof value.viewer === 'string' &&
   typeof value.title === 'string' &&
@@ -586,38 +578,35 @@ export const playsQuery = ({
   quality,
   extra = {},
 }: PlaysFilters & { readonly extra?: QueryExtra }): string => {
-  const params = new URLSearchParams({ days: String(days) })
-  if (host.length > 0) params.set('host', host)
-  if (kind.length > 0) params.set('kind', kind)
-  if (quality.length > 0) params.set('quality', quality)
-  Object.entries(extra).reduce((acc, [name, value]) => {
-    acc.set(name, String(value))
-    return acc
-  }, params)
-  return params.toString()
+  const optional: readonly [string, string][] = [
+    ['host', host],
+    ['kind', kind],
+    ['quality', quality],
+  ]
+  return new URLSearchParams([
+    ['days', String(days)],
+    ...optional.filter(([, value]) => value.length > 0),
+    ...Object.entries(extra).map(([name, value]): [string, string] => [name, String(value)]),
+  ]).toString()
 }
 
-export const fetchPlaysOverview = async ({
+export const fetchPlaysOverview = ({
   filters,
 }: {
   filters: PlaysFilters
-}): Promise<PlaysOverview> => {
-  const data = await requestJson(`/plays/overview?${playsQuery(filters)}`)
-  if (!isPlaysOverview(data)) {
-    throw new Error('Unexpected play history overview from the fleet monitor')
-  }
-  return data
-}
+}): Promise<PlaysOverview> =>
+  readMonitor({
+    path: `/plays/overview?${playsQuery(filters)}`,
+    is: isPlaysOverview,
+    what: 'play history overview',
+  })
 
-export const fetchPlayUsers = async ({
-  filters,
-}: {
-  filters: PlaysFilters
-}): Promise<PlayUsers> => {
-  const data = await requestJson(`/plays/users?${playsQuery(filters)}`)
-  if (!isPlayUsers(data)) throw new Error('Unexpected viewers response from the fleet monitor')
-  return data
-}
+export const fetchPlayUsers = ({ filters }: { filters: PlaysFilters }): Promise<PlayUsers> =>
+  readMonitor({
+    path: `/plays/users?${playsQuery(filters)}`,
+    is: isPlayUsers,
+    what: 'viewers response',
+  })
 
 export const fetchViewerHistory = async ({
   filters,
@@ -631,10 +620,11 @@ export const fetchViewerHistory = async ({
   pageSize: number
 }): Promise<ViewerHistory> => {
   const query = playsQuery({ ...filters, extra: { page, page_size: pageSize } })
-  const data = await requestJson(`/plays/users/${accountId}/history?${query}`)
-  if (!isViewerHistory(data)) {
-    throw new Error('Unexpected viewer history response from the fleet monitor')
-  }
+  const data = await readMonitor({
+    path: `/plays/users/${accountId}/history?${query}`,
+    is: isViewerHistory,
+    what: 'viewer history response',
+  })
   // A response for another viewer would print one person's history under
   // another's name, silently and plausibly.
   if (data.account_id !== accountId) {
@@ -653,8 +643,11 @@ export const fetchTopTitles = async ({
   limit: number
 }): Promise<TopTitles> => {
   const query = playsQuery({ ...filters, extra: { metric, limit } })
-  const data = await requestJson(`/plays/top?${query}`)
-  if (!isTopTitles(data)) throw new Error('Unexpected top titles response from the fleet monitor')
+  const data = await readMonitor({
+    path: `/plays/top?${query}`,
+    is: isTopTitles,
+    what: 'top titles response',
+  })
   // A payload ranked by the other metric would fill "most rewatched" with the
   // most played, with nothing on the page to say so.
   if (data.metric !== metric) {
@@ -675,10 +668,11 @@ export const fetchTitleHistory = async ({
   pageSize: number
 }): Promise<TitleHistory> => {
   const query = playsQuery({ ...filters, extra: { key: titleKey, page, page_size: pageSize } })
-  const data = await requestJson(`/plays/title?${query}`)
-  if (!isTitleHistory(data)) {
-    throw new Error('Unexpected title history response from the fleet monitor')
-  }
+  const data = await readMonitor({
+    path: `/plays/title?${query}`,
+    is: isTitleHistory,
+    what: 'title history response',
+  })
   // A response for another title would print one film's plays under another's
   // name, silently and plausibly.
   if (data.key !== titleKey) {
@@ -687,7 +681,7 @@ export const fetchTitleHistory = async ({
   return data
 }
 
-export const fetchNeverPlayed = async ({
+export const fetchNeverPlayed = ({
   filters,
   page,
   pageSize,
@@ -698,16 +692,13 @@ export const fetchNeverPlayed = async ({
   pageSize: number
   q: string
 }): Promise<NeverPlayed> => {
-  const extra: QueryExtra =
-    q.length > 0 ? { page, page_size: pageSize, q } : { page, page_size: pageSize }
-  const data = await requestJson(`/plays/never-played?${playsQuery({ ...filters, extra })}`)
-  if (!isNeverPlayed(data))
-    throw new Error('Unexpected never-played response from the fleet monitor')
-  return data
+  const extra: QueryExtra = { page, page_size: pageSize, ...(q.length > 0 ? { q } : {}) }
+  return readMonitor({
+    path: `/plays/never-played?${playsQuery({ ...filters, extra })}`,
+    is: isNeverPlayed,
+    what: 'never-played response',
+  })
 }
 
-export const fetchPlaySync = async (): Promise<PlaySync> => {
-  const data = await requestJson('/plays/sync')
-  if (!isPlaySync(data)) throw new Error('Unexpected sync status from the fleet monitor')
-  return data
-}
+export const fetchPlaySync = (): Promise<PlaySync> =>
+  readMonitor({ path: '/plays/sync', is: isPlaySync, what: 'sync status' })
