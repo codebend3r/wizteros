@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { AdminGate, useAdminAuth } from '@/components/AdminGate/AdminGate'
+import { AdminGate } from '@/components/AdminGate/AdminGate'
 import { AdminLayout } from '@/components/AdminLayout/AdminLayout'
 import {
   AdminAuthError,
@@ -9,9 +9,10 @@ import {
   type Member,
   type PaidTier,
 } from '@/lib/adminApi'
+import { isEmailAddress } from '@/lib/emails'
+import { useAuthStore } from '@/stores/authStore'
 import styles from '@/pages/ResetUser/ResetUser.module.scss'
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const TIERS: ReadonlyArray<PaidTier> = ['bronze', 'silver', 'gold', 'youth']
 const EXPIRY_PRESETS: ReadonlyArray<{ label: string; days: number | null }> = [
   { label: 'No expiry', days: null },
@@ -21,18 +22,20 @@ const EXPIRY_PRESETS: ReadonlyArray<{ label: string; days: number | null }> = [
 ]
 
 const ResetUserInner = () => {
-  const { deauthenticate } = useAdminAuth()
+  const signOut = useAuthStore((state) => state.signOut)
   const [email, setEmail] = useState('')
   const [member, setMember] = useState<Member | null>(null)
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const valid = EMAIL_RE.test(email)
+  const valid = isEmailAddress(email)
 
+  // This page drives its calls by hand rather than through react-query, so the
+  // query client's shared 401 handling never sees them.
   const onAuthError = (cause: unknown): boolean => {
     if (cause instanceof AdminAuthError) {
-      deauthenticate()
+      void signOut()
       return true
     }
     return false

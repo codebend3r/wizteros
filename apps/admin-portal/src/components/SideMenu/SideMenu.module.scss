@@ -13,6 +13,14 @@
   display: none;
 }
 
+// The links and the sign-out below them; the gap is what separates the two,
+// so neither needs a margin of its own.
+.menu {
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+}
+
 .list {
   display: grid;
   gap: var(--space-1);
@@ -39,7 +47,6 @@
 
 .signOut {
   justify-self: start;
-  margin-top: var(--space-2);
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);

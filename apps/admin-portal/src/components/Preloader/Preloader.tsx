@@ -1,3 +1,4 @@
+import { Spinner } from '@/components/Spinner/Spinner'
 import styles from '@/components/Preloader/Preloader.module.scss'
 
 type PreloaderProps = {
@@ -6,7 +7,7 @@ type PreloaderProps = {
 
 export const Preloader = ({ message }: PreloaderProps) => (
   <div className={styles.preloader} role="status">
-    <span className={styles.spinner} aria-hidden="true" />
+    <Spinner size="block" />
     {!!message && <p className={styles.message}>{message}</p>}
   </div>
 )

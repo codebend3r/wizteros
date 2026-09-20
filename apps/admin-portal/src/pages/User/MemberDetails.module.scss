@@ -1,0 +1,235 @@
+.details {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-1) var(--space-3);
+
+  // Two columns squeeze the values into a sliver on a phone; stack each
+  // label above its value instead.
+  @media (max-width: 48rem) {
+    grid-template-columns: 1fr;
+  }
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+
+  dt {
+    color: var(--color-muted);
+    font-size: var(--font-size-xs);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    align-self: center;
+  }
+
+  dd {
+    margin: 0;
+    // break-word leaves min-content at the longest word, so an unbroken
+    // email or customer id still widens the 1fr track past a phone screen;
+    // anywhere shrinks min-content and inherits into the value links.
+    overflow-wrap: anywhere;
+  }
+
+  // The servers list spans several lines; pin its label to the first line
+  // instead of vertically centering it against the whole list.
+  dt.serversLabel {
+    align-self: start;
+  }
+}
+
+.tier {
+  text-transform: capitalize;
+}
+
+.email {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+}
+
+.copyEmail {
+  padding: calc(var(--space-1) / 2) var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-muted);
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--color-text);
+    background: var(--color-surface);
+  }
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+// The link text is the raw cus_ id; mono matches the email row so ids can be
+// eyeball-compared against the Stripe dashboard.
+.stripeLink {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+}
+
+// Shown only when the member pays under a different address than their Plex
+// account uses, so the two are never mistaken for two people.
+.stripeEmail {
+  display: grid;
+  gap: calc(var(--space-1) / 2);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.stripeEmailHint {
+  color: var(--color-muted);
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
+}
+
+.daysLeft {
+  color: var(--color-muted);
+}
+
+// Marks an expiry that is derived from the invite window rather than a real
+// access deadline recorded against a server.
+.inviteWindow {
+  padding: calc(var(--space-1) / 2) var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  color: var(--color-muted);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+}
+
+.expiryValue {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.downloadsValue {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.downloadsToggle {
+  padding: calc(var(--space-1) / 2) var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  font-size: var(--font-size-md);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--color-surface);
+  }
+}
+
+.serversWrap {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.serversSummary {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+.serverList {
+  display: grid;
+  gap: var(--space-2);
+  padding: 0;
+  list-style: none;
+}
+
+.server {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.serverHeading {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+}
+
+.serverName {
+  font-weight: 600;
+}
+
+.serverCount {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+.pillList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: baseline;
+  gap: calc(var(--space-1) / 2);
+  padding: calc(var(--space-1) / 2) var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+}
+
+.pillName {
+  color: var(--color-text);
+}
+
+.pillState {
+  color: var(--color-muted);
+  font-size: var(--font-size-xs);
+
+  // The label carries the meaning; the colour only reinforces it.
+  .shared > & {
+    color: var(--color-state-shared);
+  }
+
+  .notShared > & {
+    color: var(--color-state-not-shared);
+  }
+
+  .notEntitled > & {
+    color: var(--color-state-not-entitled);
+  }
+}
+
+.shared {
+  border-color: var(--color-state-shared);
+}
+
+.notShared {
+  border-color: var(--color-state-not-shared);
+}
+
+.notEntitled {
+  border-color: var(--color-state-not-entitled);
+  opacity: 0.85;
+}
+
+.serverWarning {
+  color: var(--color-state-not-entitled);
+  font-size: var(--font-size-sm);
+}

@@ -63,7 +63,7 @@
 
 .status {
   color: var(--color-accent);
-  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 
 .member {

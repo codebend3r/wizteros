@@ -1,15 +1,17 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AdminGate, useAdminAuth } from '@/components/AdminGate/AdminGate'
+import { AdminGate } from '@/components/AdminGate/AdminGate'
 import { AdminLayout } from '@/components/AdminLayout/AdminLayout'
-import { ConfirmInviteModal } from '@/components/ConfirmInviteModal/ConfirmInviteModal'
+import {
+  ConfirmInviteModal,
+  reissueInviteNote,
+} from '@/components/ConfirmInviteModal/ConfirmInviteModal'
 import { CopyEmailsButton } from '@/components/CopyEmailsButton/CopyEmailsButton'
+import { InviteResultNotice } from '@/components/InviteResultNotice/InviteResultNotice'
 import { MembersTable } from '@/components/MembersTable/MembersTable'
 import { Preloader } from '@/components/Preloader/Preloader'
 import {
-  AdminAuthError,
-  fetchMembers,
   linkMemberAddress,
   loadErrorMessage,
   reissueInvite,
@@ -18,10 +20,13 @@ import {
   type PaidTier,
 } from '@/lib/adminApi'
 import { TIER_DOWNLOADS } from '@/lib/inviteRules'
+import { MEMBERS_QUERY_KEY, membersQueryOptions, patchMember } from '@/lib/memberQueries'
 import { deriveStatus, STATUS_EMOJI, type MemberStatus } from '@/lib/memberStatus'
 import styles from '@/pages/Manage/Manage.module.scss'
 
-export const MEMBERS_QUERY_KEY = ['members'] as const
+// The key moved to lib, where every page that patches the list can reach it
+// without importing a page; re-exported so existing importers keep resolving.
+export { MEMBERS_QUERY_KEY }
 
 // The search term lives in the query string, so a refresh, a bookmark, or a
 // pasted link lands on the same filtered list the sender was looking at.
@@ -57,7 +62,6 @@ const EMPTY_COUNTS: Record<MemberStatus, number> = {
 }
 
 const ManageInner = () => {
-  const { deauthenticate } = useAdminAuth()
   const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
   const search = searchParams.get(SEARCH_PARAM) ?? ''
@@ -67,21 +71,7 @@ const ManageInner = () => {
   const [inviteResult, setInviteResult] = useState<InviteResult | null>(null)
   const [linkingEmail, setLinkingEmail] = useState<string | null>(null)
 
-  const {
-    data: members,
-    error: loadError,
-    isPending,
-  } = useQuery({
-    queryKey: MEMBERS_QUERY_KEY,
-    queryFn: () => fetchMembers(),
-    staleTime: 5 * 60 * 1000,
-  })
-
-  useEffect(() => {
-    if (loadError instanceof AdminAuthError) {
-      deauthenticate()
-    }
-  }, [loadError, deauthenticate])
+  const { data: members, error: loadError, isPending } = useQuery(membersQueryOptions())
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase()
@@ -113,26 +103,20 @@ const ManageInner = () => {
       // Existing access survives the invite window now, so keep expiry and
       // servers as they are — only the tier, downloads, and the freshly
       // restarted grace clock change until the member redeems.
-      queryClient.setQueryData<Member[]>(MEMBERS_QUERY_KEY, (old) =>
-        old?.map((row) =>
-          row.email === member.email
-            ? {
-                ...row,
-                tier,
-                downloads: TIER_DOWNLOADS[tier],
-                invited_at: new Date().toISOString(),
-              }
-            : row,
-        ),
-      )
+      patchMember({
+        queryClient,
+        email: member.email,
+        patch: (row) => ({
+          ...row,
+          tier,
+          downloads: TIER_DOWNLOADS[tier],
+          invited_at: new Date().toISOString(),
+        }),
+      })
       setPendingInvite(null)
     },
-    onError: (cause) => {
+    onError: () => {
       setPendingInvite(null)
-      if (cause instanceof AdminAuthError) {
-        deauthenticate()
-        return
-      }
       setActionError('Could not create invite.')
     },
   })
@@ -150,11 +134,7 @@ const ManageInner = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: MEMBERS_QUERY_KEY })
     },
-    onError: (cause) => {
-      if (cause instanceof AdminAuthError) {
-        deauthenticate()
-        return
-      }
+    onError: () => {
       setActionError('Could not link those addresses.')
     },
   })
@@ -183,8 +163,7 @@ const ManageInner = () => {
     )
   }
 
-  const error =
-    loadError && !(loadError instanceof AdminAuthError) ? loadErrorMessage(loadError) : actionError
+  const error = loadError ? loadErrorMessage(loadError) : actionError
 
   return (
     <AdminLayout>
@@ -222,14 +201,7 @@ const ManageInner = () => {
           </Link>
         </div>
         {!!error && <p className={styles.error}>{error}</p>}
-        {!!inviteResult && (
-          <p className={styles.invite}>
-            {inviteResult.emailed
-              ? 'Invite emailed. Link: '
-              : 'Email failed — send this link manually: '}
-            <a href={inviteResult.url}>{inviteResult.url}</a>
-          </p>
-        )}
+        {!!inviteResult && <InviteResultNotice result={inviteResult} />}
         {isPending && !error && <Preloader message="Loading members… (this can take ~15s)" />}
         {!!members && (
           <>
@@ -279,8 +251,10 @@ const ManageInner = () => {
         )}
         {!!pendingInvite && (
           <ConfirmInviteModal
-            member={pendingInvite.member}
+            name={pendingInvite.member.member}
+            email={pendingInvite.member.email}
             tier={pendingInvite.tier}
+            note={reissueInviteNote({ tier: pendingInvite.tier })}
             sending={inviteMutation.isPending}
             onConfirm={() => inviteMutation.mutate(pendingInvite)}
             onCancel={() => setPendingInvite(null)}

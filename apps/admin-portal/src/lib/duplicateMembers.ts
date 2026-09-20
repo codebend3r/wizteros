@@ -42,7 +42,7 @@ const canonicalize = (email: string): string => {
  * or deletion). Short-circuits on a length gap of two or more, so the scan
  * stays linear in the compared pair rather than building a full edit matrix.
  */
-const isOneEditApart = (a: string, b: string): boolean => {
+const isOneEditApart = ({ a, b }: { a: string; b: string }): boolean => {
   if (a === b) {
     return false
   }
@@ -88,7 +88,7 @@ export const findDuplicateTwins = ({
         (other, otherIndex) =>
           otherIndex !== index &&
           (other.canonical === member.canonical ||
-            isOneEditApart(other.canonical, member.canonical)),
+            isOneEditApart({ a: other.canonical, b: member.canonical })),
       )
       .map((other) => other.email)
     return matches.length ? twins.set(member.email, matches) : twins

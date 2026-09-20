@@ -1,3 +1,11 @@
+// Deliberately permissive: the bridge and the mail server are the only things
+// that can really say whether an address delivers, so this only rejects what is
+// obviously not one address.
+const EMAIL_RE = /^[^@\s]+@[^@\s]+$/
+
+/** True when the value looks like a single, whole email address. */
+export const isEmailAddress = (value: string): boolean => EMAIL_RE.test(value)
+
 // Keeps the first spelling of each address. The lowercased keys ride along so
 // the comparison stays case-insensitive without rescanning what came before.
 export const dedupeEmails = (emails: ReadonlyArray<string>): string[] => {

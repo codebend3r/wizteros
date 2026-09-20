@@ -1,7 +1,8 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import userEvent from '@testing-library/user-event'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { createQueryClient } from '@/lib/queryClient'
 import { afterEach, expect, test, vi } from '@/test/vi'
 import { Manage } from '@/pages/Manage/Manage'
 import { AdminAuthError, type Member } from '@/lib/adminApi'
@@ -39,9 +40,7 @@ const { fetchMembers, reissueInvite } = await import('@/lib/adminApi')
 const LocationSearch = () => <span data-testid="location-search">{useLocation().search}</span>
 
 const renderManage = ({ entry = '/manage' }: { entry?: string } = {}) => {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  })
+  const queryClient = createQueryClient()
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[entry]}>

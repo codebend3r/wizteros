@@ -1,7 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
-import { defaultShouldDehydrateQuery, QueryClient } from '@tanstack/react-query'
+import { defaultShouldDehydrateQuery } from '@tanstack/react-query'
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client'
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister'
 import '@fontsource-variable/bricolage-grotesque'
@@ -10,23 +10,11 @@ import '@fontsource-variable/nunito-sans'
 import '@fontsource-variable/jetbrains-mono'
 import '@fontsource/lily-script-one'
 import { AppRoutes } from '@/AppRoutes'
+import { CACHE_MS, createQueryClient } from '@/lib/queryClient'
 import { isLiveQueryKey } from '@/lib/queryPersistence'
 import '@/styles/globals.scss'
 
-// The members call is ~15s (Wizarr fan-out), so never refetch it just for
-// window focus and don't retry — failures here are auth or config, not blips.
-// gcTime must cover the persister's maxAge or restored data gets collected.
-const CACHE_MINUTES = 30
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: false,
-      refetchOnWindowFocus: false,
-      gcTime: CACHE_MINUTES * 60 * 1000,
-    },
-  },
-})
+const queryClient = createQueryClient()
 
 // React Query's cache is in-memory and dies with the page, so a refresh
 // would refetch the ~15s members call. Persist it to sessionStorage — the
@@ -42,7 +30,7 @@ if (rootElement) {
         client={queryClient}
         persistOptions={{
           persister,
-          maxAge: CACHE_MINUTES * 60 * 1000,
+          maxAge: CACHE_MS,
           // the live fleet queries are excluded, never restored from storage:
           // a half-hour-old fleet painted as the present is the one thing that
           // page must never do

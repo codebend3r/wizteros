@@ -1,0 +1,34 @@
+.spinner {
+  display: inline-block;
+  border-style: solid;
+  border-color: var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+// Sized off the text it sits beside, so it reads as part of the line.
+.inline {
+  width: var(--font-size-xs);
+  height: var(--font-size-xs);
+  border-width: 2px;
+}
+
+// The standalone loading state of a whole panel.
+.block {
+  width: var(--space-4);
+  height: var(--space-4);
+  border-width: 3px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2s;
+  }
+}

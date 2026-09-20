@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { isRecord } from '@/lib/guards'
 
 // The hamburger lives in the Header while the drawer it controls lives in
 // SideMenu, so the open flag has to sit between them.
@@ -7,9 +8,6 @@ type MenuState = {
   readonly open: boolean
   readonly setOpen: ({ open }: { open: boolean }) => void
 }
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null
 
 /** Collapsed by default, and persisted so a reload keeps whichever state the
     admin left it in. Anything but a boolean coming back from storage falls
