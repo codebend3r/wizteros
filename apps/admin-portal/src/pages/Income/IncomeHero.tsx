@@ -18,7 +18,11 @@ type IncomeHeroProps = {
 
 /** The one number the page leads with, and the arithmetic behind it. */
 export const IncomeHero = ({ income, previous }: IncomeHeroProps) => {
-  const delta = previous === undefined ? null : income.total - previous.income
+  // The sign is stated in the text, so the colour only underlines it.
+  const change =
+    previous === undefined
+      ? null
+      : { amount: income.total - previous.income, since: previous.month }
   return (
     <section className={styles.hero} aria-labelledby="income-hero">
       <h2 className={styles.label} id="income-hero">
@@ -32,14 +36,12 @@ export const IncomeHero = ({ income, previous }: IncomeHeroProps) => {
         <li className={styles.qualifier}>
           {plural({ count: income.paying, unit: 'paying member' })}
         </li>
-        {delta !== null &&
-          previous !== undefined && (
-            // The sign is stated, so the colour only underlines it.
-            <li className={delta < 0 ? styles.down : styles.up}>
-              {delta < 0 ? '-' : '+'}
-              {formatMoney(Math.abs(delta))} vs {monthLabel(previous.month)}
-            </li>
-          )}
+        {!!change && (
+          <li className={change.amount < 0 ? styles.down : styles.up}>
+            {change.amount < 0 ? '-' : '+'}
+            {formatMoney(Math.abs(change.amount))} vs {monthLabel(change.since)}
+          </li>
+        )}
         {income.atRisk.count > 0 && (
           <li className={styles.risk}>
             {formatMoney(income.atRisk.amount)} at risk:{' '}
