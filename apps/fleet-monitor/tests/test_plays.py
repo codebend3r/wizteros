@@ -2,8 +2,8 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from fleet_monitor import config, plays
 from fleet_monitor import db as fleet_db
-from fleet_monitor import plays
 from fleet_monitor.probes.plex import (
     Account,
     Device,
@@ -18,6 +18,10 @@ NOW = int(T0.timestamp())
 DAY = 86_400
 
 HOSTS = ("meleys", "vermithor", "caraxes", "syrax", "vhagar")
+
+
+def _host(name: str, plex_url: str) -> config.Host:
+    return config.Host(name=name, ip="", has_gpu=False, docker_url="", plex_url=plex_url)
 
 
 def _at(days_ago: float) -> int:
@@ -282,7 +286,7 @@ def test_mark_history_records_the_outcome_even_before_the_server_was_ever_identi
     # be visible on /plays/sync, so the row is created here rather than assumed
     plays.mark_history(db, "vhagar", at=T0, ok=False, error="refused")
 
-    status = plays.sync_status(db, hosts=(("vhagar", "https://192.168.50.6:32400"),))
+    status = plays.sync_status(db, hosts=(_host("vhagar", "https://192.168.50.6:32400"),))
     assert status[0].reachable is False
     assert status[0].last_error == "refused"
     assert status[0].history_synced_at == T0
@@ -689,7 +693,7 @@ def test_a_viewing_plex_logged_twice_inside_one_runtime_counts_once_everywhere(d
     by_title = plays.title_history(db, everything, key="show:better call saul", page=1,
                                    page_size=10)
     assert (by_title.total, by_title.rewatches, len(by_title.rows)) == (1, 0, 1)
-    assert plays.sync_status(db, hosts=(("meleys", "http://meleys:32400"),))[0].plays == 1
+    assert plays.sync_status(db, hosts=(_host("meleys", "http://meleys:32400"),))[0].plays == 1
 
     # finishing it again the next day is a real rewatch, and still counts
     plays.insert_plays(db, "meleys", (_play(3, "201", kind="episode", days_ago=0),))
@@ -909,9 +913,9 @@ def test_sync_status_reports_every_host_handed_in_with_counts_and_outcomes(seede
     status = plays.sync_status(
         seeded,
         hosts=(
-            ("meleys", "http://192.168.50.2:32400"),
-            ("syrax", "http://192.168.50.5:32400"),
-            ("vhagar", "https://192.168.50.6:32400"),
+            _host("meleys", "http://192.168.50.2:32400"),
+            _host("syrax", "http://192.168.50.5:32400"),
+            _host("vhagar", "https://192.168.50.6:32400"),
         ),
     )
 
@@ -952,7 +956,7 @@ def test_a_failed_pass_keeps_the_previous_error_out_of_a_later_success(db):
     plays.mark_history(db, "meleys", at=T0 - timedelta(minutes=5), ok=False, error="refused")
     plays.mark_history(db, "meleys", at=T0, ok=True, error=None)
 
-    status = plays.sync_status(db, hosts=(("meleys", "http://x"),))[0]
+    status = plays.sync_status(db, hosts=(_host("meleys", "http://x"),))[0]
 
     assert status.reachable is True
     assert status.last_error is None

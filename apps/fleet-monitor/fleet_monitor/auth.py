@@ -1,20 +1,10 @@
 import functools
-import os
 
 import jwt
 from fastapi import Header, HTTPException
 from jwt import PyJWKClient
 
-
-def _supabase_url() -> str:
-    """Base url of the Supabase project that issues admin sessions."""
-    return os.environ.get("FM_SUPABASE_URL", "").rstrip("/")
-
-
-def _allowed_emails() -> frozenset[str]:
-    """The admins allowed to read the fleet, lowercased for comparison."""
-    raw = os.environ.get("FM_ADMIN_ALLOWED_EMAILS", "")
-    return frozenset(part.strip().lower() for part in raw.split(",") if part.strip())
+from fleet_monitor import config
 
 
 @functools.lru_cache(maxsize=4)
@@ -43,8 +33,8 @@ def require_admin(authorization: str = Header(default="")) -> None:
     has to be shut rather than open: what it serves is every host's address,
     container names and utilisation.
     """
-    url = _supabase_url()
-    allowed = _allowed_emails()
+    url = config.supabase_url()
+    allowed = config.admin_allowed_emails()
     if not url or not allowed:
         raise HTTPException(status_code=401, detail="unauthorized")
 

@@ -155,7 +155,7 @@ def _container_check(host: Host, state: ContainerState) -> CheckResult:
     )
 
 
-def _endpoint_only(path: str, host: Host, at: datetime, reason: str) -> tuple[CheckResult, ...]:
+def _endpoint_only(host: Host, path: str, *, at: datetime, reason: str) -> tuple[CheckResult, ...]:
     """Record the docker endpoint's failure and nothing else.
 
     This is the whole not-collected contract in one place. The endpoint was
@@ -193,17 +193,17 @@ async def collect_containers(
         f"{host.docker_url}/containers/json?all=1", timeout=timeout
     )
     if not response.ok:
-        return _endpoint_only(path, host, at, response.reason)
+        return _endpoint_only(host, path, at=at, reason=response.reason)
 
     try:
         payload = json.loads(response.body)
     except json.JSONDecodeError:
-        return _endpoint_only(path, host, at, "bad_json")
+        return _endpoint_only(host, path, at=at, reason="bad_json")
 
     # a 200 carrying an object rather than an array is a proxy error page, not
     # an empty fleet; treating it as zero containers would retire all of them
     if not isinstance(payload, list):
-        return _endpoint_only(path, host, at, "bad_json")
+        return _endpoint_only(host, path, at=at, reason="bad_json")
 
     states = docker.parse_containers(payload)
     endpoint = CheckResult(target=f"docker:{host.name}", ok=True, reason="")

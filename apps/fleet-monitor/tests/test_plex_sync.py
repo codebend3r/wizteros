@@ -184,7 +184,7 @@ def _rows(path, sql, params=()):
 
 def _status(path, host=HOST):
     with fleet_db.session(path) as connection:
-        return plays.sync_status(connection, hosts=((host.name, host.plex_url),))[0]
+        return plays.sync_status(connection, hosts=(host,))[0]
 
 
 def _cursor(path, host=HOST):

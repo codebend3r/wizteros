@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 
-from fleet_monitor import api, collector, incidents, store
+from fleet_monitor import api, collector, fleet, incidents, store
 from fleet_monitor import db as fleet_db
 from fleet_monitor.auth import require_admin
 from fleet_monitor.probes.types import Sample
@@ -220,7 +220,7 @@ def test_fleet_dates_every_reading_it_reports(tmp_path, monkeypatch):
         h for h in client.get("/fleet").json()["hosts"] if h["name"] == "caraxes"
     )
 
-    window = now - timedelta(seconds=api.METRIC_AGE_WINDOW)
+    window = now - timedelta(seconds=fleet.METRIC_AGE_WINDOW)
     assert set(caraxes["metrics"]) == set(_metric_ages(db, "host:caraxes", since=window))
     assert set(caraxes["metrics"]) == {"load.1m", "disk.volume1.used_percent"}
 
@@ -484,27 +484,27 @@ def test_core_count_is_read_from_the_per_cpu_rows():
     metrics = {f"cpu{index}.user": 1.0 for index in range(8)}
     metrics["cpu.total.user"] = 1.0  # the aggregate row must not be counted
 
-    assert api.core_count(metrics) == 8
+    assert fleet.core_count(metrics) == 8
 
 
 def test_core_count_is_unknown_before_a_host_reports():
-    assert api.core_count({}) is None
-    assert api.core_count({"load.1m": 0.4}) is None
+    assert fleet.core_count({}) is None
+    assert fleet.core_count({"load.1m": 0.4}) is None
 
 
 def test_host_state_never_calls_an_uncollected_host_healthy():
-    assert api.host_state(collected=False, disk_percent=1.0, load_per_core=0.0) == "unknown"
+    assert fleet.host_state(collected=False, disk_percent=1.0, load_per_core=0.0) == "unknown"
 
 
 def test_host_state_warns_on_a_full_volume_or_a_loaded_box():
-    assert api.host_state(collected=True, disk_percent=91.0, load_per_core=0.1) == "warn"
-    assert api.host_state(collected=True, disk_percent=10.0, load_per_core=1.5) == "warn"
-    assert api.host_state(collected=True, disk_percent=10.0, load_per_core=0.1) == "ok"
+    assert fleet.host_state(collected=True, disk_percent=91.0, load_per_core=0.1) == "warn"
+    assert fleet.host_state(collected=True, disk_percent=10.0, load_per_core=1.5) == "warn"
+    assert fleet.host_state(collected=True, disk_percent=10.0, load_per_core=0.1) == "ok"
 
 
 def test_host_state_is_ok_when_a_reading_is_simply_absent():
     # a missing metric is not a failing one
-    assert api.host_state(collected=True, disk_percent=None, load_per_core=None) == "ok"
+    assert fleet.host_state(collected=True, disk_percent=None, load_per_core=None) == "ok"
 
 
 def test_fleet_divides_load_by_the_cores_it_observed(tmp_path, monkeypatch):
@@ -552,7 +552,7 @@ def test_fleet_warns_on_a_nearly_full_volume(tmp_path, monkeypatch):
 def test_memory_percent_uses_available_not_free():
     """free excludes reclaimable page cache; on these boxes that reads as 95%
     used on an idle machine."""
-    assert api.memory_used_percent({
+    assert fleet.memory_used_percent({
         "mem.total_bytes": 1000.0,
         "mem.available_bytes": 250.0,
         "mem.free_bytes": 50.0,
@@ -560,13 +560,13 @@ def test_memory_percent_uses_available_not_free():
 
 
 def test_memory_percent_is_absent_when_either_reading_is():
-    assert api.memory_used_percent({"mem.total_bytes": 1000.0}) is None
-    assert api.memory_used_percent({"mem.available_bytes": 250.0}) is None
-    assert api.memory_used_percent({}) is None
+    assert fleet.memory_used_percent({"mem.total_bytes": 1000.0}) is None
+    assert fleet.memory_used_percent({"mem.available_bytes": 250.0}) is None
+    assert fleet.memory_used_percent({}) is None
 
 
 def test_memory_percent_never_divides_by_a_zero_total():
-    assert api.memory_used_percent(
+    assert fleet.memory_used_percent(
         {"mem.total_bytes": 0.0, "mem.available_bytes": 0.0}
     ) is None
 

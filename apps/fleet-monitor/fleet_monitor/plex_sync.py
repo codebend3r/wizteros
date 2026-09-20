@@ -101,6 +101,18 @@ class Fetched:
     payload: object | None
     reason: str
 
+    @property
+    def answered_or_gone(self) -> bool:
+        """Whether the server said something the caller can act on.
+
+        A 404 is the server saying what was asked for does not exist any more,
+        which is an answer: the enrichment stubs those keys and moves on.
+        Anything else with no payload is the server not answering, which is
+        not the same fact and ends the pass. Stated once because both
+        enrichment paths have to draw the line in the same place.
+        """
+        return self.payload is not None or self.reason == "http_404"
+
 
 @dataclass(frozen=True, slots=True)
 class HostOutcome:
@@ -167,7 +179,7 @@ async def fetch(
         return Fetched(payload=None, reason="bad_json")
 
 
-def _failed(path: str, host: Host, at: datetime, reason: str) -> CheckResult:
+def _failed(host: Host, path: str, *, at: datetime, reason: str) -> CheckResult:
     """Record a history pass that could not complete, against the server it
     could not read. The rows already committed stay: a pass that died on page
     four keeps pages one to three, and the cursor says so."""
@@ -248,9 +260,7 @@ async def enrich_items(host: Host, path: str, *, token: str, now: datetime) -> s
             if reason:
                 return reason
             continue
-        # a 404 is the server saying none of these exist any more; anything
-        # else is the server not answering, which is not the same fact
-        if fetched.payload is None and fetched.reason != "http_404":
+        if not fetched.answered_or_gone:
             return fetched.reason
         _store_answered(path, host, now=now, keys=keys, payload=fetched.payload)
 
@@ -280,7 +290,7 @@ async def _enrich_singly(
             log.warning("metadata for %s item %s stalled on its own; stubbed", host.name, key)
             _store_answered(path, host, now=now, keys=(key,), payload=None)
             continue
-        if fetched.payload is None and fetched.reason != "http_404":
+        if not fetched.answered_or_gone:
             return fetched.reason
         _store_answered(path, host, now=now, keys=(key,), payload=fetched.payload)
     return ""
@@ -312,14 +322,14 @@ async def sync_history(
     if not host.plex_url:
         return None
     if not token:
-        return _failed(path, host, now, "no_token")
+        return _failed(host, path, at=now, reason="no_token")
 
     root = await fetch(host, "/", token=token)
     if root.payload is None:
-        return _failed(path, host, now, root.reason)
+        return _failed(host, path, at=now, reason=root.reason)
     info = plex.parse_server(root.payload)
     if info is None:
-        return _failed(path, host, now, "bad_json")
+        return _failed(host, path, at=now, reason="bad_json")
     with db.session(path) as connection:
         plays.upsert_server(connection, host.name, info=info)
         cursor = plays.history_cursor(connection, host.name)
@@ -342,11 +352,11 @@ async def sync_history(
         host, path, token=token, since=since, page_size=page_size, excluded=excluded
     )
     if reason:
-        return _failed(path, host, now, reason)
+        return _failed(host, path, at=now, reason=reason)
     if enrich:
         reason = await enrich_items(host, path, token=token, now=now)
         if reason:
-            return _failed(path, host, now, reason)
+            return _failed(host, path, at=now, reason=reason)
 
     check = CheckResult(target=f"plex:{host.name}", ok=True, reason="")
     with db.session(path) as connection:
@@ -483,10 +493,6 @@ async def sync_host(
     return HostOutcome(history_ok=history_ok, inventory_ran=True, inventory_complete=complete)
 
 
-def plex_hosts() -> tuple[Host, ...]:
-    return tuple(host for host in config.HOSTS if host.plex_url)
-
-
 def init_db(path: str) -> None:
     """Every table a pass writes: the ledger and the incident machine it
     records its checks into. Both, because this loop can be the first thing
@@ -504,7 +510,7 @@ async def run_round(path: str, *, now: datetime, inventory_due: set[str]) -> dic
     next pass without a restart."""
     token = config.plex_token()
     lookback = config.plex_lookback_days()
-    hosts = plex_hosts()
+    hosts = config.plex_hosts()
     outcomes = await asyncio.gather(
         *(
             sync_host(
@@ -536,7 +542,7 @@ async def run_forever(path: str) -> None:
         log.warning("no Plex token in FM_PLEX_TOKEN or PLEX_TOKEN; play history idles until one appears")
     loop = asyncio.get_running_loop()
     due = loop.time()
-    inventory_next: dict[str, float] = {host.name: 0.0 for host in plex_hosts()}
+    inventory_next: dict[str, float] = {host.name: 0.0 for host in config.plex_hosts()}
     while True:
         now = datetime.now(tz=timezone.utc)
         inventory_due = {name for name, at in inventory_next.items() if loop.time() >= at}
@@ -557,7 +563,7 @@ async def run_once(path: str) -> dict[str, HostOutcome]:
     return await run_round(
         path,
         now=datetime.now(tz=timezone.utc),
-        inventory_due={host.name for host in plex_hosts()},
+        inventory_due={host.name for host in config.plex_hosts()},
     )
 
 
