@@ -39,14 +39,13 @@ wizteros/
 │   │   └── src/                components/ pages/ lib/ stores/ styles/ test/
 │   ├── fleet-monitor/          Nx project `fleet-monitor`
 │   │   ├── fleet_monitor/      all runtime code
-│   │   ├── scripts/            lint and test entrypoints
 │   │   └── tests/              pytest suite
 │   └── stripe-bridge/          Nx project `stripe-bridge`
 │       ├── stripe_bridge/      all runtime code
-│       ├── scripts/            lint, test, and e2e entrypoints
+│       ├── scripts/            e2e, backfill, and snapshot entrypoints
 │       └── tests/              pytest suite
 ├── docs/                       all specs, plans, and PRDs for both apps
-├── scripts/                    release, backfill, and deploy entrypoints
+├── scripts/                    release, backfill, deploy, and Python tool entrypoints
 ├── .claude/agents/             repo-scoped subagents
 ├── .claude/skills/             repo-scoped skills
 ├── .github/                    CI workflows
@@ -62,7 +61,9 @@ wizteros/
 
 **admin-portal**, a Vite + React SPA (TypeScript, bun). `index.html`, `vite.config.ts`, `tsconfig.json`, `bunfig.toml`, and the oxlint/oxfmt/stylelint configs live at the app root. It has no `project.json`: Nx infers targets from the `scripts` in its `package.json`, whitelisted by the `nx.includedScripts` field there. Adding a script that should be runnable as a target means adding it to that list too.
 
-**stripe-bridge**, a FastAPI service (Python 3.12). All runtime code lives in the `stripe_bridge/` package: `stripe_wizarr_bridge.py` is the app entrypoint, plus `wizarr.py`, `plex.py`, `store.py`, `tiers.py`, `mailer.py`, `email_template.py`, `admin.py`, `snapshot.py`. Everything else (`tests/`, `scripts/`, `Dockerfile`, `pytest.ini`, `ruff.toml`, `requirements*.txt`, `package.json`, `project.json`) sits at the app root, outside the package.
+**stripe-bridge**, a FastAPI service (Python 3.12). All runtime code lives in the `stripe_bridge/` package: `stripe_wizarr_bridge.py` is the app entrypoint, holding the webhook route and a handler table keyed by Stripe event type. Around it sit `config.py` (every env read, and the one shared `WizarrClient`), `admin.py` (auth, snapshot, routes), `roster.py` (the pure member assembly the admin routes render), `invites.py` (tier scope plus minting, shared by the webhook, the admin reissue, and the baseline sweep), `alerts.py` (every operator-facing subject and body), plus `wizarr.py`, `plex.py`, `store.py`, `tiers.py`, `mailer.py`, `email_template.py`, `members.py`, `baseline.py`, `sweeps.py`, `snapshot.py`. Everything else (`tests/`, `scripts/`, `Dockerfile`, `pytest.ini`, `ruff.toml`, `requirements*.txt`, `package.json`, `project.json`) sits at the app root, outside the package.
+
+**fleet-monitor**, a FastAPI service (Python 3.12) in the `fleet_monitor/` package. `api.py` is routes and view models only; the fleet judgement behind them lives in `fleet.py` and the metric history in `series.py`. `plays.py` is a package, not a module: `plays/base.py` holds the shared query pieces, `plays/ledger.py` the schema and writes, `plays/views.py` the aggregates, `plays/never_played.py` the unplayed engine, and `plays/__init__.py` re-exports the public surface so callers still write `plays.overview(...)`.
 
 Import rules, which tooling does not catch:
 
@@ -96,6 +97,8 @@ All three projects source targets from more than one place, so check `nx show pr
 Anything cacheable is declared in `nx.json` `targetDefaults`. A new target that is safe to cache belongs there; anything that touches Docker or the network must stay `cache: false`.
 
 A cacheable target has to declare every input that can change its result, including the tool that runs it. `lint:py` is the one that bites: ruff lives in each app's gitignored `.venv`, so it is invisible to the `{projectRoot}/**/*` file glob, and a missing or upgraded ruff used to flip the outcome under an identical hash, which is what Nx reported as a flaky task. Each Python project therefore defines a `pyToolchain` named input in its own `project.json`, a `runtime` command that prints the resolved ruff version (or `ruff missing`), and `targetDefaults.lint:py` composes it as `["default", "pyToolchain"]`. Two constraints forced that shape: `{projectRoot}` is **not** interpolated inside a `runtime` input, so the venv path has to be spelled out per project rather than shared in `nx.json`, and runtime commands run from the workspace root, so the path is workspace-relative. Ruff is pinned in both `requirements-dev.txt` so the version cannot drift underneath the pin.
+
+Both Python apps run ruff and pytest through one `scripts/py-tool.sh <app-dir> <ruff|pytest>`, which prefers that app's `.venv` and falls back to whatever is on `PATH`, since CI installs the requirements with plain pip and no venv. It replaced four near-identical per-app scripts that differed only in their directory and their setup hint, which fleet-monitor still supplies through `PY_SETUP`. Because the runner now lives outside `{projectRoot}`, `targetDefaults` for `lint:py` and `test` list `{workspaceRoot}/scripts/py-tool.sh` as an input; without it a change to the runner would not bust either cache. The staged-file pass has its own `scripts/lint-staged-py.sh`, since lint-staged runs a task from the directory of the closest config.
 
 Bun itself is pinned. `packageManager` in the root `package.json` is the source of truth: CI picks it up through `oven-sh/setup-bun` (no `bun-version` input on purpose), `netlify.toml` mirrors it as `BUN_VERSION`, and `scripts/only-bun.mjs` fails any script run under a different Bun, on top of rejecting npm/pnpm/yarn outright. Moving the pin means moving both files in the same commit.
 

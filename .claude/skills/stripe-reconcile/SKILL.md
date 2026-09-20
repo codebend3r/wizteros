@@ -64,19 +64,19 @@ thing and keys off `NAS_MOUNT`.)
    unpaid, incomplete, paused) counts as lapsed. Customer ids the store knows but the
    sweep never saw get an individual `GET /v1/customers/<id>` to prove they still exist.
 2. **Wizarr** `GET /api/users`, collapsed to one entry per person keyed on lowercased
-   email falling back to username, the way `admin._dedupe_members` does for
+   email falling back to username, the way `roster.dedupe_members` does for
    `/admin/members`, plus `GET /api/invitations` so a member whose Plex email differs
    from their Stripe email is matched through their invite code instead of being reported
    twice. That hop needs the store, which is where the invite code lives; `/api/invitations`
    only maps a code to the Plex username that redeemed it.
-   One deliberate divergence from `_dedupe_members`: on expiry this keeps `null`
+   One deliberate divergence from `dedupe_members`: on expiry this keeps `null`
    (unlimited) as the winner, where the admin table keeps the latest non-null date. The
    admin table is displaying a date; this is deciding whether the person can watch, and
    one unlimited record means they can.
 3. **The store** `bridge.db` tarred out of `/volume1/docker/stripe-bridge/stripe-bridge-data`
    over one-shot SSH and read with `sqlite3 -readonly`, into a temp copy deleted in a
    `finally` before the process exits. Columns come from `PRAGMA table_info`, because
-   `tier`, `invited_at` and `subscribed` were all added by migrations (`store._ensure_*`)
+   `tier`, `invited_at` and `subscribed` were all added by migrations (`store._COLUMNS`)
    and an older prod DB legitimately lacks them.
 
 No store (NAS off the LAN, no `sqlite3` locally, `--no-store`) degrades to a two-way

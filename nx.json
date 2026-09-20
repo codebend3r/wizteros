@@ -32,7 +32,7 @@
       "cache": true
     },
     "test": {
-      "inputs": ["default", "^production"],
+      "inputs": ["default", "^production", "{workspaceRoot}/scripts/py-tool.sh"],
       "cache": true
     },
     "lint:ts": {
@@ -44,7 +44,7 @@
       "cache": true
     },
     "lint:py": {
-      "inputs": ["default", "pyToolchain"],
+      "inputs": ["default", "pyToolchain", "{workspaceRoot}/scripts/py-tool.sh"],
       "cache": true
     },
     "format:check": {

@@ -2,7 +2,7 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 
-from stripe_bridge import plex, store, tiers
+from stripe_bridge import invites, plex, store, tiers
 
 log = logging.getLogger("bridge.baseline")
 
@@ -15,7 +15,6 @@ BASELINE_TIERS = tuple(sorted(tiers.TIER_DOWNLOADS))
 # purpose: two generations overlap, so a link shared moments before 03:00 is
 # still good for another day rather than dying underneath whoever received it.
 BASELINE_EXPIRES_DAYS = int(os.environ.get("BASELINE_EXPIRES_DAYS", "2"))
-ACCESS_DURATION = os.environ.get("ACCESS_DURATION", "35")
 
 
 def _parse(value: str | None) -> datetime | None:
@@ -40,17 +39,15 @@ def mint_baseline_invite(*, client, db_path: str, tier: str, libraries: list,
     Recording the code is what licenses a later rotation to reap it, so the
     write happens immediately after the invite exists.
     """
-    access = tiers.resolve_tier_access(tier=tier, libraries=libraries)
-    if not access["library_ids"]:
+    try:
+        access = invites.tier_scope(tier=tier, libraries=libraries,
+                                    context=f"baseline rotation for {tier}")
+    except invites.TierScopeEmpty:
         log.error("baseline: %s resolves to no libraries; refusing to mint", tier)
         return None
     expires_at = (now + timedelta(days=BASELINE_EXPIRES_DAYS)).isoformat()
-    invite = client.create_invite(
-        access["server_ids"], BASELINE_EXPIRES_DAYS, ACCESS_DURATION,
-        unlimited=True,
-        library_ids=access["library_ids"],
-        allow_downloads=access["allow_downloads"],
-    )
+    invite = invites.mint(client=client, tier=tier, scope=access,
+                          expires_in_days=BASELINE_EXPIRES_DAYS, unlimited=True)
     store.record_baseline_invite(
         db_path, code=invite["code"], tier=tier, expires_at=expires_at,
         created_at=now.isoformat())
@@ -160,9 +157,9 @@ def audit_baseline_invites(*, client, db_path: str, now: datetime | None = None)
 
     missing = [tier for tier in BASELINE_TIERS if not live_by_tier.get(tier)]
     stale = [
-        tier for tier, invites in live_by_tier.items()
+        tier for tier, live in live_by_tier.items()
         if all((created := _parse(owned[i["code"]]["created_at"])) is None
-               or now - created > timedelta(hours=24) for i in invites)
+               or now - created > timedelta(hours=24) for i in live)
     ]
     strays = [
         {"code": inv.get("code"), "servers": sorted(inv.get("server_names") or []),

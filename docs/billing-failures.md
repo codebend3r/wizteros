@@ -150,7 +150,7 @@ Plex email, so nothing joins them by string comparison.
 email; whoever redeems it is the person who paid for it. So
 `invitations[].used_by` resolves to a Wizarr record, that record has the Plex
 email, and the customer row that issued the code belongs to that person.
-`_plex_email_by_invite` and `_customer_by_plex_email` in `admin.py` do exactly
+`plex_email_by_invite` and `customer_by_plex_email` in `roster.py` do exactly
 that, and `/admin/members` then emits **one** row instead of two:
 
 - `email` is the Plex address, the one they actually watch with.

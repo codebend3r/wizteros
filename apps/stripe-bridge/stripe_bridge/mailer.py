@@ -9,6 +9,7 @@ import os
 import smtplib
 from email.message import EmailMessage
 
+from stripe_bridge.config import INVITE_DAYS
 from stripe_bridge.email_template import render_invite_email
 
 SMTP_HOST = os.environ["SMTP_HOST"]
@@ -16,7 +17,6 @@ SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
 SMTP_USER = os.environ["SMTP_USER"]
 SMTP_PASS = os.environ["SMTP_PASS"]
 FROM_ADDR = os.environ.get("FROM_ADDR", SMTP_USER)
-INVITE_DAYS = int(os.environ.get("INVITE_EXPIRES_DAYS", "14"))
 log = logging.getLogger("bridge.mailer")
 # Where operational alerts go. Falls back to the admin allowlist so a fresh
 # deploy still reaches someone without another env var to remember.

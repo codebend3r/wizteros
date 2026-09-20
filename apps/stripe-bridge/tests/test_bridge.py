@@ -602,7 +602,8 @@ def test_resolve_falls_back_from_email_to_invite(bridge):
     # email miss (Stripe email != Plex email) -> resolve via the stored invite code
     bridge.client.find_user_ids_by_email.return_value = []
     bridge.client.find_user_ids_by_invite.return_value = [7, 8]
-    ids = bridge.resolve_user_ids(bridge.client, bridge.MAP_DB_PATH, "cus_1", "a@x.com")
+    ids = bridge.resolve_user_ids(client=bridge.client, store_path=bridge.MAP_DB_PATH,
+                                  customer_id="cus_1", email="a@x.com")
     assert ids == [7, 8]
     bridge.client.find_user_ids_by_invite.assert_called_once_with("abc")
 
@@ -623,7 +624,8 @@ def test_resolve_uses_a_linked_address_before_the_invite_code(bridge):
         lambda email: [7, 8] if email == "watches@x.com" else [])
     bridge.client.find_user_ids_by_invite.return_value = [99]
 
-    ids = bridge.resolve_user_ids(bridge.client, bridge.MAP_DB_PATH, "cus_1", "pays@x.com")
+    ids = bridge.resolve_user_ids(client=bridge.client, store_path=bridge.MAP_DB_PATH,
+                                  customer_id="cus_1", email="pays@x.com")
 
     assert ids == [7, 8]
     bridge.client.find_user_ids_by_invite.assert_not_called()
@@ -635,7 +637,8 @@ def test_resolve_still_prefers_the_members_own_email_over_a_link(bridge):
     store.set_member_link(bridge.MAP_DB_PATH, stripe_email="pays@x.com",
                           plex_email="watches@x.com")
     bridge.client.find_user_ids_by_email.return_value = [1]
-    ids = bridge.resolve_user_ids(bridge.client, bridge.MAP_DB_PATH, "cus_1", "pays@x.com")
+    ids = bridge.resolve_user_ids(client=bridge.client, store_path=bridge.MAP_DB_PATH,
+                                  customer_id="cus_1", email="pays@x.com")
     assert ids == [1]
     bridge.client.find_user_ids_by_email.assert_called_once_with("pays@x.com")
 

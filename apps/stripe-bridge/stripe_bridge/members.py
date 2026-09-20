@@ -14,7 +14,7 @@ from stripe_bridge import store
 log = logging.getLogger("bridge")
 
 
-def resolve_user_ids(client, store_path: str, customer_id: str | None,
+def resolve_user_ids(*, client, store_path: str, customer_id: str | None,
                      email: str | None) -> list[int]:
     """All Wizarr record ids for a member (one per server), resolved live.
 
@@ -44,7 +44,8 @@ def resolve_user_ids(client, store_path: str, customer_id: str | None,
 def access_line(*, client, db_path: str, customer_id: str | None, email: str) -> str:
     """One sentence on whether the member can watch right now, for an alert body."""
     try:
-        held = bool(resolve_user_ids(client, db_path, customer_id, email))
+        held = bool(resolve_user_ids(client=client, store_path=db_path,
+                                     customer_id=customer_id, email=email))
     except Exception:
         log.exception("could not read Wizarr records for %s", email)
         return "Whether they hold server access could not be checked (Wizarr unreachable)."
