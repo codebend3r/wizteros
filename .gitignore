@@ -37,3 +37,6 @@ apps/admin-portal/supabase/.temp/
 
 # supabase cli (root)
 supabase/.temp/
+
+# claude code worktrees
+.claude/worktrees/
