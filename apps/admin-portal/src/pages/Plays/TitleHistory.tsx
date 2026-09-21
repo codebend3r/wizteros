@@ -6,14 +6,15 @@ import {
   type TitleHistory as TitleHistoryPage,
   type TitleHistoryRow,
 } from '@/lib/playsApi'
-import { AsyncSection } from '@/pages/Plays/AsyncSection'
-import { Pager } from '@/pages/Plays/Pager'
+import { AsyncSection } from '@/components/AsyncSection/AsyncSection'
+import { PagedTable } from '@/pages/Plays/Pager'
 import { KIND_LABEL } from '@/pages/Plays/playsCopy'
 import {
   episodeLabel,
   formatCount,
   formatDate,
   formatDateTime,
+  pageCountOf,
   qualityLabel,
   titleWithYear,
 } from '@/pages/Plays/playsFormat'
@@ -134,7 +135,7 @@ export const TitleHistory = ({
       }
     >
       {(data) => {
-        const pageCount = Math.max(1, Math.ceil(data.total / data.page_size))
+        const pageCount = pageCountOf({ total: data.total, pageSize: data.page_size })
         const named = data.title.length > 0
         const scoped = scope(data)
         return (
@@ -149,53 +150,49 @@ export const TitleHistory = ({
             {data.rows.length === 0 ? (
               <p className={styles.empty}>Nobody completed it {prose}.</p>
             ) : (
-              <>
-                <Pager page={page} pageCount={pageCount} onPageChange={onPageChange} />
-                <div className={styles.scroller}>
-                  <table className={styles.table}>
-                    <thead>
-                      <tr>
-                        <th scope="col">When</th>
-                        <th scope="col">Viewer</th>
-                        <th scope="col">Item</th>
-                        <th scope="col">Quality</th>
-                        <th scope="col">Server</th>
-                        <th scope="col">Device</th>
-                        <th scope="col">Library</th>
+              <PagedTable page={page} pageCount={pageCount} onPageChange={onPageChange}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th scope="col">When</th>
+                      <th scope="col">Viewer</th>
+                      <th scope="col">Item</th>
+                      <th scope="col">Quality</th>
+                      <th scope="col">Server</th>
+                      <th scope="col">Device</th>
+                      <th scope="col">Library</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.rows.map((row) => (
+                      // the ledger records one completion per item per
+                      // second per server, and two viewers can finish the
+                      // same item in the same second, so the account is
+                      // part of what names a row
+                      <tr
+                        key={`${row.viewed_at}|${row.host}|${row.account_id}|${row.title}|${row.index ?? ''}`}
+                      >
+                        <td className={styles.nowrap}>{formatDateTime(row.viewed_at)}</td>
+                        <td className={styles.primary}>
+                          <button
+                            className={styles.rowButton}
+                            type="button"
+                            onClick={() => onSelectViewer(row.account_id)}
+                            aria-label={`${row.viewer}, view history`}
+                          >
+                            {row.viewer}
+                          </button>
+                        </td>
+                        <td>{item(row)}</td>
+                        <td>{row.kind === 'track' ? '--' : qualityLabel(row.quality)}</td>
+                        <td>{row.host}</td>
+                        <td>{row.device ?? '--'}</td>
+                        <td>{row.library ?? '--'}</td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {data.rows.map((row) => (
-                        // the ledger records one completion per item per
-                        // second per server, and two viewers can finish the
-                        // same item in the same second, so the account is
-                        // part of what names a row
-                        <tr
-                          key={`${row.viewed_at}|${row.host}|${row.account_id}|${row.title}|${row.index ?? ''}`}
-                        >
-                          <td className={styles.nowrap}>{formatDateTime(row.viewed_at)}</td>
-                          <td className={styles.primary}>
-                            <button
-                              className={styles.rowButton}
-                              type="button"
-                              onClick={() => onSelectViewer(row.account_id)}
-                              aria-label={`${row.viewer}, view history`}
-                            >
-                              {row.viewer}
-                            </button>
-                          </td>
-                          <td>{item(row)}</td>
-                          <td>{row.kind === 'track' ? '--' : qualityLabel(row.quality)}</td>
-                          <td>{row.host}</td>
-                          <td>{row.device ?? '--'}</td>
-                          <td>{row.library ?? '--'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <Pager page={page} pageCount={pageCount} onPageChange={onPageChange} />
-              </>
+                    ))}
+                  </tbody>
+                </table>
+              </PagedTable>
             )}
           </div>
         )

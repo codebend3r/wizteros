@@ -29,6 +29,42 @@ def honored_expiry_days(days: int) -> int:
     return next((d for d in EXPIRY_DAYS_HONORED if d >= days), EXPIRY_DAYS_HONORED[-1])
 
 
+# Wizarr marshals an invitation's used_by as fields.String over a User
+# relationship with no __str__, so the live API returns the repr "<User 281>"
+# rather than a name. The number is the redeeming record's id. The username
+# path stays for a Wizarr that one day serializes a real username.
+_USED_BY_REPR = re.compile(r"\s*<User (\d+)>\s*")
+
+
+def redeemer_record(*, invitation: dict, users: list) -> dict | None:
+    """The user record that redeemed `invitation`, or None when nothing resolves.
+
+    Resolves either shape Wizarr can put in used_by: the "<User N>" repr, whose
+    number is the record id, or a plain username. Returns None for an
+    unredeemed invitation and for a redeemer who is no longer on the server,
+    so a dead id is never handed back to a caller that writes with it.
+    """
+    used_by = invitation.get("used_by")
+    if not isinstance(used_by, str) or not used_by:
+        return None
+    match = _USED_BY_REPR.fullmatch(used_by)
+    if match:
+        record_id = int(match.group(1))
+        return next((u for u in users if u.get("id") == record_id), None)
+    return next((u for u in users
+                 if (u.get("username") or "").lower() == used_by.lower()), None)
+
+
+def redeemer_email(*, invitation: dict, users: list) -> str | None:
+    """The lowercased email of the record that redeemed `invitation`.
+
+    None when the invitation is unredeemed, when the redeeming record is gone,
+    or when that record carries no email of its own (a local Plex account).
+    """
+    record = redeemer_record(invitation=invitation, users=users)
+    return ((record or {}).get("email") or "").lower() or None
+
+
 class WizarrClient:
     """Thin wrapper around the Wizarr REST API used by the bridge."""
 
@@ -150,31 +186,22 @@ class WizarrClient:
             timeout=10,
         )
         r.raise_for_status()
-        used_by = None
-        for inv in r.json().get("invitations", []):
-            if inv.get("code") == code:
-                used_by = inv.get("used_by")
-                break
-        if not used_by:
+        invitation = next(
+            (inv for inv in r.json().get("invitations", []) if inv.get("code") == code),
+            None,
+        )
+        if not (invitation or {}).get("used_by"):
             return []
-        # Wizarr marshals used_by as fields.String over a User relationship
-        # with no __str__, so the live API returns the repr "<User 281>". The
-        # number is the redeeming record's id; resolve it to that record's
-        # email so sibling-server records are covered too. The username path
-        # stays for a Wizarr that one day serializes a real username.
-        repr_match = re.fullmatch(r"\s*<User (\d+)>\s*", used_by) if isinstance(used_by, str) else None
-        if not repr_match:
-            return [u["id"] for u in self._users({"username": used_by})]
-        record_id = int(repr_match.group(1))
         users = self._users({})
-        record = next((u for u in users if u.get("id") == record_id), None)
+        record = redeemer_record(invitation=invitation, users=users)
         if record is None:
             return []
-        email = record.get("email")
+        email = (record.get("email") or "").lower()
+        # A record with no email cannot fan out to its sibling servers; the one
+        # record that redeemed the invite is still the right thing to act on.
         if not email:
-            return [record_id]
-        return [u["id"] for u in users
-                if (u.get("email") or "").lower() == email.lower()]
+            return [record["id"]]
+        return [u["id"] for u in users if (u.get("email") or "").lower() == email]
 
     def set_expiry(self, user_id: int, expires_iso: str | None) -> None:
         """Set a record's expiry to an absolute ISO datetime, or None to clear it.

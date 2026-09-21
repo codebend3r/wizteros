@@ -1,7 +1,9 @@
-import { COLLAPSED_CHART_HEIGHT } from '@/pages/Fleet/chartFrame'
+import { COLLAPSED_CHART_HEIGHT } from '@/components/Chart/chartFrame'
+import { Spinner } from '@/components/Spinner/Spinner'
 import { chartCaption, type MetricCopy } from '@/pages/Fleet/metricCopy'
-import styles from '@/pages/Fleet/MetricChartSkeleton.module.scss'
 import { rangeProse } from '@/stores/fleetPrefsStore'
+import chrome from '@/components/Chart/chart.module.scss'
+import styles from '@/pages/Fleet/MetricChartSkeleton.module.scss'
 
 type MetricChartSkeletonProps = {
   readonly copy: MetricCopy
@@ -29,16 +31,16 @@ export const MetricChartSkeleton = ({
   hostNames,
   height = COLLAPSED_CHART_HEIGHT,
 }: MetricChartSkeletonProps) => (
-  <div className={styles.chart}>
-    <p className={styles.subtitle}>{chartCaption({ copy, windowMinutes })}</p>
+  <div className={chrome.chart}>
+    <p className={chrome.caption}>{chartCaption({ copy, windowMinutes })}</p>
 
-    <div className={styles.plotWrap}>
+    <div className={`${chrome.plotWrap} ${chrome.plotWrapPadded}`}>
       {/* the height is the chart's own number, in pixels, because the chart is
         drawn at a pixel height: a stylesheet copy would be a second place for
         it to drift */}
       <div className={styles.plot} style={{ height: `${height}px` }}>
         <p className={styles.status} role="status">
-          <span className={styles.spinner} aria-hidden="true" />
+          <Spinner />
           Loading {copy.reading} readings for the last {rangeProse(windowMinutes)}.
         </p>
       </div>

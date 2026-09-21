@@ -1,6 +1,9 @@
 import logging
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timezone
+from typing import TypedDict
 
 log = logging.getLogger("bridge.store")
 
@@ -87,57 +90,113 @@ CREATE TABLE IF NOT EXISTS member_links (
 """
 
 
-def _conn(path: str) -> sqlite3.Connection:
-    """Open the SQLite file; the Row factory makes rows dict-like (row["email"])."""
+class CustomerRow(TypedDict):
+    """What the bridge knows about one paying address, keyed by lowercased email.
+
+    invite_code, tier, and invited_at may be None. The invited_at stamp lets
+    the admin UI age a pending invite into the "Declined Invite" status once
+    the grace period lapses; subscribed is the confirmed-payment flag that
+    drives "Subscribed Monthly" independently of any Wizarr expiry;
+    invite_code feeds the reconcile sweep's fallback for members whose Plex
+    email differs from the Stripe email. customer_id is the real Stripe id
+    (cus_...) or None; admin-issued placeholder rows are keyed
+    "admin:<email>" and must never leak as a customer id.
+    """
+
+    customer_id: str | None
+    invite_code: str | None
+    tier: str | None
+    invited_at: str | None
+    subscribed: bool
+    payment_state: str | None
+
+
+_CUSTOMER_SELECT = (
+    "SELECT stripe_customer_id, email, invite_code, tier, invited_at, subscribed, "
+    "payment_state FROM customer_map WHERE email IS NOT NULL"
+)
+
+# WHICH row answers for an email must not depend on SQLite's unordered scan. A
+# member who checked out more than once has a row per attempt, all sharing an
+# email. subscribed and invited_at cannot break the tie (both are written
+# across every row for the email), so order by what does vary: a real cus_ row
+# outranks an "admin:<email>" placeholder, and among real ones the newest
+# checkout is the live one. The best row sorts last, and last is what both
+# readers below keep.
+_CUSTOMER_ORDER = (
+    " ORDER BY (CASE WHEN stripe_customer_id LIKE 'cus\\_%' ESCAPE '\\' "
+    "          THEN 1 ELSE 0 END) ASC, rowid ASC"
+)
+
+
+def _customer_row(row: sqlite3.Row) -> CustomerRow:
+    """One customer_map row as the CustomerRow the rest of the bridge reads."""
+    return {
+        "customer_id": (row["stripe_customer_id"]
+                        if (row["stripe_customer_id"] or "").startswith("cus_") else None),
+        "invite_code": row["invite_code"],
+        "tier": row["tier"],
+        "invited_at": row["invited_at"],
+        "subscribed": bool(row["subscribed"]),
+        "payment_state": row["payment_state"],
+    }
+
+
+@contextmanager
+def _db(path: str) -> Iterator[sqlite3.Connection]:
+    """Open the SQLite file for one transaction and close it afterwards.
+
+    The Row factory makes rows dict-like (row["email"]). Entering the
+    connection commits or rolls back the block; closing is separate, and
+    leaving it to garbage collection kept the file handle open for as long as
+    the interpreter felt like it.
+    """
     c = sqlite3.connect(path)
     c.row_factory = sqlite3.Row
-    return c
+    try:
+        with c:
+            yield c
+    finally:
+        c.close()
 
 
-def _ensure_tier_column(c: sqlite3.Connection) -> None:
-    """Add customer_map.tier to a pre-tier prod DB; no-op once present."""
+# Columns added to customer_map after the table first shipped, each ALTERed
+# onto a prod DB that predates it and skipped once present. This tuple is the
+# schema history:
+#
+#   tier           the plan a pre-tier prod DB has no column for.
+#   invited_at     when the current invite went out; a pre-grace-period prod DB
+#                  has no column for it.
+#   subscribed     the durable record of a confirmed Stripe payment - set by
+#                  the webhooks, not inferred from a Wizarr expiry - so a
+#                  member can carry an expiry (a manual access deadline)
+#                  without reading as a paying subscriber.
+#   payment_state  Stripe keeps charging a failed subscription for weeks before
+#                  it gives up and deletes it. Until this column existed the
+#                  bridge heard nothing in between: `subscribed` stayed 1 from
+#                  the last good payment, the member read "Subscribed Monthly"
+#                  in the admin UI, and the first visible sign of trouble was
+#                  their access expiring out from under them. NULL means "no
+#                  problem known"; "past_due" means Stripe has a failed charge
+#                  outstanding.
+_COLUMNS = (
+    ("tier", "TEXT"),
+    ("invited_at", "TEXT"),
+    ("subscribed", "INTEGER NOT NULL DEFAULT 0"),
+    ("payment_state", "TEXT"),
+)
+
+
+def _ensure_column(c: sqlite3.Connection, *, name: str, decl: str) -> None:
+    """Add one customer_map column to a DB that predates it; no-op once present."""
     cols = [row["name"] for row in c.execute("PRAGMA table_info(customer_map)")]
-    if "tier" not in cols:
-        c.execute("ALTER TABLE customer_map ADD COLUMN tier TEXT")
-
-
-def _ensure_invited_at_column(c: sqlite3.Connection) -> None:
-    """Add customer_map.invited_at to a pre-grace-period prod DB; no-op once present."""
-    cols = [row["name"] for row in c.execute("PRAGMA table_info(customer_map)")]
-    if "invited_at" not in cols:
-        c.execute("ALTER TABLE customer_map ADD COLUMN invited_at TEXT")
-
-
-def _ensure_subscribed_column(c: sqlite3.Connection) -> None:
-    """Add customer_map.subscribed to a pre-payment-signal prod DB; no-op once present.
-
-    The flag is the durable record of a confirmed Stripe payment — set by the
-    webhooks, not inferred from a Wizarr expiry — so a member can carry an
-    expiry (a manual access deadline) without reading as a paying subscriber.
-    """
-    cols = [row["name"] for row in c.execute("PRAGMA table_info(customer_map)")]
-    if "subscribed" not in cols:
-        c.execute("ALTER TABLE customer_map ADD COLUMN subscribed INTEGER NOT NULL DEFAULT 0")
-
-
-def _ensure_payment_state_column(c: sqlite3.Connection) -> None:
-    """Add customer_map.payment_state to a pre-dunning prod DB; no-op once present.
-
-    Stripe keeps charging a failed subscription for weeks before it gives up
-    and deletes it. Until this column existed the bridge heard nothing in
-    between: `subscribed` stayed 1 from the last good payment, the member read
-    "Subscribed Monthly" in the admin UI, and the first visible sign of trouble
-    was their access expiring out from under them. NULL means "no problem
-    known"; "past_due" means Stripe has a failed charge outstanding.
-    """
-    cols = [row["name"] for row in c.execute("PRAGMA table_info(customer_map)")]
-    if "payment_state" not in cols:
-        c.execute("ALTER TABLE customer_map ADD COLUMN payment_state TEXT")
+    if name not in cols:
+        c.execute(f"ALTER TABLE customer_map ADD COLUMN {name} {decl}")
 
 
 def init_db(path: str) -> None:
-    """Create the tables if missing and backfill the tier column; safe every startup."""
-    with _conn(path) as c:
+    """Create the tables if missing and backfill the added columns; safe every startup."""
+    with _db(path) as c:
         c.execute(_SCHEMA)
         c.execute(_EVENTS_SCHEMA)
         c.execute(_NOTES_SCHEMA)
@@ -147,13 +206,34 @@ def init_db(path: str) -> None:
         c.execute(_SESSION_INVITES_SCHEMA)
         c.execute(_BASELINE_INVITES_SCHEMA)
         c.execute(_MEMBER_LINKS_SCHEMA)
-        _ensure_tier_column(c)
-        _ensure_invited_at_column(c)
-        _ensure_subscribed_column(c)
-        _ensure_payment_state_column(c)
+        for name, decl in _COLUMNS:
+            _ensure_column(c, name=name, decl=decl)
 
 
 _ADMIN_KEY_PREFIX = "admin:"
+
+
+def _set_by_email_or_placeholder(c: sqlite3.Connection, *, email: str,
+                                 **cols: object) -> None:
+    """Write the columns onto every row for the email, case-insensitively.
+
+    When the email has no row at all, insert one keyed "admin:<email>" instead,
+    so a member an admin touched before Stripe ever heard of them still has a
+    row to be listed from. A later real checkout deletes that placeholder.
+    """
+    assignments = ", ".join(f"{name} = ?" for name in cols)
+    cur = c.execute(
+        f"UPDATE customer_map SET {assignments} WHERE lower(email) = lower(?)",
+        (*cols.values(), email),
+    )
+    if cur.rowcount == 0:
+        names = ", ".join(cols)
+        marks = ", ".join("?" for _ in cols)
+        c.execute(
+            f"INSERT INTO customer_map (stripe_customer_id, email, {names}) "
+            f"VALUES (?, ?, {marks})",
+            (_ADMIN_KEY_PREFIX + email.lower(), email, *cols.values()),
+        )
 
 
 def upsert_pending(path: str, stripe_customer_id: str, email: str,
@@ -166,7 +246,7 @@ def upsert_pending(path: str, stripe_customer_id: str, email: str,
     checkout completed), which is what "Subscribed Monthly" keys off.
     """
     invited_at = datetime.now(timezone.utc).isoformat()
-    with _conn(path) as c:
+    with _db(path) as c:
         # One row per person: a real Stripe mapping supersedes any placeholder
         # left by an admin-issued invite for the same email.
         c.execute(
@@ -199,18 +279,9 @@ def upsert_pending_by_email(path: str, email: str, invite_code: str,
     /manage until they redeem.
     """
     invited_at = datetime.now(timezone.utc).isoformat()
-    with _conn(path) as c:
-        cur = c.execute(
-            "UPDATE customer_map SET invite_code = ?, tier = ?, invited_at = ? "
-            "WHERE lower(email) = lower(?)",
-            (invite_code, tier, invited_at, email),
-        )
-        if cur.rowcount == 0:
-            c.execute(
-                "INSERT INTO customer_map (stripe_customer_id, email, invite_code, tier, invited_at) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (_ADMIN_KEY_PREFIX + email.lower(), email, invite_code, tier, invited_at),
-            )
+    with _db(path) as c:
+        _set_by_email_or_placeholder(c, email=email, invite_code=invite_code, tier=tier,
+                                     invited_at=invited_at)
 
 
 def stamp_invited(path: str, email: str) -> None:
@@ -222,17 +293,8 @@ def stamp_invited(path: str, email: str) -> None:
     the member reads as "Invited" on /admin/members while the grace clock runs.
     """
     invited_at = datetime.now(timezone.utc).isoformat()
-    with _conn(path) as c:
-        cur = c.execute(
-            "UPDATE customer_map SET invited_at = ? WHERE lower(email) = lower(?)",
-            (invited_at, email),
-        )
-        if cur.rowcount == 0:
-            c.execute(
-                "INSERT INTO customer_map (stripe_customer_id, email, invite_code, tier, invited_at) "
-                "VALUES (?, ?, NULL, NULL, ?)",
-                (_ADMIN_KEY_PREFIX + email.lower(), email, invited_at),
-            )
+    with _db(path) as c:
+        _set_by_email_or_placeholder(c, email=email, invited_at=invited_at)
 
 
 def set_tier(path: str, email: str, tier: str) -> None:
@@ -242,17 +304,8 @@ def set_tier(path: str, email: str, tier: str) -> None:
     placeholder when the bridge has no row yet so the member shows up on
     /admin/members with the forced tier.
     """
-    with _conn(path) as c:
-        cur = c.execute(
-            "UPDATE customer_map SET tier = ? WHERE lower(email) = lower(?)",
-            (tier, email),
-        )
-        if cur.rowcount == 0:
-            c.execute(
-                "INSERT INTO customer_map (stripe_customer_id, email, invite_code, tier) "
-                "VALUES (?, ?, NULL, ?)",
-                (_ADMIN_KEY_PREFIX + email.lower(), email, tier),
-            )
+    with _db(path) as c:
+        _set_by_email_or_placeholder(c, email=email, tier=tier)
 
 
 def set_subscribed(path: str, email: str, value: bool) -> None:
@@ -262,7 +315,7 @@ def set_subscribed(path: str, email: str, value: bool) -> None:
     subscription clears it. No-op when the bridge has no row for the email yet
     (a renewal always follows the checkout that created the row).
     """
-    with _conn(path) as c:
+    with _db(path) as c:
         c.execute(
             "UPDATE customer_map SET subscribed = ? WHERE lower(email) = lower(?)",
             (int(value), email),
@@ -286,7 +339,7 @@ def set_payment_state(path: str, email: str, state: str | None) -> None:
     has still paid for the period they are in, so their access is untouched.
     What changes is that the admin UI stops calling them healthy.
     """
-    with _conn(path) as c:
+    with _db(path) as c:
         c.execute(
             "UPDATE customer_map SET payment_state = ? WHERE lower(email) = lower(?)",
             (state, email),
@@ -295,7 +348,7 @@ def set_payment_state(path: str, email: str, state: str | None) -> None:
 
 def is_event_processed(path: str, event_id: str) -> bool:
     """Read-only check for whether event_id has already been marked processed."""
-    with _conn(path) as c:
+    with _db(path) as c:
         row = c.execute(
             "SELECT 1 FROM processed_events WHERE event_id = ?",
             (event_id,),
@@ -305,7 +358,7 @@ def is_event_processed(path: str, event_id: str) -> bool:
 
 def mark_event_processed(path: str, event_id: str) -> bool:
     """Record event_id. Return True if newly recorded, False if already seen."""
-    with _conn(path) as c:
+    with _db(path) as c:
         cur = c.execute(
             "INSERT OR IGNORE INTO processed_events (event_id) VALUES (?)",
             (event_id,),
@@ -319,7 +372,7 @@ def get_session_invite(path: str, session_id: str) -> dict | None:
     Returns {"invite_code", "emailed"} so a retry can tell "invite exists and
     the member has the link" from "invite exists but the email never went out".
     """
-    with _conn(path) as c:
+    with _db(path) as c:
         row = c.execute(
             "SELECT invite_code, emailed FROM session_invites WHERE session_id = ?",
             (session_id,),
@@ -333,7 +386,7 @@ def record_session_invite(path: str, session_id: str, invite_code: str) -> None:
     Written immediately after create_invite so that a crash anywhere later in
     the handler can never cost the member a second invite on Stripe's retry.
     """
-    with _conn(path) as c:
+    with _db(path) as c:
         c.execute(
             """
             INSERT INTO session_invites (session_id, invite_code, emailed) VALUES (?, ?, 0)
@@ -345,7 +398,7 @@ def record_session_invite(path: str, session_id: str, invite_code: str) -> None:
 
 def mark_session_invite_emailed(path: str, session_id: str) -> None:
     """Record that the session's invite link actually reached the member."""
-    with _conn(path) as c:
+    with _db(path) as c:
         c.execute(
             "UPDATE session_invites SET emailed = 1 WHERE session_id = ?",
             (session_id,),
@@ -358,7 +411,7 @@ def customer_ids_for_email(path: str, email: str) -> list[str]:
     Admin-issued placeholder rows (keyed "admin:<email>") are excluded — they
     have no Stripe side to act on.
     """
-    with _conn(path) as c:
+    with _db(path) as c:
         rows = c.execute(
             "SELECT stripe_customer_id FROM customer_map WHERE lower(email) = lower(?)",
             (email,),
@@ -371,7 +424,7 @@ def customer_ids_for_email(path: str, email: str) -> list[str]:
 
 def get_mapping(path: str, stripe_customer_id: str) -> dict | None:
     """Fetch a customer's mapping as a plain dict, or None if unknown."""
-    with _conn(path) as c:
+    with _db(path) as c:
         row = c.execute(
             "SELECT stripe_customer_id, email, invite_code "
             "FROM customer_map WHERE stripe_customer_id = ?",
@@ -382,7 +435,7 @@ def get_mapping(path: str, stripe_customer_id: str) -> dict | None:
 
 def tiers_by_email(path: str) -> dict[str, str]:
     """Map lowercased email -> tier for every mapping that has a tier recorded."""
-    with _conn(path) as c:
+    with _db(path) as c:
         rows = c.execute(
             "SELECT email, tier FROM customer_map WHERE tier IS NOT NULL AND email IS NOT NULL"
         ).fetchall()
@@ -391,7 +444,7 @@ def tiers_by_email(path: str) -> dict[str, str]:
 
 def get_member_notes(path: str, email: str) -> str:
     """The admin's free-form notes for an email; empty string when none saved."""
-    with _conn(path) as c:
+    with _db(path) as c:
         row = c.execute(
             "SELECT notes FROM member_notes WHERE email = ?",
             (email.lower(),),
@@ -401,7 +454,7 @@ def get_member_notes(path: str, email: str) -> str:
 
 def set_member_notes(path: str, email: str, notes: str) -> None:
     """Save (overwrite) the admin's notes for an email; keyed lowercased."""
-    with _conn(path) as c:
+    with _db(path) as c:
         c.execute(
             """
             INSERT INTO member_notes (email, notes) VALUES (?, ?)
@@ -413,7 +466,7 @@ def set_member_notes(path: str, email: str, notes: str) -> None:
 
 def set_member_tag(path: str, email: str, tag: str | None) -> None:
     """Save the manual designation for an email (keyed lowercased); None clears it."""
-    with _conn(path) as c:
+    with _db(path) as c:
         if tag is None:
             c.execute("DELETE FROM member_tags WHERE email = ?", (email.lower(),))
         else:
@@ -428,7 +481,7 @@ def set_member_tag(path: str, email: str, tag: str | None) -> None:
 
 def get_member_tag(path: str, email: str) -> str | None:
     """The member's manual designation ("vip"/"hvu"), or None when untagged."""
-    with _conn(path) as c:
+    with _db(path) as c:
         row = c.execute(
             "SELECT tag FROM member_tags WHERE email = ?",
             (email.lower(),),
@@ -443,7 +496,7 @@ def set_member_link(path: str, *, stripe_email: str, plex_email: str | None) -> 
     the members list as its own row. Both are stored lowercased, the same key
     the customer map and the Wizarr user join use.
     """
-    with _conn(path) as c:
+    with _db(path) as c:
         if plex_email is None:
             c.execute("DELETE FROM member_links WHERE stripe_email = ?",
                       (stripe_email.lower(),))
@@ -459,7 +512,7 @@ def set_member_link(path: str, *, stripe_email: str, plex_email: str | None) -> 
 
 def get_member_link(path: str, stripe_email: str) -> str | None:
     """The Plex address this Stripe address pays for, or None when unlinked."""
-    with _conn(path) as c:
+    with _db(path) as c:
         row = c.execute(
             "SELECT plex_email FROM member_links WHERE stripe_email = ?",
             (stripe_email.lower(),),
@@ -469,21 +522,21 @@ def get_member_link(path: str, stripe_email: str) -> str | None:
 
 def all_member_links(path: str) -> dict[str, str]:
     """Map lowercased Stripe address -> the Plex address it pays for."""
-    with _conn(path) as c:
+    with _db(path) as c:
         rows = c.execute("SELECT stripe_email, plex_email FROM member_links").fetchall()
     return {row["stripe_email"]: row["plex_email"] for row in rows}
 
 
 def all_member_tags(path: str) -> dict[str, str]:
     """Map lowercased email -> manual tag for every tagged member."""
-    with _conn(path) as c:
+    with _db(path) as c:
         rows = c.execute("SELECT email, tag FROM member_tags").fetchall()
     return {row["email"]: row["tag"] for row in rows}
 
 
 def set_member_downloads(path: str, email: str, allow: bool) -> None:
     """Save the admin's downloads override for an email (keyed lowercased)."""
-    with _conn(path) as c:
+    with _db(path) as c:
         c.execute(
             """
             INSERT INTO member_downloads (email, allow) VALUES (?, ?)
@@ -495,7 +548,7 @@ def set_member_downloads(path: str, email: str, allow: bool) -> None:
 
 def get_member_downloads(path: str, email: str) -> bool | None:
     """The downloads override for an email; None when the tier default applies."""
-    with _conn(path) as c:
+    with _db(path) as c:
         row = c.execute(
             "SELECT allow FROM member_downloads WHERE email = ?",
             (email.lower(),),
@@ -505,7 +558,7 @@ def get_member_downloads(path: str, email: str) -> bool | None:
 
 def all_member_downloads(path: str) -> dict[str, bool]:
     """Map lowercased email -> downloads override for every overridden member."""
-    with _conn(path) as c:
+    with _db(path) as c:
         rows = c.execute("SELECT email, allow FROM member_downloads").fetchall()
     return {row["email"]: bool(row["allow"]) for row in rows}
 
@@ -517,7 +570,7 @@ def record_event(path: str, email: str, action: str, detail: str = "") -> None:
     not break or retry the action it records (e.g. a Stripe webhook).
     """
     try:
-        with _conn(path) as c:
+        with _db(path) as c:
             c.execute(
                 "INSERT INTO event_log (at, email, action, detail) VALUES (?, ?, ?, ?)",
                 (datetime.now(timezone.utc).isoformat(), email.lower(), action, detail),
@@ -528,7 +581,7 @@ def record_event(path: str, email: str, action: str, detail: str = "") -> None:
 
 def events_for_email(path: str, email: str, limit: int = 100) -> list[dict]:
     """A member's action history, newest first."""
-    with _conn(path) as c:
+    with _db(path) as c:
         rows = c.execute(
             "SELECT id, at, email, action, detail FROM event_log "
             "WHERE email = ? ORDER BY id DESC LIMIT ?",
@@ -546,7 +599,7 @@ def all_events(path: str, limit: int = 50_000) -> list[dict]:
     grows by a few rows per member per month, so it is decades away, and
     when it is reached the oldest rows (the earliest signups) go first.
     """
-    with _conn(path) as c:
+    with _db(path) as c:
         rows = c.execute(
             "SELECT id, at, email, action, detail FROM event_log ORDER BY id DESC LIMIT ?",
             (limit,),
@@ -561,54 +614,36 @@ def all_customer_tiers(path: str) -> dict[str, str | None]:
     can list every subscriber the bridge knows about — including people who paid
     but have not redeemed their Wizarr invite — not just those with Plex records.
     """
-    with _conn(path) as c:
+    with _db(path) as c:
         rows = c.execute(
             "SELECT email, tier FROM customer_map WHERE email IS NOT NULL"
         ).fetchall()
     return {row["email"].lower(): row["tier"] for row in rows}
 
 
-def all_customer_rows(path: str) -> dict[str, dict]:
-    """Every customer's lowercased email -> {"customer_id", "invite_code", "tier", "invited_at", "subscribed"}.
+def all_customer_rows(path: str) -> dict[str, CustomerRow]:
+    """Every customer's lowercased email -> their CustomerRow.
 
     Exactly one entry per email: when several customer rows share one, the
     newest real Stripe customer wins (see the ordering below).
-
-    invite_code, tier, and invited_at may be None. The invited_at stamp lets
-    the admin UI age a pending invite into the "Declined Invite" status once
-    the grace period lapses; subscribed is the confirmed-payment flag that
-    drives "Subscribed Monthly" independently of any Wizarr expiry;
-    invite_code feeds the reconcile sweep's fallback for members whose Plex
-    email differs from the Stripe email. customer_id is the real Stripe id
-    (cus_...) or None; admin-issued placeholder rows are keyed
-    "admin:<email>" and must never leak as a customer id.
     """
-    # One entry per email, and WHICH row answers must not depend on SQLite's
-    # unordered scan. A member who checked out more than once has a row per
-    # attempt, all sharing an email. subscribed and invited_at cannot break the
-    # tie (both are written across every row for the email), so order by what
-    # does vary: a real cus_ row outranks an "admin:<email>" placeholder, and
-    # among real ones the newest checkout is the live one. Best row sorts last,
-    # which is the one the comprehension below keeps.
-    with _conn(path) as c:
+    with _db(path) as c:
+        rows = c.execute(f"{_CUSTOMER_SELECT}{_CUSTOMER_ORDER}").fetchall()
+    return {row["email"].lower(): _customer_row(row) for row in rows}
+
+
+def customer_row(path: str, email: str) -> CustomerRow | None:
+    """The one customer row for an email, or None when the bridge has none.
+
+    The same row all_customer_rows would answer with, without reading every
+    customer to find out one member's tier.
+    """
+    with _db(path) as c:
         rows = c.execute(
-            "SELECT stripe_customer_id, email, invite_code, tier, invited_at, subscribed, "
-            "payment_state FROM customer_map WHERE email IS NOT NULL "
-            "ORDER BY (CASE WHEN stripe_customer_id LIKE 'cus\\_%' ESCAPE '\\' "
-            "          THEN 1 ELSE 0 END) ASC, rowid ASC"
+            f"{_CUSTOMER_SELECT} AND lower(email) = lower(?){_CUSTOMER_ORDER}",
+            (email,),
         ).fetchall()
-    return {
-        row["email"].lower(): {
-            "customer_id": (row["stripe_customer_id"]
-                            if (row["stripe_customer_id"] or "").startswith("cus_") else None),
-            "invite_code": row["invite_code"],
-            "tier": row["tier"],
-            "invited_at": row["invited_at"],
-            "subscribed": bool(row["subscribed"]),
-            "payment_state": row["payment_state"],
-        }
-        for row in rows
-    }
+    return _customer_row(rows[-1]) if rows else None
 
 
 def record_baseline_invite(path: str, *, code: str, tier: str, expires_at: str,
@@ -621,7 +656,7 @@ def record_baseline_invite(path: str, *, code: str, tier: str, expires_at: str,
     is passed in by the rotation so it shares one clock with expires_at — the
     audit measures rotation liveness as the gap between the two.
     """
-    with _conn(path) as c:
+    with _db(path) as c:
         c.execute(
             "INSERT OR REPLACE INTO baseline_invites (code, tier, created_at, expires_at) "
             "VALUES (?, ?, ?, ?)",
@@ -631,7 +666,7 @@ def record_baseline_invite(path: str, *, code: str, tier: str, expires_at: str,
 
 def all_baseline_invites(path: str) -> list[dict]:
     """Every baseline invite this system has minted, newest first."""
-    with _conn(path) as c:
+    with _db(path) as c:
         rows = c.execute(
             "SELECT code, tier, created_at, expires_at FROM baseline_invites "
             "ORDER BY created_at DESC"
@@ -641,5 +676,5 @@ def all_baseline_invites(path: str) -> list[dict]:
 
 def forget_baseline_invite(path: str, code: str) -> None:
     """Drop a baseline invite's record once it has been deleted upstream."""
-    with _conn(path) as c:
+    with _db(path) as c:
         c.execute("DELETE FROM baseline_invites WHERE code = ?", (code,))

@@ -1,3 +1,4 @@
+import { isRecord } from '@/lib/guards'
 import { supabase } from '@/lib/supabaseClient'
 
 export type PaidTier = 'bronze' | 'silver' | 'gold' | 'youth'
@@ -110,6 +111,12 @@ export type BanResult = {
 
 export class AdminAuthError extends Error {}
 
+/**
+ * The bridge has no record under that key. Its own class because a 404 is an
+ * answer for some callers ("no such member") and a failure for the rest.
+ */
+export class NotFoundError extends Error {}
+
 const ADMIN_API_BASE: string = import.meta.env.VITE_ADMIN_API_BASE ?? ''
 
 // The bridge authorizes admin calls off the Supabase session: send the
@@ -122,9 +129,6 @@ const authHeader = async (): Promise<Record<string, string>> => {
   const token = data.session?.access_token
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null
 
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === 'string')
@@ -337,7 +341,8 @@ const requestJson = async ({ path, method = 'GET', body }: RequestArgs): Promise
   }
   if (!response.ok) {
     const detail = await bodySnippet(response)
-    throw new Error(`Request failed (${response.status})${!!detail ? `: ${detail}` : ''}`)
+    const message = `Request failed (${response.status})${!!detail ? `: ${detail}` : ''}`
+    throw response.status === 404 ? new NotFoundError(message) : new Error(message)
   }
   // With VITE_ADMIN_API_BASE unset every call is relative, so the dev server
   // and Netlify both answer with index.html at 200. Name that instead of
@@ -367,27 +372,22 @@ export const fetchMembers = async (): Promise<Member[]> => {
   return data.map(toMember)
 }
 
+/** The member, or null when the bridge has never heard of that address. */
 export const fetchMember = async ({ email }: { email: string }): Promise<Member | null> => {
-  const response = await fetch(
-    `${ADMIN_API_BASE}/admin/member?email=${encodeURIComponent(email)}`,
-    {
-      headers: await authHeader(),
-    },
-  )
-  if (response.status === 401) {
-    throw new AdminAuthError('Not signed in')
+  try {
+    const data = await requestJson({
+      path: `/admin/member?email=${encodeURIComponent(email)}`,
+    })
+    if (!isMemberPayload(data)) {
+      throw new Error('Unexpected member response')
+    }
+    return toMember(data)
+  } catch (cause) {
+    if (cause instanceof NotFoundError) {
+      return null
+    }
+    throw cause
   }
-  if (response.status === 404) {
-    return null
-  }
-  if (!response.ok) {
-    throw new Error(`Request failed (${response.status})`)
-  }
-  const data: unknown = await response.json()
-  if (!isMemberPayload(data)) {
-    throw new Error('Unexpected member response')
-  }
-  return toMember(data)
 }
 
 export const fetchPlexAccess = async ({ email }: { email: string }): Promise<PlexAccess> => {

@@ -104,6 +104,17 @@ HOSTS = (
 )
 
 
+def plex_hosts() -> tuple[Host, ...]:
+    """The fleet's Plex hosts in config order, which is the order every
+    by-host list keeps: the portal binds one colour per position, the same
+    binding the fleet page uses.
+
+    Read at call time rather than folded into a constant, so a test that
+    swaps HOSTS gets the swapped fleet.
+    """
+    return tuple(host for host in HOSTS if host.plex_url)
+
+
 def db_path() -> str:
     """Where the SQLite file lives. /data is the container's mounted volume."""
     return os.environ.get("FM_DB_PATH", "/data/fleet.db")
@@ -112,6 +123,20 @@ def db_path() -> str:
 def ssh_user() -> str:
     """The unprivileged account that holds the shared key on all five boxes."""
     return os.environ.get("FM_SSH_USER", "crivas")
+
+
+def supabase_url() -> str:
+    """Base url of the Supabase project that issues admin sessions, or empty
+    when none is configured. Read per call rather than at import, so a
+    container that starts before its env is complete recovers on the next
+    request instead of staying broken until it is restarted."""
+    return os.environ.get("FM_SUPABASE_URL", "").rstrip("/")
+
+
+def admin_allowed_emails() -> frozenset[str]:
+    """The admins allowed to read the fleet, lowercased for comparison."""
+    raw = os.environ.get("FM_ADMIN_ALLOWED_EMAILS", "")
+    return frozenset(part.strip().lower() for part in raw.split(",") if part.strip())
 
 
 def plex_token() -> str:

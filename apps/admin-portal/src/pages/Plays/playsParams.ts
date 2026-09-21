@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
+  DEFAULT_PLAY_RANGE,
   isKindFilter,
   isQualityFilter,
   PLAY_RANGES,
@@ -18,7 +19,7 @@ export type PlaysTab = (typeof PLAYS_TABS)[number]
 
 export const DEFAULT_TAB: PlaysTab = 'overview'
 
-export const DEFAULT_RANGE_DAYS = 365
+export const DEFAULT_RANGE_DAYS = DEFAULT_PLAY_RANGE.days
 
 /** Every knob on the page, by the name it takes in the query string.
  *
@@ -63,24 +64,18 @@ const daysFromSlug = (value: string | null): number =>
     press carries. Falls back to the default for a value that is not a range,
     which only a caller bypassing the toolbar could produce. */
 export const rangeSlug = (days: number): string =>
-  PLAY_RANGES.find((range) => range.days === days)?.slug ??
-  PLAY_RANGES.find((range) => range.days === DEFAULT_RANGE_DAYS)?.slug ??
-  'all'
+  PLAY_RANGES.find((range) => range.days === days)?.slug ?? DEFAULT_PLAY_RANGE.slug
 
-const accountFromParam = (value: string | null): number | null => {
+/** A whole number from the address bar, or null for anything that is not one
+    at or above `min`: a fraction, a word, a negative account id. */
+const integerParam = ({ value, min }: { value: string | null; min: number }): number | null => {
   if (value === null || value.length === 0) return null
   const parsed = Number(value)
-  return Number.isInteger(parsed) && parsed >= 0 ? parsed : null
+  return Number.isInteger(parsed) && parsed >= min ? parsed : null
 }
 
 const titleFromParam = (value: string | null): string | null =>
   value === null || value.length === 0 ? null : value
-
-const pageFromParam = (value: string | null): number => {
-  if (value === null) return 1
-  const parsed = Number(value)
-  return Number.isInteger(parsed) && parsed >= 1 ? parsed : 1
-}
 
 /** The url as a view.
  *
@@ -90,7 +85,7 @@ const pageFromParam = (value: string | null): number => {
  * filter it would refuse. A viewer named in the url is the view whatever the
  * tab says, so a link to someone's history always opens on it. */
 export const readPlaysView = (params: URLSearchParams): PlaysView => {
-  const viewer = accountFromParam(params.get(PLAYS_PARAM.viewer))
+  const viewer = integerParam({ value: params.get(PLAYS_PARAM.viewer), min: 0 })
   const tabParam = params.get(PLAYS_PARAM.tab)
   const tab = isTab(tabParam) ? tabParam : DEFAULT_TAB
   const kind = params.get(PLAYS_PARAM.kind)
@@ -105,7 +100,7 @@ export const readPlaysView = (params: URLSearchParams): PlaysView => {
     },
     viewer,
     title: titleFromParam(params.get(PLAYS_PARAM.title)),
-    page: pageFromParam(params.get(PLAYS_PARAM.page)),
+    page: integerParam({ value: params.get(PLAYS_PARAM.page), min: 1 }) ?? 1,
     search: params.get(PLAYS_PARAM.search) ?? '',
   }
 }
@@ -123,24 +118,24 @@ export const writePlaysView = ({
   params: URLSearchParams
   view: PlaysView
 }): URLSearchParams => {
-  const next = new URLSearchParams(params)
-  const put = (name: string, value: string, fallback: string) => {
-    if (value === fallback) {
-      next.delete(name)
-      return
-    }
-    next.set(name, value)
-  }
-  put(PLAYS_PARAM.tab, view.tab, DEFAULT_TAB)
-  put(PLAYS_PARAM.range, rangeSlug(view.filters.days), rangeSlug(DEFAULT_RANGE_DAYS))
-  put(PLAYS_PARAM.kind, view.filters.kind, '')
-  put(PLAYS_PARAM.quality, view.filters.quality, '')
-  put(PLAYS_PARAM.host, view.filters.host, '')
-  put(PLAYS_PARAM.viewer, view.viewer === null ? '' : String(view.viewer), '')
-  put(PLAYS_PARAM.title, view.title ?? '', '')
-  put(PLAYS_PARAM.page, String(view.page), '1')
-  put(PLAYS_PARAM.search, view.search, '')
-  return next
+  const written: readonly (readonly [string, string, string])[] = [
+    [PLAYS_PARAM.tab, view.tab, DEFAULT_TAB],
+    [PLAYS_PARAM.range, rangeSlug(view.filters.days), DEFAULT_PLAY_RANGE.slug],
+    [PLAYS_PARAM.kind, view.filters.kind, ''],
+    [PLAYS_PARAM.quality, view.filters.quality, ''],
+    [PLAYS_PARAM.host, view.filters.host, ''],
+    [PLAYS_PARAM.viewer, view.viewer === null ? '' : String(view.viewer), ''],
+    [PLAYS_PARAM.title, view.title ?? '', ''],
+    [PLAYS_PARAM.page, String(view.page), '1'],
+    [PLAYS_PARAM.search, view.search, ''],
+  ]
+  // Seeded from what is already there and set in place, so a parameter this
+  // page does not own keeps both its value and its position in the address.
+  return written.reduce((next, [name, value, fallback]) => {
+    if (value === fallback) next.delete(name)
+    else next.set(name, value)
+    return next
+  }, new URLSearchParams(params))
 }
 
 type PlaysParams = PlaysView & {

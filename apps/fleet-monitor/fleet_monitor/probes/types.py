@@ -12,12 +12,3 @@ class Sample:
     metric: str
     value: float
     kind: Kind
-
-
-@dataclass(frozen=True, slots=True)
-class ProbeFailure:
-    """A named reason a probe produced nothing. Distinct from an empty result,
-    so 'not collected' is never rendered as healthy."""
-
-    source: str
-    reason: str

@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { fetchPlaysOverview, windowProse, type PlaysFilters } from '@/lib/playsApi'
 import { seriesClass } from '@/pages/Fleet/seriesPalette'
-import { AsyncSection } from '@/pages/Plays/AsyncSection'
+import { AsyncSection } from '@/components/AsyncSection/AsyncSection'
 import { BreakdownList } from '@/pages/Plays/BreakdownList'
 import { KIND_PLURAL, QUALITY_LABEL, TAB_COPY } from '@/pages/Plays/playsCopy'
 import { formatCount, formatHours, titleWithYear } from '@/pages/Plays/playsFormat'

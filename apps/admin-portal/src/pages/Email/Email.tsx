@@ -1,53 +1,24 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { AdminGate, useAdminAuth } from '@/components/AdminGate/AdminGate'
+import { AdminGate } from '@/components/AdminGate/AdminGate'
 import { AdminLayout } from '@/components/AdminLayout/AdminLayout'
 import { CopyEmailsButton } from '@/components/CopyEmailsButton/CopyEmailsButton'
 import { Preloader } from '@/components/Preloader/Preloader'
-import { AdminAuthError, fetchMembers, loadErrorMessage } from '@/lib/adminApi'
+import { loadErrorMessage } from '@/lib/adminApi'
 import { buildMailto, dedupeEmails } from '@/lib/emails'
-import { MEMBERS_QUERY_KEY } from '@/pages/Manage/Manage'
+import { membersQueryOptions } from '@/lib/memberQueries'
 import styles from '@/pages/Email/Email.module.scss'
 
 const EmailInner = () => {
-  const { deauthenticate } = useAdminAuth()
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
   const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set())
 
-  const {
-    data: members,
-    error: loadError,
-    isPending,
-  } = useQuery({
-    queryKey: MEMBERS_QUERY_KEY,
-    queryFn: () => fetchMembers(),
-    staleTime: 5 * 60 * 1000,
-  })
-
-  useEffect(() => {
-    if (loadError instanceof AdminAuthError) {
-      deauthenticate()
-    }
-  }, [loadError, deauthenticate])
+  const { data: members, error: loadError, isPending } = useQuery(membersQueryOptions())
 
   const allEmails = useMemo(
     () => dedupeEmails((members ?? []).map((member) => member.email)),
-    [members],
-  )
-  const nonVipEmails = useMemo(
-    () =>
-      dedupeEmails(
-        (members ?? []).filter((member) => member.tag !== 'vip').map((member) => member.email),
-      ),
-    [members],
-  )
-  const vipEmails = useMemo(
-    () =>
-      dedupeEmails(
-        (members ?? []).filter((member) => member.tag === 'vip').map((member) => member.email),
-      ),
     [members],
   )
   const recipients = useMemo(
@@ -66,8 +37,7 @@ const EmailInner = () => {
     window.location.href = buildMailto({ recipients, subject, body })
   }
 
-  const error =
-    loadError && !(loadError instanceof AdminAuthError) ? loadErrorMessage(loadError) : null
+  const error = loadError ? loadErrorMessage(loadError) : null
 
   return (
     <AdminLayout>
@@ -81,8 +51,18 @@ const EmailInner = () => {
           </div>
           <div className={styles.copyGroup}>
             <CopyEmailsButton emails={allEmails} />
-            <CopyEmailsButton label="Copy non-VIP emails" emails={nonVipEmails} />
-            <CopyEmailsButton label="Copy VIP emails" emails={vipEmails} />
+            <CopyEmailsButton
+              label="Copy non-VIP emails"
+              emails={(members ?? [])
+                .filter((member) => member.tag !== 'vip')
+                .map((member) => member.email)}
+            />
+            <CopyEmailsButton
+              label="Copy VIP emails"
+              emails={(members ?? [])
+                .filter((member) => member.tag === 'vip')
+                .map((member) => member.email)}
+            />
           </div>
         </div>
         {!!error && <p className={styles.error}>{error}</p>}
@@ -92,7 +72,7 @@ const EmailInner = () => {
             <div className={styles.recipients}>
               <div className={styles.recipientsHead}>
                 <span className={styles.count}>{recipients.length} recipients</span>
-                {excluded.size > 0 && (
+                {!!excluded.size && (
                   <button className={styles.reset} type="button" onClick={reset}>
                     Reset
                   </button>

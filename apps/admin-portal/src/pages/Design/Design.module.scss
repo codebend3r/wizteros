@@ -177,6 +177,8 @@
 
 .tagInCode {
   font-family: var(--font-mono);
+  // 9px: below --font-size-xs on purpose, so the IN CODE / PROPOSED marker
+  // reads as an annotation on the row rather than as part of it.
   font-size: 0.5625rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -188,6 +190,8 @@
 
 .tagProposed {
   font-family: var(--font-mono);
+  // 9px: below --font-size-xs on purpose, so the IN CODE / PROPOSED marker
+  // reads as an annotation on the row rather than as part of it.
   font-size: 0.5625rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;

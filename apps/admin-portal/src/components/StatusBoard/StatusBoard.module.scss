@@ -55,6 +55,9 @@
 
 .splitBar {
   display: grid;
+  // Hairlines, deliberately below the token scale: --space-1 would read as a
+  // gap between separate bars rather than a seam inside one, and --radius-md
+  // would round a 0.75rem bar into a lozenge.
   gap: 3px;
   height: 0.75rem;
   border-radius: 2px;
@@ -116,6 +119,8 @@
 .ledgerSwatch {
   width: 0.6em;
   height: 0.6em;
+  // Softens the corner on a 0.6em chip without rounding it; any token radius
+  // would turn it into a dot.
   border-radius: 1px;
 }
 

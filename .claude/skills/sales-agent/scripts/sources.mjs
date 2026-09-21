@@ -209,7 +209,7 @@ const storeRowSortKey = (row) =>
 const mergeStoreRows = ({ rows }) => {
   /**
    * Merge every customer_map row for one email into a single row, following
-   * apps/stripe-bridge/stripe_bridge/admin.py's _dedupe_members merge-by-key
+   * apps/stripe-bridge/stripe_bridge/roster.py's dedupe_members merge-by-key
    * pattern so this tool's cohorts agree with what the operator sees on
    * /manage. One email can hold several Stripe customer ids (a known, valid
    * state, not corrupt data), and the ranking below is sorted (by invited_at,

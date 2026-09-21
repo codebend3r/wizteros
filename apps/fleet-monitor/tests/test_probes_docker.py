@@ -45,16 +45,6 @@ def test_parse_containers_on_empty_payload():
     assert docker.parse_containers([]) == ()
 
 
-def test_parse_containers_defaults_a_null_restart_count_and_started_at():
-    # a key present with a JSON null, not merely absent: entry.get(key) would
-    # return None rather than the default, so this must be coerced, not just
-    # defaulted via .get(key, default)
-    states = docker.parse_containers([_payload(RestartCount=None, StartedAt=None)])
-
-    assert states[0].restart_count == 0
-    assert states[0].started_at == ""
-
-
 def test_parse_containers_skips_an_empty_first_name():
     # an empty name yields metrics shaped `container..up`, which the web's
     # container pattern cannot match, and an incident against `container:host/`:
@@ -111,15 +101,9 @@ def test_samples_round_trip_back_into_containers():
     this with a regex of its own, a wire away from the names it was matching.
     """
     states = (
-        docker.ContainerState(
-            name="plex", running=True, health="healthy", restart_count=0, started_at=""
-        ),
-        docker.ContainerState(
-            name="radarr", running=False, health="none", restart_count=0, started_at=""
-        ),
-        docker.ContainerState(
-            name="sonarr", running=True, health="none", restart_count=0, started_at=""
-        ),
+        docker.ContainerState(name="plex", running=True, health="healthy"),
+        docker.ContainerState(name="radarr", running=False, health="none"),
+        docker.ContainerState(name="sonarr", running=True, health="none"),
     )
     metrics = {sample.metric: sample.value for sample in docker.to_samples(states)}
 

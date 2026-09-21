@@ -12,28 +12,30 @@ from fastapi.middleware.cors import CORSMiddleware
 from stripe_bridge import (
     __version__,
     admin,
+    alerts,
     baseline,
-    members,
-    plex,
+    config,
+    invites,
     store,
     sweeps,
     tiers,
 )
+from stripe_bridge import plex as plex
+from stripe_bridge.config import (
+    ACCESS_DURATION,
+    MAP_DB_PATH,
+    PUBLIC_INVITE_BASE,
+    client,
+)
 from stripe_bridge.mailer import send_alert_email, send_invite_email
-from stripe_bridge.members import resolve_user_ids
-from stripe_bridge.wizarr import WizarrClient
+from stripe_bridge.members import access_line, live_sibling_customer, resolve_user_ids
+
+config.require("STRIPE_API_KEY", "STRIPE_WEBHOOK_SECRET", "WIZARR_BASE_URL",
+               "WIZARR_API_KEY", "PUBLIC_INVITE_BASE")
 
 STRIPE_API_KEY = os.environ["STRIPE_API_KEY"]
 STRIPE_WEBHOOK_SECRET = os.environ["STRIPE_WEBHOOK_SECRET"]
 
-WIZARR_BASE_URL = os.environ["WIZARR_BASE_URL"].rstrip("/")
-WIZARR_API_KEY = os.environ["WIZARR_API_KEY"]
-INVITE_DAYS = int(os.environ.get("INVITE_EXPIRES_DAYS", "14"))
-ACCESS_DURATION = os.environ.get("ACCESS_DURATION", "35")
-
-PUBLIC_INVITE_BASE = os.environ["PUBLIC_INVITE_BASE"].rstrip("/")
-
-MAP_DB_PATH = os.environ.get("MAP_DB_PATH", "/data/bridge.db")
 RECONCILE_INTERVAL_SECONDS = int(os.environ.get("RECONCILE_INTERVAL_SECONDS", "3600"))
 MEMBERS_SNAPSHOT_INTERVAL_SECONDS = int(
     os.environ.get("MEMBERS_SNAPSHOT_INTERVAL_SECONDS", "300"))
@@ -44,52 +46,19 @@ stripe.api_key = STRIPE_API_KEY
 log = logging.getLogger("bridge")
 logging.basicConfig(level=logging.INFO)
 
-client = WizarrClient(WIZARR_BASE_URL, WIZARR_API_KEY)
-store.init_db(MAP_DB_PATH)
-
-
-def _money(amount: object, currency: object) -> str:
-    """Stripe's minor-unit integer as '8.00 CAD'; 'unknown amount' when absent."""
-    if not isinstance(amount, int):
-        return "unknown amount"
-    return f"{amount / 100:.2f} {str(currency or '').upper()}".strip()
-
-
-def _describe_invoice(obj: dict) -> str:
-    """One line of what Stripe knows about a failed invoice, for an alert body."""
-    money = _money(obj.get("amount_due"), obj.get("currency"))
-    attempts = obj.get("attempt_count") or 0
-    retry = obj.get("next_payment_attempt")
-    when = (datetime.fromtimestamp(retry, tz=timezone.utc).date().isoformat()
-            if retry else "none scheduled; Stripe has given up on this invoice")
-    return f"{money}, attempt {attempts}, next retry {when} (invoice {obj.get('id')})"
-
 
 def _signup_alert(*, email: str, tier: str, session: dict, code: str) -> None:
     """Tell the admin who just signed up, with the same link the member got."""
-    send_alert_email(
-        f"{email} signed up for {tier}",
-        f"{email} completed a {tier} checkout for "
-        f"{_money(session.get('amount_total'), session.get('currency'))}.\n\n"
-        f"  session  {session.get('id')}\n"
-        f"  customer {session.get('customer')}\n"
-        f"  invite   {PUBLIC_INVITE_BASE}/j/{code}\n\n"
-        f"The invite link has been emailed to them; they hold no new access "
-        f"until they open it.\n",
-    )
+    send_alert_email(*alerts.signup(email=email, tier=tier, session=session,
+                                    invite_url=f"{PUBLIC_INVITE_BASE}/j/{code}"))
 
 
 def _payment_failed_alert(*, email: str, invoice: dict) -> None:
     """Tell the admin about one declined attempt; each is a day closer to a cancel."""
-    send_alert_email(
-        f"{email} missed a payment",
-        f"Stripe could not charge {email}.\n\n"
-        f"  {_describe_invoice(invoice)}\n\n"
-        f"{members.access_line(client=client, db_path=MAP_DB_PATH,
-                               customer_id=invoice.get('customer'), email=email)}\n\n"
-        f"Access is not changed by a failed charge. If the retries all fail, "
-        f"Stripe cancels the subscription and the bridge disables them then.\n",
-    )
+    send_alert_email(*alerts.payment_failed(
+        email=email, invoice=invoice,
+        access=access_line(client=client, db_path=MAP_DB_PATH,
+                           customer_id=invoice.get("customer"), email=email)))
 
 
 def reconcile_pending_expiries() -> int:
@@ -237,7 +206,13 @@ async def _baseline_loop() -> None:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    """Keep the reconcile sweep, snapshot refresher, and baseline rotation running."""
+    """Open the store, then keep the reconcile, snapshot and rotation loops running.
+
+    The schema is created here rather than at import so that importing this
+    module (a test, a script, a CLI) never has to be able to write the
+    configured database file; the process that serves requests always can.
+    """
+    store.init_db(MAP_DB_PATH)
     tasks = [asyncio.create_task(_reconcile_loop()), asyncio.create_task(_snapshot_loop()),
              asyncio.create_task(_baseline_loop())]
     yield
@@ -308,7 +283,7 @@ def still_subscribed_elsewhere(store_path: str, email: str) -> str | None:
     """
     rows = store.all_customer_rows(store_path)
     others = sorted(linked_addresses(store_path, email) - {email.lower()})
-    return next((a for a in others if (rows.get(a) or {}).get("subscribed")), None)
+    return next((a for a in others if a in rows and rows[a]["subscribed"]), None)
 
 
 def resolve_tier_scope(tier: str, *, context: str) -> dict:
@@ -317,31 +292,15 @@ def resolve_tier_scope(tier: str, *, context: str) -> dict:
     An empty scope means the tier's library names no longer match anything on
     the server (a rename, a disabled library). Issuing the invite anyway would
     hand the member an invite that grants nothing, so the handler raises and
-    leaves the Stripe event unmarked for redelivery.
-
-    Rows Wizarr's cache still names the old way are dropped first: Plex rejects
-    an invite carrying a stale name whole, so the member is better off with
-    everything else than with nothing, and the scope check alerts on the drop.
+    leaves the Stripe event unmarked for redelivery. The log line is what says
+    a webhook was abandoned on purpose, which is why it lives here rather than
+    in invites, whose other callers do not retry.
     """
-    libraries = tiers.without_stale(
-        libraries=client.list_libraries(), live=plex.live_sections_or_none())
-    access = tiers.resolve_tier_access(tier=tier, libraries=libraries)
-    if not access["library_ids"]:
+    try:
+        return invites.live_scope(client=client, tier=tier, context=context)
+    except invites.TierScopeEmpty:
         log.error("no libraries resolved for %s tier %s; aborting for retry", tier, context)
-        raise RuntimeError(f"no libraries resolved for tier {tier!r} on {context!r}")
-    return access
-
-
-def create_tier_invite(*, access: dict, tier: str) -> str:
-    """Create one tier-scoped Wizarr invite and return its code."""
-    code = client.create_invite(
-        access["server_ids"], INVITE_DAYS, ACCESS_DURATION,
-        library_ids=access["library_ids"],
-        allow_downloads=access["allow_downloads"],
-    )["code"]
-    log.info("created %s invite (%d libraries, servers %s)",
-             tier, len(access["library_ids"]), access["server_ids"])
-    return code
+        raise
 
 
 def restore_access(*, email: str, customer_id: str | None, tier: str | None) -> bool:
@@ -358,7 +317,7 @@ def restore_access(*, email: str, customer_id: str | None, tier: str | None) -> 
     """
     resolved = tiers.normalize_tier(tier)
     access = resolve_tier_scope(resolved, context=f"access recovery for {email}")
-    code = create_tier_invite(access=access, tier=resolved)
+    code = invites.mint(client=client, tier=resolved, scope=access)["code"]
     if customer_id:
         store.upsert_pending(MAP_DB_PATH, customer_id, email, code, tier=resolved)
     else:
@@ -367,14 +326,7 @@ def restore_access(*, email: str, customer_id: str | None, tier: str | None) -> 
     log.error("payment for %s found no records; reissued %s invite %s", email, resolved, code)
     store.record_event(MAP_DB_PATH, email, "Access restored",
                        f"paid with no active records; {resolved} invite reissued")
-    send_alert_email(
-        f"reissued access for {email}",
-        f"{email} paid but held no Wizarr records, so the bridge issued a fresh "
-        f"{resolved} invite and emailed it.\n\n"
-        f"They are locked out until they open that link. If they were paying under "
-        f"a second Stripe customer or a different Plex address, reconcile the two "
-        f"before the next renewal.\n",
-    )
+    send_alert_email(*alerts.access_restored(email=email, tier=resolved))
     return True
 
 
@@ -382,6 +334,233 @@ def sync_payment_state(*, email: str | None, status: str) -> None:
     """Mirror a Stripe subscription status onto the member's dunning flag."""
     if email and status in store.PAYMENT_STATE_BY_STATUS:
         store.set_payment_state(MAP_DB_PATH, email, store.PAYMENT_STATE_BY_STATUS[status])
+
+
+def _block_banned_checkout(*, email: str, tier: str, session_id: object,
+                           customer_id: object) -> None:
+    """Record and alert on a banned member's checkout; no invite, no access."""
+    log.error("checkout %s by banned member %s; no invite issued", session_id, email)
+    store.record_event(MAP_DB_PATH, email, "Checkout blocked",
+                       f"banned member paid for {tier}; no invite issued")
+    send_alert_email(*alerts.banned_checkout(email=email, tier=tier, session_id=session_id,
+                                             customer_id=customer_id))
+
+
+def _reset_existing_records(*, email: str, customer_id: object, access: dict) -> None:
+    """Disable the records the new tier no longer covers and re-stamp the rest."""
+    # Existing access survives the invite window: redeeming re-scopes the
+    # share in place on every covered server. Disable-first only when the
+    # new tier leaves a current server uncovered (no per-server unshare),
+    # or when the member is only findable via the invite-code fallback
+    # (Plex email differs, so coverage can't be evaluated — fail closed).
+    records = client.find_users_by_email(email)
+    if records:
+        existing = tiers.stale_record_ids(
+            records=records, covered_servers=access["server_names"])
+    else:
+        existing = resolve_user_ids(client=client, store_path=MAP_DB_PATH,
+                                    customer_id=customer_id, email=email)
+    for uid in existing:
+        client.disable_user(uid)
+    if existing:
+        log.info("reset %d existing record(s) for %s pending re-join",
+                 len(existing), email)
+    # Covered records keep access without ever redeeming the new invite,
+    # so the purchase itself must stamp the paid expiry — otherwise a
+    # shorter pre-signup window (e.g. the 14-day Invited backfill) would
+    # survive the checkout.
+    disabled = set(existing)
+    surviving = [r["id"] for r in records if r["id"] not in disabled]
+    expires = access_expiry_iso()
+    for uid in surviving:
+        client.set_expiry(uid, expires)
+    if surviving:
+        log.info("stamped expiry %s on %d surviving record(s) for %s",
+                 expires, len(surviving), email)
+
+
+def _on_checkout_completed(obj: dict) -> None:
+    """Mint and mail the tier invite for a completed checkout, once per session."""
+    email = (obj.get("customer_details") or {}).get("email") or obj.get("customer_email")
+    customer_id = obj.get("customer")
+    if not email:
+        log.warning("no email on session %s", obj.get("id"))
+        return
+    session_id = obj.get("id")
+    tier = tiers.normalize_tier((obj.get("metadata") or {}).get("tier"))
+    tag = store.get_member_tag(MAP_DB_PATH, email)
+    # A banned address can still reach a Payment Link. Nothing is issued
+    # and nothing is recorded against the customer; the operator is told,
+    # because the charge itself went through and is theirs to refund.
+    if tag == "banned":
+        _block_banned_checkout(email=email, tier=tier, session_id=session_id,
+                               customer_id=customer_id)
+        return
+    access = resolve_tier_scope(tier, context=f"checkout {session_id}")
+    # Everything below the invite can raise (a slow Wizarr write, SMTP), and
+    # a raise leaves the event unmarked so Stripe retries the whole handler.
+    # The session -> invite binding is what stops that retry from minting a
+    # second invite and mailing the member a second link.
+    issued = store.get_session_invite(MAP_DB_PATH, session_id) if session_id else None
+    if issued:
+        code = issued["invite_code"]
+        log.info("checkout %s already has invite %s; reusing it", session_id, code)
+    else:
+        code = invites.mint(client=client, tier=tier, scope=access)["code"]
+        if session_id:
+            store.record_session_invite(MAP_DB_PATH, session_id, code)
+    if customer_id:
+        store.upsert_pending(MAP_DB_PATH, customer_id, email, code, tier=tier)
+    # A completed checkout settles whatever failed on the previous cycle.
+    store.set_payment_state(MAP_DB_PATH, email, None)
+    if not (issued and issued["emailed"]):
+        send_invite_email(email, f"{PUBLIC_INVITE_BASE}/j/{code}")
+        log.info("sent invite to %s", email)
+        if session_id:
+            store.mark_session_invite_emailed(MAP_DB_PATH, session_id)
+        store.record_event(MAP_DB_PATH, email, "Signed up",
+                           f"{tier} tier — invite emailed")
+        # Inside the once-per-checkout branch on purpose: a Stripe retry of
+        # a session whose invite already went out must not mail twice.
+        _signup_alert(email=email, tier=tier, session=obj, code=code)
+    # VIP access is never time-boxed or reshuffled — a VIP's checkout is
+    # just a contribution, so their records stay exactly as they are (no
+    # disable, no expiry stamp).
+    if tag == "vip":
+        log.info("%s is VIP — existing records left untouched", email)
+        return
+    _reset_existing_records(email=email, customer_id=customer_id, access=access)
+
+
+def _on_invoice_paid(obj: dict) -> None:
+    """Extend a renewal's access, or restore it when the payer holds no records."""
+    customer_id = obj["customer"]
+    email = obj.get("customer_email") or customer_email(customer_id)
+    # A paid invoice settles any dunning, including the signup one that is
+    # otherwise skipped below. A retry that finally succeeds is exactly
+    # the case this flag exists to close out.
+    if email:
+        store.set_payment_state(MAP_DB_PATH, email, None)
+    if obj.get("billing_reason") == "subscription_create":
+        log.info("skipping first (signup) invoice for %s", obj.get("customer"))
+        return
+    tag = store.get_member_tag(MAP_DB_PATH, email) if email else None
+    # A ban outranks a payment: nothing is extended and nothing restored.
+    if email and tag == "banned":
+        log.warning("renewal: %s is banned; access not extended", email)
+        store.record_event(MAP_DB_PATH, email, "Payment received",
+                           "banned; access not extended")
+        return
+    if email:
+        store.set_subscribed(MAP_DB_PATH, email, True)
+    # VIP access is never time-boxed — acknowledge the payment, leave expiry alone.
+    if email and tag == "vip":
+        log.info("renewal: %s is VIP — expiry untouched", email)
+        store.record_event(MAP_DB_PATH, email, "Payment received",
+                           "VIP — expiry untouched")
+        return
+    ids = resolve_user_ids(client=client, store_path=MAP_DB_PATH,
+                           customer_id=customer_id, email=email)
+    expires = access_expiry_iso()
+    for uid in ids:
+        client.set_expiry(uid, expires)
+    if ids:
+        log.info("renewed %d record(s) for %s (expires %s)", len(ids), email, expires)
+        store.record_event(MAP_DB_PATH, email, "Payment received",
+                           f"access extended to {expires[:10]}")
+    elif email:
+        # Paid, but nothing to extend. Never leave this as a log line: the
+        # member is locked out right now and only a new invite fixes it.
+        row = store.customer_row(MAP_DB_PATH, email)
+        restore_access(email=email, customer_id=customer_id,
+                       tier=row["tier"] if row else None)
+    else:
+        log.warning("renewal: no wizarr user for %s / %s", customer_id, email)
+
+
+def _on_payment_failed(obj: dict) -> None:
+    """Flag the payer as past due and alert; access is held while Stripe retries."""
+    # Stripe retries a failed charge for weeks before giving up. Access is
+    # deliberately untouched for that whole window (they have paid for the
+    # period they are in), but the admin UI stops calling them healthy, so
+    # a member in dunning is visible before their window runs out.
+    customer_id = obj.get("customer")
+    email = obj.get("customer_email") or customer_email(customer_id)
+    if not email:
+        log.warning("payment failed for %s with no resolvable email", customer_id)
+        return
+    store.set_payment_state(MAP_DB_PATH, email, "past_due")
+    log.warning("payment failed for %s (invoice %s)", email, obj.get("id"))
+    store.record_event(MAP_DB_PATH, email, "Payment failed",
+                       f"Stripe charge declined; access held while it retries "
+                       f"({alerts.describe_invoice(obj)})")
+    _payment_failed_alert(email=email, invoice=obj)
+
+
+def _on_subscription_updated(obj: dict) -> None:
+    """Mirror the subscription's new status onto the member's dunning flag."""
+    customer_id = obj.get("customer")
+    status = obj.get("status") or ""
+    m = store.get_mapping(MAP_DB_PATH, customer_id) if customer_id else None
+    email = (m and m["email"]) or (customer_email(customer_id) if customer_id else None)
+    sync_payment_state(email=email, status=status)
+    log.info("subscription for %s is %s", email, status)
+
+
+def _on_subscription_deleted(obj: dict) -> None:
+    """Disable the member's records, unless somebody still pays for them."""
+    customer_id = obj["customer"]
+    m = store.get_mapping(MAP_DB_PATH, customer_id)
+    email = (m and m["email"]) or customer_email(customer_id)
+    # This customer really did stop, but the person behind it may not
+    # have: a second customer at the same address (they re-checked out
+    # from scratch), or a linked second address (they pay under another
+    # email). subscribed and payment_state are per email, so they only
+    # move when nothing of theirs at this address still pays.
+    sibling = (live_sibling_customer(
+        db_path=MAP_DB_PATH, email=email, dead_customer=customer_id) if email else None)
+    if email and sibling:
+        store.set_payment_state(MAP_DB_PATH, email, None)
+    elif email:
+        store.set_subscribed(MAP_DB_PATH, email, False)
+    # A VIP's access is a standing grant, not something the subscription
+    # buys. The renewal handler already leaves their expiry alone and the
+    # sweep skips them; disabling them here undid both.
+    if email and store.get_member_tag(MAP_DB_PATH, email) == "vip":
+        log.info("cancel: %s is VIP; access left alone", email)
+        store.record_event(MAP_DB_PATH, email, "Canceled",
+                           "subscription ended; access kept, VIP")
+        return
+    paying = sibling or (still_subscribed_elsewhere(MAP_DB_PATH, email) if email else None)
+    if paying:
+        log.info("cancel: %s still pays under %s; access left alone", email, paying)
+        store.record_event(
+            MAP_DB_PATH, email, "Canceled",
+            f"subscription ended; access kept, still paying under {paying}")
+        return
+    ids = resolve_user_ids(client=client, store_path=MAP_DB_PATH,
+                           customer_id=customer_id, email=email)
+    for uid in ids:
+        client.disable_user(uid)
+    if ids:
+        log.info("disabled %d record(s) for %s", len(ids), email)
+    else:
+        log.info("cancel: no wizarr user for %s / %s", customer_id, email)
+    if email:
+        store.record_event(MAP_DB_PATH, email, "Canceled",
+                           f"subscription ended — {len(ids)} server record(s) disabled")
+
+
+# Every event type the bridge acts on. A type missing from the table falls
+# through handle_event untouched and is still marked processed, so Stripe
+# stops redelivering it.
+_HANDLERS = {
+    "checkout.session.completed": _on_checkout_completed,
+    "invoice.paid": _on_invoice_paid,
+    "invoice.payment_failed": _on_payment_failed,
+    "customer.subscription.updated": _on_subscription_updated,
+    "customer.subscription.deleted": _on_subscription_deleted,
+}
 
 
 def handle_event(event: dict) -> None:
@@ -402,205 +581,12 @@ def handle_event(event: dict) -> None:
     obj = event["data"]["object"]
     log.info("stripe event: %s", etype)
 
-    _dispatch(etype, obj)
+    handler = _HANDLERS.get(etype)
+    if handler:
+        handler(obj)
 
     if event_id:
         store.mark_event_processed(MAP_DB_PATH, event_id)
-
-
-def _dispatch(etype: str, obj: dict) -> None:
-    """Run the type-specific handling for one Stripe event's data object."""
-    if etype == "checkout.session.completed":
-        email = (obj.get("customer_details") or {}).get("email") or obj.get("customer_email")
-        customer_id = obj.get("customer")
-        if not email:
-            log.warning("no email on session %s", obj.get("id"))
-            return
-        session_id = obj.get("id")
-        tier = tiers.normalize_tier((obj.get("metadata") or {}).get("tier"))
-        # A banned address can still reach a Payment Link. Nothing is issued
-        # and nothing is recorded against the customer; the operator is told,
-        # because the charge itself went through and is theirs to refund.
-        if store.get_member_tag(MAP_DB_PATH, email) == "banned":
-            log.error("checkout %s by banned member %s; no invite issued", session_id, email)
-            store.record_event(MAP_DB_PATH, email, "Checkout blocked",
-                               f"banned member paid for {tier}; no invite issued")
-            send_alert_email(
-                f"banned member {email} checked out",
-                f"{email} is banned but completed a {tier} checkout "
-                f"(session {session_id}, customer {customer_id}).\n\n"
-                f"No invite was issued and no access was granted. Refund or "
-                f"cancel the subscription in Stripe.\n",
-            )
-            return
-        access = resolve_tier_scope(tier, context=f"checkout {session_id}")
-        # Everything below the invite can raise (a slow Wizarr write, SMTP), and
-        # a raise leaves the event unmarked so Stripe retries the whole handler.
-        # The session -> invite binding is what stops that retry from minting a
-        # second invite and mailing the member a second link.
-        issued = store.get_session_invite(MAP_DB_PATH, session_id) if session_id else None
-        if issued:
-            code = issued["invite_code"]
-            log.info("checkout %s already has invite %s; reusing it", session_id, code)
-        else:
-            code = create_tier_invite(access=access, tier=tier)
-            if session_id:
-                store.record_session_invite(MAP_DB_PATH, session_id, code)
-        if customer_id:
-            store.upsert_pending(MAP_DB_PATH, customer_id, email, code, tier=tier)
-        # A completed checkout settles whatever failed on the previous cycle.
-        store.set_payment_state(MAP_DB_PATH, email, None)
-        if not (issued and issued["emailed"]):
-            send_invite_email(email, f"{PUBLIC_INVITE_BASE}/j/{code}")
-            log.info("sent invite to %s", email)
-            if session_id:
-                store.mark_session_invite_emailed(MAP_DB_PATH, session_id)
-            store.record_event(MAP_DB_PATH, email, "Signed up",
-                               f"{tier} tier — invite emailed")
-            # Inside the once-per-checkout branch on purpose: a Stripe retry of
-            # a session whose invite already went out must not mail twice.
-            _signup_alert(email=email, tier=tier, session=obj, code=code)
-        # VIP access is never time-boxed or reshuffled — a VIP's checkout is
-        # just a contribution, so their records stay exactly as they are (no
-        # disable, no expiry stamp).
-        if store.get_member_tag(MAP_DB_PATH, email) == "vip":
-            log.info("%s is VIP — existing records left untouched", email)
-            return
-        # Existing access survives the invite window: redeeming re-scopes the
-        # share in place on every covered server. Disable-first only when the
-        # new tier leaves a current server uncovered (no per-server unshare),
-        # or when the member is only findable via the invite-code fallback
-        # (Plex email differs, so coverage can't be evaluated — fail closed).
-        records = client.find_users_by_email(email)
-        if records:
-            existing = tiers.stale_record_ids(
-                records=records, covered_servers=access["server_names"])
-        else:
-            existing = resolve_user_ids(client, MAP_DB_PATH, customer_id, email)
-        for uid in existing:
-            client.disable_user(uid)
-        if existing:
-            log.info("reset %d existing record(s) for %s pending re-join",
-                     len(existing), email)
-        # Covered records keep access without ever redeeming the new invite,
-        # so the purchase itself must stamp the paid expiry — otherwise a
-        # shorter pre-signup window (e.g. the 14-day Invited backfill) would
-        # survive the checkout.
-        disabled = set(existing)
-        surviving = [r["id"] for r in records if r["id"] not in disabled]
-        expires = access_expiry_iso()
-        for uid in surviving:
-            client.set_expiry(uid, expires)
-        if surviving:
-            log.info("stamped expiry %s on %d surviving record(s) for %s",
-                     expires, len(surviving), email)
-
-    elif etype == "invoice.paid":
-        customer_id = obj["customer"]
-        email = obj.get("customer_email") or customer_email(customer_id)
-        # A paid invoice settles any dunning, including the signup one that is
-        # otherwise skipped below. A retry that finally succeeds is exactly
-        # the case this flag exists to close out.
-        if email:
-            store.set_payment_state(MAP_DB_PATH, email, None)
-        if obj.get("billing_reason") == "subscription_create":
-            log.info("skipping first (signup) invoice for %s", obj.get("customer"))
-            return
-        # A ban outranks a payment: nothing is extended and nothing restored.
-        if email and store.get_member_tag(MAP_DB_PATH, email) == "banned":
-            log.warning("renewal: %s is banned; access not extended", email)
-            store.record_event(MAP_DB_PATH, email, "Payment received",
-                               "banned; access not extended")
-            return
-        if email:
-            store.set_subscribed(MAP_DB_PATH, email, True)
-        # VIP access is never time-boxed — acknowledge the payment, leave expiry alone.
-        if email and store.get_member_tag(MAP_DB_PATH, email) == "vip":
-            log.info("renewal: %s is VIP — expiry untouched", email)
-            store.record_event(MAP_DB_PATH, email, "Payment received",
-                               "VIP — expiry untouched")
-            return
-        ids = resolve_user_ids(client, MAP_DB_PATH, customer_id, email)
-        expires = access_expiry_iso()
-        for uid in ids:
-            client.set_expiry(uid, expires)
-        if ids:
-            log.info("renewed %d record(s) for %s (expires %s)", len(ids), email, expires)
-            store.record_event(MAP_DB_PATH, email, "Payment received",
-                               f"access extended to {expires[:10]}")
-        elif email:
-            # Paid, but nothing to extend. Never leave this as a log line: the
-            # member is locked out right now and only a new invite fixes it.
-            row = store.all_customer_rows(MAP_DB_PATH).get(email.lower()) or {}
-            restore_access(email=email, customer_id=customer_id, tier=row.get("tier"))
-        else:
-            log.warning("renewal: no wizarr user for %s / %s", customer_id, email)
-
-    elif etype == "invoice.payment_failed":
-        # Stripe retries a failed charge for weeks before giving up. Access is
-        # deliberately untouched for that whole window (they have paid for the
-        # period they are in), but the admin UI stops calling them healthy, so
-        # a member in dunning is visible before their window runs out.
-        customer_id = obj.get("customer")
-        email = obj.get("customer_email") or customer_email(customer_id)
-        if not email:
-            log.warning("payment failed for %s with no resolvable email", customer_id)
-            return
-        store.set_payment_state(MAP_DB_PATH, email, "past_due")
-        log.warning("payment failed for %s (invoice %s)", email, obj.get("id"))
-        store.record_event(MAP_DB_PATH, email, "Payment failed",
-                           f"Stripe charge declined; access held while it retries "
-                           f"({_describe_invoice(obj)})")
-        _payment_failed_alert(email=email, invoice=obj)
-
-    elif etype == "customer.subscription.updated":
-        customer_id = obj.get("customer")
-        status = obj.get("status") or ""
-        m = store.get_mapping(MAP_DB_PATH, customer_id) if customer_id else None
-        email = (m and m["email"]) or (customer_email(customer_id) if customer_id else None)
-        sync_payment_state(email=email, status=status)
-        log.info("subscription for %s is %s", email, status)
-
-    elif etype == "customer.subscription.deleted":
-        customer_id = obj["customer"]
-        m = store.get_mapping(MAP_DB_PATH, customer_id)
-        email = (m and m["email"]) or customer_email(customer_id)
-        # This customer really did stop, but the person behind it may not
-        # have: a second customer at the same address (they re-checked out
-        # from scratch), or a linked second address (they pay under another
-        # email). subscribed and payment_state are per email, so they only
-        # move when nothing of theirs at this address still pays.
-        sibling = (members.live_sibling_customer(
-            db_path=MAP_DB_PATH, email=email, dead_customer=customer_id) if email else None)
-        if email and sibling:
-            store.set_payment_state(MAP_DB_PATH, email, None)
-        elif email:
-            store.set_subscribed(MAP_DB_PATH, email, False)
-        # A VIP's access is a standing grant, not something the subscription
-        # buys. The renewal handler already leaves their expiry alone and the
-        # sweep skips them; disabling them here undid both.
-        if email and store.get_member_tag(MAP_DB_PATH, email) == "vip":
-            log.info("cancel: %s is VIP; access left alone", email)
-            store.record_event(MAP_DB_PATH, email, "Canceled",
-                               "subscription ended; access kept, VIP")
-            return
-        paying = sibling or (still_subscribed_elsewhere(MAP_DB_PATH, email) if email else None)
-        if paying:
-            log.info("cancel: %s still pays under %s; access left alone", email, paying)
-            store.record_event(
-                MAP_DB_PATH, email, "Canceled",
-                f"subscription ended; access kept, still paying under {paying}")
-            return
-        ids = resolve_user_ids(client, MAP_DB_PATH, customer_id, email)
-        for uid in ids:
-            client.disable_user(uid)
-        if ids:
-            log.info("disabled %d record(s) for %s", len(ids), email)
-        else:
-            log.info("cancel: no wizarr user for %s / %s", customer_id, email)
-        if email:
-            store.record_event(MAP_DB_PATH, email, "Canceled",
-                               f"subscription ended — {len(ids)} server record(s) disabled")
 
 
 # Public URL is /stripe/webhook. Tailscale Funnel mounts the bridge with

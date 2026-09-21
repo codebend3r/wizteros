@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { fetchPlayUsers, windowProse, type PlaysFilters } from '@/lib/playsApi'
-import { AsyncSection } from '@/pages/Plays/AsyncSection'
+import { AsyncSection } from '@/components/AsyncSection/AsyncSection'
 import { TAB_COPY } from '@/pages/Plays/playsCopy'
 import { formatCount, formatDateTime, listHosts } from '@/pages/Plays/playsFormat'
 import { REFETCH_MS, usersKey } from '@/pages/Plays/playsQueries'

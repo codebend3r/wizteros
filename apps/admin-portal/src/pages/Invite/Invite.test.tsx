@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { createQueryClient } from '@/lib/queryClient'
 import { afterEach, beforeEach, expect, test, vi } from '@/test/vi'
 import { Invite } from '@/pages/Invite/Invite'
 import { AdminAuthError, type InviteResult, type Member } from '@/lib/adminApi'
@@ -17,9 +18,7 @@ vi.mock('@/lib/adminApi', () => ({
 
 const { fetchMembers, reissueInvite } = await import('@/lib/adminApi')
 
-const renderInvite = (
-  queryClient: QueryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
-) => ({
+const renderInvite = (queryClient: QueryClient = createQueryClient()) => ({
   queryClient,
   ...render(
     <QueryClientProvider client={queryClient}>
@@ -115,7 +114,7 @@ test('clears the previous result notice when the email changes', async () => {
 
 test('primes the members cache with a pending row after a successful send', async () => {
   vi.mocked(reissueInvite).mockResolvedValue(gold)
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const queryClient = createQueryClient()
   queryClient.setQueryData(['members'], [])
   renderInvite(queryClient)
   await userEvent.type(screen.getByLabelText('Email address'), 'new@x.com')

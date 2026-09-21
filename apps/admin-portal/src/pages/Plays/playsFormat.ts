@@ -90,3 +90,9 @@ export const titleWithYear = ({ title, year }: { title: string; year: number | n
 
 export const listHosts = (hosts: readonly string[]): string =>
   hosts.length === 0 ? '--' : hosts.join(', ')
+
+/** How many pages a total splits into at one page size. Never below one: a
+    list with nothing in it is still on page one of one, and "page 1 of 0"
+    reads as a broken pager rather than as an empty list. */
+export const pageCountOf = ({ total, pageSize }: { total: number; pageSize: number }): number =>
+  Math.max(1, Math.ceil(total / pageSize))

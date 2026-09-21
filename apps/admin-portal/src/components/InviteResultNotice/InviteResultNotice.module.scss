@@ -1,0 +1,10 @@
+.notice {
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  // `anywhere` is what shrinks min-content, so a long invite link wraps inside
+  // the notice instead of widening the page.
+  overflow-wrap: anywhere;
+  max-width: 32rem;
+}

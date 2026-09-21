@@ -13,12 +13,13 @@ frequency is a load proxy and not a utilization percent - none of that is
 knowable a wire away.
 """
 
+import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Literal
 
-from fleet_monitor import cpu, store
+from fleet_monitor import config, cpu, store
 from fleet_monitor.store import Series
 
 # A series carries one point per collector tick, so a long window is thousands
@@ -206,3 +207,75 @@ def history(
         else store.metric_series(connection, target, family.metrics, since=since)
     )
     return downsample(family.derive(raw), since=since, until=until)
+
+
+@dataclass(frozen=True, slots=True)
+class MetricPoint:
+    at: datetime
+    value: float
+
+
+@dataclass(frozen=True, slots=True)
+class MetricHostSeries:
+    name: str
+    points: list[MetricPoint]
+
+
+@dataclass(frozen=True, slots=True)
+class MetricHistoryView:
+    """One metric family's history for the whole fleet.
+
+    `kind` and `unit` travel with the numbers because the chart that draws them
+    is one component for all four: without the unit it cannot know whether 40
+    means 40 percent of a fixed scale or 40 bytes a second on a scale it has to
+    derive from the data.
+    """
+
+    kind: str
+    unit: str
+    window_minutes: int
+    hosts: list[MetricHostSeries]
+
+
+def fleet_history(
+    connection: sqlite3.Connection, *, kind: str, minutes: int, now: datetime
+) -> MetricHistoryView:
+    """One metric family's history for every configured host.
+
+    Hosts arrive in config.HOSTS order, the same order `/fleet` uses. The
+    portal binds one color per host by array position - on the cards from
+    `/fleet`, on the charts from here - so the responses must never disagree
+    about position.
+
+    A host with no readings in the window has an empty series, not zeros: the
+    chart renders that host as a legend entry with no line, which is the honest
+    rendering of "not observed". Three of the five boxes have no render node at
+    all, so on the GPU chart that is the normal case rather than a fault.
+
+    A window wide enough to hold more ticks than a chart can draw comes back
+    bucketed - see downsample. Every host is bucketed against the same window,
+    so the thinning cannot put two hosts on different time bases.
+    """
+    family = FAMILIES[kind]
+    since = now - timedelta(minutes=minutes)
+    return MetricHistoryView(
+        kind=family.kind,
+        unit=family.unit,
+        window_minutes=minutes,
+        hosts=[
+            MetricHostSeries(
+                name=host.name,
+                points=[
+                    MetricPoint(at=at, value=value)
+                    for at, value in history(
+                        connection,
+                        family=family,
+                        target=f"host:{host.name}",
+                        since=since,
+                        until=now,
+                    )
+                ],
+            )
+            for host in config.HOSTS
+        ],
+    )

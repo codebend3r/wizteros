@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { MetricKind } from '@/lib/fleetApi'
+import { isRecord } from '@/lib/guards'
 
 /** The polling cadences the fleet page offers, slowest reachable by keyboard
     in five steps. Display latency only: readings still arrive at the
@@ -50,9 +51,6 @@ const isRange = (value: unknown): value is number =>
 
 const isChartKind = (value: unknown): value is MetricKind =>
   CHART_KINDS.some((kind) => kind === value)
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null
 
 type FleetPrefsState = {
   readonly updateIntervalMs: number

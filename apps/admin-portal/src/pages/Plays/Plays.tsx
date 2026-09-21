@@ -2,7 +2,8 @@ import { useQuery } from '@tanstack/react-query'
 import { AdminGate } from '@/components/AdminGate/AdminGate'
 import { AdminLayout } from '@/components/AdminLayout/AdminLayout'
 import { fetchPlaySync, type PlaySyncServer } from '@/lib/playsApi'
-import { errorMessage } from '@/pages/Plays/AsyncSection'
+import { errorMessage } from '@/components/AsyncSection/AsyncSection'
+import { ViewTabs } from '@/components/ViewTabs/ViewTabs'
 import { NeverPlayedPanel } from '@/pages/Plays/NeverPlayedPanel'
 import { OverviewPanel } from '@/pages/Plays/OverviewPanel'
 import { PlaysFilters as FilterBar } from '@/pages/Plays/PlaysFilters'
@@ -14,7 +15,6 @@ import { TitleHistory } from '@/pages/Plays/TitleHistory'
 import { TopTitlesPanel } from '@/pages/Plays/TopTitlesPanel'
 import { ViewerHistory } from '@/pages/Plays/ViewerHistory'
 import { ViewersPanel } from '@/pages/Plays/ViewersPanel'
-import { ViewTabs } from '@/pages/Plays/ViewTabs'
 import styles from '@/pages/Plays/Plays.module.scss'
 
 const TABS = PLAYS_TABS.map((id) => ({ id, title: TAB_COPY[id].title, icon: TAB_COPY[id].icon }))
@@ -183,7 +183,7 @@ const PlaysInner = () => {
           )}
           {!!sync.isError && (
             <p className={styles.alert} role="alert">
-              {`${errorMessage(sync.error)} Sync status is unavailable.`}
+              {`${errorMessage({ error: sync.error })} Sync status is unavailable.`}
             </p>
           )}
           {!!sync.data && <SyncLine servers={sync.data.servers} readAt={sync.dataUpdatedAt} />}

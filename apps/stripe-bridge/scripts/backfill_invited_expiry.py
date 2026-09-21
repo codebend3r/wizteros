@@ -35,14 +35,12 @@ from datetime import datetime, timedelta, timezone
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from stripe_bridge import store
+from stripe_bridge.config import MAP_DB_PATH, WIZARR_API_KEY, WIZARR_BASE_URL
 from stripe_bridge.wizarr import WizarrClient
 
 log = logging.getLogger("bridge.backfill")
 
 EXPIRY_DAYS = int(os.environ.get("BACKFILL_EXPIRY_DAYS", "14"))
-MAP_DB_PATH = os.environ.get("MAP_DB_PATH", "/data/bridge.db")
-WIZARR_BASE_URL = os.environ.get("WIZARR_BASE_URL", "").rstrip("/")
-WIZARR_API_KEY = os.environ.get("WIZARR_API_KEY", "")
 
 # The 44 non-VIP members (the full Wizarr roster minus the 5 VIP emails).
 # Auditable — remove any address here to leave that member untouched.
@@ -108,7 +106,7 @@ def run(dry_run: bool) -> None:
             log.info("skip %s — VIP (never time-boxed)", email)
             skipped += 1
             continue
-        if rows.get(key, {}).get("subscribed"):
+        if key in rows and rows[key]["subscribed"]:
             log.info("skip %s — already subscribed (confirmed payment)", email)
             skipped += 1
             continue

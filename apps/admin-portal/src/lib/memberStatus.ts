@@ -1,4 +1,4 @@
-import type { Member } from '@/lib/adminApi'
+import type { Member, MemberEvent, MemberTag } from '@/lib/adminApi'
 import { DAY_MS } from '@/lib/dates'
 import { INVITE_GRACE_DAYS } from '@/lib/inviteRules'
 
@@ -25,6 +25,20 @@ export const STATUS_EMOJI: Record<MemberStatus, string> = {
   Uninvited: '⚪',
   VIP: '💎',
   Banned: '⛔',
+}
+
+// Every status there is, in the order above. Derived from the record so a new
+// status cannot be added to the model and left out of what documents it.
+export const MEMBER_STATUSES: ReadonlyArray<MemberStatus> = Object.keys(STATUS_EMOJI).filter(
+  (key): key is MemberStatus => key in STATUS_EMOJI,
+)
+
+// The admin's manual labels. Like the statuses, each is emoji plus text so the
+// tag never rides on a glyph alone.
+export const TAG_LABELS: Record<MemberTag, string> = {
+  vip: '💎 VIP',
+  hvu: '⭐ HVU',
+  banned: '⛔ Banned',
 }
 
 /**
@@ -70,6 +84,30 @@ export const deriveStatus = ({ member }: { member: Member }): MemberStatus => {
     return Date.now() - invitedAt > GRACE_MS ? 'Declined Invite' : 'Invited'
   }
   return 'Uninvited'
+}
+
+/**
+ * The member's history as the page shows it: the recorded events, behind the
+ * expiry they quietly passed.
+ *
+ * Nothing writes a "membership expired" event, because the bridge cannot
+ * observe a date going by. It is derived here from the same rule that makes
+ * the status read Expired Member.
+ */
+export const deriveHistory = ({
+  member,
+  events,
+}: {
+  member: Member
+  events: ReadonlyArray<MemberEvent>
+}): MemberEvent[] => {
+  const expiredAt = deriveStatus({ member }) === 'Expired Member' ? member.expires : null
+  return expiredAt
+    ? [
+        { id: -1, at: expiredAt, email: member.email, action: 'Membership expired', detail: '' },
+        ...events,
+      ]
+    : [...events]
 }
 
 export type MemberProblems = {

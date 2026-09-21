@@ -147,14 +147,6 @@
   }
 }
 
-.resultNotice {
-  padding: var(--space-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  word-break: break-all;
-}
-
 .viewMember {
   color: var(--color-accent);
   white-space: nowrap;
@@ -162,18 +154,6 @@
 
 .error {
   color: var(--color-youth);
-}
-
-.confirmDetails {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: var(--space-1) var(--space-3);
-  margin: 0;
-}
-
-.confirmNote {
-  color: var(--color-muted);
-  font-size: var(--font-size-sm);
 }
 
 .blockedNotice {

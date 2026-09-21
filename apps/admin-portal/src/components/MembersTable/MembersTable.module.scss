@@ -10,6 +10,8 @@
   // macOS auto-hides overlay scrollbars, which made the overflowing Action
   // column look deleted. Force a visible track so overflow is obvious.
   &::-webkit-scrollbar {
+    // The scrollbar's own furniture, not layout: 8px is the platform track
+    // height, and a spacing token here would make it a bar of its own.
     height: 8px;
   }
 
@@ -134,64 +136,11 @@
   white-space: nowrap;
 }
 
-.invite {
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--color-text);
-  cursor: pointer;
-
-  &:disabled {
-    opacity: 0.4;
-    cursor: default;
-  }
-}
-
-.menuWrap {
-  position: relative;
-  display: inline-block;
-}
-
 // Sticky Action cells each form a stacking context painted in DOM order,
 // so an open tier menu would render beneath the rows below it. Lift the
 // cell that owns the open menu above its siblings.
 .menuOpen {
   z-index: 1;
-}
-
-.menu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + var(--space-1));
-  display: grid;
-  min-width: 10rem;
-  margin: 0;
-  padding: var(--space-1);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  list-style: none;
-  z-index: 5;
-}
-
-.menuItem {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  width: 100%;
-  padding: var(--space-1) var(--space-2);
-  border: none;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--color-text);
-  font-size: var(--font-size-sm);
-  text-align: left;
-  cursor: pointer;
-
-  &:hover {
-    background: var(--color-bg);
-  }
 }
 
 // Inherits the th typography so sortable headers look like their static

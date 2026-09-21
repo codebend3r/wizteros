@@ -1,0 +1,48 @@
+.historySection {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.sectionTitle {
+  font-family: var(--font-display);
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+}
+
+.history {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.historyRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.historyAt {
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+}
+
+.historyAction {
+  font-weight: 600;
+}
+
+.historyDetail {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+// The empty state, when the bridge has recorded nothing for this member yet.
+.notice {
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}

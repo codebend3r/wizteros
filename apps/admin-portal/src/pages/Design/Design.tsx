@@ -2,7 +2,7 @@ import { AdminGate } from '@/components/AdminGate/AdminGate'
 import { AdminLayout } from '@/components/AdminLayout/AdminLayout'
 import { TierIcon } from '@/components/TierIcon/TierIcon'
 import { PAID_TIERS, TIER_LABELS } from '@/lib/inviteRules'
-import { STATUS_EMOJI, type MemberStatus } from '@/lib/memberStatus'
+import { MEMBER_STATUSES, STATUS_EMOJI, TAG_LABELS } from '@/lib/memberStatus'
 import styles from '@/pages/Design/Design.module.scss'
 
 // The in-app design reference. Every token is the real declaration from
@@ -110,14 +110,12 @@ const SPECIMEN_ROWS: ReadonlyArray<SpecimenRow> = [
   },
 ]
 
-const STATUSES: ReadonlyArray<MemberStatus> = [
-  'Subscribed Monthly',
-  'Expired Member',
-  'Invited',
-  'Declined Invite',
-  'Uninvited',
-  'VIP',
-]
+// TAG_LABELS is "<emoji> <name>"; this page shows the two apart so the emoji
+// can be hidden from assistive tech exactly as the app hides it.
+const splitTagLabel = (label: string): { emoji: string; name: string } => {
+  const [emoji = '', ...rest] = label.split(' ')
+  return { emoji, name: rest.join(' ') }
+}
 
 const RULES = [
   {
@@ -352,14 +350,14 @@ const DesignInner = () => (
           </div>
 
           <section id="status" className={styles.section}>
-            <SectionHeader title="Status & tags" note="memberStatus.ts + User.tsx" />
+            <SectionHeader title="Status & tags" note="memberStatus.ts" />
             <div className={styles.pairTight}>
               <div className={styles.group}>
                 <p className={styles.groupLabel}>
-                  Six derived statuses <Tag kind="in-code" />
+                  Derived statuses <Tag kind="in-code" />
                 </p>
                 <ul className={styles.statusList}>
-                  {STATUSES.map((status) => (
+                  {MEMBER_STATUSES.map((status) => (
                     <li key={status} className={styles.statusRow}>
                       <span aria-hidden="true">{STATUS_EMOJI[status]}</span>
                       <span className={status === 'Subscribed Monthly' ? styles.subscribed : ''}>
@@ -371,17 +369,18 @@ const DesignInner = () => (
               </div>
               <div className={styles.group}>
                 <p className={styles.groupLabel}>
-                  Two tags <Tag kind="in-code" />
+                  Tags <Tag kind="in-code" />
                 </p>
                 <ul className={styles.statusList}>
-                  <li className={styles.statusRow}>
-                    <span aria-hidden="true">💎</span>
-                    <span>VIP</span>
-                  </li>
-                  <li className={styles.statusRow}>
-                    <span aria-hidden="true">⭐</span>
-                    <span>HVU</span>
-                  </li>
+                  {Object.entries(TAG_LABELS).map(([tag, label]) => {
+                    const { emoji, name } = splitTagLabel(label)
+                    return (
+                      <li key={tag} className={styles.statusRow}>
+                        <span aria-hidden="true">{emoji}</span>
+                        <span>{name}</span>
+                      </li>
+                    )
+                  })}
                 </ul>
                 <p className={styles.note}>
                   A tag overrides the derived status. Emoji carry meaning here, marked aria-hidden

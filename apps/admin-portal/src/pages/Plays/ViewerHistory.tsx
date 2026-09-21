@@ -5,13 +5,14 @@ import {
   type PlaysFilters,
   type ViewerHistoryRow,
 } from '@/lib/playsApi'
-import { AsyncSection } from '@/pages/Plays/AsyncSection'
-import { Pager } from '@/pages/Plays/Pager'
+import { AsyncSection } from '@/components/AsyncSection/AsyncSection'
+import { PagedTable } from '@/pages/Plays/Pager'
 import { KIND_LABEL } from '@/pages/Plays/playsCopy'
 import {
   episodeLabel,
   formatCount,
   formatDateTime,
+  pageCountOf,
   qualityLabel,
   titleWithYear,
 } from '@/pages/Plays/playsFormat'
@@ -50,9 +51,6 @@ const subject = (row: ViewerHistoryRow): { primary: string; secondary: string } 
   return { primary: titleWithYear({ title: row.title, year: row.year }), secondary: '' }
 }
 
-const kindLabel = (kind: string): string =>
-  kind === 'movie' || kind === 'episode' || kind === 'track' ? KIND_LABEL[kind] : kind
-
 /** One viewer's completed plays, newest first, a page at a time. */
 export const ViewerHistory = ({
   filters,
@@ -83,7 +81,7 @@ export const ViewerHistory = ({
       }
     >
       {(data) => {
-        const pageCount = Math.max(1, Math.ceil(data.total / data.page_size))
+        const pageCount = pageCountOf({ total: data.total, pageSize: data.page_size })
         const summary = `${formatCount(data.total)} completed plays ${windowProse(filters.days)}`
         return (
           <div className={styles.wrap}>
@@ -94,57 +92,53 @@ export const ViewerHistory = ({
             {data.rows.length === 0 ? (
               <p className={styles.empty}>Nothing completed {windowProse(filters.days)}.</p>
             ) : (
-              <>
-                <Pager page={page} pageCount={pageCount} onPageChange={onPageChange} />
-                <div className={styles.scroller}>
-                  <table className={styles.table}>
-                    <thead>
-                      <tr>
-                        <th scope="col">When</th>
-                        <th scope="col">Title</th>
-                        <th scope="col">Type</th>
-                        <th scope="col">Quality</th>
-                        <th scope="col">Server</th>
-                        <th scope="col">Device</th>
-                        <th scope="col">Library</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.rows.map((row) => {
-                        const { primary, secondary } = subject(row)
-                        return (
-                          // the ledger records one completion per item per
-                          // second per server, so this names a row uniquely
-                          <tr
-                            key={`${row.viewed_at}|${row.host}|${row.kind}|${row.title}|${secondary}`}
-                          >
-                            <td className={styles.nowrap}>{formatDateTime(row.viewed_at)}</td>
-                            <td className={styles.primary}>
-                              <button
-                                className={styles.rowButton}
-                                type="button"
-                                onClick={() => onSelectTitle(row.group_key)}
-                                aria-label={`${primary}, view play history`}
-                              >
-                                {primary}
-                              </button>
-                              {secondary.length > 0 && (
-                                <span className={styles.secondary}>{secondary}</span>
-                              )}
-                            </td>
-                            <td>{kindLabel(row.kind)}</td>
-                            <td>{row.kind === 'track' ? '--' : qualityLabel(row.quality)}</td>
-                            <td>{row.host}</td>
-                            <td>{row.device ?? '--'}</td>
-                            <td>{row.library ?? '--'}</td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-                <Pager page={page} pageCount={pageCount} onPageChange={onPageChange} />
-              </>
+              <PagedTable page={page} pageCount={pageCount} onPageChange={onPageChange}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th scope="col">When</th>
+                      <th scope="col">Title</th>
+                      <th scope="col">Type</th>
+                      <th scope="col">Quality</th>
+                      <th scope="col">Server</th>
+                      <th scope="col">Device</th>
+                      <th scope="col">Library</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.rows.map((row) => {
+                      const { primary, secondary } = subject(row)
+                      return (
+                        // the ledger records one completion per item per
+                        // second per server, so this names a row uniquely
+                        <tr
+                          key={`${row.viewed_at}|${row.host}|${row.kind}|${row.title}|${secondary}`}
+                        >
+                          <td className={styles.nowrap}>{formatDateTime(row.viewed_at)}</td>
+                          <td className={styles.primary}>
+                            <button
+                              className={styles.rowButton}
+                              type="button"
+                              onClick={() => onSelectTitle(row.group_key)}
+                              aria-label={`${primary}, view play history`}
+                            >
+                              {primary}
+                            </button>
+                            {secondary.length > 0 && (
+                              <span className={styles.secondary}>{secondary}</span>
+                            )}
+                          </td>
+                          <td>{KIND_LABEL[row.kind]}</td>
+                          <td>{row.kind === 'track' ? '--' : qualityLabel(row.quality)}</td>
+                          <td>{row.host}</td>
+                          <td>{row.device ?? '--'}</td>
+                          <td>{row.library ?? '--'}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </PagedTable>
             )}
           </div>
         )

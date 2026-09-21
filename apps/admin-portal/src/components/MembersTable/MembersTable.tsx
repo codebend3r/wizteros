@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import type { Member, PaidTier } from '@/lib/adminApi'
-import { isPaidTier, PAID_TIERS, TIER_LABELS } from '@/lib/inviteRules'
+import { inviteActionLabel, isPaidTier } from '@/lib/inviteRules'
 import { STATUS_EMOJI, deriveStatus, type MemberStatus } from '@/lib/memberStatus'
 import { findDuplicateTwins } from '@/lib/duplicateMembers'
 import { TierIcon } from '@/components/TierIcon/TierIcon'
+import { TierMenuButton } from '@/components/TierMenuButton/TierMenuButton'
 import styles from '@/components/MembersTable/MembersTable.module.scss'
 
 const PAGE_SIZES = [10, 25, 50, 100, 250] as const
@@ -55,13 +56,6 @@ const formatExpiry = (expires: string | null): string => {
 // before the bridge sent libraries, so the map can be missing entirely.
 const countLibraries = (libraries: Member['libraries']): number =>
   Object.values(libraries ?? {}).reduce((total, names) => total + names.length, 0)
-
-// A member already holding access gets "Re-invite"; one in dunning still holds
-// theirs, so the failed charge must not relabel their action button.
-const HOLDS_ACCESS: ReadonlySet<MemberStatus> = new Set<MemberStatus>([
-  'Subscribed Monthly',
-  'Payment Failed',
-])
 
 const STATUS_CLASS: Partial<Record<MemberStatus, string>> = {
   'Subscribed Monthly': styles.subscribed,
@@ -239,24 +233,6 @@ export const MembersTable = ({
     setPageSize(size)
   }
 
-  useEffect(() => {
-    if (!menuEmail) {
-      return
-    }
-    const close = () => setMenuEmail(null)
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        close()
-      }
-    }
-    document.addEventListener('click', close)
-    document.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.removeEventListener('click', close)
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [menuEmail])
-
   return (
     <div className={styles.wrap}>
       <Pager
@@ -354,44 +330,13 @@ export const MembersTable = ({
                     </span>
                   </td>
                   <td className={menuEmail === member.email ? styles.menuOpen : undefined}>
-                    <div className={styles.menuWrap}>
-                      <button
-                        className={styles.invite}
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          setMenuEmail(menuEmail === member.email ? null : member.email)
-                        }}
-                        disabled={invitingEmail === member.email}
-                        aria-haspopup="menu"
-                        aria-expanded={menuEmail === member.email}
-                      >
-                        {invitingEmail === member.email
-                          ? 'Inviting…'
-                          : HOLDS_ACCESS.has(status)
-                            ? 'Re-invite'
-                            : 'Invite'}
-                      </button>
-                      {menuEmail === member.email && (
-                        <ul className={styles.menu} role="menu">
-                          {PAID_TIERS.map((tier) => (
-                            <li key={tier} role="none">
-                              <button
-                                className={styles.menuItem}
-                                type="button"
-                                role="menuitem"
-                                onClick={() => {
-                                  setMenuEmail(null)
-                                  onSelectTier({ member, tier })
-                                }}
-                              >
-                                <TierIcon tier={tier} /> {TIER_LABELS[tier]} Tier
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
+                    <TierMenuButton
+                      label={inviteActionLabel({ status })}
+                      busy={invitingEmail === member.email}
+                      align="end"
+                      onSelect={({ tier }) => onSelectTier({ member, tier })}
+                      onOpenChange={({ open }) => setMenuEmail(open ? member.email : null)}
+                    />
                   </td>
                 </tr>
               )

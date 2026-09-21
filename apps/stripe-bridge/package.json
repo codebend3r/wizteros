@@ -2,9 +2,9 @@
   "name": "stripe-bridge",
   "private": true,
   "scripts": {
-    "lint:py": "bash scripts/lint-bridge.sh",
-    "lint:py:fix": "bash scripts/lint-bridge.sh --fix",
-    "test": "bash scripts/test-bridge.sh",
+    "lint:py": "bash ../../scripts/py-tool.sh apps/stripe-bridge ruff",
+    "lint:py:fix": "bash ../../scripts/py-tool.sh apps/stripe-bridge ruff --fix",
+    "test": "bash ../../scripts/py-tool.sh apps/stripe-bridge pytest",
     "test:e2e": "node --env-file=../../.env scripts/e2e-retest.mjs",
     "test:e2e:tiers": "node --env-file=../../.env scripts/e2e-tiers.mjs",
     "refresh:libraries": "node --env-file=../../.env scripts/refresh-library-snapshot.mjs"

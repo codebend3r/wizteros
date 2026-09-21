@@ -1,6 +1,5 @@
 import logging
 import os
-import re
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -10,10 +9,10 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from jwt import PyJWKClient
 from pydantic import BaseModel
 
-from stripe_bridge import plex, store, tiers
+from stripe_bridge import invites, plex, roster, store, tiers
+from stripe_bridge.config import MAP_DB_PATH, PUBLIC_INVITE_BASE, client
 from stripe_bridge.mailer import send_invite_email
 from stripe_bridge.snapshot import UpstreamSnapshot
-from stripe_bridge.wizarr import WizarrClient
 
 log = logging.getLogger("bridge.admin")
 
@@ -31,21 +30,14 @@ ADMIN_ALLOWED_EMAILS = {
 
 # PyJWKClient fetches and caches the signing keys; created once at import.
 _jwks_client = PyJWKClient(SUPABASE_JWKS_URL) if SUPABASE_JWKS_URL else None
-WIZARR_BASE_URL = os.environ.get("WIZARR_BASE_URL", "").rstrip("/")
-WIZARR_API_KEY = os.environ.get("WIZARR_API_KEY", "")
-MAP_DB_PATH = os.environ.get("MAP_DB_PATH", "/data/bridge.db")
-INVITE_DAYS = int(os.environ.get("INVITE_EXPIRES_DAYS", "14"))
-ACCESS_DURATION = os.environ.get("ACCESS_DURATION", "35")
-PUBLIC_INVITE_BASE = os.environ.get("PUBLIC_INVITE_BASE", "").rstrip("/")
 
-client = WizarrClient(WIZARR_BASE_URL, WIZARR_API_KEY)
 router = APIRouter()
 
 
 def _fetch_upstream() -> dict:
     """One slow sweep of everything /admin/members needs from Wizarr and plex.tv.
 
-    plex_access is best effort, mirroring _with_plex_access: an unset token or
+    plex_access is best effort, mirroring roster.with_plex_access: an unset token or
     a plex.tv failure yields None and the members list falls back to
     tier-derived access rather than failing.
     """
@@ -97,209 +89,11 @@ def require_admin(authorization: str = Header(default="")) -> None:
         raise HTTPException(status_code=401, detail="unauthorized")
 
 
-# Wizarr marshals an invitation's used_by over a User relationship with no
-# __str__, so the live API returns the repr "<User 281>" rather than a name.
-_USED_BY_REPR = re.compile(r"\s*<User (\d+)>\s*")
-
-
-def _plex_email_by_invite(*, invitations: list, users: list) -> dict[str, str]:
-    """Invite code -> the Plex account email that redeemed it, both lowercased.
-
-    This is the only link between a Stripe customer and a member who signed up
-    to Plex under a different address. The bridge issues the invite against the
-    checkout email; whoever redeems it is the person paying, whatever their
-    Plex account is called.
-    """
-    by_id = {u.get("id"): (u.get("email") or "").lower() for u in users}
-    by_username = {(u.get("username") or "").lower(): (u.get("email") or "").lower()
-                   for u in users}
-    resolved: dict[str, str] = {}
-    for invitation in invitations:
-        code = (invitation.get("code") or "").lower()
-        used_by = invitation.get("used_by")
-        if not code or not isinstance(used_by, str) or not used_by:
-            continue
-        match = _USED_BY_REPR.fullmatch(used_by)
-        email = (by_id.get(int(match.group(1))) if match
-                 else by_username.get(used_by.lower()))
-        if email:
-            resolved[code] = email
-    return resolved
-
-
-def _customer_by_plex_email(*, customers: dict, plex_email_by_invite: dict,
-                            manual_links: dict | None = None) -> dict[str, dict]:
-    """Plex email -> the Stripe customer row belonging to that person.
-
-    Only rows whose email differs from the Plex email they resolve to are
-    returned: a matching pair needs no linking, and keeping the map to real
-    mismatches means the caller can treat a hit as "these are two addresses for
-    one person" without re-comparing.
-
-    Two sources, manual first. The redeemed invite answers on its own for
-    anyone who signed up through their own checkout. It cannot answer for
-    someone who re-subscribed under a re-typed address while already holding
-    access: that invite is never redeemed, so `used_by` stays null and the
-    paying customer keeps standing as a second member. `member_links` is the
-    admin's answer for those, and it is marked so callers can tell a stated
-    link from an inferred one.
-    """
-    linked: dict[str, dict] = {}
-    for customer_email, row in customers.items():
-        code = (row.get("invite_code") or "").lower()
-        manual = (manual_links or {}).get(customer_email)
-        plex_email = manual or (plex_email_by_invite.get(code) if code else None)
-        if plex_email and plex_email != customer_email:
-            linked[plex_email] = {**row, "stripe_email": customer_email,
-                                  "manual_link": bool(manual)}
-    return linked
-
-
-def _dedupe_members(users: list, customers: dict, libraries: list,
-                    linked: dict | None = None) -> list[dict]:
-    """Collapse per-server Wizarr records into one entry per person.
-
-    Key is the lowercased email (falling back to username). Aggregates the
-    servers a person appears on and keeps the latest expiry across records.
-    Tier and invited_at are joined from the bridge's store; downloads and
-    per-server library access derive from tier.
-    """
-    people: dict[str, dict] = {}
-    for u in users:
-        email = (u.get("email") or "").strip()
-        username = u.get("username") or ""
-        key = (email or username).lower()
-        if not key:
-            continue
-        person = people.setdefault(key, {
-            "member": username, "email": email, "servers": [], "expires": None,
-        })
-        server = u.get("server")
-        if server and server not in person["servers"]:
-            person["servers"].append(server)
-        exp = u.get("expires")
-        if exp and (person["expires"] is None or exp > person["expires"]):
-            person["expires"] = exp
-
-    members = []
-    for person in people.values():
-        key = person["email"].lower() if person["email"] else ""
-        # Their own address first; the invite linkage only answers for members
-        # whose Plex account is under a different email than they pay with.
-        # A manual link outranks even that: "they pay under X" is only ever
-        # stated about someone whose own address is the dead or failing one,
-        # so billing has to read from the customer the admin pointed at.
-        link = (linked or {}).get(key) or {}
-        row = link if link.get("manual_link") else (customers.get(key) or link or {})
-        tier = tiers.canonical_tier(row.get("tier")) or "unknown"
-        downloads = tiers.TIER_DOWNLOADS.get(tier) if tier != "unknown" else None
-        servers = sorted(person["servers"])
-        tier_libraries = tiers.tier_server_libraries(tier=tier, libraries=libraries)
-        members.append({
-            "member": person["member"],
-            "email": person["email"],
-            "tier": tier,
-            "downloads": downloads,
-            "expires": person["expires"],
-            "servers": servers,
-            "libraries": {server: tier_libraries.get(server, []) for server in servers},
-            # The tier rules alone, NOT narrowed to the servers this member
-            # happens to hold records on — that is what makes it comparable to
-            # the live plex.tv share, which is how the member page tells
-            # "entitled to" apart from "actually sharing".
-            "entitled": tier_libraries,
-            "subscribed": bool(row.get("subscribed")),
-            "payment_state": row.get("payment_state"),
-            "invited_at": row.get("invited_at"),
-            "customer_id": row.get("customer_id"),
-            # Only set when the member pays under a different address than
-            # their Plex account uses. Equal addresses are the norm and would
-            # just be the same string twice in the UI.
-            "stripe_email": row.get("stripe_email"),
-        })
-    members.sort(key=lambda m: m["member"].lower())
-    return members
-
-
-def _member_from_customer(email: str, row: dict, libraries: list) -> dict:
-    """A table row for a subscriber the bridge knows who hasn't joined Wizarr yet.
-
-    Their tier is known, so `entitled` (what redeeming would grant them) is
-    known too and the member page can render a real Servers section instead of
-    an empty one. `servers` and `libraries` stay empty on purpose: this member
-    holds no Wizarr record, and the only other thing that could give them
-    access is a live plex.tv share, which _with_plex_access unions in
-    afterwards. Filling them from the tier instead is how a locked-out member
-    came to read "1 server, 19 libraries" on /manage while they could not
-    watch anything at all.
-    """
-    resolved = tiers.canonical_tier(row.get("tier")) or "unknown"
-    tier_libraries = tiers.tier_server_libraries(tier=resolved, libraries=libraries)
-    return {
-        "member": email.split("@")[0],
-        "email": email,
-        "tier": resolved,
-        "downloads": tiers.TIER_DOWNLOADS.get(resolved) if resolved != "unknown" else None,
-        "expires": None,
-        "servers": [],
-        "libraries": {},
-        "entitled": tier_libraries,
-        "subscribed": bool(row.get("subscribed")),
-        "payment_state": row.get("payment_state"),
-        "invited_at": row.get("invited_at"),
-        "customer_id": row.get("customer_id"),
-        # Nothing to contrast with: this row IS the Stripe address, and no
-        # Plex account has claimed it yet.
-        "stripe_email": None,
-    }
-
-
-def _with_plex_access(members: list[dict], *, access: dict | None) -> list[dict]:
-    """Union each member's live plex.tv share into their servers and libraries.
-
-    plex.tv is ground truth for what a member can actually see: it covers
-    legacy shares that never went through an invite, and members whose tier
-    was never recorded (whose tier-derived library list is empty). access is
-    the bulk lookup from _fetch_upstream; None (no token, or plex.tv failed)
-    leaves the tier-derived values in place rather than failing the whole list.
-    """
-    if access is None:
-        return members
-    merged = []
-    for member in members:
-        shares = access.get(member["email"].lower()) if member["email"] else None
-        if not shares:
-            merged.append(member)
-            continue
-        servers = sorted({*member["servers"], *shares})
-        merged.append({
-            **member,
-            "servers": servers,
-            "libraries": {
-                server: (shares[server]["libraries"] if server in shares
-                         else member["libraries"].get(server, []))
-                for server in servers
-            },
-        })
-    return merged
-
-
 def _with_overrides(members: list[dict]) -> list[dict]:
-    """Stamp each member dict with its admin overrides.
-
-    tag: the manual designation ("vip"/"hvu"), None untagged. downloads: the
-    admin's toggle wins over the tier-derived value when set.
-    """
-    tags = store.all_member_tags(MAP_DB_PATH)
-    downloads = store.all_member_downloads(MAP_DB_PATH)
-    return [
-        {
-            **m,
-            "tag": tags.get(m["email"].lower()),
-            "downloads": downloads.get(m["email"].lower(), m["downloads"]),
-        }
-        for m in members
-    ]
+    """Stamp each member dict with the admin overrides the store holds."""
+    return roster.with_overrides(members,
+                                 tags=store.all_member_tags(MAP_DB_PATH),
+                                 downloads=store.all_member_downloads(MAP_DB_PATH))
 
 
 @router.get("/admin/members", dependencies=[Depends(require_admin)])
@@ -313,27 +107,15 @@ def list_members() -> list[dict]:
     pays the full ~15s); tags, downloads, and tier joins stay live from the DB.
     """
     snap = members_snapshot.get()
-    customers = store.all_customer_rows(MAP_DB_PATH)
-    linked = _customer_by_plex_email(
-        customers=customers,
-        plex_email_by_invite=_plex_email_by_invite(
-            invitations=snap.get("invitations") or [], users=snap["users"]),
-        manual_links=store.all_member_links(MAP_DB_PATH),
+    members = roster.assemble_members(
+        users=snap["users"],
+        libraries=snap["libraries"],
+        invitations=snap.get("invitations") or [],
+        customers=store.all_customer_rows(MAP_DB_PATH),
+        links=store.all_member_links(MAP_DB_PATH),
     )
-    members = _dedupe_members(snap["users"], customers, snap["libraries"], linked=linked)
-    joined = {m["email"].lower() for m in members if m["email"]}
-    # A customer already shown as someone's Stripe address must not also stand
-    # as its own row: that is the "two entries for one person" the linkage
-    # exists to collapse.
-    claimed = {m["stripe_email"] for m in members if m.get("stripe_email")}
-    pending = [
-        _member_from_customer(email, row, snap["libraries"])
-        for email, row in customers.items()
-        if email not in joined and email not in claimed
-    ]
-    return sorted(
-        _with_overrides(_with_plex_access(members + pending, access=snap["plex_access"])),
-        key=lambda m: m["member"].lower())
+    return _with_overrides(
+        roster.with_plex_access(members, access=snap["plex_access"]))
 
 
 def _stripe_customer_id_for(email: str) -> str | None:
@@ -375,23 +157,17 @@ def get_member(email: str) -> dict:
     except Exception:
         log.exception("could not read invitations while resolving %s", email)
         invitations = []
-    linked = _customer_by_plex_email(
-        customers=customers,
-        plex_email_by_invite=_plex_email_by_invite(invitations=invitations, users=users),
-        manual_links=store.all_member_links(MAP_DB_PATH),
-    )
-    matches = _dedupe_members(
-        [u for u in users if (u.get("email") or "").lower() == email.lower()],
-        customers,
-        libraries,
-        linked=linked,
-    )
-    if matches:
-        return _with_stripe_customer(_with_overrides(matches)[0])
-    if email.lower() in customers:
-        return _with_stripe_customer(_with_overrides(
-            [_member_from_customer(email, customers[email.lower()], libraries)])[0])
-    raise HTTPException(status_code=404, detail="no member for that email")
+    members = roster.assemble_members(
+        users=users, libraries=libraries, invitations=invitations,
+        customers=customers, links=store.all_member_links(MAP_DB_PATH))
+    found = next((m for m in members if m["email"].lower() == email.lower()), None)
+    # A customer standing as someone else's Stripe address is kept out of the
+    # list on purpose, but asking for it by name still has to answer.
+    if found is None and email.lower() in customers:
+        found = roster.member_from_customer(email, customers[email.lower()], libraries)
+    if found is None:
+        raise HTTPException(status_code=404, detail="no member for that email")
+    return _with_stripe_customer(_with_overrides([found])[0])
 
 
 @router.get("/admin/plex-access", dependencies=[Depends(require_admin)])
@@ -705,22 +481,19 @@ def reissue_invite(body: ReissueInviteBody) -> dict:
     tier = tiers.normalize_tier(body.tier)
     # Stale cache rows are dropped the same way the checkout path does it: an
     # invite carrying a name Plex no longer knows is rejected whole.
-    libraries = tiers.without_stale(
-        libraries=client.list_libraries(), live=plex.live_sections_or_none())
-    access = tiers.resolve_tier_access(tier=tier, libraries=libraries)
-    if not access["library_ids"]:
+    try:
+        access = invites.live_scope(client=client, tier=tier,
+                                    context=f"reissue for {body.email}")
+    except invites.TierScopeEmpty:
         raise HTTPException(status_code=502, detail=f"no libraries resolved for tier {tier}")
     records = client.find_users_by_email(body.email)
     # The admin's downloads toggle wins over the tier default when set.
     override = store.get_member_downloads(MAP_DB_PATH, body.email)
-    allow_downloads = access["allow_downloads"] if override is None else override
     # Create the invite BEFORE any disable: disable_user is account-wide (it
     # severs the plex.tv friendship on every server), so if create_invite raised
     # after a disable loop the member would be locked out with no link to redeem.
-    invite = client.create_invite(
-        access["server_ids"], INVITE_DAYS, ACCESS_DURATION,
-        library_ids=access["library_ids"], allow_downloads=allow_downloads,
-    )
+    invite = invites.mint(client=client, tier=tier, scope=access,
+                          allow_downloads=override)
     # The store row keeps the member on /admin/members while the invite is
     # pending and stamps invited_at for the grace-period status.
     store.upsert_pending_by_email(MAP_DB_PATH, body.email, invite["code"], tier=tier)

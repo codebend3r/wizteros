@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { createQueryClient } from '@/lib/queryClient'
 import userEvent from '@testing-library/user-event'
 import { afterEach, expect, test, vi } from '@/test/vi'
 import { ResetUser } from '@/pages/ResetUser/ResetUser'
@@ -10,7 +11,7 @@ import { useAuthStore } from '@/stores/authStore'
 
 const renderResetUser = () =>
   render(
-    <QueryClientProvider client={new QueryClient()}>
+    <QueryClientProvider client={createQueryClient()}>
       <MemoryRouter>
         <ResetUser />
       </MemoryRouter>

@@ -8,34 +8,39 @@ tests, and any one-off script call them the same way.
 
 import logging
 
-from stripe_bridge import plex, store, tiers
+from stripe_bridge import alerts, plex, store, tiers
 from stripe_bridge.mailer import send_alert_email
 from stripe_bridge.members import access_line, stripe_status_by_customer
 
 log = logging.getLogger("bridge")
 
-# Last set of tier problems alerted on, so a standing breakage mails once
-# rather than every sweep. A change in the problem set (or a recovery followed
-# by a relapse) alerts again.
-_last_tier_problems: dict = {}
+
+class _ChangeAlert:
+    """Mails once per distinct problem set, not once per sweep.
+
+    A standing breakage is alerted on the sweep that finds it and then stays
+    quiet; a change in the set, or a recovery followed by a relapse, alerts
+    again. The remembered set lives for the life of the process, so a restart
+    re-alerts on whatever is still broken.
+    """
+
+    def __init__(self) -> None:
+        """Start with nothing outstanding, so the first problem set always mails."""
+        self._last: object = None
+
+    def clear(self) -> None:
+        """Forget the outstanding set: the same problem returning mails again."""
+        self._last = None
+
+    def fire(self, current: object, *, subject: str, body: str) -> None:
+        """Mail subject/body unless this exact set is the one already alerted on."""
+        if current != self._last:
+            self._last = current
+            send_alert_email(subject, body)
 
 
-# Last set of VIPs alerted on as holding no access, so a standing problem mails
-# once rather than every sweep.
-_last_vips_without_access: list = []
-
-
-def _dunning_sweep_alert(found: list[tuple[str, str, str]]) -> None:
-    """One mail for every member the sweep newly found past due."""
-    body = "\n".join(f"- {email}: subscription {status}. {line}" for email, status, line in found)
-    send_alert_email(
-        f"{len(found)} member(s) missed a payment",
-        f"Stripe has these members in dunning, and no payment_failed webhook ever "
-        f"reached the bridge for them:\n\n{body}\n\n"
-        f"Nothing was changed except the admin UI now reads them as Payment Failed. "
-        f"Check the card on file with them before Stripe's last retry cancels the "
-        f"subscription.\n",
-    )
+_tier_scope_alert = _ChangeAlert()
+_vip_access_alert = _ChangeAlert()
 
 
 def check_payment_states(*, client, db_path: str) -> list:
@@ -75,7 +80,7 @@ def check_payment_states(*, client, db_path: str) -> list:
             store.record_event(db_path, email, "Payment recovered",
                                "Stripe reports the subscription active again")
     if found:
-        _dunning_sweep_alert(found)
+        send_alert_email(*alerts.dunning_sweep(found))
     return [email for email, _status, _line in found]
 
 
@@ -89,11 +94,10 @@ def check_vip_access(*, client, db_path: str) -> list:
     an invite that quietly expired). Never raises: it runs inside the reconcile
     loop, and an unreachable Wizarr is not a lockout.
     """
-    global _last_vips_without_access
     tags = store.all_member_tags(db_path)
     vips = sorted(email for email, tag in tags.items() if tag == "vip")
     if not vips:
-        _last_vips_without_access = []
+        _vip_access_alert.clear()
         return []
     try:
         users = client.list_users()
@@ -103,18 +107,11 @@ def check_vip_access(*, client, db_path: str) -> list:
     held = {(u.get("email") or "").lower() for u in users}
     stranded = [email for email in vips if email not in held]
     if not stranded:
-        _last_vips_without_access = []
+        _vip_access_alert.clear()
         return []
     log.error("vip access check: %d VIP(s) hold no records: %s", len(stranded), stranded)
-    if stranded != _last_vips_without_access:
-        _last_vips_without_access = stranded
-        body = "\n".join(f"- {email}" for email in stranded)
-        send_alert_email(
-            f"{len(stranded)} VIP(s) hold no server access",
-            f"These VIP members have no Wizarr record on any server:\n\n{body}\n\n"
-            f"VIP access is meant to be permanent. Either they never redeemed "
-            f"their invite, or something disabled them.\n",
-        )
+    subject, body = alerts.vips_without_access(stranded)
+    _vip_access_alert.fire(stranded, subject=subject, body=body)
     return stranded
 
 
@@ -132,7 +129,6 @@ def check_tier_scopes(*, client) -> dict:
     plex.tv that cannot be reached is reported as healthy — unreachable is not
     misconfigured, and the next sweep will try again.
     """
-    global _last_tier_problems
     try:
         libraries = client.list_libraries()
     except Exception:
@@ -143,16 +139,10 @@ def check_tier_scopes(*, client) -> dict:
         **tiers.library_cache_problems(libraries=libraries, live=plex.live_sections_or_none()),
     }
     if not problems:
-        _last_tier_problems = {}
+        _tier_scope_alert.clear()
         return {}
     for tier, reason in problems.items():
         log.error("tier scope check: %s -> %s", tier, reason)
-    if problems != _last_tier_problems:
-        _last_tier_problems = problems
-        body = "\n".join(f"- {tier}: {reason}" for tier, reason in sorted(problems.items()))
-        send_alert_email(
-            f"{len(problems)} invite scope problem(s)",
-            f"Invites no longer line up with the live library list:\n\n{body}\n\n"
-            f"Members cannot sign up cleanly until the names line up again.\n",
-        )
+    subject, body = alerts.tier_scopes(problems)
+    _tier_scope_alert.fire(problems, subject=subject, body=body)
     return problems

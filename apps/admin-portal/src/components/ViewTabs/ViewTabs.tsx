@@ -1,19 +1,25 @@
-import { useRef, type KeyboardEvent, type ReactNode } from 'react'
+import { useId, useRef, type KeyboardEvent, type ReactNode } from 'react'
 import { Icon, type IconName } from '@/components/Icon/Icon'
-import type { MetricKind } from '@/lib/fleetApi'
-import styles from '@/pages/Fleet/ChartTabs.module.scss'
-import { METRIC_COPY } from '@/pages/Fleet/metricCopy'
+import styles from '@/components/ViewTabs/ViewTabs.module.scss'
 
 // Over the title on a tab, and alone on the action: both are read at 20px,
 // where the hairline stroke drawn for 16px goes thin.
-const CONTROL_GLYPH_PX = 20
-const CONTROL_STROKE = 1.75
+const TAB_GLYPH_PX = 20
+const TAB_STROKE = 1.75
 
-type ChartTabsProps = {
-  readonly kinds: readonly MetricKind[]
-  readonly active: MetricKind
-  readonly onSelect: (kind: MetricKind) => void
-  /** One control that applies to whichever chart is showing, drawn at the far
+export type ViewTab<T extends string> = {
+  readonly id: T
+  readonly title: string
+  readonly icon: IconName
+}
+
+type ViewTabsProps<T extends string> = {
+  readonly tabs: readonly ViewTab<T>[]
+  readonly active: T
+  readonly onSelect: (id: T) => void
+  /** The strip's accessible name. */
+  readonly label: string
+  /** One control that applies to whichever panel is showing, drawn at the far
       end of the strip. Outside the tablist on purpose: the arrow keys walk
       tabs, and a button among them would be a stop they skip. Icon-only, so
       the label is its accessible name and its tooltip rather than a caption. */
@@ -25,12 +31,8 @@ type ChartTabsProps = {
   readonly children: ReactNode
 }
 
-/** The tab the arrow keys move to, wrapping at both ends.
- *
- * Wrapping is what the ARIA tabs pattern specifies, and it is the behaviour
- * that makes a four-tab strip reachable without looking: End is one Left from
- * Home.
- */
+/** The tab the arrow keys move to, wrapping at both ends, as the ARIA tabs
+    pattern specifies: End is one Left from Home. */
 const nextIndex = ({
   key,
   current,
@@ -47,25 +49,35 @@ const nextIndex = ({
   return null
 }
 
-/** One chart at a time, with the ARIA tabs pattern behind it.
+/** One view at a time, with the ARIA tabs pattern behind it.
  *
  * Only the selected panel is rendered, which is the point rather than a
- * detail: the chart that is mounted is the one whose query polls, so four
- * charts cost one request per interval instead of four. A hidden panel kept
- * mounted would keep its own per-second timer running for a chart nobody is
- * looking at.
+ * detail: the panel that is mounted is the one whose query runs, so five views
+ * cost one request per interval instead of five. A hidden panel kept mounted
+ * would keep a timer running for something nobody is looking at.
+ *
+ * Ids come from `useId`, so two strips on one page cannot mint the same id and
+ * point one strip's tab at the other's panel.
  */
-export const ChartTabs = ({ kinds, active, onSelect, action, children }: ChartTabsProps) => {
+export const ViewTabs = <T extends string>({
+  tabs,
+  active,
+  onSelect,
+  label,
+  action,
+  children,
+}: ViewTabsProps<T>) => {
   const strip = useRef<HTMLDivElement | null>(null)
+  const prefix = useId()
 
   const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>): void => {
-    const current = kinds.indexOf(active)
-    const target = nextIndex({ key: event.key, current, count: kinds.length })
+    const current = tabs.findIndex((tab) => tab.id === active)
+    const target = nextIndex({ key: event.key, current, count: tabs.length })
     if (target === null) return
-    const kind = kinds[target]
-    if (kind === undefined) return
+    const tab = tabs[target]
+    if (tab === undefined) return
     event.preventDefault()
-    onSelect(kind)
+    onSelect(tab.id)
     // focus follows selection in this pattern, so the next arrow key steps
     // from where the eye is rather than from where focus was left behind
     strip.current?.querySelectorAll('button')[target]?.focus()
@@ -74,32 +86,28 @@ export const ChartTabs = ({ kinds, active, onSelect, action, children }: ChartTa
   return (
     <div className={styles.tabs}>
       <div className={styles.header}>
-        <div className={styles.strip} role="tablist" aria-label="Fleet charts" ref={strip}>
-          {kinds.map((kind) => (
+        <div className={styles.strip} role="tablist" aria-label={label} ref={strip}>
+          {tabs.map((tab) => (
             <button
-              key={kind}
+              key={tab.id}
               type="button"
               role="tab"
-              id={`chart-tab-${kind}`}
+              id={`${prefix}tab-${tab.id}`}
               className={styles.tab}
-              aria-selected={kind === active}
-              aria-controls={`chart-panel-${kind}`}
+              aria-selected={tab.id === active}
+              aria-controls={`${prefix}panel-${tab.id}`}
               // one stop for the whole strip: Tab reaches the selected tab, and
               // the arrow keys move within it
-              tabIndex={kind === active ? 0 : -1}
-              onClick={() => onSelect(kind)}
+              tabIndex={tab.id === active ? 0 : -1}
+              onClick={() => onSelect(tab.id)}
               // on the tab rather than the strip: the strip is not focusable in
-              // this pattern, so a handler there would only ever fire by bubbling
-              // from here anyway
+              // this pattern, so a handler there would only ever fire by
+              // bubbling from here anyway
               onKeyDown={onKeyDown}
             >
               {/* the glyph is hidden, so the tab's name stays the title alone */}
-              <Icon
-                name={METRIC_COPY[kind].icon}
-                size={CONTROL_GLYPH_PX}
-                strokeWidth={CONTROL_STROKE}
-              />
-              <span>{METRIC_COPY[kind].title}</span>
+              <Icon name={tab.icon} size={TAB_GLYPH_PX} strokeWidth={TAB_STROKE} />
+              <span>{tab.title}</span>
             </button>
           ))}
         </div>
@@ -112,7 +120,7 @@ export const ChartTabs = ({ kinds, active, onSelect, action, children }: ChartTa
             title={action.label}
             onClick={action.onClick}
           >
-            <Icon name={action.icon} size={CONTROL_GLYPH_PX} strokeWidth={CONTROL_STROKE} />
+            <Icon name={action.icon} size={TAB_GLYPH_PX} strokeWidth={TAB_STROKE} />
           </button>
         )}
       </div>
@@ -120,8 +128,8 @@ export const ChartTabs = ({ kinds, active, onSelect, action, children }: ChartTa
       <div
         className={styles.panel}
         role="tabpanel"
-        id={`chart-panel-${active}`}
-        aria-labelledby={`chart-tab-${active}`}
+        id={`${prefix}panel-${active}`}
+        aria-labelledby={`${prefix}tab-${active}`}
         // the panel holds focusable content of its own, so it takes a stop
         // only when it would otherwise be unreachable
         tabIndex={0}

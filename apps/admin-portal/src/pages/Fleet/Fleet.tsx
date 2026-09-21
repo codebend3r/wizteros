@@ -1,7 +1,9 @@
-import { useQuery, type UseQueryResult } from '@tanstack/react-query'
-import type { ReactNode } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { AdminGate } from '@/components/AdminGate/AdminGate'
 import { AdminLayout } from '@/components/AdminLayout/AdminLayout'
+import { chartHeight } from '@/components/Chart/chartFrame'
+import { AsyncSection, errorMessage, Section } from '@/components/AsyncSection/AsyncSection'
+import { ViewTabs } from '@/components/ViewTabs/ViewTabs'
 import {
   fetchFleet,
   fetchIncidents,
@@ -9,8 +11,6 @@ import {
   historyMinutes,
   toHostSummary,
 } from '@/lib/fleetApi'
-import { chartHeight } from '@/pages/Fleet/chartFrame'
-import { ChartTabs } from '@/pages/Fleet/ChartTabs'
 import { HostCard } from '@/pages/Fleet/HostCard'
 import { METRIC_COPY } from '@/pages/Fleet/metricCopy'
 import { MetricChart } from '@/pages/Fleet/MetricChart'
@@ -30,74 +30,18 @@ import styles from '@/pages/Fleet/Fleet.module.scss'
 const REFETCH_MS = 30_000
 const INCIDENT_HOURS = 24
 
-const FALLBACK_ERROR = 'Could not reach the fleet monitor.'
+// One tab per chart, named and drawn by the same copy the chart itself reads.
+const CHART_TABS = CHART_KINDS.map((id) => ({
+  id,
+  title: METRIC_COPY[id].title,
+  icon: METRIC_COPY[id].icon,
+}))
 
 const formatTimestamp = (isoTimestamp: string | null): string => {
   if (isoTimestamp === null) return 'never recorded'
   const at = new Date(isoTimestamp)
   return Number.isNaN(at.getTime()) ? isoTimestamp : at.toLocaleString()
 }
-
-/** What actually went wrong, not a guess.
- *
- * `fetchFleet` composes precise messages - an unset VITE_FLEET_BASE, a schema
- * the monitor answered with - and collapsing them all into "could not reach
- * the monitor" both loses the diagnostic and is wrong for a monitor that
- * answered fine.
- */
-const errorMessage = (error: unknown): string =>
-  error instanceof Error && error.message.length > 0 ? error.message : FALLBACK_ERROR
-
-type AsyncSectionProps<T> = {
-  readonly id: string
-  readonly title: string
-  readonly query: UseQueryResult<T>
-  /** What the section says while the query is in flight. Omitted by a section
-      whose own body holds the loading state - the charts stand in a
-      placeholder shaped like the chart, and a line of text under it would be
-      the same news twice. */
-  readonly loadingLabel?: string
-  readonly errorSuffix: string
-  /** Rendered under the title in every query state: a control that tunes the
-      query must stay reachable while that query is loading or failing. */
-  readonly controls?: ReactNode
-  readonly children: (data: T) => ReactNode
-}
-
-/** A section that says which of loading, failed, or loaded it is showing.
- *
- * Both sections on this page need all three states, and the page's whole
- * thesis is that history must never be presented as the present. Writing the
- * triple twice invites the two to drift, and a section that silently renders
- * nothing while a query is in flight reads as a monitor with nothing to report.
- */
-const AsyncSection = <T,>({
-  id,
-  title,
-  query,
-  loadingLabel,
-  errorSuffix,
-  controls,
-  children,
-}: AsyncSectionProps<T>) => (
-  <section className={styles.section} aria-labelledby={id}>
-    <h2 className={styles.sectionTitle} id={id}>
-      {title}
-    </h2>
-    {controls}
-    {!!query.isPending && loadingLabel !== undefined && (
-      <p className={styles.muted} aria-live="polite">
-        {loadingLabel}
-      </p>
-    )}
-    {!!query.isError && (
-      <p className={styles.alert} role="alert">
-        {`${errorMessage(query.error)} ${errorSuffix}`}
-      </p>
-    )}
-    {!!query.data && children(query.data)}
-  </section>
-)
 
 const FleetInner = () => {
   const fleet = useQuery({
@@ -179,55 +123,56 @@ const FleetInner = () => {
         {/* One section for all four, because only one is on screen: a heading
           per chart would leave three headings pointing at nothing. The tab
           strip is what names the choice, and the panel is what changes. */}
-        <AsyncSection
-          id="fleet-charts"
-          title="Charts"
-          query={chart}
-          errorSuffix={`No ${chartCopy.reading} history is available.`}
-          controls={
-            <ChartTabs
-              kinds={CHART_KINDS}
-              active={chartKind}
-              onSelect={setChartKind}
-              action={{
-                label: chartExpanded ? 'Collapse chart' : 'Expand chart',
-                icon: chartExpanded ? 'collapse' : 'expand',
-                onClick: () => setChartExpanded(!chartExpanded),
-              }}
-            >
-              {!!chart.data && (
-                <MetricChart
-                  // remounted per kind on purpose: percentages and throughputs
-                  // share no scale, and Recharts' own per-chart state - the
-                  // active tooltip index, the keyboard cursor - would otherwise
-                  // point into the new tab at a moment picked in the old one
-                  key={chartKind}
-                  hosts={chart.data.hosts}
-                  // the chosen range, not the payload's window: the payload
-                  // carries a lead-in minute the frame must not widen to show
-                  windowMinutes={rangeMinutes}
-                  unit={chart.data.unit}
-                  copy={chartCopy}
-                  height={plotHeight}
-                />
-              )}
-              {/* No data for this tab and range yet, and no error to explain
-                why: hold the chart's shape rather than collapsing the page and
-                pushing everything below it up for a moment. A cached kind or
-                range paints straight from cache and never lands here. */}
-              {!chart.data && !chart.isError && (
-                <MetricChartSkeleton
-                  copy={chartCopy}
-                  windowMinutes={rangeMinutes}
-                  hostNames={hostNames}
-                  height={plotHeight}
-                />
-              )}
-            </ChartTabs>
-          }
-        >
-          {() => null}
-        </AsyncSection>
+        <Section id="fleet-charts" title="Charts">
+          <ViewTabs
+            tabs={CHART_TABS}
+            active={chartKind}
+            onSelect={setChartKind}
+            label="Fleet charts"
+            action={{
+              label: chartExpanded ? 'Collapse chart' : 'Expand chart',
+              icon: chartExpanded ? 'collapse' : 'expand',
+              onClick: () => setChartExpanded(!chartExpanded),
+            }}
+          >
+            {/* Inside the panel rather than above the strip: the failure
+              belongs to the tab that is showing, and a notice over the tabs
+              reads as the whole section being down. */}
+            {!!chart.isError && (
+              <p className={styles.alert} role="alert">
+                {`${errorMessage({ error: chart.error })} No ${chartCopy.reading} history is available.`}
+              </p>
+            )}
+            {!!chart.data && (
+              <MetricChart
+                // remounted per kind on purpose: percentages and throughputs
+                // share no scale, and Recharts' own per-chart state - the
+                // active tooltip index, the keyboard cursor - would otherwise
+                // point into the new tab at a moment picked in the old one
+                key={chartKind}
+                hosts={chart.data.hosts}
+                // the chosen range, not the payload's window: the payload
+                // carries a lead-in minute the frame must not widen to show
+                windowMinutes={rangeMinutes}
+                unit={chart.data.unit}
+                copy={chartCopy}
+                height={plotHeight}
+              />
+            )}
+            {/* No data for this tab and range yet, and no error to explain
+              why: hold the chart's shape rather than collapsing the page and
+              pushing everything below it up for a moment. A cached kind or
+              range paints straight from cache and never lands here. */}
+            {!chart.data && !chart.isError && (
+              <MetricChartSkeleton
+                copy={chartCopy}
+                windowMinutes={rangeMinutes}
+                hostNames={hostNames}
+                height={plotHeight}
+              />
+            )}
+          </ViewTabs>
+        </Section>
 
         <AsyncSection
           id="fleet-hosts"
