@@ -99,7 +99,7 @@ the bridge configured. Two of the five servers (vermithor, vhagar) accept
 secure connections only; the collector speaks https to those and skips
 certificate verification, because Plex's `*.plex.direct` certificate cannot
 match a LAN address. The token still authorizes every request, and the
-addresses are fixed in `fleet_monitor/config.py` beside the Docker endpoints.
+addresses are fixed in `apps/fleet-monitor-nest/src/config.ts` beside the Docker endpoints.
 
 `FM_PLEX_LOOKBACK_DAYS` bounds only the first backfill on a fresh database.
 Every later pass continues from the newest play it stored, re-reading a two

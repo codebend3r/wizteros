@@ -1,7 +1,7 @@
 # NestJS migration design
 
 **Date:** 2026-09-26
-**Status:** approved; Phase 0 in review (PR #57), Phases 1 to 3 not started
+**Status:** approved; Phase 0 in review (PR #57), Phase 1 in review (branch `nestjs-fleet-monitor`), Phases 2 and 3 not started
 **Scope:** port `stripe-bridge` and `fleet-monitor` from Python 3.12 FastAPI to NestJS
 (TypeScript), then remove the Python toolchain from the repo
 
@@ -186,6 +186,37 @@ The branch first broke Netlify's deploy preview at "Install dependencies": Bun r
   3. Switch the healthcheck from `python -c` to `node -e` with `fetch`.
   4. Rollback is the previous image. The schema does not change, so both run against the
      same file.
+
+#### What Phase 1 found
+
+- **Parity on live data.** Against a consistent copy of the live `fleet.db` (1.8 GB,
+  7.3M samples, 6,445 plays), `scripts/parity.mjs` matches 138 of 138 routes. Two
+  allowances are declared in the script. Network rates may differ in the fifth
+  significant digit, because a Date keeps milliseconds where Python wrote
+  microseconds; the difference fades as the 7 day raw window fills with samples Node
+  wrote. `stalest_family` is not compared, because Python broke ties between families
+  in set iteration order, which changes with every process start.
+- **Python's numbers, not JavaScript's.** `round()` rounds exact ties to even, 3.12's
+  `sum()` is compensated, and float `//` is not `Math.floor(a / b)`; the 181 minute
+  window the portal asks for hits the last. `src/pythonMath.ts` reproduces all three,
+  pinned by tests against CPython's own output.
+- **Two timestamp formats.** Stored text stays `isoformat()` (`+00:00`, six digits or
+  none), because range queries compare it as text. The wire is Pydantic's (`Z`, six
+  digits or none), which neither `toJSON` nor `isoformat()` produces; a reply
+  serializer writes every Date that way.
+- **The collector is a plain program,** `node dist/collectorMain.js`, not a Nest
+  application context: it needs nothing from Nest but the logger. Compaction runs in a
+  worker thread, as Python ran it in `asyncio.to_thread`. The worker must be joined,
+  never terminated: ending a thread inside native SQLite code, by `terminate()` or
+  `process.exit()`, is a V8 fatal error. The collector therefore waits for an
+  in-flight compaction on shutdown, with a 60 second `stop_grace_period` in compose.
+- **Deliberate differences.** Where the Python raised on a malformed Docker or Plex row
+  (and lost the host's whole round), the port skips the row, as the Python docstrings
+  said. The HTTP timeout covers the whole request rather than each phase.
+- **Kept as the Python had them, flagged for later.**
+  - `NeverPlayedRow.title` can be null, which the portal's guard rejects.
+  - The play tests measure from the real clock, so they start failing a year after
+    their seeded plays.
 
 ### Phase 2: stripe-bridge (branch `nestjs-stripe-bridge`)
 
