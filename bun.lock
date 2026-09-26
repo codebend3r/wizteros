@@ -64,12 +64,14 @@
         "@wizteros/server-common": "workspace:*",
         "reflect-metadata": "0.2.2",
         "rxjs": "7.8.2",
+        "zod": "4.6.5",
       },
       "devDependencies": {
         "@nestjs/cli": "12.0.7",
         "@nestjs/testing": "12.1.0",
         "@types/node": "24.19.0",
         "@typescript/native-preview": "7.0.0-dev.20260707.2",
+        "jose": "6.2.12",
         "oxfmt": "0.68.0",
         "oxlint": "1.83.0",
         "typescript": "6.0.3",
@@ -1308,6 +1310,8 @@
     "yargs-parser": ["yargs-parser@21.1.1", "", {}, "sha512-tVpsJW7DdjecAiFpbIB1e3qxIQsE6NoPc5/eTdrbbIC4h0LVsWhnoa3g+m2HclBIujHzsxZ4VJVA+GUuc2/LBw=="],
 
     "yoctocolors": ["yoctocolors@2.2.0", "", {}, "sha512-xYqdZFUK/VYazNl/oCDYN+3WloWQwMfZxBoiNt6qNyk+xfOdi598muWE42rNZFp1kNOiqW936q5RhUdnpqElSg=="],
+
+    "zod": ["zod@4.6.5", "", {}, "sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q=="],
 
     "zustand": ["zustand@5.0.15", "", { "peerDependencies": { "@types/react": ">=18.0.0", "immer": ">=9.0.6", "react": ">=18.0.0", "use-sync-external-store": ">=1.2.0" }, "optionalPeers": ["@types/react", "immer", "react", "use-sync-external-store"] }, "sha512-MpSEjRiBkA9crSYeOUH32rJC7SVqAbm0Fqcqge/bUi2PPoLcBWKOsG+C8mevmpr8TwXHBVkChbbJiyvkE+i/3A=="],
 

@@ -44,6 +44,15 @@
       }
     },
     {
+      // Operator scripts are CLIs: stdout is the output, and polling a server
+      // until it answers is a loop that awaits on purpose.
+      "files": ["scripts/**/*.mjs"],
+      "rules": {
+        "no-console": "off",
+        "no-await-in-loop": "off"
+      }
+    },
+    {
       "files": ["src/**/*.test.ts"],
       "rules": {
         "no-console": "off",

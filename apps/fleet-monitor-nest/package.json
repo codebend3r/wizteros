@@ -19,13 +19,15 @@
     "@nestjs/platform-fastify": "12.1.0",
     "@wizteros/server-common": "workspace:*",
     "reflect-metadata": "0.2.2",
-    "rxjs": "7.8.2"
+    "rxjs": "7.8.2",
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@nestjs/cli": "12.0.7",
     "@nestjs/testing": "12.1.0",
     "@types/node": "24.19.0",
     "@typescript/native-preview": "7.0.0-dev.20260707.2",
+    "jose": "6.2.12",
     "oxfmt": "0.68.0",
     "oxlint": "1.83.0",
     "typescript": "6.0.3",

@@ -28,11 +28,19 @@ FROM bun AS deps
 RUN bun install --frozen-lockfile --ignore-scripts --production --filter fleet-monitor-nest
 
 FROM node:24-slim
+# The collector reaches all five hosts with the system ssh binary, the same
+# way the Python collector did, and runs from this same image.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends openssh-client \
+ && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production
+ENV FM_DB_PATH=/data/fleet.db
+VOLUME ["/data"]
 WORKDIR /repo
 COPY --from=deps /repo ./
 COPY --from=build /repo/libs/server-common/dist libs/server-common/dist
 COPY --from=build /repo/apps/fleet-monitor-nest/dist apps/fleet-monitor-nest/dist
 WORKDIR /repo/apps/fleet-monitor-nest
 EXPOSE 8010
+# The API. The collector is the same image with `node dist/collectorMain.js`.
 CMD ["node", "dist/main.js"]

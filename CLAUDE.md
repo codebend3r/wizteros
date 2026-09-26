@@ -40,7 +40,7 @@ wizteros/
 │   ├── fleet-monitor/          Nx project `fleet-monitor`
 │   │   ├── fleet_monitor/      all runtime code
 │   │   └── tests/              pytest suite
-│   ├── fleet-monitor-nest/     Nx project `fleet-monitor-nest`, the NestJS port (in progress)
+│   ├── fleet-monitor-nest/     Nx project `fleet-monitor-nest`, the NestJS port compose now builds
 │   ├── stripe-bridge/          Nx project `stripe-bridge`
 │   │   ├── stripe_bridge/      all runtime code
 │   │   ├── scripts/            e2e, backfill, and snapshot entrypoints
@@ -69,7 +69,7 @@ wizteros/
 
 **fleet-monitor**, a FastAPI service (Python 3.12) in the `fleet_monitor/` package. `api.py` is routes and view models only; the fleet judgement behind them lives in `fleet.py` and the metric history in `series.py`. `plays.py` is a package, not a module: `plays/base.py` holds the shared query pieces, `plays/ledger.py` the schema and writes, `plays/views.py` the aggregates, `plays/never_played.py` the unplayed engine, and `plays/__init__.py` re-exports the public surface so callers still write `plays.overview(...)`.
 
-**NestJS ports (in progress)**: `fleet-monitor-nest` and `stripe-bridge-nest` replace the two Python services one phase at a time and take over their directory names at cutover; until then the Python apps are what runs. They are NestJS 12 (ESM, Fastify adapter) and run on Node 24 (`.node-version`, `node:24-slim` images; Netlify reads the same file, so it has to match `NODE_VERSION` in `netlify.toml`), with bun still the package manager. `build` is `nest build` on TypeScript 6, because the Nest CLI needs the compiler API that TypeScript 7 does not ship yet; `typecheck` is tsgo, as in admin-portal. Tests are Vitest. Each image builds from the repo root context, and the `Dockerfile.dockerignore` next to each Dockerfile allowlists what goes in, which keeps `.env` and the live data out.
+**NestJS ports (in progress)**: `fleet-monitor-nest` and `stripe-bridge-nest` replace the two Python services one phase at a time and take over their directory names in Phase 3. The fleet monitor is ported: `docker-compose.yml` builds `fleet-monitor` and `fleet-collector` from `apps/fleet-monitor-nest` (the collector is `node dist/collectorMain.js`), and `apps/fleet-monitor` stays only as the reference `apps/fleet-monitor-nest/scripts/parity.mjs` diffs against. The bridge is still the Python app until Phase 2. They are NestJS 12 (ESM, Fastify adapter) and run on Node 24 (`.node-version`, `node:24-slim` images; Netlify reads the same file, so it has to match `NODE_VERSION` in `netlify.toml`), with bun still the package manager. `build` is `nest build` on TypeScript 6, because the Nest CLI needs the compiler API that TypeScript 7 does not ship yet; `typecheck` is tsgo, as in admin-portal. Tests are Vitest. Each image builds from the repo root context, and the `Dockerfile.dockerignore` next to each Dockerfile allowlists what goes in, which keeps `.env` and the live data out.
 
 **server-common** (`libs/server-common`, `@wizteros/server-common`): `SupabaseAdminGuard` and `AdminAuthModule`, the env parsing both servers share, and `withSqlite`, the one-connection-per-unit-of-work helper. Apps consume its built `dist`, which is why `typecheck`, `test` and `build` all depend on `^build`. Its `@nestjs/common` is a peer dependency, so an app and the lib share one copy and the guard's 401 stays an `HttpException` to the app.
 

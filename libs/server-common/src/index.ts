@@ -6,6 +6,7 @@ export {
   SupabaseAdminGuard,
 } from './adminAuth.js'
 export { type CorsOptions, starletteCors } from './cors.js'
+export { detailBody, HttpDetailFilter, httpError } from './httpDetail.js'
 export { parseEmailAllowlist, parseList, requireEnv, trimTrailingSlashes } from './env.js'
 export {
   openSqlite,

@@ -1,0 +1,75 @@
+{
+  "MediaContainer": {
+    "size": 4,
+    "totalSize": 1599,
+    "offset": 0,
+    "Metadata": [
+      {
+        "historyKey": "/status/sessions/history/3132",
+        "key": "/library/metadata/57240",
+        "ratingKey": "57240",
+        "librarySectionID": "11",
+        "parentKey": "/library/metadata/1",
+        "title": "Paddington 2",
+        "type": "movie",
+        "thumb": "/library/metadata/57240/thumb/1700000000",
+        "originallyAvailableAt": "2017-11-10",
+        "viewedAt": 1789703560,
+        "accountID": 830901987,
+        "deviceID": 460
+      },
+      {
+        "historyKey": "/status/sessions/history/3131",
+        "key": "/library/metadata/41210",
+        "ratingKey": "41210",
+        "librarySectionID": "6",
+        "title": "Smoke",
+        "type": "episode",
+        "thumb": "/library/metadata/41210/thumb/1700000000",
+        "originallyAvailableAt": "2018-08-06",
+        "viewedAt": 1789700000,
+        "accountID": 1,
+        "deviceID": 12
+      },
+      {
+        "historyKey": "/status/sessions/history/3130",
+        "key": "/library/metadata/90001",
+        "ratingKey": "90001",
+        "librarySectionID": "21",
+        "title": "Everything In Its Right Place",
+        "type": "track",
+        "viewedAt": 1789600000,
+        "accountID": 13536868
+      },
+      {
+        "historyKey": "/status/sessions/history/3129",
+        "key": "/library/metadata/77",
+        "ratingKey": "77",
+        "librarySectionID": "8",
+        "title": "Trailer",
+        "type": "clip",
+        "viewedAt": 1789500000,
+        "accountID": 1,
+        "deviceID": 12
+      },
+      {
+        "key": "/library/metadata/78",
+        "ratingKey": "78",
+        "title": "No history key",
+        "type": "movie",
+        "viewedAt": 1789400000,
+        "accountID": 1
+      },
+      {
+        "historyKey": "/status/sessions/history/3127",
+        "key": "/library/metadata/abc",
+        "ratingKey": "abc",
+        "title": "Bad rating key",
+        "type": "movie",
+        "viewedAt": 1789300000,
+        "accountID": 1
+      },
+      "not an object"
+    ]
+  }
+}
