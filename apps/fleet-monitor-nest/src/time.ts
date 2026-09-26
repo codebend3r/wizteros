@@ -59,3 +59,12 @@ export const addSeconds = ({ at, seconds }: { at: Date; seconds: number }): Date
 /** Seconds from `from` to `to`, as a float, like `(to - from).total_seconds()`. */
 export const secondsBetween = ({ from, to }: { from: Date; to: Date }): number =>
   (to.getTime() - from.getTime()) / 1000
+
+/**
+ * How FastAPI put a datetime on the wire. Pydantic writes the same text as
+ * isoformat() for a UTC instant, six fractional digits or none, but ends it
+ * with `Z` rather than `+00:00`: `2026-09-26T07:00:00Z`,
+ * `2026-09-26T07:00:01.123000Z`. Neither Date#toJSON (always three digits)
+ * nor isoformat() matches it, and the portal was built against this form.
+ */
+export const pydanticTimestamp = (at: Date): string => `${isoformat(at).slice(0, -6)}Z`

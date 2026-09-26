@@ -1,6 +1,8 @@
 import { HttpAdapterHost, NestFactory } from '@nestjs/core'
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify'
 import { HttpDetailFilter, starletteCors } from '@wizteros/server-common'
+import { useFastApiJson } from '@/api/json.js'
+import { fastApiValidationPipe } from '@/api/validation.js'
 import { AppModule } from '@/appModule.js'
 
 /**
@@ -29,6 +31,10 @@ export const createApp = async ({
   // Every error leaves as {"detail": ...}, the body FastAPI sent and the
   // portal shows.
   app.useGlobalFilters(new HttpDetailFilter(app.get(HttpAdapterHost)))
+  // A bad query parameter is FastAPI's 422, and every Date in a body is
+  // written the way Pydantic wrote it.
+  app.useGlobalPipes(fastApiValidationPipe())
+  useFastApiJson(app)
   app.enableShutdownHooks()
   return app
 }
