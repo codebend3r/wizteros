@@ -6,16 +6,12 @@ import { fastApiValidationPipe } from '@/api/validation.js'
 import { AppModule } from '@/appModule.js'
 
 /**
- * The configured application, not yet listening, so a test can drive it
- * through `inject` exactly as `main.ts` serves it.
+ * Everything that makes an app answer the way the FastAPI one did: CORS, the
+ * `{detail}` error body, FastAPI's 422 for a bad query, and Pydantic's
+ * timestamps. `createApp` applies it, and the route tests apply it to an app
+ * built over a testing module, so both answer through the same setup.
  */
-export const createApp = async ({
-  quiet = false,
-}: { quiet?: boolean } = {}): Promise<NestFastifyApplication> => {
-  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter(), {
-    logger: quiet ? false : undefined,
-  })
-
+export const configureApp = (app: NestFastifyApplication): NestFastifyApplication => {
   // The portal is served from a different origin than this API everywhere it
   // runs (the Vite dev server locally, Netlify in production), so without
   // these headers the browser discards every response and the fleet page
@@ -35,6 +31,22 @@ export const createApp = async ({
   // written the way Pydantic wrote it.
   app.useGlobalPipes(fastApiValidationPipe())
   useFastApiJson(app)
+  return app
+}
+
+/**
+ * The configured application, not yet listening, so a test can drive it
+ * through `inject` exactly as `main.ts` serves it.
+ */
+export const createApp = async ({
+  quiet = false,
+}: { quiet?: boolean } = {}): Promise<NestFastifyApplication> => {
+  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter(), {
+    logger: quiet ? false : undefined,
+  })
+  configureApp(app)
+  // The process's signals, not the app's answers, so it stays out of what the
+  // route tests share: a test app has no process of its own to stop.
   app.enableShutdownHooks()
   return app
 }

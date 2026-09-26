@@ -2,9 +2,10 @@ import { Controller, Get, UseGuards } from '@nestjs/common'
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify'
 import { Test } from '@nestjs/testing'
 import { SupabaseAdminGuard } from '@wizteros/server-common'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp } from '@/app.js'
 import { AppModule } from '@/appModule.js'
+import { removeTempDirs, tempDbPath } from '@/test/support.js'
 
 // A CORS list header as its lowercased entries, whatever separator spacing
 // the plugin chose.
@@ -13,10 +14,22 @@ const entries = (header: unknown): string[] =>
     .split(',')
     .map((entry) => entry.trim().toLowerCase())
 
+// Starting the app creates the schema, so every app here gets a database of
+// its own rather than the container's /data/fleet.db.
+const useTempDb = (): void => {
+  vi.stubEnv('FM_DB_PATH', tempDbPath())
+}
+
+const dropTempDb = (): void => {
+  vi.unstubAllEnvs()
+  removeTempDirs()
+}
+
 describe('createApp', () => {
   let app: NestFastifyApplication
 
   beforeEach(async () => {
+    useTempDb()
     app = await createApp({ quiet: true })
     await app.init()
     await app.getHttpAdapter().getInstance().ready()
@@ -24,6 +37,7 @@ describe('createApp', () => {
 
   afterEach(async () => {
     await app.close()
+    dropTempDb()
   })
 
   // Without `authorization` among the allowed headers the browser never
@@ -78,6 +92,7 @@ describe('a gated route in this app', () => {
   let app: NestFastifyApplication
 
   beforeEach(async () => {
+    useTempDb()
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
       controllers: [GatedProbeController],
@@ -91,6 +106,7 @@ describe('a gated route in this app', () => {
 
   afterEach(async () => {
     await app.close()
+    dropTempDb()
   })
 
   it('answers a read without a session with the 401 the portal expects', async () => {

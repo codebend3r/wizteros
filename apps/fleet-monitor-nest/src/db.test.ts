@@ -1,6 +1,10 @@
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { afterEach, describe, expect, it } from 'vitest'
+import { openSqlite, withSqlite } from '@wizteros/server-common'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { FleetController, HealthController } from '@/api/fleetController.js'
+import { PlaysController } from '@/api/playsController.js'
+import { initDb } from '@/collector.js'
 import * as config from '@/config.js'
 import { type Connection, openConnection, session } from '@/db.js'
 import { checkResult, initDb as initIncidents, observedRun, record } from '@/incidents.js'
@@ -10,6 +14,24 @@ import { initDb as initStore, lastHeartbeat, writeHeartbeat, writeSamples } from
 import { openTestConnection, removeTempDirs, tempDbPath } from '@/test/support.js'
 import { addSeconds, isoformat } from '@/time.js'
 import { CAPTURE_FACTOR } from '@/transport/ssh.js'
+
+// Every connection the app opens goes through one of these two: a session
+// through withSqlite, a long-lived connection through openSqlite. Both still
+// do the real work; the spies only count, standing in for the Python test's
+// patched sqlite3.connect. withSqlite reaches openSqlite from inside the lib,
+// past the spy, so a session is counted once.
+vi.mock('@wizteros/server-common', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@wizteros/server-common')>()
+  return { ...actual, openSqlite: vi.fn(actual.openSqlite), withSqlite: vi.fn(actual.withSqlite) }
+})
+
+const countConnections = (): void => {
+  vi.mocked(openSqlite).mockClear()
+  vi.mocked(withSqlite).mockClear()
+}
+
+const connectionsOpened = (): number =>
+  vi.mocked(openSqlite).mock.calls.length + vi.mocked(withSqlite).mock.calls.length
 
 const T0 = new Date(Date.UTC(2026, 7, 10, 12, 0, 0))
 
@@ -43,6 +65,7 @@ const countOf = (row: unknown): number => fields(asRow(row) ?? {}).number('n')
 
 describe('db', () => {
   afterEach(() => {
+    vi.unstubAllEnvs()
     removeTempDirs()
   })
 
@@ -89,11 +112,57 @@ describe('db', () => {
     expect(opened.map((connection) => connection.open)).toEqual([false])
   })
 
-  // Needs the fleet view and the api, which are not ported yet. The Python
-  // test patched sqlite3.connect to count opens around api.fleet(); the port
-  // belongs with those modules, counting openSqlite calls through a
-  // vi.mock of '@wizteros/server-common' around the fleet handler.
-  it.todo('opens one connection for one fleet response')
+  it('opens one connection for one fleet response', () => {
+    // it used to open three per host plus two, so five hosts cost seventeen
+    const path = tempDbPath()
+    initDb(path)
+    vi.stubEnv('FM_DB_PATH', path)
+    session({ path, work: (connection) => writeHeartbeat({ connection, at: T0 }) })
+
+    countConnections()
+    new FleetController().fleet()
+
+    expect(connectionsOpened()).toBe(1)
+  })
+
+  it('opens one connection for every other response too', () => {
+    // Not in the Python suite, which pinned /fleet alone: every route answers
+    // through exactly one session, as each Python handler opened one. The
+    // handlers are called directly, as the Python test called api.fleet();
+    // the gate and the query pipe in front of them open nothing.
+    const path = tempDbPath()
+    initDb(path)
+    vi.stubEnv('FM_DB_PATH', path)
+    const health = new HealthController()
+    const fleet = new FleetController()
+    const plays = new PlaysController()
+    const paging = { days: 365, page: 1, page_size: 50 }
+    const responses: readonly (readonly [string, () => unknown])[] = [
+      ['/health', () => health.health()],
+      ['/fleet/cpu', () => fleet.cpu({ minutes: 60 })],
+      ['/fleet/memory', () => fleet.memory({ minutes: 60 })],
+      ['/fleet/gpu', () => fleet.gpu({ minutes: 60 })],
+      ['/fleet/network', () => fleet.network({ minutes: 60 })],
+      ['/incidents', () => fleet.incidents({ hours: 24 })],
+      ['/plays/overview', () => plays.overview({ days: 365 })],
+      ['/plays/users', () => plays.users({ days: 365 })],
+      ['/plays/users/1/history', () => plays.userHistory(1, paging)],
+      ['/plays/title', () => plays.titleHistory({ ...paging, key: 'movie:heat:1995' })],
+      ['/plays/top', () => plays.top({ days: 365, metric: 'plays', limit: 25 })],
+      ['/plays/never-played', () => plays.neverPlayed({ ...paging, q: '' })],
+      ['/plays/sync', () => plays.sync()],
+    ]
+
+    const opened = responses.map(([route, respond]) => {
+      countConnections()
+      respond()
+      return [route, connectionsOpened()] as const
+    })
+
+    expect(Object.fromEntries(opened)).toEqual(
+      Object.fromEntries(responses.map(([route]) => [route, 1])),
+    )
+  })
 
   it('advances every container on a host in one transaction', () => {
     // A round that dies partway leaves no container ahead of its siblings.
