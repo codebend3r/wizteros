@@ -449,8 +449,16 @@ export const compactAndPrune = ({ path, now }: CompactJob): void => {
  * `nest build` compiles every file under src, so the worker is its compiled
  * sibling in dist.
  */
-export const compactInWorker = ({ path, now }: CompactJob): Promise<void> =>
-  new Promise((resolve, reject) => {
+// Compactions in flight, each as a promise that settles when its thread has
+// exited. A shutdown joins them before the process exits, as Python's
+// interpreter shutdown joined the to_thread worker: ending a thread that is
+// still inside native SQLite code, by worker.terminate() or process.exit(),
+// is a V8 fatal error (exit 133), seen on the live 1.8 GB database whenever a
+// `docker stop` landed mid-compaction.
+const runningCompactions = new Set<Promise<void>>()
+
+export const compactInWorker = ({ path, now }: CompactJob): Promise<void> => {
+  const done = new Promise<void>((resolve, reject) => {
     const worker = new Worker(new URL('./compactWorker.js', import.meta.url), {
       workerData: { path, now: now.getTime() },
     })
@@ -463,6 +471,25 @@ export const compactInWorker = ({ path, now }: CompactJob): Promise<void> =>
       }
     })
   })
+  // tracked settled either way, so joining never throws and never leaves a
+  // rejection nobody handles; the caller still sees the real outcome on `done`
+  const settled = done.then(
+    () => undefined,
+    () => undefined,
+  )
+  runningCompactions.add(settled)
+  void settled.then(() => runningCompactions.delete(settled))
+  return done
+}
+
+/**
+ * Wait until every compaction thread has finished on its own. A compaction
+ * outlasting `docker stop`'s grace period is then killed with the process, the
+ * same fate the Python thread met, and SQLite rolls its transaction back.
+ */
+export const joinCompactions = async (): Promise<void> => {
+  await Promise.all(runningCompactions)
+}
 
 /**
  * Create every table this process writes. Idempotent, order-independent.

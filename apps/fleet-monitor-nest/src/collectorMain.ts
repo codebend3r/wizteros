@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common'
-import { runAll } from '@/collector.js'
+import { joinCompactions, runAll } from '@/collector.js'
 import { dbPath, SLOW_INTERVAL, VITALS_INTERVAL } from '@/config.js'
 
 // `node dist/collectorMain.js`, the port of `python -m fleet_monitor.collector`:
@@ -40,9 +40,13 @@ try {
   process.exitCode = 1
 }
 
-// A stopped loop stops waiting, but work it abandoned mid-round (an ssh
-// capture, a Plex page, a compaction on its worker) runs on to its own
-// timeout and would hold the process open past `docker stop`'s grace period.
-// Nothing awaits it any more, and every write it could still make commits
-// whole or not at all, so the process leaves now.
+// A compaction thread has to finish before the process exits: exiting under a
+// worker still inside native SQLite code crashes V8.
+await joinCompactions()
+
+// A stopped loop stops waiting, but other work it abandoned mid-round (an ssh
+// capture, a Plex page) runs on to its own timeout and would hold the process
+// open past `docker stop`'s grace period. Nothing awaits it any more, and
+// every write it could still make commits whole or not at all, so the process
+// leaves now.
 process.exit()
