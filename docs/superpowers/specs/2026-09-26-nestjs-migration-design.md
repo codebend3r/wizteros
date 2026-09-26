@@ -57,7 +57,10 @@ Measured on 2026-09-26 against `main` at `8a2f29e`.
    `CREATE TABLE IF NOT EXISTS` and column backfills port line for line, so the production
    files open unchanged. An ORM would add a schema diff against those files and buy
    nothing. Version 13 ships N-API prebuilds inside the package (linux-x64 and arm64
-   included), so it needs no install script and no compiler in the image.
+   included), so it needs no compiler anywhere. Bun 1.4 still tries to compile it,
+   because it ignores the package's `"gypfile": false`, so the root
+   `trustedDependencies` leaves it out. That list replaces Bun's default, and it is what
+   fixed Netlify's "Install dependencies" failure (`node-gyp: command not found`).
 5. **Validation with zod through Nest 12's Standard Schema support** in the route
    decorators. No class-validator and no casts, which fits the house TypeScript rules.
 6. **Tests on Vitest.** It is the Nest 12 default for ESM and reads the decorator metadata
@@ -154,11 +157,9 @@ One branch and one PR per phase.
 - CI sets up Node from `.node-version` and runs `nx run-many -t build`.
 - `CLAUDE.md` documents the lib, the two ports and the import rules.
 
-Open at the time of writing: Netlify's deploy preview fails at "Install dependencies" on
-this branch (exit 1, about 9 seconds). The failure does not reproduce with Netlify's own
-install script in `netlify/build:noble`, nor with clean installs on Node 22 and 24 on
-arm64 and amd64. The deploy log is needed before merge, since the same failure on `main`
-would stop the portal's production deploys.
+The branch first broke Netlify's deploy preview at "Install dependencies": Bun ran
+`node-gyp rebuild` for better-sqlite3 and Netlify has no `node-gyp`. The root
+`trustedDependencies` list stops that script (decision 4).
 
 ### Phase 1: fleet-monitor (branch `nestjs-fleet-monitor`)
 

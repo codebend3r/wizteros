@@ -65,5 +65,9 @@
   "packageManager": "bun@1.4.2",
   "nx": {
     "includedScripts": []
-  }
+  },
+  "trustedDependencies": [
+    "@parcel/watcher",
+    "nx"
+  ]
 }

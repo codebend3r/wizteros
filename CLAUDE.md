@@ -113,6 +113,8 @@ Both Python apps run ruff and pytest through one `scripts/py-tool.sh <app-dir> <
 
 Bun itself is pinned. `packageManager` in the root `package.json` is the source of truth: CI picks it up through `oven-sh/setup-bun` (no `bun-version` input on purpose), `netlify.toml` mirrors it as `BUN_VERSION`, and `scripts/only-bun.mjs` fails any script run under a different Bun, on top of rejecting npm/pnpm/yarn outright. Moving the pin means moving both files in the same commit. The NestJS Dockerfiles install Bun from that same `packageManager` value at build time, so they carry no copy of the pin.
 
+`trustedDependencies` in the root `package.json` is the list of packages whose install scripts Bun runs, and setting it replaces Bun's built-in default list. It names `nx` and `@parcel/watcher`, the two that ran before, and deliberately leaves out `better-sqlite3`. That package ships N-API prebuilds and marks itself `"gypfile": false`, but Bun 1.4 ignores the flag and runs `node-gyp rebuild` because a `binding.gyp` is present. Netlify has no `node-gyp`, so that one script failed every deploy at "Install dependencies". A new dependency that genuinely needs its install script has to be added to the list; `bun pm untrusted` shows any that were skipped.
+
 Gates: pre-commit runs `bun run lint:staged` (lint-staged, autofixing just the staged files) then `bun run system-check` (admin-portal only), pre-push runs `bun run verify` (both apps). CI runs the same checks. lint-staged config is per app in `apps/*/.lintstagedrc.json`, and commands there must spell out `node_modules/.bin/<tool>` because bun keeps the bins in the app, not the root.
 
 ## Releases and deploy
