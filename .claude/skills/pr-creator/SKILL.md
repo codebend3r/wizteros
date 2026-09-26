@@ -50,22 +50,37 @@ Use equivalent GitHub tooling when `gh` is unavailable.
 
 - Start the title with exactly `WZ: `, followed by a short, specific description of the
   branch's logical change.
-- Keep the body minimal and use concise `- ` bullet points.
+- Structure the body as two short sections, in this order:
+  - `## Problem` — one plain sentence naming the problem or gap this PR addresses. State
+    it from the user/system's perspective, not as a restatement of the diff (e.g. "Renewal
+    webhooks weren't updating member expiry" rather than "Add webhook handler").
+  - `## Changes` — concise `- ` bullet points describing what the PR actually does.
+- Keep the body minimal overall: one sentence under `Problem`, and only as many bullets
+  under `Changes` as there are distinct logical changes.
 - Describe only changes present in the committed branch diff.
 - Mention verification only when it actually ran; never imply that unrun checks passed.
 - Omit boilerplate, repeated title text, empty headings, and speculative follow-up work.
+- If the branch is a pure refactor, chore, or tooling change with no user-facing problem
+  to name, state that plainly under `Problem` (e.g. "No behavior change; simplifies X for
+  maintainability") rather than inventing a problem.
 
 Example:
 
 ```text
 WZ: Add subscription renewal handling
 
+## Problem
+Renewal webhooks were received but never updated a member's expiry, so paid renewals
+silently lapsed.
+
+## Changes
 - process successful renewal webhooks
 - add regression coverage for renewal state changes
 ```
 
 Before creation, validate that the title matches `WZ: <short title>` and that the body
-remains a minimal bullet list under the current `CLAUDE.md` rules.
+has exactly the `## Problem` / `## Changes` structure above, staying minimal under the
+current `CLAUDE.md` rules.
 
 ## Create and verify
 
