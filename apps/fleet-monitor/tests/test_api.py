@@ -549,6 +549,43 @@ def test_fleet_warns_on_a_nearly_full_volume(tmp_path, monkeypatch):
     assert host["status"] == "warn"
 
 
+def test_fleet_reports_the_volume_free_space_and_its_mount(tmp_path, monkeypatch):
+    # the card prints "{free} free" beside "/volume1 · of {total}", and both
+    # facts belong to the monitor: the SPA must not hardcode which volume the
+    # collector watches, nor derive free space from a rounded percentage
+    client, db = _client(tmp_path, monkeypatch)
+    now = datetime.now(tz=timezone.utc)
+    _write_heartbeat(db, now)
+    _write_samples(db, "host:meleys", now, [
+        Sample("disk.volume1.used_percent", 62.0, "gauge"),
+        Sample("disk.volume1.total_bytes", 8_000.0, "gauge"),
+        Sample("disk.volume1.available_bytes", 3_000.0, "gauge"),
+    ])
+
+    host = next(h for h in client.get("/fleet").json()["hosts"] if h["name"] == "meleys")
+
+    assert host["disk_available_bytes"] == 3_000.0
+    assert host["disk_mount"] == "/volume1"
+
+
+def test_fleet_reports_absent_free_space_as_absent(tmp_path, monkeypatch):
+    # a host that has not reported the reading, or was never collected at all,
+    # carries None rather than a number invented from the percentage
+    client, db = _client(tmp_path, monkeypatch)
+    now = datetime.now(tz=timezone.utc)
+    _write_heartbeat(db, now)
+    _write_samples(db, "host:meleys", now, [
+        Sample("disk.volume1.used_percent", 62.0, "gauge"),
+    ])
+
+    body = client.get("/fleet").json()
+    meleys = next(h for h in body["hosts"] if h["name"] == "meleys")
+    caraxes = next(h for h in body["hosts"] if h["name"] == "caraxes")
+
+    assert meleys["disk_available_bytes"] is None
+    assert caraxes["disk_available_bytes"] is None
+
+
 def test_memory_percent_uses_available_not_free():
     """free excludes reclaimable page cache; on these boxes that reads as 95%
     used on an idle machine."""

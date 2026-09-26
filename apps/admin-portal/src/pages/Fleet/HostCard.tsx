@@ -103,6 +103,12 @@ type Reading = {
   readonly value: string
   /** Empty when the reading needs no scoping; the line is then not rendered. */
   readonly context: string
+  /** A finding on the context line, set ahead of the scope in body colour
+      where the scope alone renders muted: the disk row's "2.5 TB free". */
+  readonly finding?: string
+  /** A machine name opening the scope, set in mono like every other
+      machine-reported name on the card: the disk row's mount. */
+  readonly scopeName?: string
 }
 
 /** A usage reading, with its absolute size where the collector recorded one.
@@ -117,6 +123,33 @@ const usageReading = ({
 }): Reading => {
   if (percent === null) return { value: '--', context: '' }
   return { value: `${percent}%`, context: total === null ? '' : `of ${formatBytes(total)}` }
+}
+
+/** The disk reading: the memory reading plus the finding the fleet is actually
+    watched for. The percentage stays the figure, but "how much room is left"
+    is what an operator does arithmetic for, so the free space is printed
+    rather than left as an exercise, named to the volume it describes. Absent
+    free space is absent: a figure derived from the rounded percentage would
+    claim a precision the monitor never reported. */
+const diskReading = ({
+  percent,
+  total,
+  available,
+  mount,
+}: {
+  percent: number | null
+  total: number | null
+  available: number | null
+  mount: string
+}): Reading => {
+  const base = usageReading({ percent, total })
+  return {
+    ...base,
+    // the mount names which volume the total describes, so it goes wherever
+    // the total does
+    ...(base.context.length > 0 && { scopeName: mount }),
+    ...(percent !== null && available !== null && { finding: `${formatBytes(available)} free` }),
+  }
 }
 
 /** How far along its track the bar is drawn. Clamped, so a reading outside the
@@ -148,18 +181,20 @@ type StatProps = {
   readonly meterPercent: number | null
 }
 
-/** One reading as three tiers: what it is, what it says, what it is measured
-    against. The label and the qualifier recede so the figure can be the thing
-    the eye lands on; the tile ahead of them is a faster handle on the label,
-    not a fourth tier. */
+/** One reading as one row: the tile and label name it, the figure answers it
+    hard right on the same line, and the meter and qualifier hang under the
+    figure across the row's full width. The label and the qualifier recede so
+    the figure can be the thing the eye lands on; the tile ahead of them is a
+    faster handle on the label, not a fourth tier. */
 const Stat = ({ label, icon, reading, meterPercent }: StatProps) => (
   <div className={styles.stat}>
     <IconTile name={icon} tone="series" size="lg" className={styles.statTile} />
     <dt className={styles.statLabel}>{label}</dt>
+    {/* display: contents, so the figure can share the label's grid row while
+      the meter and context line span the columns beneath them */}
     <dd className={styles.statValue}>
       <span className={styles.figure}>{reading.value}</span>
-      {reading.context.length > 0 && <span className={styles.qualifier}>{reading.context}</span>}
-      {/* The meter restates the percentage printed above it, so it is a second
+      {/* The meter restates the percentage printed beside it, so it is a second
         reading of one fact rather than the only one, and it is hidden from the
         accessibility tree instead of repeating that number there. It carries
         no judgment of its own either: how full is too full is the monitor's
@@ -167,6 +202,22 @@ const Stat = ({ label, icon, reading, meterPercent }: StatProps) => (
       {meterPercent !== null && (
         <span className={styles.meter} aria-hidden="true">
           <span className={styles.meterFill} style={{ width: barWidth(meterPercent) }} />
+        </span>
+      )}
+      {(!!reading.finding || reading.context.length > 0) && (
+        <span className={styles.contextRow}>
+          {!!reading.finding && <span className={styles.finding}>{reading.finding}</span>}
+          {reading.context.length > 0 && (
+            <span className={styles.qualifier}>
+              {!!reading.scopeName && (
+                <>
+                  <span className={styles.scopeName}>{reading.scopeName}</span>
+                  {' · '}
+                </>
+              )}
+              {reading.context}
+            </span>
+          )}
         </span>
       )}
     </dd>
@@ -237,10 +288,11 @@ export const HostCard = ({ summary, className }: HostCardProps) => {
           </Note>
         )}
 
-        {/* The two metered readings share the first row and the two bare ones
-          the second, so every cell in a row is the same height and the labels
-          line up straight across. The pair carrying bars also leads, because
-          on this fleet the disk figures are the finding. */}
+        {/* One reading per row, the metered pair leading because on this fleet
+          the disk figures are the finding. The rows used to sit two to a line,
+          which halved the card's height but left every figure competing with
+          the one beside it and no room for the disk row to state its free
+          space. */}
         <dl className={styles.stats}>
           <Stat
             label="Memory"
@@ -254,7 +306,12 @@ export const HostCard = ({ summary, className }: HostCardProps) => {
           <Stat
             label="Disk"
             icon="disk"
-            reading={usageReading({ percent: summary.diskPercent, total: summary.diskTotalBytes })}
+            reading={diskReading({
+              percent: summary.diskPercent,
+              total: summary.diskTotalBytes,
+              available: summary.diskAvailableBytes,
+              mount: summary.diskMount,
+            })}
             meterPercent={summary.diskPercent}
           />
           <Stat

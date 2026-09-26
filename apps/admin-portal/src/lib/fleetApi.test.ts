@@ -47,6 +47,8 @@ const host: FleetHost = {
   memory_total_bytes: 16_642_768_896,
   disk_percent: 62,
   disk_total_bytes: 8_000_000_000_000,
+  disk_available_bytes: 3_040_000_000_000,
+  disk_mount: '/volume1',
   containers: [{ name: 'sonarr', up: true, healthy: false, has_healthcheck: false }],
   metrics_stale: false,
   stalest_family: 'disk',
@@ -137,6 +139,7 @@ test('toHostSummary passes an absent reading through as absent', () => {
     load_per_core: null,
     memory_percent: null,
     disk_percent: null,
+    disk_available_bytes: null,
     containers: [],
   })
 
@@ -144,7 +147,15 @@ test('toHostSummary passes an absent reading through as absent', () => {
   expect(summary.loadPerCore).toBeNull()
   expect(summary.memoryPercent).toBeNull()
   expect(summary.diskPercent).toBeNull()
+  expect(summary.diskAvailableBytes).toBeNull()
   expect(summary.containers).toEqual([])
+})
+
+test('toHostSummary carries the volume free space and the mount it describes', () => {
+  const summary = toHostSummary(host)
+
+  expect(summary.diskAvailableBytes).toBe(3_040_000_000_000)
+  expect(summary.diskMount).toBe('/volume1')
 })
 
 test('fetchFleet requests /fleet and returns the validated payload', async () => {

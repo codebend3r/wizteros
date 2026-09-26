@@ -116,35 +116,34 @@
   color: var(--color-accent);
 }
 
-// Two columns at every width. The cells are short enough to hold a label and
-// a figure down to a 320px viewport, and collapsing to one column there would
-// double the card's height for no gain in legibility.
+// One reading per row. Two to a line halved the card's height, but every
+// figure competed with the one beside it and the disk row had no room to
+// state its free space; a single column gives each reading the full width and
+// the figures a common right edge to line up on.
 .stats {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-2);
   margin: 0;
 }
 
-// The tile leads and spans both rows, so the label sits level with its top
-// and the figure hangs under the label rather than under the tile.
+// The tile leads and spans the first two rows, so it sits beside the reading
+// as a whole rather than beside its first line. The label and figure share
+// the top row; the meter and context line hang under them, spanning both of
+// their columns, so the bar underlines the reading edge to edge.
 .stat {
   display: grid;
-  align-content: start;
-  align-items: start;
-  grid-template-columns: auto minmax(0, 1fr);
-  grid-template-areas:
-    'tile label'
-    'tile value';
+  align-items: center;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: var(--space-0) var(--space-1);
 }
 
 .statTile {
-  grid-area: tile;
+  align-self: start;
+  grid-row: span 2;
 }
 
 .statLabel {
-  grid-area: label;
   color: var(--color-muted);
   font-size: var(--font-size-xs);
   font-weight: 600;
@@ -152,12 +151,11 @@
   text-transform: uppercase;
 }
 
+// The dd has to be an element for the definition-list semantics, but its
+// children are grid items of the row: the figure shares the label's line and
+// the meter and context span the columns beneath it.
 .statValue {
-  display: grid;
-  grid-area: value;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-0);
-  margin: 0;
+  display: contents;
 }
 
 // The figure is the thing the eye lands on, so it takes the weight, the size,
@@ -169,18 +167,43 @@
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
   overflow-wrap: anywhere;
+  text-align: right;
+}
+
+// The finding and the qualifier share one line, finding left and scope right,
+// wrapping into a stack when a narrow card cannot hold both.
+.contextRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  grid-column: 2 / 4;
+  column-gap: var(--space-1);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+// Body colour and label weight where the qualifier beside it is muted: "2.5 TB
+// free" is a finding, not a scoping.
+.finding {
+  font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .qualifier {
   color: var(--color-muted);
-  font-size: var(--font-size-xs);
-  font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
+}
+
+// A machine-reported name, in mono like the ip and the container names.
+.scopeName {
+  font-family: var(--font-mono);
 }
 
 .meter {
   display: block;
   overflow: hidden;
+  grid-column: 2 / 4;
   height: 0.375rem;
   border-radius: var(--radius-md);
   background: var(--color-bg);
