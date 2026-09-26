@@ -1,0 +1,11 @@
+# The build context is the repo root, so this allowlists rather than
+# excludes: nothing reaches the image unless it is named here, which keeps
+# .env, the live data directories and every other app out of it.
+*
+!package.json
+!bun.lock
+!libs/server-common
+!apps/fleet-monitor-nest
+**/node_modules
+**/dist
+**/*.test.ts

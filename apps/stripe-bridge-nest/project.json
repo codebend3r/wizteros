@@ -1,0 +1,17 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "stripe-bridge-nest",
+  "projectType": "application",
+  "sourceRoot": "apps/stripe-bridge-nest/src",
+  "tags": ["scope:bridge", "lang:ts"],
+  "targets": {
+    "docker-build": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "docker build -f apps/stripe-bridge-nest/Dockerfile -t stripe-bridge-nest .",
+        "cwd": "{workspaceRoot}"
+      }
+    }
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "*.ts": ["node_modules/.bin/oxlint --fix", "node_modules/.bin/oxfmt"],
+  "*.{js,mjs,cjs,json,md,yml,yaml}": ["node_modules/.bin/oxfmt"]
+}
