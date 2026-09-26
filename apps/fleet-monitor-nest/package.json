@@ -24,7 +24,7 @@
   "devDependencies": {
     "@nestjs/cli": "12.0.7",
     "@nestjs/testing": "12.1.0",
-    "@types/node": "22.20.4",
+    "@types/node": "24.19.0",
     "@typescript/native-preview": "7.0.0-dev.20260707.2",
     "oxfmt": "0.68.0",
     "oxlint": "1.83.0",

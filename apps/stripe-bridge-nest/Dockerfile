@@ -7,7 +7,7 @@
 # supports. Bun is installed at the version the root package.json pins in
 # `packageManager`, so the pin still lives in one place.
 
-FROM node:22-slim AS build
+FROM node:24-slim AS build
 WORKDIR /repo
 COPY package.json bun.lock ./
 RUN npm install --global "$(node -p "require('./package.json').packageManager")"
@@ -20,7 +20,7 @@ COPY apps/stripe-bridge-nest/ apps/stripe-bridge-nest/
 RUN cd libs/server-common && bun run build \
  && cd ../../apps/stripe-bridge-nest && bun run build
 
-FROM node:22-slim AS deps
+FROM node:24-slim AS deps
 WORKDIR /repo
 COPY package.json bun.lock ./
 RUN npm install --global "$(node -p "require('./package.json').packageManager")"
@@ -28,7 +28,7 @@ COPY libs/server-common/package.json libs/server-common/
 COPY apps/stripe-bridge-nest/package.json apps/stripe-bridge-nest/
 RUN bun install --frozen-lockfile --ignore-scripts --production --filter stripe-bridge-nest
 
-FROM node:22-slim
+FROM node:24-slim
 ENV NODE_ENV=production
 WORKDIR /repo
 COPY --from=deps /repo ./
