@@ -7,12 +7,16 @@
 # supports. Bun is installed at the version the root package.json pins in
 # `packageManager`, so the pin still lives in one place.
 
-FROM node:24-slim AS build
+# One stage installs Bun, and both the build and the production install start
+# from it, so a cold build fetches Bun once rather than once per stage.
+FROM node:24-slim AS bun
 WORKDIR /repo
 COPY package.json bun.lock ./
 RUN npm install --global "$(node -p "require('./package.json').packageManager")"
 COPY libs/server-common/package.json libs/server-common/
 COPY apps/fleet-monitor-nest/package.json apps/fleet-monitor-nest/
+
+FROM bun AS build
 RUN bun install --frozen-lockfile --ignore-scripts \
       --filter fleet-monitor-nest --filter @wizteros/server-common
 COPY libs/server-common/ libs/server-common/
@@ -20,12 +24,7 @@ COPY apps/fleet-monitor-nest/ apps/fleet-monitor-nest/
 RUN cd libs/server-common && bun run build \
  && cd ../../apps/fleet-monitor-nest && bun run build
 
-FROM node:24-slim AS deps
-WORKDIR /repo
-COPY package.json bun.lock ./
-RUN npm install --global "$(node -p "require('./package.json').packageManager")"
-COPY libs/server-common/package.json libs/server-common/
-COPY apps/fleet-monitor-nest/package.json apps/fleet-monitor-nest/
+FROM bun AS deps
 RUN bun install --frozen-lockfile --ignore-scripts --production --filter fleet-monitor-nest
 
 FROM node:24-slim

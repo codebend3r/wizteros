@@ -9,3 +9,7 @@
 **/node_modules
 **/dist
 **/*.test.ts
+# Re-including a whole app directory would otherwise carry along a local .env
+# or a copy of a live database dropped there to run against.
+**/.env*
+**/*.db*
