@@ -29,7 +29,7 @@ The contribution framing is deliberate: Plex TOS prohibits selling access, and S
 
 ## Structure
 
-An Nx monorepo over bun workspaces (`workspaces: ["apps/*"]`), with three apps and no shared libs yet.
+An Nx monorepo over bun workspaces (`workspaces: ["apps/*", "libs/*"]`), with three apps, the NestJS ports of the two Python services being built beside them, and one shared lib.
 
 ```
 wizteros/
@@ -40,10 +40,14 @@ wizteros/
 │   ├── fleet-monitor/          Nx project `fleet-monitor`
 │   │   ├── fleet_monitor/      all runtime code
 │   │   └── tests/              pytest suite
-│   └── stripe-bridge/          Nx project `stripe-bridge`
-│       ├── stripe_bridge/      all runtime code
-│       ├── scripts/            e2e, backfill, and snapshot entrypoints
-│       └── tests/              pytest suite
+│   ├── fleet-monitor-nest/     Nx project `fleet-monitor-nest`, the NestJS port (in progress)
+│   ├── stripe-bridge/          Nx project `stripe-bridge`
+│   │   ├── stripe_bridge/      all runtime code
+│   │   ├── scripts/            e2e, backfill, and snapshot entrypoints
+│   │   └── tests/              pytest suite
+│   └── stripe-bridge-nest/     Nx project `stripe-bridge-nest`, the NestJS port (in progress)
+├── libs/
+│   └── server-common/          Nx project `@wizteros/server-common`, shared by the NestJS servers
 ├── docs/                       all specs, plans, and PRDs for both apps
 ├── scripts/                    release, backfill, deploy, and Python tool entrypoints
 ├── .claude/agents/             repo-scoped subagents
@@ -65,8 +69,13 @@ wizteros/
 
 **fleet-monitor**, a FastAPI service (Python 3.12) in the `fleet_monitor/` package. `api.py` is routes and view models only; the fleet judgement behind them lives in `fleet.py` and the metric history in `series.py`. `plays.py` is a package, not a module: `plays/base.py` holds the shared query pieces, `plays/ledger.py` the schema and writes, `plays/views.py` the aggregates, `plays/never_played.py` the unplayed engine, and `plays/__init__.py` re-exports the public surface so callers still write `plays.overview(...)`.
 
+**NestJS ports (in progress)**: `fleet-monitor-nest` and `stripe-bridge-nest` replace the two Python services one phase at a time and take over their directory names at cutover; until then the Python apps are what runs. They are NestJS 12 (ESM, Fastify adapter) and run on Node 22 (`.node-version`, `node:22-slim` images), with bun still the package manager. `build` is `nest build` on TypeScript 6, because the Nest CLI needs the compiler API that TypeScript 7 does not ship yet; `typecheck` is tsgo, as in admin-portal. Tests are Vitest. Each image builds from the repo root context, and the `Dockerfile.dockerignore` next to each Dockerfile allowlists what goes in, which keeps `.env` and the live data out.
+
+**server-common** (`libs/server-common`, `@wizteros/server-common`): `SupabaseAdminGuard` and `AdminAuthModule`, the env parsing both servers share, and `withSqlite`, the one-connection-per-unit-of-work helper. Apps consume its built `dist`, which is why `typecheck`, `test` and `build` all depend on `^build`. Its `@nestjs/common` is a peer dependency, so an app and the lib share one copy and the guard's 401 stays an `HttpException` to the app.
+
 Import rules, which tooling does not catch:
 
+- NestJS server modules import via the `@/` alias with a `.js` extension (`@/config.js`), since they compile as nodenext ESM; `nest build` rewrites the alias to a relative path in `dist`. The shared lib imports same-directory `./` only, because an app compiling against it would resolve its `@/` to the app's own `src`.
 - Bridge modules import package-absolute: `from stripe_bridge import store`, `from stripe_bridge.wizarr import WizarrClient`. New modules go inside `stripe_bridge/` and need no Dockerfile change, since the image copies the whole package. fleet-monitor follows the same rule with its `fleet_monitor/` package.
 - Web modules import via the `@/` alias, never parent-relative `../`. Same-directory `./` imports (co-located styles, tests) are fine. The alias maps to `apps/admin-portal/src/*` and is declared in both `apps/admin-portal/tsconfig.json` and `apps/admin-portal/vite.config.ts`, so a new alias must be added in both.
 - Unqualified paths below (`styles/globals.scss`, `lib/foo.ts`) are relative to `apps/admin-portal/src/`.
@@ -86,13 +95,15 @@ The root `bun run <script>` aliases (`dev`, `build`, `verify`, `system-check`, `
 
 `bun run system-check:no-cache` is `system-check` plus `--skip-nx-cache`: the same five admin-portal targets, but every one actually executes instead of reporting a cache hit. Use it to confirm a cached green is real.
 
-All three projects source targets from more than one place, so check `nx show project` rather than assuming from a single file:
+Most projects source targets from more than one place, so check `nx show project` rather than assuming from a single file:
 
-| Project         | Targets come from                                                                                                                                                                                                                                                                               |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `admin-portal`  | `package.json` scripts only, gated by `nx.includedScripts`                                                                                                                                                                                                                                      |
-| `fleet-monitor` | `package.json` scripts (`test`, `lint:py`) gated by `nx.includedScripts`, plus `project.json` for `docker-build`                                                                                                                                                                                |
-| `stripe-bridge` | `package.json` scripts (`test`, `lint:py`, `test:e2e`, `test:e2e:tiers`, `refresh:libraries`) gated by `nx.includedScripts`, **plus** `project.json` for the Docker targets (`docker-build`, `serve`, `stop`, `logs`, `test-docker`), declared as `nx:run-commands` with `cwd: {workspaceRoot}` |
+| Project                                    | Targets come from                                                                                                                                                                                                                                                                               |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `admin-portal`                             | `package.json` scripts only, gated by `nx.includedScripts`                                                                                                                                                                                                                                      |
+| `fleet-monitor`                            | `package.json` scripts (`test`, `lint:py`) gated by `nx.includedScripts`, plus `project.json` for `docker-build`                                                                                                                                                                                |
+| `stripe-bridge`                            | `package.json` scripts (`test`, `lint:py`, `test:e2e`, `test:e2e:tiers`, `refresh:libraries`) gated by `nx.includedScripts`, **plus** `project.json` for the Docker targets (`docker-build`, `serve`, `stop`, `logs`, `test-docker`), declared as `nx:run-commands` with `cwd: {workspaceRoot}` |
+| `fleet-monitor-nest`, `stripe-bridge-nest` | `package.json` scripts (`build`, `typecheck`, `lint:ts`, `format:check`, `test`) gated by `nx.includedScripts`, plus `project.json` for `docker-build`                                                                                                                                          |
+| `@wizteros/server-common`                  | `package.json` scripts only, gated by `nx.includedScripts`                                                                                                                                                                                                                                      |
 
 Anything cacheable is declared in `nx.json` `targetDefaults`. A new target that is safe to cache belongs there; anything that touches Docker or the network must stay `cache: false`.
 
@@ -100,7 +111,7 @@ A cacheable target has to declare every input that can change its result, includ
 
 Both Python apps run ruff and pytest through one `scripts/py-tool.sh <app-dir> <ruff|pytest>`, which prefers that app's `.venv` and falls back to whatever is on `PATH`, since CI installs the requirements with plain pip and no venv. It replaced four near-identical per-app scripts that differed only in their directory and their setup hint, which fleet-monitor still supplies through `PY_SETUP`. Because the runner now lives outside `{projectRoot}`, `targetDefaults` for `lint:py` and `test` list `{workspaceRoot}/scripts/py-tool.sh` as an input; without it a change to the runner would not bust either cache. The staged-file pass has its own `scripts/lint-staged-py.sh`, since lint-staged runs a task from the directory of the closest config.
 
-Bun itself is pinned. `packageManager` in the root `package.json` is the source of truth: CI picks it up through `oven-sh/setup-bun` (no `bun-version` input on purpose), `netlify.toml` mirrors it as `BUN_VERSION`, and `scripts/only-bun.mjs` fails any script run under a different Bun, on top of rejecting npm/pnpm/yarn outright. Moving the pin means moving both files in the same commit.
+Bun itself is pinned. `packageManager` in the root `package.json` is the source of truth: CI picks it up through `oven-sh/setup-bun` (no `bun-version` input on purpose), `netlify.toml` mirrors it as `BUN_VERSION`, and `scripts/only-bun.mjs` fails any script run under a different Bun, on top of rejecting npm/pnpm/yarn outright. Moving the pin means moving both files in the same commit. The NestJS Dockerfiles install Bun from that same `packageManager` value at build time, so they carry no copy of the pin.
 
 Gates: pre-commit runs `bun run lint:staged` (lint-staged, autofixing just the staged files) then `bun run system-check` (admin-portal only), pre-push runs `bun run verify` (both apps). CI runs the same checks. lint-staged config is per app in `apps/*/.lintstagedrc.json`, and commands there must spell out `node_modules/.bin/<tool>` because bun keeps the bins in the app, not the root.
 
@@ -118,7 +129,7 @@ The repo does have linters: oxlint for TS/JS, stylelint for SCSS, ruff for Pytho
 
 Several conventions below are enforced as lint errors, not just style preferences, in `apps/admin-portal/.oxlintrc.json` under a block marked "Conventions from CLAUDE.md": no default exports, `type` over `interface`, no `any`, no non-null assertions, `eqeqeq`, `prefer-const`, `prefer-array-flat-map`. Turning one of these off to make code pass is not the fix.
 
-There is a second oxlint and oxfmt pair at the repo root, `.oxlintrc.json` and `.oxfmtrc.json`, covering everything outside `apps/`: the `.mjs` tooling under `scripts/` and `.claude/skills/**`, the docs, and the root config files. It ignores `apps` outright, since each app owns its own config, and it is a plain script rather than an Nx target because the repo root is not an Nx project. The oxfmt pass runs with `--disable-nested-config`: without it oxfmt discovers `apps/admin-portal/.oxfmtrc.json`, treats that app as its own formatting root, and formats its files under the root pass regardless of the ignore list. `bun run lint`, `format`, `format:check` and `verify` run it first and then fan out to the projects; `bun run lint:root`, `lint:root:fix`, `format:root` and `format:check:root` run only that pass. The root config disables four rules whose suggested fix contradicts the house style (`for…of` over `forEach`, mutating a `reduce` accumulator, mutating a mapped object, `toSorted` on an array that is already a fresh copy); each carries a comment saying so.
+There is a second oxlint and oxfmt pair at the repo root, `.oxlintrc.json` and `.oxfmtrc.json`, covering everything outside `apps/`: the `.mjs` tooling under `scripts/` and `.claude/skills/**`, the docs, and the root config files. It ignores `apps` and `libs` outright, since each project owns its own config, and it is a plain script rather than an Nx target because the repo root is not an Nx project. The oxfmt pass runs with `--disable-nested-config`: without it oxfmt discovers `apps/admin-portal/.oxfmtrc.json`, treats that app as its own formatting root, and formats its files under the root pass regardless of the ignore list. `bun run lint`, `format`, `format:check` and `verify` run it first and then fan out to the projects; `bun run lint:root`, `lint:root:fix`, `format:root` and `format:check:root` run only that pass. The root config disables four rules whose suggested fix contradicts the house style (`for…of` over `forEach`, mutating a `reduce` accumulator, mutating a mapped object, `toSorted` on an array that is already a fresh copy); each carries a comment saying so.
 
 Everything else here is convention, and the import-alias rule in particular has no lint rule behind it.
 
