@@ -1,6 +1,6 @@
-import { NestFactory } from '@nestjs/core'
+import { HttpAdapterHost, NestFactory } from '@nestjs/core'
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify'
-import { starletteCors } from '@wizteros/server-common'
+import { HttpDetailFilter, starletteCors } from '@wizteros/server-common'
 import { AppModule } from '@/appModule.js'
 
 /**
@@ -26,6 +26,9 @@ export const createApp = async ({
   // sending it cross-origin triggers a preflight that otherwise ends the
   // request before it is made.
   app.enableCors(starletteCors({ origin: '*', methods: ['GET'], headers: ['Authorization'] }))
+  // Every error leaves as {"detail": ...}, the body FastAPI sent and the
+  // portal shows.
+  app.useGlobalFilters(new HttpDetailFilter(app.get(HttpAdapterHost)))
   app.enableShutdownHooks()
   return app
 }
