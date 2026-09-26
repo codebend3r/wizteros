@@ -24,9 +24,10 @@ export type AdminAuthConfig = {
 
 export type AdminAuthOptions = {
   /**
-   * Read on every request rather than once at boot, so a container that
-   * starts before its env is complete recovers on the next request instead
-   * of staying shut until it is restarted.
+   * Called on every request, as the Python monitor did. A container's
+   * environment is fixed when it starts, so in production this reads the same
+   * values each time; what it buys is that nothing is captured at import, so
+   * a test can change the config between requests.
    */
   readConfig: () => AdminAuthConfig
   /**
@@ -37,6 +38,14 @@ export type AdminAuthOptions = {
 }
 
 export const ADMIN_AUTH_OPTIONS = Symbol('ADMIN_AUTH_OPTIONS')
+
+// Nest builds a separate guard instance for every module whose controllers
+// name it, so a cache held by the guard would be one cache per module, each
+// fetching the keys on its own first request. Registering the cache once in
+// the global module is what makes every instance share it.
+const ADMIN_KEY_SETS = Symbol('ADMIN_KEY_SETS')
+
+type KeySets = Map<string, JWTVerifyGetKey>
 
 const fetchKeySet = (jwksUrl: string): JWTVerifyGetKey => createRemoteJWKSet(new URL(jwksUrl))
 
@@ -69,11 +78,12 @@ const bearerToken = (header: string): string => {
 
 @Injectable()
 export class SupabaseAdminGuard implements CanActivate {
-  // One key set per JWKS url: jose caches the fetched keys inside it, which
-  // is what keeps the network off the request path after the first call.
-  private readonly keySets = new Map<string, JWTVerifyGetKey>()
-
-  constructor(@Inject(ADMIN_AUTH_OPTIONS) private readonly options: AdminAuthOptions) {}
+  constructor(
+    @Inject(ADMIN_AUTH_OPTIONS) private readonly options: AdminAuthOptions,
+    // One key set per JWKS url: jose caches the fetched keys inside it, which
+    // is what keeps the network off the request path after the first call.
+    @Inject(ADMIN_KEY_SETS) private readonly keySets: KeySets,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const { supabaseUrl, allowedEmails } = this.options.readConfig()
@@ -128,8 +138,9 @@ export class SupabaseAdminGuard implements CanActivate {
 }
 
 /**
- * Registers the guard and its options app-wide, so any controller can take
- * `@UseGuards(SupabaseAdminGuard)` without importing this module itself.
+ * Registers the guard's options and key cache app-wide, so any controller in
+ * any module can take `@UseGuards(SupabaseAdminGuard)` without importing this
+ * module itself, and every one of those guards shares the one cache.
  */
 @Module({})
 export class AdminAuthModule {
@@ -137,8 +148,11 @@ export class AdminAuthModule {
     return {
       module: AdminAuthModule,
       global: true,
-      providers: [{ provide: ADMIN_AUTH_OPTIONS, useValue: options }, SupabaseAdminGuard],
-      exports: [ADMIN_AUTH_OPTIONS, SupabaseAdminGuard],
+      providers: [
+        { provide: ADMIN_AUTH_OPTIONS, useValue: options },
+        { provide: ADMIN_KEY_SETS, useValue: new Map<string, JWTVerifyGetKey>() },
+      ],
+      exports: [ADMIN_AUTH_OPTIONS, ADMIN_KEY_SETS],
     }
   }
 }

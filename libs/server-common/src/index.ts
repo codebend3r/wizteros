@@ -5,5 +5,12 @@ export {
   type AdminAuthOptions,
   SupabaseAdminGuard,
 } from './adminAuth.js'
+export { type CorsOptions, starletteCors } from './cors.js'
 export { parseEmailAllowlist, parseList, requireEnv, trimTrailingSlashes } from './env.js'
-export { openSqlite, type SqliteDatabase, type SqliteFileOptions, withSqlite } from './sqlite.js'
+export {
+  openSqlite,
+  type SqliteDatabase,
+  type SqliteFileOptions,
+  type SqliteMode,
+  withSqlite,
+} from './sqlite.js'

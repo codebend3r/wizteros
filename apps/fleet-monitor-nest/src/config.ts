@@ -8,9 +8,10 @@ import {
 export const PORT = 8010
 
 /**
- * The Supabase project and admins behind every gated route. The monitor
- * prefixes its variables FM_, and they are read per request so a container
- * that started before its env was complete recovers without a restart.
+ * The Supabase project and admins behind every gated route, from the
+ * monitor's FM_-prefixed variables. Read when the guard asks rather than
+ * captured at import; a container's environment is fixed at start, so an
+ * edited .env still needs the container recreated.
  */
 export const adminAuthConfig = (): AdminAuthConfig => ({
   supabaseUrl: trimTrailingSlashes(process.env.FM_SUPABASE_URL),

@@ -104,11 +104,11 @@ Measured on 2026-09-26 against `main` at `8a2f29e`.
     admin-portal oxlint "Conventions from CLAUDE.md" block. The one addition is
     `typescript/no-extraneous-class` with `allowWithDecorator`, because a Nest module is a
     decorated class that is empty or holds only a static `forRoot`.
-13. **The one deliberate behavior change: the bridge reads its admin auth config per
-    request.** The Python bridge read `SUPABASE_URL` and `ADMIN_ALLOWED_EMAILS` once at
-    import. The shared guard reads them on every request, as the Python monitor already
-    does. A container that starts before its env is complete now recovers without a
-    restart. Nothing that works today changes.
+13. **The bridge's admin auth config is read when the guard asks, not at import.** The
+    Python bridge captured `SUPABASE_URL` and `ADMIN_ALLOWED_EMAILS` at import; the shared
+    guard reads them per request, as the Python monitor did. A container's environment
+    is fixed when it starts, so production sees the same values either way and an
+    edited `.env` still needs the container recreated. Nothing observable changes.
 
 ### Library map
 

@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core'
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify'
+import { starletteCors } from '@wizteros/server-common'
 import { AppModule } from '@/appModule.js'
 
 /**
@@ -24,13 +25,7 @@ export const createApp = async ({
   // answers 401 without a session. Authorization has to be named, since
   // sending it cross-origin triggers a preflight that otherwise ends the
   // request before it is made.
-  app.enableCors({
-    origin: '*',
-    methods: ['GET'],
-    allowedHeaders: ['Authorization'],
-    // Starlette answered a preflight with 200; @fastify/cors defaults to 204.
-    optionsSuccessStatus: 200,
-  })
+  app.enableCors(starletteCors({ origin: '*', methods: ['GET'], headers: ['Authorization'] }))
   app.enableShutdownHooks()
   return app
 }

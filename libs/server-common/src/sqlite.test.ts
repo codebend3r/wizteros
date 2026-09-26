@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import Database from 'better-sqlite3'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { type SqliteDatabase, withSqlite } from './sqlite.js'
 
@@ -90,5 +91,72 @@ describe('withSqlite', () => {
       }),
     })
     expect(settings).toEqual({ journal: 'wal', busyTimeout: 30_000 })
+  })
+
+  describe('with another writer on the file', () => {
+    let other: SqliteDatabase | null = null
+
+    // A second connection standing in for the other process, with a short
+    // busy timeout so a test that makes it wait fails fast.
+    const otherWriter = (): SqliteDatabase => {
+      withSqlite({ path, wal: true, work: () => undefined })
+      other = new Database(path, { timeout: 50 })
+      return other
+    }
+
+    const insert = ({ database, body }: { database: SqliteDatabase; body: string }) =>
+      database.prepare('INSERT INTO notes (body) VALUES (?)').run(body)
+
+    afterEach(() => {
+      other?.close()
+      other = null
+    })
+
+    it('takes the write lock up front, so a unit that reads before it writes keeps its write', () => {
+      const writer = otherWriter()
+      withSqlite({
+        path,
+        wal: true,
+        work: (database) => {
+          database.prepare('SELECT COUNT(*) FROM notes').get()
+          // the other writer has to wait for this unit rather than slip a
+          // commit in underneath it
+          expect(() => insert({ database: writer, body: 'other' })).toThrow(/locked|busy/i)
+          insert({ database, body: 'mine' })
+        },
+      })
+      expect(count()).toBe(1)
+    })
+
+    it('lets another writer commit underneath a read unit', () => {
+      const writer = otherWriter()
+      withSqlite({
+        path,
+        wal: true,
+        mode: 'read',
+        work: (database) => {
+          database.prepare('SELECT COUNT(*) FROM notes').get()
+          insert({ database: writer, body: 'other' })
+        },
+      })
+      expect(count()).toBe(1)
+    })
+
+    it('refuses a write from a read unit once another writer has moved on, which is why writes take the lock first', () => {
+      const writer = otherWriter()
+      expect(() =>
+        withSqlite({
+          path,
+          wal: true,
+          mode: 'read',
+          work: (database) => {
+            database.prepare('SELECT COUNT(*) FROM notes').get()
+            insert({ database: writer, body: 'other' })
+            insert({ database, body: 'mine' })
+          },
+        }),
+      ).toThrow(/locked|busy/i)
+      expect(count()).toBe(1)
+    })
   })
 })

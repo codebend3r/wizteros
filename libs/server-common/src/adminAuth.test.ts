@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common'
+import { Controller, Get, Module, UseGuards } from '@nestjs/common'
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify'
 import { Test } from '@nestjs/testing'
 import {
@@ -25,6 +25,20 @@ class GatedController {
     return { ok: true }
   }
 }
+
+// A second gated controller in a module of its own. Nest builds one guard
+// instance per module, which is how a cache kept on the guard came apart.
+@Controller('elsewhere')
+@UseGuards(SupabaseAdminGuard)
+class ElsewhereController {
+  @Get()
+  read(): { ok: boolean } {
+    return { ok: true }
+  }
+}
+
+@Module({ controllers: [ElsewhereController] })
+class ElsewhereModule {}
 
 // One throwaway ES256 keypair standing in for Supabase's. The test owns both
 // halves so it can mint a token that really verifies, rather than asserting
@@ -84,6 +98,7 @@ describe('SupabaseAdminGuard', () => {
             return publicKeySet
           },
         }),
+        ElsewhereModule,
       ],
       controllers: [GatedController],
     }).compile()
@@ -168,7 +183,7 @@ describe('SupabaseAdminGuard', () => {
     expect(response.statusCode).toBe(401)
   })
 
-  it('recovers on the next request once its config arrives, without a restart', async () => {
+  it('reads its config on every request rather than capturing it once', async () => {
     delete env.SUPABASE_URL
     const token = await mint()
     expect((await read(bearer(token))).statusCode).toBe(401)
@@ -187,5 +202,18 @@ describe('SupabaseAdminGuard', () => {
     await read(bearer(await mint()))
     await read(bearer(await mint()))
     expect(jwksUrls).toEqual([`${SUPABASE_URL}/auth/v1/.well-known/jwks.json`])
+  })
+
+  it('shares that one lookup with the guards in every other module', async () => {
+    const token = await mint()
+    expect((await read(bearer(token))).statusCode).toBe(200)
+    const elsewhere = await app.inject({ method: 'GET', url: '/elsewhere', headers: bearer(token) })
+    expect(elsewhere.statusCode).toBe(200)
+    expect(jwksUrls).toHaveLength(1)
+  })
+
+  it('gates a controller in another module too', async () => {
+    const response = await app.inject({ method: 'GET', url: '/elsewhere' })
+    expect(response.statusCode).toBe(401)
   })
 })

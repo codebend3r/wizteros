@@ -9,9 +9,9 @@ import {
 export const PORT = 8000
 
 /**
- * The Supabase project and admins behind every /admin route, read per
- * request so a container that started before its env was complete recovers
- * without a restart.
+ * The Supabase project and admins behind every /admin route. Read when the
+ * guard asks rather than captured at import; a container's environment is
+ * fixed at start, so an edited .env still needs the container recreated.
  */
 export const adminAuthConfig = (): AdminAuthConfig => ({
   supabaseUrl: trimTrailingSlashes(process.env.SUPABASE_URL),

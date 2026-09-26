@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core'
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify'
+import { starletteCors } from '@wizteros/server-common'
 import { AppModule } from '@/appModule.js'
 import { adminAllowedOrigins } from '@/config.js'
 
@@ -19,13 +20,13 @@ export const createApp = async ({
 
   // Only the configured portal origins may call the admin routes from a
   // browser, and only with the two headers the portal sends.
-  app.enableCors({
-    origin: adminAllowedOrigins(),
-    methods: ['GET', 'POST'],
-    allowedHeaders: ['Authorization', 'Content-Type'],
-    // Starlette answered a preflight with 200; @fastify/cors defaults to 204.
-    optionsSuccessStatus: 200,
-  })
+  app.enableCors(
+    starletteCors({
+      origin: adminAllowedOrigins(),
+      methods: ['GET', 'POST'],
+      headers: ['Authorization', 'Content-Type'],
+    }),
+  )
   app.enableShutdownHooks()
   return app
 }

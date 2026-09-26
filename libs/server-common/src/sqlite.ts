@@ -19,12 +19,36 @@ export type SqliteFileOptions = {
   wal?: boolean
 }
 
+/**
+ * How a unit of work takes its transaction.
+ *
+ * `write`, the default, begins IMMEDIATE: the write lock is taken up front, so
+ * a unit that meets another writer waits out the busy timeout at its first
+ * statement. A DEFERRED unit that reads and then writes cannot wait: if
+ * another connection commits in between, WAL refuses to upgrade its stale
+ * snapshot and the write fails at once with SQLITE_BUSY_SNAPSHOT. Python's
+ * sqlite3 never met that, because it only began the transaction at the first
+ * INSERT or UPDATE.
+ *
+ * `read` begins DEFERRED, for a unit that never writes the main database
+ * (a temp table is fine). It sees one consistent snapshot and never makes a
+ * writer wait.
+ */
+export type SqliteMode = 'write' | 'read'
+
 const BUSY_TIMEOUT_MS = 30_000
 
 export const openSqlite = ({ path, wal = false }: SqliteFileOptions): SqliteDatabase => {
   const database = new Database(path, wal ? { timeout: BUSY_TIMEOUT_MS } : {})
   if (wal) {
-    database.pragma('journal_mode = WAL')
+    try {
+      // The first switch of a file to WAL needs an exclusive lock and can fail
+      // on a busy or read-only file; the handle must not outlive the failure.
+      database.pragma('journal_mode = WAL')
+    } catch (error) {
+      database.close()
+      throw error
+    }
   }
   return database
 }
@@ -39,11 +63,13 @@ export const openSqlite = ({ path, wal = false }: SqliteFileOptions): SqliteData
 export const withSqlite = <T>({
   path,
   wal,
+  mode = 'write',
   work,
-}: SqliteFileOptions & { work: (database: SqliteDatabase) => T }): T => {
+}: SqliteFileOptions & { mode?: SqliteMode; work: (database: SqliteDatabase) => T }): T => {
   const database = openSqlite({ path, wal })
   try {
-    return database.transaction(() => work(database))()
+    const transaction = database.transaction(() => work(database))
+    return mode === 'write' ? transaction.immediate() : transaction.deferred()
   } finally {
     database.close()
   }
