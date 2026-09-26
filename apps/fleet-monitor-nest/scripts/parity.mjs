@@ -4,7 +4,8 @@
 //   node apps/fleet-monitor-nest/scripts/parity.mjs --db /path/to/fleet-copy.db
 //
 // Run from the repo root after `bun run setup:py:monitor` and
-// `bunx nx run fleet-monitor-nest:build`. Point it at a COPY: both APIs open
+// `bunx nx run fleet-monitor-nest:build`; `--uvicorn` points at the Python
+// venv's uvicorn when it lives somewhere else (a worktree, say). Point it at a COPY: both APIs open
 // the file, and the Python one runs its schema setup on start.
 //
 // Both servers verify real ES256 tokens against a fake Supabase that this
@@ -15,6 +16,7 @@
 // time between the two calls.
 
 import { spawn } from 'node:child_process'
+import { existsSync, statSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { resolve } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
@@ -24,6 +26,7 @@ import { exportJWK, generateKeyPair, SignJWT } from 'jose'
 const { values } = parseArgs({
   options: {
     db: { type: 'string' },
+    uvicorn: { type: 'string', default: 'apps/fleet-monitor/.venv/bin/uvicorn' },
     'py-port': { type: 'string', default: '18110' },
     'nest-port': { type: 'string', default: '8010' },
     verbose: { type: 'boolean', default: false },
@@ -37,6 +40,13 @@ if (!values.db) {
 
 const ROOT = process.cwd()
 const DB = resolve(values.db)
+
+// Both servers create an empty database for a path that does not exist, and
+// two empty databases agree on everything. Refuse that rather than report it.
+if (!existsSync(DB) || statSync(DB).size === 0) {
+  console.error(`no database at ${DB}; pass a copy of a real fleet.db`)
+  process.exit(2)
+}
 const EMAIL = 'parity@example.com'
 const KID = 'parity-key'
 
@@ -74,7 +84,7 @@ const env = {
 
 const children = [
   spawn(
-    resolve(ROOT, 'apps/fleet-monitor/.venv/bin/uvicorn'),
+    resolve(ROOT, values.uvicorn),
     ['fleet_monitor.api:app', '--port', values['py-port'], '--log-level', 'warning'],
     { cwd: resolve(ROOT, 'apps/fleet-monitor'), env, stdio: 'inherit' },
   ),
@@ -118,6 +128,12 @@ const TIMESTAMP = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(\.\d+)?(Z|[+-]\d{2}:\d
 // milliseconds apart cannot agree on to the digit.
 const CLOCK_FIELDS = /age_seconds$|_ago$|^now$/
 
+// Fields where two correct servers can disagree. stalest_family names the
+// metric family with the oldest reading, and families written by one probe at
+// one instant tie; Python broke the tie in set iteration order, which changes
+// with every process start, and the port breaks it in metric order.
+const UNCOMPARED = new Set(['stalest_family'])
+
 const normalise = (value, key = '') => {
   if (typeof value === 'string' && TIMESTAMP.test(value)) {
     return new Date(value).toISOString()
@@ -131,6 +147,7 @@ const normalise = (value, key = '') => {
   if (value !== null && typeof value === 'object') {
     return Object.fromEntries(
       Object.entries(value)
+        .filter(([name]) => !UNCOMPARED.has(name))
         .toSorted(([a], [b]) => a.localeCompare(b))
         .map(([name, item]) => [name, normalise(item, name)]),
     )
@@ -138,8 +155,20 @@ const normalise = (value, key = '') => {
   return value
 }
 
-const differences = (a, b, path = '$') => {
-  if (JSON.stringify(a) === JSON.stringify(b)) {
+// Network rates divide a counter delta by the time between two samples, and a
+// JS Date keeps milliseconds where Python kept microseconds, so a rate over
+// Python-written samples can differ in the fifth significant digit. That is
+// the one difference expected on real data; it applies to network values
+// only, and it fades as the raw window fills with samples Node wrote.
+const RATE_TOLERANCE = 1e-4
+
+const closeEnough = ({ a, b, tolerance }) =>
+  typeof a === 'number' &&
+  typeof b === 'number' &&
+  Math.abs(a - b) <= tolerance * Math.max(Math.abs(a), Math.abs(b))
+
+const differences = (a, b, path = '$', tolerance = 0) => {
+  if (JSON.stringify(a) === JSON.stringify(b) || closeEnough({ a, b, tolerance })) {
     return []
   }
   if (Array.isArray(a) && Array.isArray(b)) {
@@ -148,12 +177,12 @@ const differences = (a, b, path = '$') => {
       ...lengths,
       ...a
         .slice(0, Math.min(a.length, b.length))
-        .flatMap((item, index) => differences(item, b[index], `${path}[${index}]`)),
+        .flatMap((item, index) => differences(item, b[index], `${path}[${index}]`, tolerance)),
     ]
   }
   if (a && b && typeof a === 'object' && typeof b === 'object') {
     const names = [...new Set([...Object.keys(a), ...Object.keys(b)])]
-    return names.flatMap((name) => differences(a[name], b[name], `${path}.${name}`))
+    return names.flatMap((name) => differences(a[name], b[name], `${path}.${name}`, tolerance))
   }
   return [`${path}: python ${JSON.stringify(a)} vs nest ${JSON.stringify(b)}`]
 }
@@ -175,19 +204,34 @@ const read = async ({ base, path, auth }) => {
 
 // A validation failure only has to agree on the status: FastAPI's 422 body is
 // pydantic's own error list, which the portal never parses.
-const compare = async ({ path, auth = true, bodyMatters = true }) => {
+const once = async ({ path, auth, bodyMatters }) => {
   const [python, nest] = await Promise.all([
     read({ base: PY, path, auth }),
     read({ base: NEST, path, auth }),
   ])
   const statusDiff =
     python.status === nest.status ? [] : [`status ${python.status} vs ${nest.status}`]
+  const tolerance = path.startsWith('/fleet/network') ? RATE_TOLERANCE : 0
   const bodyDiff =
     bodyMatters && python.status < 422
-      ? differences(normalise(python.body), normalise(nest.body))
+      ? differences(normalise(python.body), normalise(nest.body), '$', tolerance)
       : []
   return { path, python, problems: [...statusDiff, ...bodyDiff] }
 }
+
+// Both servers read the clock per request, so a route is asked of both at
+// the same moment, and a mismatch is asked again once: two reads can straddle
+// a second, and a sliding window then buckets on a grid a second apart.
+const compare = async ({ path, auth = true, bodyMatters = true }) => {
+  const first = await once({ path, auth, bodyMatters })
+  return first.problems.length === 0 ? first : once({ path, auth, bodyMatters })
+}
+
+// One route at a time: the Python server runs a single worker, so firing the
+// grid at once queued its answers seconds behind the port's, each from a
+// later "now".
+const inSequence = (checks) =>
+  checks.reduce(async (done, check) => [...(await done), await compare(check)], Promise.resolve([]))
 
 // --- the grid -------------------------------------------------------------------
 
@@ -230,7 +274,7 @@ const fixed = [
   { path: '/nowhere' },
 ]
 
-const results = await Promise.all(fixed.map((check) => compare(check)))
+const results = await inSequence(fixed)
 
 // Routes keyed by ids the data itself names: the top viewers' histories and
 // the top titles' histories, a page or two each.
@@ -239,14 +283,12 @@ const titles = results.find(({ path }) => path === '/plays/top?days=0&metric=pla
 const accountIds = (users?.users ?? []).slice(0, 5).map((user) => user.account_id)
 const titleKeys = (titles?.titles ?? []).slice(0, 5).map((title) => title.key)
 
-const derived = await Promise.all([
+const derived = await inSequence([
   ...accountIds.flatMap((id) =>
-    [1, 2].map((page) => compare({ path: `/plays/users/${id}/history?days=0&page=${page}` })),
+    [1, 2].map((page) => ({ path: `/plays/users/${id}/history?days=0&page=${page}` })),
   ),
-  ...titleKeys.map((key) =>
-    compare({ path: `/plays/title?days=0&key=${encodeURIComponent(key)}` }),
-  ),
-  compare({ path: '/plays/title?days=0&key=movie%3Ano%20such%20title%3A1999' }),
+  ...titleKeys.map((key) => ({ path: `/plays/title?days=0&key=${encodeURIComponent(key)}` })),
+  { path: '/plays/title?days=0&key=movie%3Ano%20such%20title%3A1999' },
 ])
 
 const all = [...results, ...derived]
@@ -259,5 +301,6 @@ failed.forEach(({ path, problems }) => {
   }
 })
 console.log(`\n${all.length - failed.length}/${all.length} routes match`)
+console.log(`(network rates compared within a relative ${RATE_TOLERANCE}; see RATE_TOLERANCE)`)
 stop()
 process.exit(failed.length === 0 ? 0 : 1)
