@@ -35,7 +35,15 @@
     "unicorn/prefer-array-flat-map": "error",
     "import/no-default-export": "error"
   },
-  "ignorePatterns": ["apps", "dist", "node_modules", ".nx", ".claude/worktrees", "graphify-out"],
+  "ignorePatterns": [
+    "apps",
+    "libs",
+    "dist",
+    "node_modules",
+    ".nx",
+    ".claude/worktrees",
+    "graphify-out"
+  ],
   "overrides": [
     {
       // Skill and release tooling are CLIs: stdout is the output, not a stray

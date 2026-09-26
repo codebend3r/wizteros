@@ -28,10 +28,12 @@
       "cache": true
     },
     "typecheck": {
+      "dependsOn": ["^build"],
       "inputs": ["default", "^production"],
       "cache": true
     },
     "test": {
+      "dependsOn": ["^build"],
       "inputs": ["default", "^production", "{workspaceRoot}/scripts/py-tool.sh"],
       "cache": true
     },
