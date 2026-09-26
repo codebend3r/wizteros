@@ -1,0 +1,17 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "fleet-monitor-nest",
+  "projectType": "application",
+  "sourceRoot": "apps/fleet-monitor-nest/src",
+  "tags": ["scope:monitor", "lang:ts"],
+  "targets": {
+    "docker-build": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "docker build -f apps/fleet-monitor-nest/Dockerfile -t fleet-monitor-nest .",
+        "cwd": "{workspaceRoot}"
+      }
+    }
+  }
+}

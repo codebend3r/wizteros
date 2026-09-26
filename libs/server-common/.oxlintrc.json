@@ -1,0 +1,55 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "oxc", "unicorn", "import", "promise"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "warn",
+    "pedantic": "off",
+    "style": "off"
+  },
+  "env": {
+    "node": true,
+    "es2024": true
+  },
+  "rules": {
+    // The house style is `!!value` for boolean conversion, including in guards.
+    "no-extra-boolean-cast": "off",
+    // The suggested fix is a `for…of` loop, which CLAUDE.md bans outright;
+    // `forEach` is an Array.prototype method and stays house style.
+    "unicorn/no-array-for-each": "off",
+    // Nest declares a module as a decorated class that is empty or holds only
+    // a static `forRoot`; an undecorated one is still a finding.
+    "typescript/no-extraneous-class": ["error", { "allowWithDecorator": true }],
+
+    // Conventions from CLAUDE.md.
+    "typescript/no-explicit-any": "error",
+    "typescript/consistent-type-definitions": ["error", "type"],
+    "typescript/no-non-null-assertion": "error",
+    "no-var": "error",
+    "prefer-const": "error",
+    "eqeqeq": ["error", "always", { "null": "ignore" }],
+    "no-console": ["warn", { "allow": ["warn", "error"] }],
+    "no-iterator": "error",
+    "unicorn/prefer-array-flat-map": "error",
+    "import/no-default-export": "error"
+  },
+  "ignorePatterns": ["dist"],
+  "overrides": [
+    {
+      // Vitest reads its config from a default export.
+      "files": ["vitest.config.ts"],
+      "rules": {
+        "import/no-default-export": "off"
+      }
+    },
+    {
+      "files": ["src/**/*.test.ts"],
+      "rules": {
+        "no-console": "off",
+        "typescript/no-non-null-assertion": "off",
+        "unicorn/consistent-function-scoping": "off"
+      }
+    }
+  ]
+}

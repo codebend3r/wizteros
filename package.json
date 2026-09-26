@@ -4,7 +4,8 @@
   "private": true,
   "description": "Nx monorepo for the wizteros paid-access stack: the admin-portal SPA and the stripe-bridge API",
   "workspaces": [
-    "apps/*"
+    "apps/*",
+    "libs/*"
   ],
   "type": "module",
   "scripts": {
@@ -15,8 +16,8 @@
     "preview": "nx run admin-portal:preview",
     "system-check": "nx run-many -t lint:ts lint:css format:check typecheck test -p admin-portal",
     "system-check:no-cache": "nx run-many -t lint:ts lint:css format:check typecheck test -p admin-portal --skip-nx-cache",
-    "verify": "bun run lint:root && bun run format:check:root && nx run-many -t lint:ts lint:css lint:py format:check typecheck test",
-    "affected": "nx affected -t lint:ts lint:css lint:py format:check typecheck test",
+    "verify": "bun run lint:root && bun run format:check:root && nx run-many -t lint:ts lint:css lint:py format:check typecheck test build",
+    "affected": "nx affected -t lint:ts lint:css lint:py format:check typecheck test build",
     "graph": "nx graph",
     "typecheck": "nx run-many -t typecheck",
     "lint": "bun run lint:root && nx run-many -t lint:ts lint:css lint:py",
@@ -64,5 +65,9 @@
   "packageManager": "bun@1.4.2",
   "nx": {
     "includedScripts": []
-  }
+  },
+  "trustedDependencies": [
+    "@parcel/watcher",
+    "nx"
+  ]
 }

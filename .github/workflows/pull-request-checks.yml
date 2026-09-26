@@ -25,6 +25,13 @@ jobs:
       - name: 🥟 Set up Bun
         uses: oven-sh/setup-bun@v2
 
+      # The NestJS servers run on Node (their images are node:24-slim), and
+      # Vitest and the Nest CLI run under it here too. .node-version is the pin.
+      - name: 🟢 Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+
       - name: 🐍 Set up Python
         uses: actions/setup-python@v7
         with:
@@ -83,5 +90,10 @@ jobs:
       - name: 🧬 Typecheck (tsgo)
         run: bunx nx run-many -t typecheck
 
-      - name: 🧪 Test (bun + pytest)
+      - name: 🧪 Test (bun + vitest + pytest)
         run: bunx nx run-many -t test
+
+      # `nest build` is where the `@/` alias gets rewritten for Node, so a
+      # server that typechecks can still fail here.
+      - name: 🏗️ Build
+        run: bunx nx run-many -t build

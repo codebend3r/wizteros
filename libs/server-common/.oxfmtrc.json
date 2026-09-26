@@ -9,14 +9,5 @@
   "bracketSpacing": true,
   "endOfLine": "lf",
   "insertFinalNewline": true,
-  "ignorePatterns": [
-    "apps",
-    "libs",
-    "dist",
-    "node_modules",
-    ".nx",
-    ".claude/worktrees",
-    "graphify-out",
-    "bun.lock"
-  ]
+  "ignorePatterns": ["dist"]
 }
