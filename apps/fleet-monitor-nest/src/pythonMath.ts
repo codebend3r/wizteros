@@ -20,3 +20,55 @@ export const pythonRound = ({ value, digits = 0 }: { value: number; digits?: num
   const below = Math.floor(value * scale)
   return (below % 2 === 0 ? below : below + 1) / scale
 }
+
+/**
+ * Python's `sum()` over floats, which since 3.12 is Neumaier's compensated
+ * summation rather than a plain running total. The two part ways in the last
+ * bit often enough to matter: a bucket mean of four one-decimal readings lands
+ * on a rounding tie, and that last bit decides which way `round(x, 1)` breaks
+ * it. The compensation is applied the way CPython applies it, only when it is
+ * nonzero and finite.
+ */
+export const pythonSum = (values: readonly number[]): number => {
+  const { total, compensation } = values.reduce(
+    (running, value) => {
+      const next = running.total + value
+      const lost =
+        Math.abs(running.total) >= Math.abs(value)
+          ? running.total - next + value
+          : value - next + running.total
+      return { total: next, compensation: running.compensation + lost }
+    },
+    { total: 0, compensation: 0 },
+  )
+  return compensation !== 0 && Number.isFinite(compensation) ? total + compensation : total
+}
+
+/**
+ * Python's `dividend // divisor` on floats, which is not `Math.floor` of the
+ * quotient. CPython divides out the exact `fmod` remainder first and snaps
+ * that to an integer, so a quotient that rounds up to a whole number in
+ * floating point still floors below it: `3801.0 // 15.083333333333334` is 251
+ * where `Math.floor(3801 / 15.083333333333334)` is 252. A window of 181
+ * minutes, which the portal asks for, has exactly that width.
+ */
+export const floorDivide = ({
+  dividend,
+  divisor,
+}: {
+  dividend: number
+  divisor: number
+}): number => {
+  // `%` is C's fmod, so the remainder carries the dividend's sign; Python's
+  // takes the divisor's, and moving it across borrows one from the quotient
+  const remainder = dividend % divisor
+  const remainderNegative = remainder < 0
+  const divisorNegative = divisor < 0
+  const borrow = remainder !== 0 && remainderNegative !== divisorNegative ? 1 : 0
+  const quotient = (dividend - remainder) / divisor - borrow
+  if (quotient === 0) {
+    return 0
+  }
+  const floored = Math.floor(quotient)
+  return quotient - floored > 0.5 ? floored + 1 : floored
+}

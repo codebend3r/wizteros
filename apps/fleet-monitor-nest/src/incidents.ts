@@ -2,7 +2,7 @@ import type { Connection } from '@/db.js'
 import { asRow, asRows, fields, type Row } from '@/rows.js'
 import { COVERAGE_GAP_SECONDS } from '@/store.js'
 import { isoformat, parseIso, secondsBetween } from '@/time.js'
-import { pythonRound } from '@/pythonMath.js'
+import { pythonRound, pythonSum } from '@/pythonMath.js'
 
 const INCIDENTS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS incidents (
@@ -380,12 +380,14 @@ export const uptimePercent = ({
       'WHERE target = ? AND (closed_at IS NULL OR closed_at >= ?)',
     params: [target, isoformat(since)],
   })
-  // each outage clipped to the window, in milliseconds; the division is
-  // secondsBetween on the clipped ends
-  const down = outages.reduce((total, outage) => {
-    const end = Math.min((outage.closed_at ?? now).getTime(), now.getTime())
-    const start = Math.max(outage.opened_at.getTime(), since.getTime())
-    return end > start ? total + (end - start) / 1000 : total
-  }, 0)
+  // each outage clipped to the window, in seconds, summed the way Python's
+  // sum() adds floats so the last digit survives round(x, 3) the same way
+  const down = pythonSum(
+    outages.flatMap((outage) => {
+      const end = Math.min((outage.closed_at ?? now).getTime(), now.getTime())
+      const start = Math.max(outage.opened_at.getTime(), since.getTime())
+      return end > start ? [(end - start) / 1000] : []
+    }),
+  )
   return pythonRound({ value: Math.max(0, (window - down) / window) * 100, digits: 3 })
 }

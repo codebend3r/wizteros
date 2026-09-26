@@ -15,9 +15,9 @@
 import { HOSTS } from '@/config.js'
 import { METRICS as CPU_METRICS, busySeries } from '@/cpu.js'
 import type { Connection } from '@/db.js'
-import { pythonRound } from '@/pythonMath.js'
 import { metricSeries, metricSeriesPrefix, rateSeries, type Series } from '@/store.js'
 import { addSeconds, secondsBetween } from '@/time.js'
+import { floorDivide, pythonRound, pythonSum } from '@/pythonMath.js'
 
 // A series carries one point per collector tick, so a long window is thousands
 // of them per host: a week at the vitals cadence is 20k points no chart can draw
@@ -61,52 +61,6 @@ export type Family = Readonly<{
   prefix: string
   derive: (seriesByMetric: Readonly<Record<string, Series>>) => Series
 }>
-
-/**
- * Python's `sum()` over floats, which since 3.12 is Neumaier's compensated
- * summation rather than a plain running total. The two part ways in the last
- * bit often enough to matter: a bucket mean of four one-decimal readings lands
- * on a rounding tie, and that last bit decides which way `round(x, 1)` breaks
- * it. The compensation is applied the way CPython applies it, only when it is
- * nonzero and finite.
- */
-const pythonSum = (values: readonly number[]): number => {
-  const { total, compensation } = values.reduce(
-    (running, value) => {
-      const next = running.total + value
-      const lost =
-        Math.abs(running.total) >= Math.abs(value)
-          ? running.total - next + value
-          : value - next + running.total
-      return { total: next, compensation: running.compensation + lost }
-    },
-    { total: 0, compensation: 0 },
-  )
-  return compensation !== 0 && Number.isFinite(compensation) ? total + compensation : total
-}
-
-/**
- * Python's `dividend // divisor` on floats, which is not `Math.floor` of the
- * quotient. CPython divides out the exact `fmod` remainder first and snaps
- * that to an integer, so a quotient that rounds up to a whole number in
- * floating point still floors below it: `3801.0 // 15.083333333333334` is 251
- * where `Math.floor(3801 / 15.083333333333334)` is 252. A window of 181
- * minutes, which the portal asks for, has exactly that width.
- */
-const floorDivide = ({ dividend, divisor }: { dividend: number; divisor: number }): number => {
-  // `%` is C's fmod, so the remainder carries the dividend's sign; Python's
-  // takes the divisor's, and moving it across borrows one from the quotient
-  const remainder = dividend % divisor
-  const remainderNegative = remainder < 0
-  const divisorNegative = divisor < 0
-  const borrow = remainder !== 0 && remainderNegative !== divisorNegative ? 1 : 0
-  const quotient = (dividend - remainder) / divisor - borrow
-  if (quotient === 0) {
-    return 0
-  }
-  const floored = Math.floor(quotient)
-  return quotient - floored > 0.5 ? floored + 1 : floored
-}
 
 // A series keyed by its instants rather than its Dates, since two Dates for the
 // same moment are different Map keys. A repeated instant keeps its last
