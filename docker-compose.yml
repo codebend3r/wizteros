@@ -25,8 +25,15 @@ services:
   # reads, and the collector that fills it. Split because they fail
   # independently - a collector wedged on a slow box must not take the
   # dashboard down with it, and restarting either one alone is safe.
+  #
+  # Both run the NestJS port, built from the repo root because the app depends
+  # on libs/server-common through the bun workspace. The Python app under
+  # apps/fleet-monitor stays in the tree until Phase 3 of the migration, but
+  # nothing builds it any more.
   fleet-monitor:
-    build: ./apps/fleet-monitor
+    build:
+      context: .
+      dockerfile: apps/fleet-monitor-nest/Dockerfile
     image: wizteros-fleet-monitor
     container_name: fleet-monitor
     restart: unless-stopped
@@ -42,20 +49,27 @@ services:
       test:
         [
           'CMD',
-          'python',
-          '-c',
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/health')",
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:8010/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))",
         ]
       interval: 30s
       timeout: 5s
       retries: 3
 
   fleet-collector:
-    build: ./apps/fleet-monitor
+    build:
+      context: .
+      dockerfile: apps/fleet-monitor-nest/Dockerfile
     image: wizteros-fleet-monitor
     container_name: fleet-collector
     restart: unless-stopped
-    command: ['python', '-m', 'fleet_monitor.collector']
+    command: ['node', 'dist/collectorMain.js']
+    # A stop waits for an in-flight compaction to finish rather than killing
+    # it: ending a worker thread inside native SQLite code crashes Node, and a
+    # killed compaction is only rolled back, never half-applied, but losing it
+    # still costs the next round the work. Ten seconds was Docker's default.
+    stop_grace_period: 60s
     env_file:
       - .env
     volumes:
