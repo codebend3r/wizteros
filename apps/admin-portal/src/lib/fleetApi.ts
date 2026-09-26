@@ -33,6 +33,10 @@ export type FleetHost = {
   readonly memory_total_bytes: number | null
   readonly disk_percent: number | null
   readonly disk_total_bytes: number | null
+  readonly disk_available_bytes: number | null
+  /** Which volume the disk readings describe. The collector's choice, reported
+      rather than hardcoded in a browser a wire away from it. */
+  readonly disk_mount: string
   readonly containers: readonly FleetContainer[]
   /** Derived from the metric timestamps, not the heartbeat: true when a whole
       metric family on this host has outlived even its slowest refresh. */
@@ -122,6 +126,8 @@ export type HostSummary = {
   readonly memoryTotalBytes: number | null
   readonly diskPercent: number | null
   readonly diskTotalBytes: number | null
+  readonly diskAvailableBytes: number | null
+  readonly diskMount: string
   readonly uptimePercent: number | null
   readonly metricsStale: boolean
   readonly stalestFamily: string | null
@@ -180,6 +186,8 @@ export const toHostSummary = (host: FleetHost): HostSummary => ({
   memoryTotalBytes: host.memory_total_bytes,
   diskPercent: host.disk_percent,
   diskTotalBytes: host.disk_total_bytes,
+  diskAvailableBytes: host.disk_available_bytes,
+  diskMount: host.disk_mount,
   uptimePercent: host.uptime_percent_24h,
   metricsStale: host.metrics_stale,
   stalestFamily: host.stalest_family,
@@ -216,6 +224,8 @@ const isFleetHost = (value: unknown): value is FleetHost =>
   isNumberOrNull(value.memory_total_bytes) &&
   isNumberOrNull(value.disk_percent) &&
   isNumberOrNull(value.disk_total_bytes) &&
+  isNumberOrNull(value.disk_available_bytes) &&
+  typeof value.disk_mount === 'string' &&
   Array.isArray(value.containers) &&
   value.containers.every(isFleetContainer) &&
   typeof value.metrics_stale === 'boolean' &&

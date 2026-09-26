@@ -25,6 +25,8 @@ const summary: HostSummary = {
   memoryTotalBytes: 16_642_768_896,
   diskPercent: 99,
   diskTotalBytes: 104_258_640_805_888,
+  diskAvailableBytes: 1_099_511_627_776,
+  diskMount: '/volume1',
   uptimePercent: 100,
   metricsStale: false,
   stalestFamily: 'disk',
@@ -45,6 +47,8 @@ const host: FleetHost = {
   memory_total_bytes: 16_642_768_896,
   disk_percent: 62,
   disk_total_bytes: 104_258_640_805_888,
+  disk_available_bytes: 39_618_283_506_237,
+  disk_mount: '/volume1',
   containers: [{ name: 'sonarr', up: true, healthy: true, has_healthcheck: true }],
   metrics_stale: false,
   stalest_family: 'disk',
@@ -183,6 +187,7 @@ test('HostCard renders an uncollected host as unknown with no fabricated numbers
         memoryTotalBytes: null,
         diskPercent: null,
         diskTotalBytes: null,
+        diskAvailableBytes: null,
         uptimePercent: null,
         metricsStale: true,
         stalestFamily: null,
@@ -385,6 +390,7 @@ test('Fleet renders one card per host once the payload lands', async () => {
           memory_total_bytes: null,
           disk_percent: null,
           disk_total_bytes: null,
+          disk_available_bytes: null,
           containers: [],
           uptime_percent_24h: null,
         },
@@ -580,11 +586,32 @@ test('HostCard draws the disk reading as a bar the number beside it already stat
   // the figure and its denominator are separate nodes so the number can carry
   // the weight and the qualifier can step back
   expect(screen.getByText('96%')).toBeInTheDocument()
-  expect(screen.getByText('of 94.8 TB')).toBeInTheDocument()
+  expect(screen.getByText(/of 94\.8 TB/)).toBeInTheDocument()
   // the bar is a second reading of that one fact, so it stays out of the
   // accessibility tree rather than repeating the number there
   expect(meterUnder('Disk')).toHaveStyle({ width: '96%' })
   expect(container.querySelector('.meter')).toHaveAttribute('aria-hidden', 'true')
+})
+
+test('HostCard prints the free space beside the volume it describes', () => {
+  render(<HostCard summary={summary} />)
+
+  // "how much room is left" is what an operator does arithmetic for, so the
+  // card does it: the monitor's own byte reading, never the rounded percentage
+  expect(screen.getByText('1.0 TB free')).toBeInTheDocument()
+  // the mount names which volume the figures describe
+  expect(screen.getByText('/volume1')).toBeInTheDocument()
+})
+
+test('HostCard claims no free space where the monitor reported none', () => {
+  // absent is absent: a figure derived from the rounded percentage would
+  // claim a precision the monitor never reported
+  render(<HostCard summary={{ ...summary, diskAvailableBytes: null }} />)
+
+  expect(screen.queryByText(/free/)).toBeNull()
+  // the rest of the reading still stands
+  expect(screen.getByText('99%')).toBeInTheDocument()
+  expect(screen.getByText(/of 94\.8 TB/)).toBeInTheDocument()
 })
 
 // The same treatment for both capacity readings: a percentage with a bar under

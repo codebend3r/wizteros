@@ -51,9 +51,14 @@ LOAD_WARN_PER_CORE = 1.0
 # The collector only ever runs `df -Pk /volume1`, so this is the one volume the
 # monitor can report on. Which volume that is, and which keys carry memory, are
 # facts about what the collector collects: they belong beside it rather than in
-# a browser a wire away from the code that chose the names.
+# a browser a wire away from the code that chose the names. The mount is
+# reported on every host for the same reason: the card prints it beside the
+# free-space figure, and the SPA must not hardcode which volume it is looking
+# at.
 DISK_PERCENT_METRIC = "disk.volume1.used_percent"
 DISK_TOTAL_METRIC = "disk.volume1.total_bytes"
+DISK_AVAILABLE_METRIC = "disk.volume1.available_bytes"
+DISK_MOUNT = "/volume1"
 # Read from the series module rather than restated here: the card and the
 # memory chart must never disagree about which gauge means "used".
 MEMORY_TOTAL_METRIC = series.MEMORY_TOTAL_METRIC
@@ -89,6 +94,8 @@ class HostView:
     memory_total_bytes: float | None
     disk_percent: float | None
     disk_total_bytes: float | None
+    disk_available_bytes: float | None
+    disk_mount: str
     containers: list[ContainerView]
     # the raw readings behind every field above, kept because this is a monitor
     # and the unreduced numbers are the thing being monitored
@@ -267,6 +274,8 @@ def host_view(
         memory_total_bytes=metrics.get(MEMORY_TOTAL_METRIC),
         disk_percent=disk_percent,
         disk_total_bytes=metrics.get(DISK_TOTAL_METRIC),
+        disk_available_bytes=metrics.get(DISK_AVAILABLE_METRIC),
+        disk_mount=DISK_MOUNT,
         containers=list(from_samples(metrics)),
         metrics=metrics,
         stalest_family=stalest[0] if stalest else None,
