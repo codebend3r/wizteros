@@ -44,11 +44,9 @@ die()  { printf '\n✗ %s\n' "$*" >&2; exit 1; }
 # apps/fleet-monitor is here because the compose project builds it too: the
 # monitor API and the collector are two containers off that one image, and a
 # commit touching only them used to read as "nothing to do" and need --force.
-# Both servers now build from their NestJS ports (apps/stripe-bridge-nest,
-# apps/fleet-monitor-nest) and libs/server-common through the bun workspace,
-# so the root manifests and lockfile count as well. The Python apps stay
-# listed until Phase 3 deletes them, since they still ship in the synced tree.
-NAS_PATHS=(apps/stripe-bridge apps/stripe-bridge-nest apps/fleet-monitor apps/fleet-monitor-nest libs/server-common docker-compose.yml scripts package.json bun.lock)
+# Both servers build from apps/ and libs/server-common through the bun
+# workspace, so the root manifests and lockfile count as well.
+NAS_PATHS=(apps/stripe-bridge apps/fleet-monitor libs/server-common docker-compose.yml scripts package.json bun.lock)
 
 say "═══════════════════════════════════════════"
 say "deploy-nas — wizteros stripe-bridge"
@@ -149,10 +147,9 @@ fi
 step "Syncing code to the NAS"
 
 EXCLUDES=(
-  --exclude '.git' --exclude 'venv' --exclude 'node_modules' --exclude '.netlify'
-  --exclude '.nx' --exclude '.env' --exclude 'wizarr-data' --exclude 'tautulli-config'
-  --exclude 'stripe-bridge-data' --exclude '__pycache__' --exclude '.DS_Store'
-  --exclude '._*' --exclude '.pytest_cache' --exclude 'dist'
+  --exclude '.git' --exclude 'node_modules' --exclude '.netlify' --exclude '.nx'
+  --exclude '.env' --exclude 'wizarr-data' --exclude 'tautulli-config'
+  --exclude 'stripe-bridge-data' --exclude '.DS_Store' --exclude '._*' --exclude 'dist'
 )
 
 if [ -d "$SMB_PATH" ]; then
@@ -171,7 +168,7 @@ fi
 say "  · code synced"
 
 # Prove the bytes landed rather than trusting the transport's exit code.
-SUM_FILE="apps/stripe-bridge-nest/src/tiers.ts"
+SUM_FILE="apps/stripe-bridge/src/tiers.ts"
 REMOTE_SUM="$($SSH "$NAS_HOST" "cd $NAS_PATH && md5sum $SUM_FILE 2>/dev/null | cut -d' ' -f1" | tr -d '[:space:]')"
 LOCAL_SUM="$(md5 -q "$REPO/$SUM_FILE" 2>/dev/null || md5sum "$REPO/$SUM_FILE" | cut -d' ' -f1)"
 [ -n "$REMOTE_SUM" ] && [ "$REMOTE_SUM" = "$LOCAL_SUM" ] \
@@ -225,10 +222,10 @@ else
 
   # 2b. the running code is the code we just shipped. A 401 proves *a* bridge is
   #     up; only the version proves it is *this* one. Both sides read the same
-  #     apps/stripe-bridge-nest/package.json, so they must match exactly (main
+  #     apps/stripe-bridge/package.json, so they must match exactly (main
   #     sitting ahead of the last release does not change this; neither side
   #     has bumped).
-  WANT_VERSION="$(node -p "require('$REPO/apps/stripe-bridge-nest/package.json').version" 2>/dev/null || true)"
+  WANT_VERSION="$(node -p "require('$REPO/apps/stripe-bridge/package.json').version" 2>/dev/null || true)"
   GOT_VERSION="$($SSH "$NAS_HOST" "curl -s -m 5 http://localhost:8000/version || true" |
     sed -n 's/.*"version" *: *"\([^"]*\)".*/\1/p')"
   say "  · GET /version -> ${GOT_VERSION:-no response} (expect $WANT_VERSION)"
@@ -258,9 +255,9 @@ else
     TIER_ALARM=0
   fi
 
-  # Nest logs every failure as an ERROR line with the stack under it; that is
-  # what a Python traceback used to look like here. The level is wrapped in
-  # colour codes, so it is matched up to the next non-letter, not a space.
+  # Nest logs every failure as an ERROR line with the stack under it. The
+  # level is wrapped in colour codes, so it is matched up to the next
+  # non-letter, not a space.
   if printf '%s' "$LOGS" | grep -qaE ' ERROR[^A-Za-z]'; then
     say "  ⚠ errors present in the boot logs:"
     printf '%s' "$LOGS" | grep -aA3 -E ' ERROR[^A-Za-z]' | head -20 | sed 's/^/      /'

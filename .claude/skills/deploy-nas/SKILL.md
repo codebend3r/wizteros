@@ -50,7 +50,7 @@ Run it as a single Bash invocation so the user sees the whole transcript. Defaul
    tar over SSH. Then verifies a checksum matches before rebuilding.
 5. **Rebuilds** — `sudo -n /usr/local/bin/docker compose up -d --build`.
 6. **Verifies**: container `running`; `GET /admin/members` returns `401`; `GET /version`
-   matches the `version` in the synced `apps/stripe-bridge-nest/package.json` (a 401
+   matches the `version` in the synced `apps/stripe-bridge/package.json` (a 401
    proves _a_ bridge is up, the version proves it is _this_ one); boot logs scanned for
    the tier-scope alarm and `ERROR` lines.
 7. **Rolls back** on a failed health check, re-tagging the previous image, and restores
@@ -77,6 +77,13 @@ Run it as a single Bash invocation so the user sees the whole transcript. Defaul
   post-migration deploy verifies healthy:
   `ssh <nas> 'rm -rf /volume1/docker/stripe-bridge/stripe-bridge'`. Never touch the
   sibling `stripe-bridge-data/`, which is live state.
+- **The Python removal left the same kind of dead weight.** The NestJS ports built from
+  `apps/stripe-bridge-nest/` and `apps/fleet-monitor-nest/` until they took over the
+  original names, and the Python apps' own files (`stripe_bridge/`, `fleet_monitor/`,
+  `tests/`, `requirements*.txt`, `pytest.ini`, `ruff.toml`) are still inside
+  `apps/stripe-bridge/` and `apps/fleet-monitor/` on the NAS. None of it is built: each
+  `Dockerfile.dockerignore` allowlists what an image takes. Remove it by hand once the
+  first deploy after the removal verifies healthy, listing each path before deleting it.
 
 ## Reporting Back
 

@@ -91,13 +91,12 @@ or miss a hot WAL. So, when the container is running:
   `sudo -n /usr/local/bin/docker exec`, writing to `/data/bridge.db.snapshot`. `/data` is
   the bind mount, so the file lands in `stripe-bridge-data/` on the host and the tar picks
   it up.
-- **The image has no `sqlite3` binary.** The NestJS bridge builds `FROM node:24-slim`,
-  which ships no CLI, so the working path is better-sqlite3's online backup, run with
+- **The image has no `sqlite3` binary.** The bridge builds `FROM node:24-slim`, which
+  ships no CLI, so the working path is better-sqlite3's online backup, run with
   `node -e`. The package is resolved through `/repo/libs/server-common/package.json`,
   because bun's isolated install links it under the lib and nowhere else. The script
-  probes for the `sqlite3` binary first, then `node`, then falls back to `python3` and
-  the stdlib `sqlite3.Connection.backup`, which is what the Python bridge image
-  (`python:3.12-slim`) it replaced offered. The Python branch goes with Phase 3.
+  probes for the `sqlite3` binary first; the probe only exists so a future base image
+  that has the CLI takes the shorter route.
 - The temp snapshot is **removed after the tar**, by an `EXIT` trap, so it goes away even
   if the run dies partway. It is written by the container as root, so cleanup falls back
   to `docker exec ... rm` if the host-side `rm` is refused.

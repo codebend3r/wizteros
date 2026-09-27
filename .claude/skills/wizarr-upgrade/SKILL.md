@@ -246,8 +246,8 @@ still migrating or crash-looping will time out or return `502`.
 
 **5c. The bridge's API key still works.** An upgrade can invalidate keys or change auth
 handling, and nothing in the UI would tell you. Probe the exact endpoint
-`WizarrClient.list_libraries()` calls (`GET /api/libraries` with an `X-API-Key` header,
-see `apps/stripe-bridge/stripe_bridge/wizarr.py`), using the key the bridge itself holds:
+the bridge's `listLibraries()` calls (`GET /api/libraries` with an `X-API-Key` header,
+see `apps/stripe-bridge/src/clients/wizarr.ts`), using the key the bridge itself holds:
 
 ```bash
 ssh crivas@192.168.50.2 'KEY=$(sudo -n /usr/local/bin/docker exec stripe-bridge printenv WIZARR_API_KEY); curl -s -o /dev/null -m 20 -w "%{http_code}\n" -H "X-API-Key: $KEY" http://192.168.50.2:5690/api/libraries'

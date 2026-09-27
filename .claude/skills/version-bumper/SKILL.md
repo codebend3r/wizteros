@@ -17,11 +17,11 @@ judgment and never hand-edits a version field.
 
 The three markers, which must always agree:
 
-| Marker                                 | Why                                             |
-| -------------------------------------- | ----------------------------------------------- |
-| `package.json`                         | Workspace root, the source of truth             |
-| `apps/admin-portal/package.json`       | The SPA                                         |
-| `apps/stripe-bridge-nest/package.json` | The only marker that reaches the bridge's image |
+| Marker                            | Why                                             |
+| --------------------------------- | ----------------------------------------------- |
+| `package.json`                    | Workspace root, the source of truth             |
+| `apps/admin-portal/package.json`  | The SPA                                         |
+| `apps/stripe-bridge/package.json` | The only marker that reaches the bridge's image |
 
 `release.sh` hard-fails when they disagree, both before and after the bump, so a
 mismatch is a stop-and-report, never something to patch by hand.
@@ -73,26 +73,24 @@ Split the commits into two piles:
 
 - **Shipped surface**: anything that changes what runs in production.
   `apps/admin-portal/` (ships via Netlify from main), the two NestJS servers
-  (`apps/stripe-bridge-nest/`, `apps/fleet-monitor-nest/`) and `libs/server-common/`
+  (`apps/stripe-bridge/`, `apps/fleet-monitor/`) and `libs/server-common/`
   they share, and the deploy config that alters the running stack
   (`docker-compose.yml`, `netlify.toml`, each server's `Dockerfile`).
 - **Housekeeping**: `docs/`, `.github/`, `.claude/`, `scripts/` tooling, CI, test-only
   changes, and the monorepo wiring itself (`nx.json`, root `package.json` aliases,
   `project.json` target definitions, `nx.includedScripts` in any app's
-  `package.json`). The Python apps under `apps/stripe-bridge/` and
-  `apps/fleet-monitor/` no longer ship; until Phase 3 deletes them they are
-  housekeeping too. Task plumbing changes how the repo is built, not
+  `package.json`). Task plumbing changes how the repo is built, not
   what runs in production.
 
 Living under an app root does not by itself make a file shipped surface. Three cases to
 get right:
 
-- `apps/admin-portal/package.json` and `apps/stripe-bridge-nest/package.json`: move on
+- `apps/admin-portal/package.json` and `apps/stripe-bridge/package.json`: move on
   every release by definition, so a diff touching only their `version` field is the
   bump commit, not shipped surface.
 - `*.test.ts`, `src/test/` and `apps/admin-portal/src/test/`: test-only, housekeeping.
   The runtime code is the rest of each server's `src/` and `apps/admin-portal/src/`.
-- App-root config (`vite.config.ts`, `tsconfig.json`, `pytest.ini`, lint or format
+- App-root config (`vite.config.ts`, `tsconfig.json`, `nest-cli.json`, lint or format
   config): shipped surface only when it changes the built output. A lint-rule tweak is
   housekeeping; a Vite build or alias change is not.
 
@@ -174,7 +172,7 @@ the global autonomy rules forbid.
 - Counting an Nx retarget (`nx.json`, `project.json`, root script aliases) as shipped
   surface: it changes how the repo builds, not what production runs.
 - Bumping only the root and portal `package.json` files: the bridge's
-  `apps/stripe-bridge-nest/package.json` is the third marker and the only one the running
+  `apps/stripe-bridge/package.json` is the third marker and the only one the running
   container can report. `release.sh` blocks this, so hitting
   it means someone edited a version by hand.
 - Tagging a release without a `CHANGELOG.md` section: the tag then says nothing about what

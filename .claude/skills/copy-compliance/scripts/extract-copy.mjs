@@ -55,8 +55,8 @@ const SCAN_FILES = [
   // Not under pages/ or components/, but it derives the annual cadence label
   // and the savings line that the tier card prints next to a price.
   'apps/admin-portal/src/lib/billing.ts',
-  'apps/stripe-bridge-nest/src/clients/emailTemplate.ts',
-  'apps/stripe-bridge-nest/src/clients/mailer.ts',
+  'apps/stripe-bridge/src/clients/emailTemplate.ts',
+  'apps/stripe-bridge/src/clients/mailer.ts',
 ]
 
 // Where the framing rule is absolute. Everything else scanned is admin-only,
@@ -72,8 +72,8 @@ const PAYMENT_SURFACES = [
   'apps/admin-portal/src/components/BillingToggle/',
   'apps/admin-portal/src/components/Support/',
   'apps/admin-portal/src/components/Footer/',
-  'apps/stripe-bridge-nest/src/clients/emailTemplate.ts',
-  'apps/stripe-bridge-nest/src/clients/mailer.ts',
+  'apps/stripe-bridge/src/clients/emailTemplate.ts',
+  'apps/stripe-bridge/src/clients/mailer.ts',
 ]
 
 const SCANNED_EXTENSIONS = ['.tsx', '.ts', '.html', '.py']

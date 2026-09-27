@@ -5,12 +5,12 @@
 //   Member      per-checkout invites, listed but never judged against the rules
 //   Strays      unlimited invites the bridge did not mint — reported, not touched
 //
-// STRICTLY READ-ONLY. Rotation lives in the bridge (stripe_bridge/baseline.py)
+// STRICTLY READ-ONLY. Rotation lives in the bridge (apps/stripe-bridge/src/baseline.ts)
 // and runs unattended; this script only looks. The SQLite handle is opened
 // mode=ro and every HTTP call is a GET, so nothing here can change live state.
 //
-// The checks are written against the same rules as tiers.py but deliberately
-// re-derived here rather than imported, so a bug in the Python is not mirrored
+// The checks are written against the same rules as tiers.ts but deliberately
+// re-derived here rather than imported, so a bug in the bridge is not mirrored
 // by the thing meant to catch it — the same reasoning as e2e-tiers.mjs.
 //
 // Run: node --env-file=<env file> .claude/skills/invite-audit/scripts/audit-invites.mjs
@@ -82,13 +82,9 @@ const ssh = async (command) => {
 
 // SELECT-only, against a connection opened read-only so the process could not
 // write even by accident. Shipped base64 so the program survives ssh
-// re-parsing the remote command through the login shell.
-//
-// The NestJS bridge image has node and better-sqlite3 (resolved from
-// libs/server-common, the only place bun links it); the Python image it
-// replaced has python3. Node is tried first and Python is the fallback, so the
-// script reads either image; the Python branch goes with Phase 3.
-const nodeStoreProgram = `
+// re-parsing the remote command through the login shell. better-sqlite3 is
+// resolved from libs/server-common, the only place bun's install links it.
+const storeProgram = `
 const Database = require('node:module').createRequire('/repo/libs/server-common/package.json')('better-sqlite3')
 const db = new Database(process.env.MAP_DB_PATH || '/data/bridge.db', { readonly: true, fileMustExist: true })
 const table = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'baseline_invites'").get()
@@ -96,29 +92,11 @@ const rows = table ? db.prepare('SELECT code, tier, created_at, expires_at FROM 
 console.log(JSON.stringify({ baselines: rows }))
 `
 
-const storeProgram = `
-import json, os, sqlite3
-db = sqlite3.connect("file:" + os.environ.get("MAP_DB_PATH", "/data/bridge.db") + "?mode=ro", uri=True)
-db.row_factory = sqlite3.Row
-try:
-    rows = [dict(r) for r in db.execute(
-        "SELECT code, tier, created_at, expires_at FROM baseline_invites")]
-except sqlite3.OperationalError:
-    rows = None  # table absent: bridge predates the baseline rotation
-print(json.dumps({"baselines": rows}))
-`
-
 const readStore = async () => {
-  const viaNode = Buffer.from(nodeStoreProgram, 'utf8').toString('base64')
-  const viaPython = Buffer.from(storeProgram, 'utf8').toString('base64')
+  const encoded = Buffer.from(storeProgram, 'utf8').toString('base64')
   const out = await ssh(
     `sudo -n ${DOCKER} exec ${SERVICE} node -e ` +
-      `"eval(Buffer.from('${viaNode}', 'base64').toString())"`,
-  ).catch(() =>
-    ssh(
-      `sudo -n ${DOCKER} exec ${SERVICE} python3 -c ` +
-        `"import base64;exec(base64.b64decode('${viaPython}'))"`,
-    ),
+      `"eval(Buffer.from('${encoded}', 'base64').toString())"`,
   )
   return JSON.parse(out).baselines
 }
