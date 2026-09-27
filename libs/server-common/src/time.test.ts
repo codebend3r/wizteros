@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addSeconds, epochSeconds, isoformat, parseIso, secondsBetween } from '@/time.js'
+import { addSeconds, epochSeconds, isoformat, parseIso, secondsBetween } from './time.js'
 
 describe('isoformat', () => {
   it('writes what datetime.isoformat() wrote for an aware UTC instant', () => {

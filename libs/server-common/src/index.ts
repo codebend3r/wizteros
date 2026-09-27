@@ -15,3 +15,12 @@ export {
   type SqliteMode,
   withSqlite,
 } from './sqlite.js'
+export { asRow, asRows, fields, flag, isRow, type Row } from './rows.js'
+export {
+  addSeconds,
+  epochSeconds,
+  isoformat,
+  parseIso,
+  pydanticTimestamp,
+  secondsBetween,
+} from './time.js'

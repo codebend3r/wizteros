@@ -18,7 +18,7 @@ import {
   isTopTitles,
   isViewerHistory,
 } from '@/test/wire.js'
-import { epochSeconds } from '@/time.js'
+import { epochSeconds } from '@wizteros/server-common'
 
 const T0 = new Date(Date.UTC(2026, 8, 18, 12, 0, 0))
 const NOW = epochSeconds(T0)

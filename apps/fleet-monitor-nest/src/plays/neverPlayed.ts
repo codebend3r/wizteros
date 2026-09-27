@@ -8,8 +8,7 @@
 import type { Connection } from '@/db.js'
 import * as base from '@/plays/base.js'
 import { type Kind, type Quality, QUALITY_RANK } from '@/probes/plex.js'
-import { asRow, asRows, fields } from '@/rows.js'
-import { epochSeconds } from '@/time.js'
+import { asRow, asRows, epochSeconds, fields } from '@wizteros/server-common'
 
 export type NeverKind = 'movie' | 'show' | 'album'
 

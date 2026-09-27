@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { METRICS, busySeries } from '@/cpu.js'
 import type { Series } from '@/store.js'
-import { addSeconds } from '@/time.js'
+import { addSeconds } from '@wizteros/server-common'
 
 const T0 = new Date(Date.UTC(2026, 7, 23, 12, 0, 0))
 

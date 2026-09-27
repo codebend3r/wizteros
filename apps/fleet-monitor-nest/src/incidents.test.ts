@@ -12,7 +12,7 @@ import {
   uptimePercent,
 } from '@/incidents.js'
 import { openTestConnection, removeTempDirs } from '@/test/support.js'
-import { addSeconds, parseIso } from '@/time.js'
+import { addSeconds, parseIso } from '@wizteros/server-common'
 
 const MINUTE = 60
 const HOUR = 3600

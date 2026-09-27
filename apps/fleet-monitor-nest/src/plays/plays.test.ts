@@ -12,7 +12,7 @@ import {
   section,
 } from '@/probes/plex.js'
 import { openTestConnection, removeTempDirs, tempDbPath } from '@/test/support.js'
-import { addSeconds, epochSeconds } from '@/time.js'
+import { addSeconds, epochSeconds } from '@wizteros/server-common'
 
 const T0 = new Date(Date.UTC(2026, 8, 18, 12, 0, 0))
 const NOW = epochSeconds(T0)

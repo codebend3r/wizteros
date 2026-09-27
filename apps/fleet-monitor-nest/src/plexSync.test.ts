@@ -10,7 +10,7 @@ import * as plex from '@/probes/plex.js'
 import * as rollups from '@/rollups.js'
 import * as store from '@/store.js'
 import { removeTempDirs, tempDbPath } from '@/test/support.js'
-import { addSeconds, epochSeconds } from '@/time.js'
+import { addSeconds, epochSeconds } from '@wizteros/server-common'
 import type { HttpResult } from '@/transport/http.js'
 
 const T0 = new Date(Date.UTC(2026, 8, 18, 12, 0, 0))

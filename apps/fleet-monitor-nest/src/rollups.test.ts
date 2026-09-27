@@ -11,7 +11,7 @@ import {
 } from '@/rollups.js'
 import { initDb as initStore, latest, writeSamples } from '@/store.js'
 import { openTestConnection, removeTempDirs } from '@/test/support.js'
-import { addSeconds } from '@/time.js'
+import { addSeconds } from '@wizteros/server-common'
 
 const MINUTE = 60
 const HOUR = 3600
