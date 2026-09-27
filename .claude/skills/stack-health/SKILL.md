@@ -113,7 +113,7 @@ Translate to what the member experiences, not to what the container is doing.
   that production is wrong.
 
 `401` on `/admin/members` is the liveness probe, not `200`. There is no `/health` route;
-`401` proves FastAPI mounted the router and auth is wired, which a bare port check or a
+`401` proves the admin routes mounted and auth is wired, which a bare port check or a
 `404` would not. Wizarr redirects unauthenticated callers, so `302` on `:5690` is healthy.
 
 On the webhook probe the healthy answer is **exactly `400`**, not "some 4xx". The handler

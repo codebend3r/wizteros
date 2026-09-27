@@ -10,14 +10,14 @@ description: Use when the wizteros live end-to-end suites are in play, either ru
 Two Node scripts drive **synthetic, locally signed Stripe webhooks** through a **locally
 running bridge container** against the **live Wizarr instance**:
 
-| Script                                      | Nx target (root alias)                                    | Proves                                                  |
-| ------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------- |
-| `apps/stripe-bridge/scripts/e2e-retest.mjs` | `stripe-bridge:test:e2e` (`bun run test:e2e`)             | The paid-access flow time-boxes a real member's records |
-| `apps/stripe-bridge/scripts/e2e-tiers.mjs`  | `stripe-bridge:test:e2e:tiers` (`bun run test:e2e:tiers`) | Each tier's signup produces a correctly scoped invite   |
+| Script                                           | Nx target (root alias)                                         | Proves                                                  |
+| ------------------------------------------------ | -------------------------------------------------------------- | ------------------------------------------------------- |
+| `apps/stripe-bridge-nest/scripts/e2e-retest.mjs` | `stripe-bridge-nest:test:e2e` (`bun run test:e2e`)             | The paid-access flow time-boxes a real member's records |
+| `apps/stripe-bridge-nest/scripts/e2e-tiers.mjs`  | `stripe-bridge-nest:test:e2e:tiers` (`bun run test:e2e:tiers`) | Each tier's signup produces a correctly scoped invite   |
 
-Both targets are **inferred** from the `scripts` in `apps/stripe-bridge/package.json`
-(whitelisted by its `nx.includedScripts`), not declared in `apps/stripe-bridge/project.json`,
-which holds only the Docker targets (`docker-build`, `serve`, `stop`, `logs`, `test-docker`).
+Both targets are **inferred** from the `scripts` in `apps/stripe-bridge-nest/package.json`
+(whitelisted by its `nx.includedScripts`), not declared in `apps/stripe-bridge-nest/project.json`,
+which holds only the Docker targets (`docker-build`, `serve`, `stop`, `logs`).
 Reading `project.json` alone makes these look missing; they are not.
 
 Nothing touches Stripe. Both scripts build the event JSON themselves and sign it with
@@ -32,8 +32,8 @@ on the production instance at `WIZARR_BASE_URL`, on the same records live member
 Treat these as production-touching, not as tests.
 
 The container is `stripe-bridge-e2e` on port 8000, started from the repo-root `.env` with
-`apps/stripe-bridge/data` bind-mounted at `/data`. That bind mount is why the bridge SQLite used
-by an e2e run is a **local** file (`apps/stripe-bridge/data/bridge.db`, via `MAP_DB_PATH`'s
+`apps/stripe-bridge-nest/data` bind-mounted at `/data`. That bind mount is why the bridge SQLite used
+by an e2e run is a **local** file (`apps/stripe-bridge-nest/data/bridge.db`, via `MAP_DB_PATH`'s
 `/data/bridge.db` default), not the NAS one. The `serve` target pins `cwd: {workspaceRoot}`, so
 the mount and the `--env-file .env` are always the repo's own, whichever directory you launch
 from.
@@ -41,7 +41,7 @@ from.
 ## What `test:e2e` actually does
 
 `node --env-file=../../.env scripts/e2e-retest.mjs [email]`, run by Nx with the cwd set to
-`apps/stripe-bridge`, so `../../.env` resolves to the repo-root file. Default member
+`apps/stripe-bridge-nest`, so `../../.env` resolves to the repo-root file. Default member
 `codebenderinc@gmail.com`, overridable as `process.argv[2]`, though the `bun run test:e2e` alias
 cannot pass that argument (see Procedure).
 
@@ -133,7 +133,7 @@ friendship until they redeem an invite. The script never re-enables at the end a
 asserts enabled state, so a green run can leave a member disabled.
 
 **It creates a real invite and can send a real email.** The session id `cs_e2e` is fixed, so the
-first run against a fresh local `apps/stripe-bridge/data/bridge.db` creates a bronze invite for
+first run against a fresh local `apps/stripe-bridge-nest/data/bridge.db` creates a bronze invite for
 that member and mails the link, then records the binding. Later runs reuse the bound code and send
 nothing. **That first invite is never deleted by the script.** It stays redeemable in live
 Wizarr until `INVITE_EXPIRES_DAYS` passes.
@@ -189,7 +189,7 @@ curl -s -X PUT -H "X-API-Key: $WIZARR_API_KEY" -H 'Content-Type: application/jso
 
 The local bridge DB also keeps rows from every run (`customer_map` marked subscribed,
 `session_invites` for `cs_e2e`, `processed_events`). It is local state, not the NAS database, so
-it is safe to leave. Deleting `apps/stripe-bridge/data/bridge.db` resets it, at the cost of the
+it is safe to leave. Deleting `apps/stripe-bridge-nest/data/bridge.db` resets it, at the cost of the
 next retest minting and mailing a fresh `cs_e2e` invite.
 
 ## Prerequisites
@@ -211,8 +211,8 @@ next retest minting and mailing a fresh `cs_e2e` invite.
     its own `SHARE_SERVER` and ignores the env).
 - **Docker running** and port 8000 free. Every `bun run ...` alias works from any directory in the
   repo: the Docker targets pin `cwd: {workspaceRoot}` (`bridge:up` bind-mounts
-  `$PWD/apps/stripe-bridge/data`) and the inferred script targets always run from
-  `apps/stripe-bridge`, which is what makes `--env-file=../../.env` land on the root `.env`. Only
+  `$PWD/apps/stripe-bridge-nest/data`) and the inferred script targets always run from
+  `apps/stripe-bridge-nest`, which is what makes `--env-file=../../.env` land on the root `.env`. Only
   the hand-rolled `node --env-file=.env apps/...` form below is cwd-sensitive, and has to be run
   from the repo root.
 - **LAN access to the live Wizarr**, from the host _and_ from inside the container. The
@@ -234,23 +234,23 @@ bun run bridge:down       # ALWAYS, pass or fail
   after a `retest` while the container is still up, or do
   `bun run bridge:build && bun run bridge:up && bun run test:e2e:tiers`.
 - **Different member: the root alias cannot carry the email.** `bun run test:e2e someone@example.com`
-  runs `nx run-many -t test:e2e -p stripe-bridge someone@example.com`, and `run-many` **silently
+  runs `nx run-many -t test:e2e -p stripe-bridge-nest someone@example.com`, and `run-many` **silently
   drops** the positional: the script gets no `argv[2]` and retests `codebenderinc@gmail.com`
   instead of the address you typed. Use one of the two forms that do pass it, with the bridge
   already up:
 
   ```bash
   # from the repo root
-  node --env-file=.env apps/stripe-bridge/scripts/e2e-retest.mjs someone@example.com
+  node --env-file=.env apps/stripe-bridge-nest/scripts/e2e-retest.mjs someone@example.com
   # or through Nx (the second colon parses fine here; args after -- are forwarded)
-  bunx nx run stripe-bridge:test:e2e -- someone@example.com
+  bunx nx run stripe-bridge-nest:test:e2e -- someone@example.com
   ```
 
   Confirm the header line it prints (`E2E retest: someone@example.com`) names the member you
   meant before it gets past the bridge wait.
 
 - `bridge:up` always `docker rm -f`s the old container first, so it is safe to re-run, but it
-  runs whatever image `stripe-bridge` currently points at. After editing bridge code, rebuild.
+  runs whatever image `stripe-bridge-nest` currently points at. After editing bridge code, rebuild.
 - When something fails, read the bridge side: `bun run bridge:logs` is `docker logs -f` and
   **blocks forever**, so in a non-interactive session use
   `docker logs --tail 100 stripe-bridge-e2e`.
@@ -262,7 +262,7 @@ bun run bridge:down       # ALWAYS, pass or fail
 | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | exit `9`, `node: ../../.env: not found`                         | There is no `.env` at all, so the run never started                                                       | Create the repo-root `.env` from `.env.example`; a fresh clone or worktree never has one                                                                                                                                                                                                              |
 | exit `2`, "Missing WIZARR_BASE_URL / ..."                       | The `.env` exists but is incomplete, so the run never started                                             | Those three keys in the repo-root `.env`                                                                                                                                                                                                                                                              |
-| "bridge not reachable at http://localhost:8000" (after ~20s)    | The container is not serving; retest only, tiers has no such wait                                         | `docker logs --tail 100 stripe-bridge-e2e`. Usually a `KeyError` at import from a missing env var, or port 8000 already taken                                                                                                                                                                         |
+| "bridge not reachable at http://localhost:8000" (after ~20s)    | The container is not serving; retest only, tiers has no such wait                                         | `docker logs --tail 100 stripe-bridge-e2e`. Usually the boot refusing a missing env var (`missing required environment: ...`), or port 8000 already taken                                                                                                                                             |
 | `ERROR: fetch failed` in tiers                                  | Same cause, no friendly message: the container is down, or `WIZARR_BASE_URL` is unreachable from the host | `docker ps --filter name=stripe-bridge-e2e`, then the logs; then LAN access to Wizarr                                                                                                                                                                                                                 |
 | `GET /api/libraries -> N` in tiers                              | Wizarr cannot list libraries, so no tier can be scoped or verified                                        | `WIZARR_API_KEY`, then `WizarrClient.list_libraries` against the live API                                                                                                                                                                                                                             |
 | `GET /api/users -> 401/403`                                     | Wizarr rejects the key; nobody's access changed                                                           | `WIZARR_API_KEY` in `.env`, rotated by a Wizarr upgrade or reinstall                                                                                                                                                                                                                                  |

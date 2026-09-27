@@ -17,13 +17,13 @@ These override any inference from the code. Ask first, every time:
 
 A self-hosted stack that gates Plex access behind a recurring Stripe "server-cost contribution":
 
-| Piece                                     | Role                                                                                                                                                |
-| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Wizarr**                                | Invite-based onboarding for Plex users                                                                                                              |
-| **Tautulli**                              | Usage analytics                                                                                                                                     |
-| **stripe-bridge** (`apps/stripe-bridge/`) | Small FastAPI service that converts Stripe webhooks (`checkout.session.completed`, `customer.subscription.deleted`) into Wizarr API calls           |
-| **admin-portal** (`apps/admin-portal/`)   | Landing page plus the gated admin pages                                                                                                             |
-| **fleet-monitor** (`apps/fleet-monitor/`) | FastAPI service that SSH-probes the NAS fleet and serves host metrics to the admin portal's Fleet page, behind the same Supabase auth as the bridge |
+| Piece                                          | Role                                                                                                                                                |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Wizarr**                                     | Invite-based onboarding for Plex users                                                                                                              |
+| **Tautulli**                                   | Usage analytics                                                                                                                                     |
+| **stripe-bridge** (`apps/stripe-bridge-nest/`) | Small NestJS service that converts Stripe webhooks (`checkout.session.completed`, `customer.subscription.deleted`) into Wizarr API calls            |
+| **admin-portal** (`apps/admin-portal/`)        | Landing page plus the gated admin pages                                                                                                             |
+| **fleet-monitor** (`apps/fleet-monitor/`)      | FastAPI service that SSH-probes the NAS fleet and serves host metrics to the admin portal's Fleet page, behind the same Supabase auth as the bridge |
 
 The contribution framing is deliberate: Plex TOS prohibits selling access, and Stripe TOS prohibits selling rights you don't own. When suggesting copy, product descriptions, or UX text, lean toward infrastructure/hosting language. Never reference content, libraries, or titles in user-facing payment surfaces. The `copy-compliance` skill audits this.
 
@@ -43,7 +43,7 @@ wizteros/
 │   ├── fleet-monitor-nest/     Nx project `fleet-monitor-nest`, the NestJS port compose now builds
 │   ├── stripe-bridge/          Nx project `stripe-bridge`
 │   │   ├── stripe_bridge/      all runtime code
-│   │   ├── scripts/            e2e, backfill, and snapshot entrypoints
+│   │   ├── scripts/            the one-time backfill entrypoint
 │   │   └── tests/              pytest suite
 │   └── stripe-bridge-nest/     Nx project `stripe-bridge-nest`, the NestJS port compose now builds
 ├── libs/
@@ -65,7 +65,7 @@ wizteros/
 
 **admin-portal**, a Vite + React SPA (TypeScript, bun). `index.html`, `vite.config.ts`, `tsconfig.json`, `bunfig.toml`, and the oxlint/oxfmt/stylelint configs live at the app root. It has no `project.json`: Nx infers targets from the `scripts` in its `package.json`, whitelisted by the `nx.includedScripts` field there. Adding a script that should be runnable as a target means adding it to that list too.
 
-**stripe-bridge**, a FastAPI service (Python 3.12). All runtime code lives in the `stripe_bridge/` package: `stripe_wizarr_bridge.py` is the app entrypoint, holding the webhook route and a handler table keyed by Stripe event type. Around it sit `config.py` (every env read, and the one shared `WizarrClient`), `admin.py` (auth, snapshot, routes), `roster.py` (the pure member assembly the admin routes render), `invites.py` (tier scope plus minting, shared by the webhook, the admin reissue, and the baseline sweep), `alerts.py` (every operator-facing subject and body), plus `wizarr.py`, `plex.py`, `store.py`, `tiers.py`, `mailer.py`, `email_template.py`, `members.py`, `baseline.py`, `sweeps.py`, `snapshot.py`. Everything else (`tests/`, `scripts/`, `Dockerfile`, `pytest.ini`, `ruff.toml`, `requirements*.txt`, `package.json`, `project.json`) sits at the app root, outside the package.
+**stripe-bridge**, the Python original of the bridge (FastAPI, Python 3.12), no longer built or shipped. All runtime code lives in the `stripe_bridge/` package: `stripe_wizarr_bridge.py` is the app entrypoint, holding the webhook route and a handler table keyed by Stripe event type. Around it sit `config.py` (every env read, and the one shared `WizarrClient`), `admin.py` (auth, snapshot, routes), `roster.py` (the pure member assembly the admin routes render), `invites.py` (tier scope plus minting, shared by the webhook, the admin reissue, and the baseline sweep), `alerts.py` (every operator-facing subject and body), plus `wizarr.py`, `plex.py`, `store.py`, `tiers.py`, `mailer.py`, `email_template.py`, `members.py`, `baseline.py`, `sweeps.py`, `snapshot.py`. Everything else (`tests/`, `scripts/`, `Dockerfile`, `pytest.ini`, `ruff.toml`, `requirements*.txt`, `package.json`, `project.json`) sits at the app root, outside the package.
 
 **fleet-monitor**, a FastAPI service (Python 3.12) in the `fleet_monitor/` package. `api.py` is routes and view models only; the fleet judgement behind them lives in `fleet.py` and the metric history in `series.py`. `plays.py` is a package, not a module: `plays/base.py` holds the shared query pieces, `plays/ledger.py` the schema and writes, `plays/views.py` the aggregates, `plays/never_played.py` the unplayed engine, and `plays/__init__.py` re-exports the public surface so callers still write `plays.overview(...)`.
 
