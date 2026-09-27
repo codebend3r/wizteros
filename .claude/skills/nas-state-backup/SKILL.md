@@ -91,11 +91,13 @@ or miss a hot WAL. So, when the container is running:
   `sudo -n /usr/local/bin/docker exec`, writing to `/data/bridge.db.snapshot`. `/data` is
   the bind mount, so the file lands in `stripe-bridge-data/` on the host and the tar picks
   it up.
-- **The image has no `sqlite3` binary.** `stripe-bridge` builds `FROM python:3.12-slim`,
-  which ships no CLI. The working path is therefore the Python stdlib:
-  `python3 -c "import sqlite3; src = sqlite3.connect('/data/bridge.db'); dst = sqlite3.connect('/data/bridge.db.snapshot'); src.backup(dst); dst.close(); src.close()"`.
-  The script probes for the `sqlite3` binary first and falls back to this; the probe only
-  exists so a future base image that has the CLI takes the shorter route.
+- **The image has no `sqlite3` binary.** The NestJS bridge builds `FROM node:24-slim`,
+  which ships no CLI, so the working path is better-sqlite3's online backup, run with
+  `node -e`. The package is resolved through `/repo/libs/server-common/package.json`,
+  because bun's isolated install links it under the lib and nowhere else. The script
+  probes for the `sqlite3` binary first, then `node`, then falls back to `python3` and
+  the stdlib `sqlite3.Connection.backup`, which is what the Python bridge image
+  (`python:3.12-slim`) it replaced offered. The Python branch goes with Phase 3.
 - The temp snapshot is **removed after the tar**, by an `EXIT` trap, so it goes away even
   if the run dies partway. It is written by the container as root, so cleanup falls back
   to `docker exec ... rm` if the host-side `rm` is refused.
@@ -187,7 +189,7 @@ ssh crivas@192.168.50.2 "curl -s -o /dev/null -m 5 -w '%{http_code}\n' http://lo
 ```
 
 **`401` is the pass, not `200`.** There is no `/health` route; `/admin/members` returning
-`401` proves FastAPI mounted and auth is wired, which a bare port check would not. This
+`401` proves the routes mounted and auth is wired, which a bare port check would not. This
 matches the `deploy-nas` liveness probe.
 
 If the snapshot is absent (container was down at backup time), `bridge.db` in the archive

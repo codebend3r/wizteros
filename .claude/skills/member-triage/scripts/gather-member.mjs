@@ -228,9 +228,28 @@ const ssh = async (command) => {
   return stdout
 }
 
-// SELECT-only, against a connection opened mode=ro so the process could not
-// write even by accident. Shipped base64 so the Python survives ssh re-parsing
-// the remote command through the login shell.
+// SELECT-only, against a connection opened read-only so the process could not
+// write even by accident. Shipped base64 so the program survives ssh
+// re-parsing the remote command through the login shell.
+//
+// The NestJS bridge image has node and better-sqlite3 (resolved from
+// libs/server-common, the only place bun links it); the Python image it
+// replaced has python3. Node is tried first and Python is the fallback, so the
+// script reads either image; the Python branch goes with Phase 3.
+const nodeStoreProgram = `
+const Database = require('node:module').createRequire('/repo/libs/server-common/package.json')('better-sqlite3')
+const db = new Database(process.env.MAP_DB_PATH || '/data/bridge.db', { readonly: true, fileMustExist: true })
+const email = ${JSON.stringify(EMAIL)}
+const one = (sql) => db.prepare(sql).all(email)
+console.log(JSON.stringify({
+  customers: one('SELECT stripe_customer_id, email, invite_code, tier, invited_at, subscribed'
+    + ' FROM customer_map WHERE lower(email) = lower(?)'),
+  tags: one('SELECT tag FROM member_tags WHERE email = lower(?)'),
+  downloads: one('SELECT allow FROM member_downloads WHERE email = lower(?)'),
+  events: one('SELECT at, action, detail FROM event_log WHERE email = lower(?) ORDER BY id DESC LIMIT 12'),
+}))
+`
+
 const storeProgram = `
 import json, os, sqlite3
 db = sqlite3.connect("file:" + os.environ.get("MAP_DB_PATH", "/data/bridge.db") + "?mode=ro", uri=True)
@@ -249,10 +268,16 @@ print(json.dumps({
 `
 
 const readStore = async () => {
-  const encoded = Buffer.from(storeProgram, 'utf8').toString('base64')
+  const viaNode = Buffer.from(nodeStoreProgram, 'utf8').toString('base64')
+  const viaPython = Buffer.from(storeProgram, 'utf8').toString('base64')
   const out = await ssh(
-    `sudo -n ${DOCKER} exec ${SERVICE} python3 -c ` +
-      `"import base64;exec(base64.b64decode('${encoded}'))"`,
+    `sudo -n ${DOCKER} exec ${SERVICE} node -e ` +
+      `"eval(Buffer.from('${viaNode}', 'base64').toString())"`,
+  ).catch(() =>
+    ssh(
+      `sudo -n ${DOCKER} exec ${SERVICE} python3 -c ` +
+        `"import base64;exec(base64.b64decode('${viaPython}'))"`,
+    ),
   )
   return JSON.parse(out)
 }
@@ -290,7 +315,7 @@ const storeSection = ({ store, error }) => {
 // Alarms carry no email, so a plain grep for the member misses the reason their
 // signup failed. Both passes run over the same window.
 const ALARMS =
-  /tier scope check:|no libraries resolved|unknown tier|allowlist mismatch|Traceback \(most recent call last\)/
+  /tier scope check:|no libraries resolved|unknown tier|allowlist mismatch|Traceback \(most recent call last\)| ERROR\b/
 
 const logsSection = async () => {
   // Tail on the NAS, filter here: no remote quoting of the address, and the

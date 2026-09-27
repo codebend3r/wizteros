@@ -51,9 +51,9 @@ The TypeScript conventions oxlint does not cover are still yours: type assertion
 These come from CLAUDE.md but are the checks reviews historically skip. Confirm each against the current CLAUDE.md wording before flagging.
 
 - A new `package.json` script that should be runnable as an Nx target also needs an entry in that app's `nx.includedScripts`; without it the target silently does not exist. No tool catches this.
-- The three version markers (root `package.json`, `apps/admin-portal/package.json`, `__version__` in `apps/stripe-bridge/stripe_bridge/__init__.py`) move only via `scripts/release.sh`, in lockstep, with a `CHANGELOG.md` section per release. A hand-edit of any one is a finding.
+- The three version markers (root `package.json`, `apps/admin-portal/package.json`, `apps/stripe-bridge-nest/package.json`) move only via `scripts/release.sh`, in lockstep, with a `CHANGELOG.md` section per release. A hand-edit of any one is a finding.
 - The `@/` alias maps to `apps/admin-portal/src/*` and is declared in both `apps/admin-portal/tsconfig.json` and `apps/admin-portal/vite.config.ts`; a new alias missing from either is a finding. Web imports go through `@/`, never parent-relative `../`; same-directory `./` imports are fine. No lint rule backs any of this.
-- Bridge modules import package-absolute (`from stripe_bridge import store`), new bridge modules live inside `stripe_bridge/`, and bridge tests live in `apps/stripe-bridge/tests/`, outside the package. Also unlinted.
+- NestJS server modules import through `@/` with a `.js` extension (`@/store.js`), and `libs/server-common` imports same-directory `./` only, since an app compiling against it would resolve its `@/` to the app's own `src`. The Python apps, until Phase 3 deletes them, import package-absolute (`from stripe_bridge import store`). Also unlinted.
 - Contrast and tokens: check new color pairings against the real values in `apps/admin-portal/src/styles/globals.scss`. Read the file, do not assume the palette. If the file cannot be read, report that the contrast check did not run; never drop it silently.
 - Responsive states: no horizontal page scroll at a 320px viewport in all four states (loaded, loading, error, empty), wide content scrolling in its own container, min-content traps (`minmax(0, 1fr)`, `min-width: 0`, `anywhere` versus `break-word`). The linters see none of this.
 
