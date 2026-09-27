@@ -45,7 +45,7 @@ wizteros/
 │   │   ├── stripe_bridge/      all runtime code
 │   │   ├── scripts/            e2e, backfill, and snapshot entrypoints
 │   │   └── tests/              pytest suite
-│   └── stripe-bridge-nest/     Nx project `stripe-bridge-nest`, the NestJS port (in progress)
+│   └── stripe-bridge-nest/     Nx project `stripe-bridge-nest`, the NestJS port compose now builds
 ├── libs/
 │   └── server-common/          Nx project `@wizteros/server-common`, shared by the NestJS servers
 ├── docs/                       all specs, plans, and PRDs for both apps
@@ -54,7 +54,7 @@ wizteros/
 ├── .claude/skills/             repo-scoped skills
 ├── .github/                    CI workflows
 ├── .husky/                     pre-commit and pre-push hooks
-├── docker-compose.yml          builds ./apps/stripe-bridge, bridge only
+├── docker-compose.yml          builds the bridge and the fleet monitor from their NestJS ports
 ├── netlify.toml                builds admin-portal, publishes apps/admin-portal/dist
 ├── nx.json                     target defaults, cacheable targets, named inputs
 ├── .oxlintrc.json              oxlint for everything outside apps/
@@ -69,9 +69,11 @@ wizteros/
 
 **fleet-monitor**, a FastAPI service (Python 3.12) in the `fleet_monitor/` package. `api.py` is routes and view models only; the fleet judgement behind them lives in `fleet.py` and the metric history in `series.py`. `plays.py` is a package, not a module: `plays/base.py` holds the shared query pieces, `plays/ledger.py` the schema and writes, `plays/views.py` the aggregates, `plays/never_played.py` the unplayed engine, and `plays/__init__.py` re-exports the public surface so callers still write `plays.overview(...)`.
 
-**NestJS ports (in progress)**: `fleet-monitor-nest` and `stripe-bridge-nest` replace the two Python services one phase at a time and take over their directory names in Phase 3. The fleet monitor is ported: `docker-compose.yml` builds `fleet-monitor` and `fleet-collector` from `apps/fleet-monitor-nest` (the collector is `node dist/collectorMain.js`), and `apps/fleet-monitor` stays only as the reference `apps/fleet-monitor-nest/scripts/parity.mjs` diffs against. The bridge is still the Python app until Phase 2. They are NestJS 12 (ESM, Fastify adapter) and run on Node 24 (`.node-version`, `node:24-slim` images; Netlify reads the same file, so it has to match `NODE_VERSION` in `netlify.toml`), with bun still the package manager. `build` is `nest build` on TypeScript 6, because the Nest CLI needs the compiler API that TypeScript 7 does not ship yet; `typecheck` is tsgo, as in admin-portal. Tests are Vitest. Each image builds from the repo root context, and the `Dockerfile.dockerignore` next to each Dockerfile allowlists what goes in, which keeps `.env` and the live data out.
+**NestJS ports**: `fleet-monitor-nest` and `stripe-bridge-nest` replace the two Python services one phase at a time and take over their directory names in Phase 3. Both are ported: `docker-compose.yml` builds `stripe-bridge` from `apps/stripe-bridge-nest`, and `fleet-monitor` and `fleet-collector` from `apps/fleet-monitor-nest` (the collector is `node dist/collectorMain.js`). `apps/stripe-bridge` and `apps/fleet-monitor` stay only as the references each port's `scripts/parity.mjs` diffs against. They are NestJS 12 (ESM, Fastify adapter) and run on Node 24 (`.node-version`, `node:24-slim` images; Netlify reads the same file, so it has to match `NODE_VERSION` in `netlify.toml`), with bun still the package manager. `build` is `nest build` on TypeScript 6, because the Nest CLI needs the compiler API that TypeScript 7 does not ship yet; `typecheck` is tsgo, as in admin-portal. Tests are Vitest. Each image builds from the repo root context, and the `Dockerfile.dockerignore` next to each Dockerfile allowlists what goes in, which keeps `.env` and the live data out.
 
-**server-common** (`libs/server-common`, `@wizteros/server-common`): `SupabaseAdminGuard` and `AdminAuthModule`, the env parsing both servers share, and `withSqlite`, the one-connection-per-unit-of-work helper. Apps consume its built `dist`, which is why `typecheck`, `test` and `build` all depend on `^build`. Its `@nestjs/common` is a peer dependency, so an app and the lib share one copy and the guard's 401 stays an `HttpException` to the app.
+**stripe-bridge-nest**: every module that talks to Wizarr, Stripe, plex.tv or SMTP takes the port it needs from a `Bridge` (`types.ts`: the store path, the four service ports, and settings) rather than importing a client, which is what lets a test hand in the fakes in `src/test/fakes.ts`. `bridgeFromEnv.ts` builds the real one and `BridgeModule` provides it app-wide. The webhook lives in `webhook/` (`handlers.ts` is the handler table keyed by Stripe event type), the admin routes in `admin/`, the background jobs in `loops.ts`, every env read in `config.ts`, and the service clients in `clients/`. Service calls in a loop go through `eachInOrder`/`mapInOrder` (`sequence.ts`), because the Python made them one at a time and tests assert the order.
+
+**server-common** (`libs/server-common`, `@wizteros/server-common`): `SupabaseAdminGuard` and `AdminAuthModule`, the env parsing both servers share, `withSqlite`, the one-connection-per-unit-of-work helper, the SQLite row guards (`rows.ts`), Python's `isoformat()` and its parsing (`time.ts`), and `fastApiValidationPipe`, FastAPI's 422 for a failed query or body schema. Apps consume its built `dist`, which is why `typecheck`, `test` and `build` all depend on `^build`. Its `@nestjs/common` is a peer dependency, so an app and the lib share one copy and the guard's 401 stays an `HttpException` to the app.
 
 Import rules, which tooling does not catch:
 
@@ -97,13 +99,14 @@ The root `bun run <script>` aliases (`dev`, `build`, `verify`, `system-check`, `
 
 Most projects source targets from more than one place, so check `nx show project` rather than assuming from a single file:
 
-| Project                                    | Targets come from                                                                                                                                                                                                                                                                               |
-| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `admin-portal`                             | `package.json` scripts only, gated by `nx.includedScripts`                                                                                                                                                                                                                                      |
-| `fleet-monitor`                            | `package.json` scripts (`test`, `lint:py`) gated by `nx.includedScripts`, plus `project.json` for `docker-build`                                                                                                                                                                                |
-| `stripe-bridge`                            | `package.json` scripts (`test`, `lint:py`, `test:e2e`, `test:e2e:tiers`, `refresh:libraries`) gated by `nx.includedScripts`, **plus** `project.json` for the Docker targets (`docker-build`, `serve`, `stop`, `logs`, `test-docker`), declared as `nx:run-commands` with `cwd: {workspaceRoot}` |
-| `fleet-monitor-nest`, `stripe-bridge-nest` | `package.json` scripts (`build`, `typecheck`, `lint:ts`, `format:check`, `test`) gated by `nx.includedScripts`, plus `project.json` for `docker-build`                                                                                                                                          |
-| `@wizteros/server-common`                  | `package.json` scripts only, gated by `nx.includedScripts`                                                                                                                                                                                                                                      |
+| Project                   | Targets come from                                                                                                                                                                                                                                                                 |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `admin-portal`            | `package.json` scripts only, gated by `nx.includedScripts`                                                                                                                                                                                                                        |
+| `fleet-monitor`           | `package.json` scripts (`test`, `lint:py`) gated by `nx.includedScripts`, plus `project.json` for `docker-build`                                                                                                                                                                  |
+| `stripe-bridge`           | `package.json` scripts (`test`, `lint:py`) gated by `nx.includedScripts`, plus `project.json` for `docker-build` and `test-docker`                                                                                                                                                |
+| `fleet-monitor-nest`      | `package.json` scripts (`build`, `typecheck`, `lint:ts`, `format:check`, `test`) gated by `nx.includedScripts`, plus `project.json` for `docker-build`                                                                                                                            |
+| `stripe-bridge-nest`      | `package.json` scripts (the same five, plus `test:e2e`, `test:e2e:tiers`, `refresh:libraries`) gated by `nx.includedScripts`, **plus** `project.json` for the Docker targets (`docker-build`, `serve`, `stop`, `logs`), declared as `nx:run-commands` with `cwd: {workspaceRoot}` |
+| `@wizteros/server-common` | `package.json` scripts only, gated by `nx.includedScripts`                                                                                                                                                                                                                        |
 
 Anything cacheable is declared in `nx.json` `targetDefaults`. A new target that is safe to cache belongs there; anything that touches Docker or the network must stay `cache: false`.
 
@@ -119,7 +122,7 @@ Gates: pre-commit runs `bun run lint:staged` (lint-staged, autofixing just the s
 
 ## Releases and deploy
 
-Three version markers move in lockstep: root `package.json`, `apps/admin-portal/package.json`, and `__version__` in `apps/stripe-bridge/stripe_bridge/__init__.py`. The bridge marker is the only one that reaches the container, and it is what `GET /version` reports.
+Three version markers move in lockstep: root `package.json`, `apps/admin-portal/package.json`, and `apps/stripe-bridge-nest/package.json`. The bridge marker is the only one that reaches the container, and it is what `GET /version` reports.
 
 - Never hand-edit a version field. `scripts/release.sh` owns the flow and hard-fails when the three disagree. The `version-bumper` skill decides whether a bump is due.
 - Every release gets a `CHANGELOG.md` section.

@@ -1,7 +1,7 @@
 # NestJS migration design
 
 **Date:** 2026-09-26
-**Status:** approved; Phase 0 in review (PR #57), Phase 1 in review (branch `nestjs-fleet-monitor`), Phases 2 and 3 not started
+**Status:** approved; Phase 0 merged (#57); Phase 1 merged (#59) and cut over on the NAS 2026-09-27; Phase 2 in review (branch `nestjs-stripe-bridge`), not yet cut over; Phase 3 in review (branch `remove-python-backends`), to merge only after the Phase 2 cutover
 **Scope:** port `stripe-bridge` and `fleet-monitor` from Python 3.12 FastAPI to NestJS
 (TypeScript), then remove the Python toolchain from the repo
 
@@ -249,6 +249,56 @@ The branch first broke Netlify's deploy preview at "Install dependencies": Bun r
   5. Rollback is the previous image; Stripe retries anything that failed in between, and
      `processed_events` drops what already landed.
 - Set `TZ` in the container so the rotation cron keeps firing at the same local hour.
+
+#### What Phase 2 found
+
+- **Parity on live data.** Against a consistent copy of the live `bridge.db` (52
+  customers, 125 events), with both servers reading the live Wizarr, plex.tv and
+  Stripe, `scripts/parity.mjs` matches 61 of 61 routes: the members list on both
+  prefixes, ten members' page, events, notes and plex access, and the error
+  statuses. Both servers run with their loops off, since the reconcile sweep writes
+  expiries to Wizarr; the port is served through `@nestjs/testing` with its loops
+  provider replaced, so production carries no switch for it.
+- **481 tests** against the 321 ported. Every Python test has a counterpart; the
+  rest pin what TypeScript added (the webhook queue, the loops, the ISO parser,
+  body coercion, both route prefixes).
+- **Webhooks are handled one at a time.** The Python endpoint was `async def`
+  running synchronous code, so deliveries were serialized by accident. The port
+  awaits between service calls, so two deliveries of one checkout could both pass
+  the processed check and both mint. The controller keeps a queue; a test fails
+  without it.
+- **Every module takes a `Bridge`.** The Python suites rebound module attributes
+  (`bridge.client = MagicMock()`); ESM modules cannot be patched that way, so the
+  store path and the four service ports are handed in, and the tests hand in fakes.
+- **pydantic's lax coercion is reproduced** for the admin bodies (integer strings,
+  `"yes"`/`"off"` booleans), checked against pydantic 2.13 itself. The 422 keeps
+  FastAPI's `{detail: [...]}` shape with zod's wording, which the portal only
+  displays.
+- **`reset-expiry` reproduces `fromisoformat(...).isoformat()`**, offsets and naive
+  times included, pinned by 51 cases taken from CPython 3.12. ISO week dates
+  (`2026-W31-1`) are the one form refused where 3.12 accepts it.
+- **The Stripe SDK is stripe@22.3.2,** the release pinned to `2026-06-24.dahlia`,
+  the API version the production Python sent (stripe-python 15.3.1).
+- **`@nestjs/schedule` is not used.** The three jobs are timer chains in
+  `loops.ts`, each rescheduled only when its run settles, so a slow Wizarr delays
+  a job but never stacks two of it. The rotation keeps its local hour across a DST
+  change, which the Python's naive-datetime arithmetic did not. `TZ` already comes
+  from the NAS `.env`, and Node reads it without zoneinfo files.
+- **HTTP mocks stay injected, not msw,** as in Phase 1: each client takes a
+  `fetch`, and the tests hand in one that answers from a table.
+- **The version marker moved** to `apps/stripe-bridge-nest/package.json`;
+  `release.sh`, `deploy-nas`, `version-bumper` and CI's version parity follow it.
+- **Four skills read the running container** and would have broken at the cutover:
+  `nas-state-backup` and `member-triage` and `invite-audit` exec'd `python3` in it,
+  and `stack-health` grepped for Python tracebacks. Each now tries `node` first,
+  resolving `better-sqlite3` through `/repo/libs/server-common/package.json` (bun's
+  isolated install links it only there), and keeps `python3` as the fallback until
+  Phase 3.
+- **Deliberate differences.** Timestamps carry milliseconds where Python wrote
+  microseconds, as in Phase 1. A webhook body that is not JSON gets Fastify's 400
+  rather than the 400 `invalid signature`; the status is the same. A Stripe object
+  field of the wrong type fails the delivery a step earlier than Python did, and
+  the delivery is still left unmarked for Stripe to retry.
 
 ### Phase 3: remove Python (branch `remove-python-backends`)
 
