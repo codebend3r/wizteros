@@ -10,6 +10,7 @@ import {
   type SqliteDatabase,
   withSqlite,
 } from '@wizteros/server-common'
+import { stackOf } from '@/errors.js'
 
 const log = new Logger('bridge.store')
 
@@ -836,10 +837,7 @@ export const recordEvent = ({
           .run(isoformat(new Date()), email.toLowerCase(), action, detail),
     })
   } catch (error) {
-    log.error(
-      `event log write failed for ${email} / ${action}`,
-      error instanceof Error ? error.stack : String(error),
-    )
+    log.error(`event log write failed for ${email} / ${action}`, stackOf(error))
   }
 }
 

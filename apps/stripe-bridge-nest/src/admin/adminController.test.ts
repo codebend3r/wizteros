@@ -348,26 +348,34 @@ afterEach(async () => {
   removeTempDirs()
 })
 
-const get = ({ app }: Harness, url: string) => app.inject({ method: 'GET', url })
+const get = ({ h: { app }, url }: { h: Harness; url: string }) => app.inject({ method: 'GET', url })
 
-const post = ({ app }: Harness, url: string, payload: Record<string, unknown>) =>
-  app.inject({ method: 'POST', url, payload })
+const post = ({
+  h: { app },
+  url,
+  payload,
+}: {
+  h: Harness
+  url: string
+  payload: Record<string, unknown>
+}) => app.inject({ method: 'POST', url, payload })
 
 const listMembers = async (h: Harness): Promise<MemberPayload[]> =>
-  bodyOf({ answer: await get(h, '/admin/members'), is: isMemberPayloadArray })
+  bodyOf({ answer: await get({ h, url: '/admin/members' }), is: isMemberPayloadArray })
 
-const getMember = async (h: Harness, email: string): Promise<MemberPayload> =>
+const getMember = async ({ h, email }: { h: Harness; email: string }): Promise<MemberPayload> =>
   bodyOf({
-    answer: await get(h, `/admin/member?email=${encodeURIComponent(email)}`),
+    answer: await get({ h, url: `/admin/member?email=${encodeURIComponent(email)}` }),
     is: isMemberPayload,
   })
 
-const getEvents = async (h: Harness, email?: string): Promise<MemberEvent[]> =>
+const getEvents = async ({ h, email }: { h: Harness; email?: string }): Promise<MemberEvent[]> =>
   bodyOf({
-    answer: await get(
+    answer: await get({
       h,
-      email === undefined ? '/admin/events' : `/admin/events?email=${encodeURIComponent(email)}`,
-    ),
+      url:
+        email === undefined ? '/admin/events' : `/admin/events?email=${encodeURIComponent(email)}`,
+    }),
     is: isMemberEventArray,
   })
 
@@ -376,7 +384,13 @@ const byEmail = (members: readonly MemberPayload[]): ReadonlyMap<string, MemberP
   new Map(members.map((m) => [m.email.toLowerCase(), m]))
 
 /** One member of the list, failing the test when it is missing. */
-const memberOf = (members: readonly MemberPayload[], email: string): MemberPayload => {
+const memberOf = ({
+  members,
+  email,
+}: {
+  members: readonly MemberPayload[]
+  email: string
+}): MemberPayload => {
   const found = byEmail(members).get(email)
   if (found === undefined) {
     throw new Error(`${email} is not on the list`)
@@ -384,29 +398,38 @@ const memberOf = (members: readonly MemberPayload[], email: string): MemberPaylo
   return found
 }
 
-const resetExpiry = async (h: Harness, body: Record<string, unknown>) =>
-  bodyOf({ answer: await post(h, '/admin/reset-expiry', body), is: isResetExpiryResult })
-
-const reissue = async (h: Harness, body: Record<string, unknown>) =>
-  bodyOf({ answer: await post(h, '/admin/reissue-invite', body), is: isInviteResult })
-
-const cancel = async (h: Harness, email: string) =>
+const resetExpiry = async ({ h, body }: { h: Harness; body: Record<string, unknown> }) =>
   bodyOf({
-    answer: await post(h, '/admin/cancel-subscription', { email }),
+    answer: await post({ h, url: '/admin/reset-expiry', payload: body }),
+    is: isResetExpiryResult,
+  })
+
+const reissue = async ({ h, body }: { h: Harness; body: Record<string, unknown> }) =>
+  bodyOf({
+    answer: await post({ h, url: '/admin/reissue-invite', payload: body }),
+    is: isInviteResult,
+  })
+
+const cancel = async ({ h, email }: { h: Harness; email: string }) =>
+  bodyOf({
+    answer: await post({ h, url: '/admin/cancel-subscription', payload: { email } }),
     is: isCancelSubscriptionResult,
   })
 
-const ban = async (h: Harness, email: string) =>
-  bodyOf({ answer: await post(h, '/admin/ban', { email }), is: isBanResult })
+const ban = async ({ h, email }: { h: Harness; email: string }) =>
+  bodyOf({ answer: await post({ h, url: '/admin/ban', payload: { email } }), is: isBanResult })
 
-const setTag = async (h: Harness, body: Record<string, unknown>) =>
-  bodyOf({ answer: await post(h, '/admin/set-tag', body), is: isSetTagResult })
+const setTag = async ({ h, body }: { h: Harness; body: Record<string, unknown> }) =>
+  bodyOf({ answer: await post({ h, url: '/admin/set-tag', payload: body }), is: isSetTagResult })
 
-const setDownloads = async (h: Harness, body: Record<string, unknown>) =>
-  bodyOf({ answer: await post(h, '/admin/set-downloads', body), is: isSetDownloadsResult })
+const setDownloads = async ({ h, body }: { h: Harness; body: Record<string, unknown> }) =>
+  bodyOf({
+    answer: await post({ h, url: '/admin/set-downloads', payload: body }),
+    is: isSetDownloadsResult,
+  })
 
-const linkAddress = async (h: Harness, body: Record<string, unknown>) =>
-  post(h, '/admin/link-address', body)
+const linkAddress = async ({ h, body }: { h: Harness; body: Record<string, unknown> }) =>
+  post({ h, url: '/admin/link-address', payload: body })
 
 // --- require_admin ------------------------------------------------------------------------
 
@@ -488,7 +511,7 @@ describe('GET /admin/members', () => {
     })
     const members = await listMembers(h)
 
-    const cj = memberOf(members, 'a@x.com')
+    const cj = memberOf({ members, email: 'a@x.com' })
     expect(cj.member).toBe('cj')
     expect([...cj.servers].toSorted()).toEqual(['Meleys', 'Vhagar']) // 2 records -> 1 person
     expect(cj.expires).toBe('2026-09-10T00:00:00+00:00') // latest wins
@@ -499,7 +522,7 @@ describe('GET /admin/members', () => {
     // grants anything, and 90. private is never shown
     expect(cj.libraries).toEqual(GOLD_LIBRARIES)
 
-    const nora = memberOf(members, 'nora@x.com')
+    const nora = memberOf({ members, email: 'nora@x.com' })
     expect(nora.subscribed).toBe(false)
     expect(nora.tier).toBe('unknown')
     expect(nora.downloads).toBeNull()
@@ -519,7 +542,7 @@ describe('GET /admin/members', () => {
     h.bridge.plex.sharedAccessAll.mockResolvedValue(PLEX_SHARES)
     const members = await listMembers(h)
 
-    const cj = memberOf(members, 'a@x.com')
+    const cj = memberOf({ members, email: 'a@x.com' })
     // a server only plex.tv knows about is unioned in with Wizarr's records
     expect(cj.servers).toEqual(['Caraxes', 'Meleys', 'Vhagar'])
     // plex is ground truth where it has an answer...
@@ -529,7 +552,7 @@ describe('GET /admin/members', () => {
     expect(cj.libraries?.Vhagar).toEqual(['03. 4K Movies'])
 
     // unknown tier derives no libraries, so plex is the only real answer here
-    expect(memberOf(members, 'nora@x.com').libraries).toEqual({ Syrax: ['02. Anime'] })
+    expect(memberOf({ members, email: 'nora@x.com' }).libraries).toEqual({ Syrax: ['02. Anime'] })
   })
 
   it('gives plex-only servers to a member who never joined', async () => {
@@ -547,7 +570,7 @@ describe('GET /admin/members', () => {
         Meleys: { all_libraries: false, allow_sync: false, libraries: ['03. Family Movies'] },
       },
     })
-    const mx = memberOf(await listMembers(h), 'max@x.com')
+    const mx = memberOf({ members: await listMembers(h), email: 'max@x.com' })
     expect(mx.servers).toEqual(['Meleys']) // legacy share, no Wizarr record
     expect(mx.libraries).toEqual({ Meleys: ['03. Family Movies'] })
   })
@@ -561,7 +584,7 @@ describe('GET /admin/members', () => {
       inviteCode: 'abc',
       tier: 'gold',
     })
-    const cj = memberOf(await listMembers(h), 'a@x.com')
+    const cj = memberOf({ members: await listMembers(h), email: 'a@x.com' })
     expect(cj.servers).toEqual(['Meleys', 'Vhagar'])
     expect(cj.libraries).toEqual(GOLD_LIBRARIES)
     expect(h.bridge.plex.sharedAccessAll).not.toHaveBeenCalled()
@@ -579,7 +602,7 @@ describe('GET /admin/members', () => {
     })
     h.bridge.plex.hasToken.mockReturnValue(true)
     h.bridge.plex.sharedAccessAll.mockRejectedValue(new PlexUnavailable('plex.tv down'))
-    const cj = memberOf(await listMembers(h), 'a@x.com')
+    const cj = memberOf({ members: await listMembers(h), email: 'a@x.com' })
     expect(cj.servers).toEqual(['Meleys', 'Vhagar'])
     expect(cj.libraries).toEqual(GOLD_LIBRARIES)
   })
@@ -590,7 +613,7 @@ describe('GET /admin/members', () => {
     // — this is what lets a member read "Invited" while a 14-day clock counts down.
     const h = await harness()
     upsertPendingByEmail({ path: h.dbp, email: 'a@x.com', inviteCode: 'INV1', tier: 'gold' })
-    const cj = memberOf(await listMembers(h), 'a@x.com')
+    const cj = memberOf({ members: await listMembers(h), email: 'a@x.com' })
     expect(cj.expires).toBe('2026-09-10T00:00:00+00:00') // future expiry present
     expect(cj.subscribed).toBe(false) // but no payment on record
     expect(cj.invited_at).not.toBeNull() // admin invite stamped it
@@ -608,7 +631,7 @@ describe('GET /admin/members', () => {
     })
     const members = await listMembers(h)
     expect(byEmail(members).has('max@x.com')).toBe(true) // shown despite having no Wizarr record
-    const mx = memberOf(members, 'max@x.com')
+    const mx = memberOf({ members, email: 'max@x.com' })
     expect(mx.tier).toBe('youth')
     expect(mx.downloads).toBe(true) // derived from youth
     expect(mx.subscribed).toBe(true) // checkout completed -> confirmed payment
@@ -640,11 +663,11 @@ describe('GET /admin/members', () => {
     })
     const members = await listMembers(h)
     // entitled is the tier-derived set; libraries stays empty until they join
-    expect(memberOf(members, 'gold@x.com').entitled).toEqual(GOLD_LIBRARIES)
-    expect(memberOf(members, 'youth@x.com').entitled).toEqual({
+    expect(memberOf({ members, email: 'gold@x.com' }).entitled).toEqual(GOLD_LIBRARIES)
+    expect(memberOf({ members, email: 'youth@x.com' }).entitled).toEqual({
       Meleys: ['03. Family Movies', '14. Kid Shows'],
     })
-    expect(memberOf(members, 'gold@x.com').libraries).toEqual({})
+    expect(memberOf({ members, email: 'gold@x.com' }).libraries).toEqual({})
   })
 
   it('shows nothing for a pending subscriber with an unknown tier', async () => {
@@ -657,7 +680,7 @@ describe('GET /admin/members', () => {
       inviteCode: 'INV1',
       tier: null,
     })
-    const mx = memberOf(await listMembers(h), 'notier@x.com')
+    const mx = memberOf({ members: await listMembers(h), email: 'notier@x.com' })
     expect(mx.tier).toBe('unknown')
     expect(mx.servers).toEqual([])
     expect(mx.libraries).toEqual({})
@@ -672,7 +695,7 @@ describe('GET /admin/members', () => {
       inviteCode: 'INV1',
       tier: 'gold',
     })
-    const mx = memberOf(await listMembers(h), 'gold@x.com')
+    const mx = memberOf({ members: await listMembers(h), email: 'gold@x.com' })
     const names = Object.values(mx.libraries ?? {}).flat()
     expect(names).not.toContain('90. Private')
   })
@@ -701,7 +724,7 @@ describe('GET /admin/members', () => {
     await listMembers(h)
     setMemberTag({ path: h.dbp, email: 'a@x.com', tag: 'vip' })
     // DB join fresh despite cached upstream
-    expect(memberOf(await listMembers(h), 'a@x.com').tag).toBe('vip')
+    expect(memberOf({ members: await listMembers(h), email: 'a@x.com' }).tag).toBe('vip')
   })
 
   it('carries a pure tier entitlement map', async () => {
@@ -716,7 +739,7 @@ describe('GET /admin/members', () => {
       inviteCode: 'abc',
       tier: 'gold',
     })
-    const cj = memberOf(await listMembers(h), 'a@x.com')
+    const cj = memberOf({ members: await listMembers(h), email: 'a@x.com' })
     expect(cj.entitled).toEqual(GOLD_LIBRARIES)
     // gold entitles Vhagar now, and the member holds a record there
     expect(cj.servers).toContain('Vhagar')
@@ -732,13 +755,13 @@ describe('GET /admin/members', () => {
       inviteCode: 'abc',
       tier: 'youth',
     })
-    const cj = memberOf(await listMembers(h), 'a@x.com')
+    const cj = memberOf({ members: await listMembers(h), email: 'a@x.com' })
     expect(cj.entitled).toEqual({ Meleys: ['03. Family Movies', '14. Kid Shows'] })
   })
 
   it('entitles an unknown tier to nothing', async () => {
     const h = await harness()
-    const nora = memberOf(await listMembers(h), 'nora@x.com')
+    const nora = memberOf({ members: await listMembers(h), email: 'nora@x.com' })
     expect(nora.tier).toBe('unknown')
     expect(nora.entitled).toEqual({})
   })
@@ -756,7 +779,7 @@ describe('GET /admin/members', () => {
     })
     h.bridge.plex.hasToken.mockReturnValue(true)
     h.bridge.plex.sharedAccessAll.mockResolvedValue(PLEX_SHARES)
-    const cj = memberOf(await listMembers(h), 'a@x.com')
+    const cj = memberOf({ members: await listMembers(h), email: 'a@x.com' })
     expect(cj.libraries?.Meleys).toEqual(['01. Movies', '05. TV Shows']) // plex wins here
     expect(cj.entitled).toEqual(GOLD_LIBRARIES) // tier stands
   })
@@ -772,7 +795,7 @@ describe('GET /admin/members', () => {
       inviteCode: 'INV1',
       tier: 'gold',
     })
-    const mx = memberOf(await listMembers(h), 'gold@x.com')
+    const mx = memberOf({ members: await listMembers(h), email: 'gold@x.com' })
     expect(mx.entitled).toEqual(GOLD_LIBRARIES)
     expect(mx.libraries).toEqual({})
   })
@@ -831,7 +854,7 @@ describe('the stripe address and the plex address', () => {
     // one row, under the Plex address they actually watch with
     expect(byEmail(members).has('nora@x.com')).toBe(true)
     expect(byEmail(members).has('stripe-only@x.com')).toBe(false)
-    const nora = memberOf(members, 'nora@x.com')
+    const nora = memberOf({ members, email: 'nora@x.com' })
     expect(nora.stripe_email).toBe('stripe-only@x.com')
     expect(nora.tier).toBe('gold') // the tier they pay for
     expect(nora.subscribed).toBe(true) // the payment follows the person
@@ -852,7 +875,7 @@ describe('the stripe address and the plex address', () => {
       { id: 1, code: 'INV1', used_by: '<User 1>' },
     ])
     h.snapshot.clear()
-    expect(memberOf(await listMembers(h), 'a@x.com').stripe_email).toBeNull()
+    expect(memberOf({ members: await listMembers(h), email: 'a@x.com' }).stripe_email).toBeNull()
   })
 
   it('links nothing through an unredeemed invite', async () => {
@@ -869,8 +892,8 @@ describe('the stripe address and the plex address', () => {
     h.snapshot.clear()
     const members = await listMembers(h)
     expect(byEmail(members).has('stripe-only@x.com')).toBe(true) // still stands on its own
-    expect(memberOf(members, 'stripe-only@x.com').stripe_email).toBeNull()
-    expect(memberOf(members, 'nora@x.com').subscribed).toBe(false)
+    expect(memberOf({ members, email: 'stripe-only@x.com' }).stripe_email).toBeNull()
+    expect(memberOf({ members, email: 'nora@x.com' }).subscribed).toBe(false)
   })
 
   it('collapses through a linked address a pair no invite can join', async () => {
@@ -894,7 +917,7 @@ describe('the stripe address and the plex address', () => {
 
     const members = await listMembers(h)
     expect(byEmail(members).has('stripe-only@x.com')).toBe(false) // no longer its own row
-    const nora = memberOf(members, 'nora@x.com')
+    const nora = memberOf({ members, email: 'nora@x.com' })
     expect(nora.stripe_email).toBe('stripe-only@x.com')
     expect(nora.tier).toBe('gold')
     expect(nora.subscribed).toBe(true)
@@ -929,7 +952,7 @@ describe('the stripe address and the plex address', () => {
 
     const members = await listMembers(h)
     expect(byEmail(members).has('stripe-only@x.com')).toBe(false)
-    const nora = memberOf(members, 'nora@x.com')
+    const nora = memberOf({ members, email: 'nora@x.com' })
     expect(nora.customer_id).toBe('cus_live') // the one actually paying
     expect(nora.tier).toBe('gold')
     expect(nora.stripe_email).toBe('stripe-only@x.com')
@@ -951,7 +974,7 @@ describe('the stripe address and the plex address', () => {
 
     const members = await listMembers(h)
     expect(byEmail(members).has('stripe-only@x.com')).toBe(true)
-    expect(memberOf(members, 'nora@x.com').stripe_email).toBeNull()
+    expect(memberOf({ members, email: 'nora@x.com' }).stripe_email).toBeNull()
   })
 
   it('resolves a plain username in used_by too', async () => {
@@ -966,7 +989,9 @@ describe('the stripe address and the plex address', () => {
     })
     h.bridge.wizarr.listInvitations.mockResolvedValue([{ id: 1, code: 'INV1', used_by: 'nora' }])
     h.snapshot.clear()
-    expect(memberOf(await listMembers(h), 'nora@x.com').stripe_email).toBe('stripe-only@x.com')
+    expect(memberOf({ members: await listMembers(h), email: 'nora@x.com' }).stripe_email).toBe(
+      'stripe-only@x.com',
+    )
   })
 
   it('shows the stripe address on the member page', async () => {
@@ -981,7 +1006,7 @@ describe('the stripe address and the plex address', () => {
     h.bridge.wizarr.listInvitations.mockResolvedValue([
       { id: 1, code: 'INV1', used_by: '<User 3>' },
     ])
-    const m = await getMember(h, 'nora@x.com')
+    const m = await getMember({ h, email: 'nora@x.com' })
     expect(m.stripe_email).toBe('stripe-only@x.com')
     expect(m.customer_id).toBe('cus_1')
   })
@@ -996,7 +1021,7 @@ describe('the stripe address and the plex address', () => {
       tier: 'gold',
     })
     h.bridge.wizarr.listInvitations.mockRejectedValue(new Error('wizarr is down'))
-    const m = await getMember(h, 'nora@x.com')
+    const m = await getMember({ h, email: 'nora@x.com' })
     expect(m.stripe_email).toBeNull() // linkage lost, page still renders
   })
 })
@@ -1004,7 +1029,10 @@ describe('the stripe address and the plex address', () => {
 describe('POST /admin/link-address', () => {
   it('refuses a self link', async () => {
     const h = await harness()
-    const answer = await linkAddress(h, { stripe_email: 'a@x.com', plex_email: 'A@x.com' })
+    const answer = await linkAddress({
+      h,
+      body: { stripe_email: 'a@x.com', plex_email: 'A@x.com' },
+    })
     expect(answer.statusCode).toBe(400)
     expect(answer.json()).toEqual({ detail: 'an address cannot link to itself' })
   })
@@ -1012,14 +1040,20 @@ describe('POST /admin/link-address', () => {
   it('refuses a chain', async () => {
     const h = await harness()
     setMemberLink({ path: h.dbp, stripeEmail: 'b@x.com', plexEmail: 'c@x.com' })
-    const answer = await linkAddress(h, { stripe_email: 'a@x.com', plex_email: 'b@x.com' })
+    const answer = await linkAddress({
+      h,
+      body: { stripe_email: 'a@x.com', plex_email: 'b@x.com' },
+    })
     expect(answer.statusCode).toBe(400)
     expect(answer.json()).toEqual({ detail: 'b@x.com already pays under c@x.com; unlink it first' })
   })
 
   it('records both sides', async () => {
     const h = await harness()
-    const answer = await linkAddress(h, { stripe_email: 'Pays@x.com', plex_email: 'Watches@x.com' })
+    const answer = await linkAddress({
+      h,
+      body: { stripe_email: 'Pays@x.com', plex_email: 'Watches@x.com' },
+    })
     expect(bodyOf({ answer, is: isLinkAddressResult })).toEqual({
       stripe_email: 'pays@x.com',
       plex_email: 'watches@x.com',
@@ -1046,10 +1080,10 @@ describe('GET /admin/member', () => {
       inviteCode: 'abc',
       tier: 'gold',
     })
-    const found = await getMember(h, 'a@x.com')
+    const found = await getMember({ h, email: 'a@x.com' })
     expect(found.member).toBe('cj')
     expect(found.libraries).toEqual(GOLD_LIBRARIES)
-    const missing = await get(h, '/admin/member?email=ghost@x.com')
+    const missing = await get({ h, url: '/admin/member?email=ghost@x.com' })
     expect(missing.statusCode).toBe(404)
     expect(missing.json()).toEqual({ detail: 'no member for that email' })
   })
@@ -1063,7 +1097,7 @@ describe('GET /admin/member', () => {
       inviteCode: 'INV1',
       tier: 'gold',
     })
-    const m = await getMember(h, 'gold@x.com')
+    const m = await getMember({ h, email: 'gold@x.com' })
     // entitled drives the member page's Servers section; holding nothing yet is
     // reported as holding nothing.
     expect(m.entitled).toEqual(GOLD_LIBRARIES)
@@ -1080,12 +1114,12 @@ describe('GET /admin/member', () => {
       inviteCode: 'INV1',
       tier: 'youth',
     })
-    const m = await getMember(h, 'max@x.com')
+    const m = await getMember({ h, email: 'max@x.com' })
     expect(m.email.toLowerCase()).toBe('max@x.com')
     expect(m.tier).toBe('youth')
     expect(m.subscribed).toBe(true) // checkout completed -> confirmed payment
     // in neither Wizarr nor customer_map
-    expect((await get(h, '/admin/member?email=nobody@nowhere.com')).statusCode).toBe(404)
+    expect((await get({ h, url: '/admin/member?email=nobody@nowhere.com' })).statusCode).toBe(404)
   })
 
   it('carries the stripe customer id on both member payloads', async () => {
@@ -1101,12 +1135,12 @@ describe('GET /admin/member', () => {
     upsertPendingByEmail({ path: h.dbp, email: 'max@x.com', inviteCode: 'INV1', tier: 'youth' })
 
     const members = await listMembers(h)
-    expect(memberOf(members, 'a@x.com').customer_id).toBe('cus_1')
-    expect(memberOf(members, 'max@x.com').customer_id).toBeNull() // admin:<email> placeholder
-    expect(memberOf(members, 'nora@x.com').customer_id).toBeNull() // no customer_map row at all
+    expect(memberOf({ members, email: 'a@x.com' }).customer_id).toBe('cus_1')
+    expect(memberOf({ members, email: 'max@x.com' }).customer_id).toBeNull() // admin:<email> placeholder
+    expect(memberOf({ members, email: 'nora@x.com' }).customer_id).toBeNull() // no customer_map row at all
 
-    expect((await getMember(h, 'a@x.com')).customer_id).toBe('cus_1') // joined member
-    expect((await getMember(h, 'max@x.com')).customer_id).toBeNull() // nothing at Stripe either
+    expect((await getMember({ h, email: 'a@x.com' })).customer_id).toBe('cus_1') // joined member
+    expect((await getMember({ h, email: 'max@x.com' })).customer_id).toBeNull() // nothing at Stripe either
   })
 
   it('finds a stripe customer the store never recorded', async () => {
@@ -1119,7 +1153,7 @@ describe('GET /admin/member', () => {
     const h = await harness()
     upsertPendingByEmail({ path: h.dbp, email: 'max@x.com', inviteCode: 'INV1', tier: 'youth' })
     h.bridge.stripe.searchCustomerId.mockResolvedValue('cus_real')
-    expect((await getMember(h, 'max@x.com')).customer_id).toBe('cus_real')
+    expect((await getMember({ h, email: 'max@x.com' })).customer_id).toBe('cus_real')
     expect(h.bridge.stripe.searchCustomerId).toHaveBeenCalledTimes(1)
     expect(h.bridge.stripe.searchCustomerId).toHaveBeenCalledWith('max@x.com')
   })
@@ -1128,7 +1162,7 @@ describe('GET /admin/member', () => {
     const h = await harness()
     upsertPendingByEmail({ path: h.dbp, email: 'max@x.com', inviteCode: 'INV1', tier: 'youth' })
     h.bridge.stripe.searchCustomerId.mockRejectedValue(new Error('stripe is down'))
-    expect((await getMember(h, 'max@x.com')).customer_id).toBeNull() // page still renders
+    expect((await getMember({ h, email: 'max@x.com' })).customer_id).toBeNull() // page still renders
   })
 
   it('carries the entitlement too', async () => {
@@ -1140,13 +1174,13 @@ describe('GET /admin/member', () => {
       inviteCode: 'abc',
       tier: 'bronze',
     })
-    const m = await getMember(h, 'a@x.com')
+    const m = await getMember({ h, email: 'a@x.com' })
     expect(m.entitled).toEqual({ Meleys: ['01. Movies', '03. Family Movies', '14. Kid Shows'] })
   })
 
   it('needs an email, as a 422', async () => {
     const h = await harness()
-    const answer = await get(h, '/admin/member')
+    const answer = await get({ h, url: '/admin/member' })
     expect(answer.statusCode).toBe(422)
     expect(Array.isArray(answer.json().detail)).toBe(true)
   })
@@ -1157,7 +1191,7 @@ describe('GET /admin/member', () => {
 describe('GET /admin/plex-access', () => {
   it('requires a token', async () => {
     const h = await harness()
-    const answer = await get(h, '/admin/plex-access?email=a@x.com')
+    const answer = await get({ h, url: '/admin/plex-access?email=a@x.com' })
     expect(answer.statusCode).toBe(503)
     expect(answer.json()).toEqual({ detail: 'PLEX_TOKEN not configured' })
   })
@@ -1169,7 +1203,7 @@ describe('GET /admin/plex-access', () => {
       Meleys: { all_libraries: true, allow_sync: true, libraries: ['01. Movies'] },
     })
     const out = bodyOf({
-      answer: await get(h, '/admin/plex-access?email=a@x.com'),
+      answer: await get({ h, url: '/admin/plex-access?email=a@x.com' }),
       is: isPlexAccess,
     })
     expect(out.email).toBe('a@x.com')
@@ -1180,7 +1214,7 @@ describe('GET /admin/plex-access', () => {
     const h = await harness()
     h.bridge.plex.hasToken.mockReturnValue(true)
     h.bridge.plex.sharedAccessForEmail.mockRejectedValue(new PlexUnavailable('plex.tv down'))
-    const answer = await get(h, '/admin/plex-access?email=a@x.com')
+    const answer = await get({ h, url: '/admin/plex-access?email=a@x.com' })
     expect(answer.statusCode).toBe(502)
     expect(answer.json()).toEqual({ detail: 'plex.tv lookup failed' })
   })
@@ -1194,10 +1228,10 @@ describe('history and notes', () => {
     h.bridge.wizarr.findUsersByEmail.mockResolvedValue([])
     h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([9])
     h.bridge.wizarr.createInvite.mockResolvedValue({ code: 'xyz', url: 'http://wizarr-lan/j/xyz' })
-    await reissue(h, { email: 'A@X.com', tier: 'gold' })
-    await resetExpiry(h, { email: 'a@x.com', days: 35 })
+    await reissue({ h, body: { email: 'A@X.com', tier: 'gold' } })
+    await resetExpiry({ h, body: { email: 'a@x.com', days: 35 } })
 
-    const events = await getEvents(h, 'a@x.com')
+    const events = await getEvents({ h, email: 'a@x.com' })
     expect(events.map((e) => e.action)).toEqual(['Expiry reset', 'Invite issued']) // newest first
     expect(events[1]?.detail).toContain('gold tier')
     expect(events[0]?.detail).toBe('35 days')
@@ -1206,10 +1240,14 @@ describe('history and notes', () => {
   it('roundtrips notes, case-insensitive on the email', async () => {
     const h = await harness()
     const notes = async () =>
-      bodyOf({ answer: await get(h, '/admin/notes?email=a@x.com'), is: isMemberNotes })
+      bodyOf({ answer: await get({ h, url: '/admin/notes?email=a@x.com' }), is: isMemberNotes })
     expect(await notes()).toEqual({ email: 'a@x.com', notes: '' })
     const out = bodyOf({
-      answer: await post(h, '/admin/notes', { email: 'A@X.com', notes: 'prefers 4K remuxes' }),
+      answer: await post({
+        h,
+        url: '/admin/notes',
+        payload: { email: 'A@X.com', notes: 'prefers 4K remuxes' },
+      }),
       is: isMemberNotes,
     })
     expect(out).toEqual({ email: 'A@X.com', notes: 'prefers 4K remuxes' })
@@ -1231,8 +1269,8 @@ describe('history and notes', () => {
       detail: 'bronze tier — invite emailed',
     })
 
-    expect((await getEvents(h)).map((e) => e.email)).toEqual(['b@x.com', 'a@x.com'])
-    expect((await getEvents(h, 'a@x.com')).map((e) => e.email)).toEqual(['a@x.com'])
+    expect((await getEvents({ h })).map((e) => e.email)).toEqual(['b@x.com', 'a@x.com'])
+    expect((await getEvents({ h, email: 'a@x.com' })).map((e) => e.email)).toEqual(['a@x.com'])
   })
 })
 
@@ -1242,7 +1280,7 @@ describe('POST /admin/reset-expiry', () => {
   it('sets an absolute date on every record', async () => {
     const h = await harness()
     h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([9, 12])
-    const out = await resetExpiry(h, { email: 'a@x.com', days: 15 })
+    const out = await resetExpiry({ h, body: { email: 'a@x.com', days: 15 } })
     expect(out.updated).toBe(2)
     expect(out.expires).not.toBeNull()
     expect(h.bridge.wizarr.setExpiry).toHaveBeenCalledTimes(2)
@@ -1251,7 +1289,7 @@ describe('POST /admin/reset-expiry', () => {
   it('clears with null days', async () => {
     const h = await harness()
     h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([9])
-    const out = await resetExpiry(h, { email: 'a@x.com', days: null })
+    const out = await resetExpiry({ h, body: { email: 'a@x.com', days: null } })
     expect(out).toEqual({ updated: 1, expires: null })
     expect(h.bridge.wizarr.setExpiry).toHaveBeenCalledTimes(1)
     expect(h.bridge.wizarr.setExpiry).toHaveBeenCalledWith({ userId: 9, expires: null })
@@ -1279,7 +1317,7 @@ describe('POST /admin/reset-expiry', () => {
         },
       }),
     })
-    const out = await resetExpiry(h, { email: 'a@x.com' })
+    const out = await resetExpiry({ h, body: { email: 'a@x.com' } })
     expect(out).toEqual({ updated: 1, expires: null })
     expect(calls[1]?.url).toBe('http://wizarr.test/api/users/9/update-expiry')
     const body = calls[1]?.init.body
@@ -1289,23 +1327,30 @@ describe('POST /admin/reset-expiry', () => {
   it('accepts an absolute datetime', async () => {
     const h = await harness()
     h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([9])
-    const out = await resetExpiry(h, { email: 'a@x.com', expires_at: '2026-08-01T00:01:00Z' })
+    const out = await resetExpiry({
+      h,
+      body: { email: 'a@x.com', expires_at: '2026-08-01T00:01:00Z' },
+    })
     expect(out).toEqual({ updated: 1, expires: '2026-08-01T00:01:00+00:00' })
     expect(h.bridge.wizarr.setExpiry).toHaveBeenCalledTimes(1)
     expect(h.bridge.wizarr.setExpiry).toHaveBeenCalledWith({
       userId: 9,
       expires: '2026-08-01T00:01:00+00:00',
     })
-    const events = await getEvents(h, 'a@x.com')
+    const events = await getEvents({ h, email: 'a@x.com' })
     expect(events[0]?.detail).toBe('to 2026-08-01T00:01:00+00:00')
   })
 
   it('rejects a malformed expires_at', async () => {
     const h = await harness()
     h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([9])
-    const answer = await post(h, '/admin/reset-expiry', {
-      email: 'a@x.com',
-      expires_at: 'next tuesday',
+    const answer = await post({
+      h,
+      url: '/admin/reset-expiry',
+      payload: {
+        email: 'a@x.com',
+        expires_at: 'next tuesday',
+      },
     })
     expect(answer.statusCode).toBe(400)
     expect(answer.json()).toEqual({ detail: 'expires_at is not an ISO datetime' })
@@ -1315,7 +1360,11 @@ describe('POST /admin/reset-expiry', () => {
   it('404s when there are no records', async () => {
     const h = await harness()
     h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([])
-    const answer = await post(h, '/admin/reset-expiry', { email: 'ghost@x.com', days: 15 })
+    const answer = await post({
+      h,
+      url: '/admin/reset-expiry',
+      payload: { email: 'ghost@x.com', days: 15 },
+    })
     expect(answer.statusCode).toBe(404)
     expect(answer.json()).toEqual({ detail: 'no member for that email' })
   })
@@ -1324,7 +1373,7 @@ describe('POST /admin/reset-expiry', () => {
     const h = await harness()
     h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([1])
     const refreshed = vi.spyOn(h.snapshot, 'refreshAsync').mockImplementation(() => {})
-    await resetExpiry(h, { email: 'a@x.com', days: 30 })
+    await resetExpiry({ h, body: { email: 'a@x.com', days: 30 } })
     expect(refreshed).toHaveBeenCalledTimes(1)
   })
 })
@@ -1332,8 +1381,11 @@ describe('POST /admin/reset-expiry', () => {
 // --- tier ---------------------------------------------------------------------------------------------
 
 describe('POST /admin/reset-tier', () => {
-  const resetTier = async (h: Harness, body: Record<string, unknown>) =>
-    bodyOf({ answer: await post(h, '/admin/reset-tier', body), is: isResetTierResult })
+  const resetTier = async ({ h, body }: { h: Harness; body: Record<string, unknown> }) =>
+    bodyOf({
+      answer: await post({ h, url: '/admin/reset-tier', payload: body }),
+      is: isResetTierResult,
+    })
 
   it('hard-sets the record and logs', async () => {
     const h = await harness()
@@ -1344,10 +1396,10 @@ describe('POST /admin/reset-tier', () => {
       inviteCode: 'abc',
       tier: 'gold',
     })
-    const out = await resetTier(h, { email: 'A@X.com', tier: 'bronze' })
+    const out = await resetTier({ h, body: { email: 'A@X.com', tier: 'bronze' } })
     expect(out).toEqual({ email: 'A@X.com', tier: 'bronze' })
     expect(allCustomerTiers({ path: h.dbp })).toEqual(new Map([['a@x.com', 'bronze']]))
-    const events = await getEvents(h, 'a@x.com')
+    const events = await getEvents({ h, email: 'a@x.com' })
     expect(events[0]?.action).toBe('Tier reset')
     expect(events[0]?.detail).toBe('hard reset to bronze')
     // record-only: no invite, no disable, no Wizarr call at all
@@ -1364,15 +1416,19 @@ describe('POST /admin/reset-tier', () => {
       inviteCode: 'abc',
       tier: 'gold',
     })
-    const out = await resetTier(h, { email: 'a@x.com', tier })
+    const out = await resetTier({ h, body: { email: 'a@x.com', tier } })
     expect(out).toEqual({ email: 'a@x.com', tier })
     expect(allCustomerTiers({ path: h.dbp })).toEqual(new Map([['a@x.com', tier]]))
-    expect((await getEvents(h, 'a@x.com'))[0]?.detail).toBe(`hard reset to ${tier}`)
+    expect((await getEvents({ h, email: 'a@x.com' }))[0]?.detail).toBe(`hard reset to ${tier}`)
   })
 
   it('rejects an unknown tier', async () => {
     const h = await harness()
-    const answer = await post(h, '/admin/reset-tier', { email: 'a@x.com', tier: 'platinum' })
+    const answer = await post({
+      h,
+      url: '/admin/reset-tier',
+      payload: { email: 'a@x.com', tier: 'platinum' },
+    })
     expect(answer.statusCode).toBe(400)
     expect(answer.json()).toEqual({ detail: "unknown tier 'platinum'" })
     expect(allCustomerTiers({ path: h.dbp })).toEqual(new Map())
@@ -1388,7 +1444,7 @@ describe('POST /admin/reissue-invite', () => {
     // every record sits on a server the new scope covers -> access survives
     h.bridge.wizarr.findUsersByEmail.mockResolvedValue([{ id: 9, server: 'Meleys' }])
     h.bridge.wizarr.createInvite.mockResolvedValue({ code: 'xyz', url: 'http://wizarr-lan/j/xyz' })
-    const out = await reissue(h, { email: 'a@x.com', tier: 'silver' })
+    const out = await reissue({ h, body: { email: 'a@x.com', tier: 'silver' } })
 
     expect(h.bridge.wizarr.disableUser).not.toHaveBeenCalled() // redeeming re-scopes in place
     // private 99. and the retired Vermithor mirror excluded -> ids 17 + 20
@@ -1416,7 +1472,7 @@ describe('POST /admin/reissue-invite', () => {
       { id: 12, server: 'Caraxes' },
     ])
     h.bridge.wizarr.createInvite.mockResolvedValue({ code: 'xyz', url: 'http://wizarr-lan/j/xyz' })
-    const out = await reissue(h, { email: 'a@x.com', tier: 'silver' })
+    const out = await reissue({ h, body: { email: 'a@x.com', tier: 'silver' } })
 
     expect(h.bridge.wizarr.disableUser).toHaveBeenCalledTimes(2) // all records dropped, not just Caraxes's
     // invite must be created BEFORE any disable, so a create failure can't lock
@@ -1432,7 +1488,7 @@ describe('POST /admin/reissue-invite', () => {
     h.bridge.wizarr.listLibraries.mockResolvedValue(FIXTURE_LIBRARIES)
     h.bridge.wizarr.findUsersByEmail.mockResolvedValue([])
     h.bridge.wizarr.createInvite.mockResolvedValue({ code: 'xyz', url: 'http://wizarr-lan/j/xyz' })
-    const out = await reissue(h, { email: 'a@x.com', tier: 'silver' })
+    const out = await reissue({ h, body: { email: 'a@x.com', tier: 'silver' } })
     expect(h.bridge.mailer.sendInvite).toHaveBeenCalledTimes(1)
     expect(h.bridge.mailer.sendInvite).toHaveBeenCalledWith({
       to: 'a@x.com',
@@ -1447,7 +1503,7 @@ describe('POST /admin/reissue-invite', () => {
     h.bridge.wizarr.findUsersByEmail.mockResolvedValue([{ id: 9, server: 'Caraxes' }])
     h.bridge.wizarr.createInvite.mockResolvedValue({ code: 'xyz', url: 'http://wizarr-lan/j/xyz' })
     h.bridge.mailer.sendInvite.mockRejectedValue(new Error('smtp down'))
-    const out = await reissue(h, { email: 'a@x.com', tier: 'silver' })
+    const out = await reissue({ h, body: { email: 'a@x.com', tier: 'silver' } })
     // the reissue itself completed; the admin still gets the link to send manually
     expect(h.bridge.wizarr.disableUser).toHaveBeenCalledTimes(1) // Caraxes retired -> disable path
     expect(out.emailed).toBe(false)
@@ -1462,7 +1518,7 @@ describe('POST /admin/reissue-invite', () => {
       code: 'NEW1',
       url: 'http://wizarr-lan/j/NEW1',
     })
-    await reissue(h, { email: 'Code@X.com', tier: 'gold' })
+    await reissue({ h, body: { email: 'Code@X.com', tier: 'gold' } })
 
     // even if Wizarr later drops the records, the store row keeps them listed
     h.bridge.wizarr.listUsers.mockResolvedValue([])
@@ -1470,7 +1526,7 @@ describe('POST /admin/reissue-invite', () => {
     await h.snapshot.refresh()
     const members = await listMembers(h)
     expect(byEmail(members).has('code@x.com')).toBe(true) // still listed while the invite is pending
-    const pending = memberOf(members, 'code@x.com')
+    const pending = memberOf({ members, email: 'code@x.com' })
     expect(pending.tier).toBe('gold')
     expect(pending.subscribed).toBe(false)
     expect(pending.invited_at).not.toBeNull() // grace clock started
@@ -1480,7 +1536,11 @@ describe('POST /admin/reissue-invite', () => {
     const h = await harness({ settings: { ...TEST_SETTINGS, publicInviteBase: '' } })
     h.bridge.wizarr.listLibraries.mockResolvedValue(FIXTURE_LIBRARIES)
     h.bridge.wizarr.findUsersByEmail.mockResolvedValue([{ id: 9, server: 'Caraxes' }])
-    const answer = await post(h, '/admin/reissue-invite', { email: 'a@x.com', tier: 'silver' })
+    const answer = await post({
+      h,
+      url: '/admin/reissue-invite',
+      payload: { email: 'a@x.com', tier: 'silver' },
+    })
     expect(answer.statusCode).toBe(500)
     expect(answer.json()).toEqual({ detail: 'PUBLIC_INVITE_BASE not configured' })
     expect(h.bridge.wizarr.disableUser).not.toHaveBeenCalled() // fails before any destructive action
@@ -1493,7 +1553,7 @@ describe('POST /admin/reissue-invite', () => {
     h.bridge.wizarr.createInvite.mockResolvedValue({ code: 'xyz', url: 'http://wizarr-lan/j/xyz' })
     setMemberDownloads({ path: h.dbp, email: 'a@x.com', allow: true })
 
-    await reissue(h, { email: 'a@x.com', tier: 'silver' })
+    await reissue({ h, body: { email: 'a@x.com', tier: 'silver' } })
 
     // silver's tier default is allowDownloads false; the override wins
     expect(h.bridge.wizarr.createInvite).toHaveBeenCalledWith(
@@ -1507,14 +1567,18 @@ describe('POST /admin/reissue-invite', () => {
     h.bridge.wizarr.findUsersByEmail.mockResolvedValue([{ id: 9, server: 'Vermithor' }])
     h.bridge.wizarr.createInvite.mockResolvedValue({ code: 'xyz', url: 'http://wizarr-lan/j/xyz' })
     const refreshed = vi.spyOn(h.snapshot, 'refreshAsync').mockImplementation(() => {})
-    await reissue(h, { email: 'a@x.com', tier: 'silver' })
+    await reissue({ h, body: { email: 'a@x.com', tier: 'silver' } })
     expect(refreshed).toHaveBeenCalledTimes(1)
   })
 
   it('refuses a banned member', async () => {
     const h = await harness()
     setMemberTag({ path: h.dbp, email: 'a@x.com', tag: 'banned' })
-    const answer = await post(h, '/admin/reissue-invite', { email: 'A@X.com', tier: 'gold' })
+    const answer = await post({
+      h,
+      url: '/admin/reissue-invite',
+      payload: { email: 'A@X.com', tier: 'gold' },
+    })
     expect(answer.statusCode).toBe(409)
     expect(answer.json().detail).toContain('banned')
     expect(h.bridge.wizarr.createInvite).not.toHaveBeenCalled()
@@ -1527,11 +1591,11 @@ describe('the two mounts', () => {
   it('mounts the admin routes bare and prefixed', async () => {
     const h = await harness()
     const answers = await Promise.all([
-      get(h, '/admin/members'),
-      get(h, '/stripe/admin/members'),
-      post(h, '/admin/reissue-invite', { email: 'a@x.com', tier: 'gold' }),
-      get(h, '/admin/notes?email=a@x.com'),
-      get(h, '/admin/events'),
+      get({ h, url: '/admin/members' }),
+      get({ h, url: '/stripe/admin/members' }),
+      post({ h, url: '/admin/reissue-invite', payload: { email: 'a@x.com', tier: 'gold' } }),
+      get({ h, url: '/admin/notes?email=a@x.com' }),
+      get({ h, url: '/admin/events' }),
     ])
     expect(answers.map((answer) => answer.statusCode)).toEqual([200, 200, 200, 200, 200])
   })
@@ -1608,7 +1672,7 @@ describe('POST /admin/cancel-subscription', () => {
       subscription({ id: 'sub_1', cancel_at: 1790000000, cancel_at_period_end: true }),
     )
 
-    const result = await cancel(h, 'A@X.com')
+    const result = await cancel({ h, email: 'A@X.com' })
 
     expect(h.bridge.stripe.subscriptionsFor).toHaveBeenCalledTimes(1)
     expect(h.bridge.stripe.subscriptionsFor).toHaveBeenCalledWith('cus_9')
@@ -1630,7 +1694,7 @@ describe('POST /admin/cancel-subscription', () => {
       subscription({ id: 'sub_2', cancel_at: 1790000000, cancel_at_period_end: true }),
     )
 
-    const result = await cancel(h, 'nomap@x.com')
+    const result = await cancel({ h, email: 'nomap@x.com' })
 
     expect(h.bridge.stripe.customerIdsForEmail).toHaveBeenCalledTimes(1)
     expect(h.bridge.stripe.customerIdsForEmail).toHaveBeenCalledWith('nomap@x.com')
@@ -1641,7 +1705,11 @@ describe('POST /admin/cancel-subscription', () => {
 
   it('404s without a customer or a subscription', async () => {
     const h = await harness()
-    const noCustomer = await post(h, '/admin/cancel-subscription', { email: 'ghost@x.com' })
+    const noCustomer = await post({
+      h,
+      url: '/admin/cancel-subscription',
+      payload: { email: 'ghost@x.com' },
+    })
     expect(noCustomer.statusCode).toBe(404)
     expect(noCustomer.json()).toEqual({ detail: 'no stripe customer for that email' })
 
@@ -1652,7 +1720,11 @@ describe('POST /admin/cancel-subscription', () => {
       inviteCode: 'abc',
       tier: 'gold',
     })
-    const noSub = await post(h, '/admin/cancel-subscription', { email: 'idle@x.com' })
+    const noSub = await post({
+      h,
+      url: '/admin/cancel-subscription',
+      payload: { email: 'idle@x.com' },
+    })
     expect(noSub.statusCode).toBe(404)
     expect(noSub.json()).toEqual({ detail: 'no active subscription for that email' })
   })
@@ -1670,7 +1742,7 @@ describe('POST /admin/cancel-subscription', () => {
       subscription({ id: 'sub_1', cancel_at: 1790000000, cancel_at_period_end: true }),
     ])
 
-    const result = await cancel(h, 'a@x.com')
+    const result = await cancel({ h, email: 'a@x.com' })
 
     expect(h.bridge.stripe.cancelAtPeriodEnd).not.toHaveBeenCalled()
     expect(result.canceled).toBe(0)
@@ -1684,15 +1756,15 @@ describe('POST /admin/cancel-subscription', () => {
 describe('tags and downloads', () => {
   it('roundtrips a tag through the member payloads', async () => {
     const h = await harness()
-    await setTag(h, { email: 'A@X.com', tag: 'vip' })
+    await setTag({ h, body: { email: 'A@X.com', tag: 'vip' } })
 
-    expect((await getMember(h, 'a@x.com')).tag).toBe('vip')
+    expect((await getMember({ h, email: 'a@x.com' })).tag).toBe('vip')
     const members = await listMembers(h)
-    expect(memberOf(members, 'a@x.com').tag).toBe('vip')
-    expect(memberOf(members, 'nora@x.com').tag).toBeNull()
+    expect(memberOf({ members, email: 'a@x.com' }).tag).toBe('vip')
+    expect(memberOf({ members, email: 'nora@x.com' }).tag).toBeNull()
 
-    await setTag(h, { email: 'a@x.com', tag: null })
-    expect((await getMember(h, 'a@x.com')).tag).toBeNull()
+    await setTag({ h, body: { email: 'a@x.com', tag: null } })
+    expect((await getMember({ h, email: 'a@x.com' })).tag).toBeNull()
 
     const events = eventsForEmail({ path: h.dbp, email: 'a@x.com' })
     expect(events.map((e) => e.detail)).toEqual(['tag cleared', 'tagged VIP'])
@@ -1700,7 +1772,11 @@ describe('tags and downloads', () => {
 
   it('rejects unknown tags', async () => {
     const h = await harness()
-    const answer = await post(h, '/admin/set-tag', { email: 'a@x.com', tag: 'whale' })
+    const answer = await post({
+      h,
+      url: '/admin/set-tag',
+      payload: { email: 'a@x.com', tag: 'whale' },
+    })
     expect(answer.statusCode).toBe(400)
     expect(answer.json()).toEqual({ detail: "unknown tag 'whale'" })
   })
@@ -1715,27 +1791,27 @@ describe('tags and downloads', () => {
       tier: 'gold',
     }) // gold -> downloads true
 
-    expect(await setDownloads(h, { email: 'A@X.com', allow: false })).toEqual({
+    expect(await setDownloads({ h, body: { email: 'A@X.com', allow: false } })).toEqual({
       email: 'A@X.com',
       downloads: false,
     })
 
-    expect((await getMember(h, 'a@x.com')).downloads).toBe(false) // override beats gold's true
-    expect(memberOf(await listMembers(h), 'a@x.com').downloads).toBe(false)
+    expect((await getMember({ h, email: 'a@x.com' })).downloads).toBe(false) // override beats gold's true
+    expect(memberOf({ members: await listMembers(h), email: 'a@x.com' }).downloads).toBe(false)
     const events = eventsForEmail({ path: h.dbp, email: 'a@x.com' })
     expect(events[0]?.action).toBe('Downloads toggled')
     expect(events[0]?.detail).toBe('turned off by admin')
 
-    await setDownloads(h, { email: 'a@x.com', allow: true })
-    expect((await getMember(h, 'a@x.com')).downloads).toBe(true)
+    await setDownloads({ h, body: { email: 'a@x.com', allow: true } })
+    expect((await getMember({ h, email: 'a@x.com' })).downloads).toBe(true)
   })
 
   it('accepts banned, and clearing it unbans', async () => {
     const h = await harness()
-    await setTag(h, { email: 'a@x.com', tag: 'banned' })
-    expect((await getMember(h, 'a@x.com')).tag).toBe('banned')
-    await setTag(h, { email: 'a@x.com', tag: null })
-    expect((await getMember(h, 'a@x.com')).tag).toBeNull()
+    await setTag({ h, body: { email: 'a@x.com', tag: 'banned' } })
+    expect((await getMember({ h, email: 'a@x.com' })).tag).toBe('banned')
+    await setTag({ h, body: { email: 'a@x.com', tag: null } })
+    expect((await getMember({ h, email: 'a@x.com' })).tag).toBeNull()
   })
 })
 
@@ -1757,7 +1833,7 @@ describe('POST /admin/ban', () => {
     )
     h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([1, 2])
 
-    const result = await ban(h, 'A@X.com')
+    const result = await ban({ h, email: 'A@X.com' })
 
     expect(result).toEqual({
       email: 'A@X.com',
@@ -1765,7 +1841,7 @@ describe('POST /admin/ban', () => {
       canceled: 1,
       cancel_at: '2026-09-21T14:13:20+00:00',
     })
-    expect((await getMember(h, 'a@x.com')).tag).toBe('banned')
+    expect((await getMember({ h, email: 'a@x.com' })).tag).toBe('banned')
     expect(h.bridge.wizarr.disableUser.mock.calls).toEqual([[1], [2]])
     expect(h.bridge.stripe.cancelAtPeriodEnd).toHaveBeenCalledTimes(1)
     expect(h.bridge.stripe.cancelAtPeriodEnd).toHaveBeenCalledWith('sub_1')
@@ -1781,7 +1857,7 @@ describe('POST /admin/ban', () => {
     const h = await harness()
     h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([])
 
-    const result = await ban(h, 'gone@x.com')
+    const result = await ban({ h, email: 'gone@x.com' })
 
     expect(result).toEqual({ email: 'gone@x.com', disabled: 0, canceled: 0, cancel_at: null })
     expect(getMemberTag({ path: h.dbp, email: 'gone@x.com' })).toBe('banned')
@@ -1796,7 +1872,7 @@ describe('POST /admin/ban', () => {
     h.bridge.stripe.customerIdsForEmail.mockRejectedValue(new Error('stripe is down'))
     h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([7])
 
-    const result = await ban(h, 'a@x.com')
+    const result = await ban({ h, email: 'a@x.com' })
 
     expect(result.disabled).toBe(1)
     expect(result.canceled).toBe(0)
@@ -1825,8 +1901,8 @@ describe('request bodies, as pydantic read them', () => {
   ])('reads days %j as %j', async (days, expected) => {
     const h = await harness()
     h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([9])
-    await resetExpiry(h, { email: 'a@x.com', days })
-    expect((await getEvents(h, 'a@x.com'))[0]?.detail).toBe(`${expected} days`)
+    await resetExpiry({ h, body: { email: 'a@x.com', days } })
+    expect((await getEvents({ h, email: 'a@x.com' }))[0]?.detail).toBe(`${expected} days`)
   })
 
   it.each([1.5, '1.5', '1e3', '', 'abc', '_1', [], {}])(
@@ -1834,7 +1910,11 @@ describe('request bodies, as pydantic read them', () => {
     async (days) => {
       const h = await harness()
       h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([9])
-      const answer = await post(h, '/admin/reset-expiry', { email: 'a@x.com', days })
+      const answer = await post({
+        h,
+        url: '/admin/reset-expiry',
+        payload: { email: 'a@x.com', days },
+      })
       expect(answer.statusCode).toBe(422)
       expect(h.bridge.wizarr.setExpiry).not.toHaveBeenCalled()
     },
@@ -1853,36 +1933,42 @@ describe('request bodies, as pydantic read them', () => {
     ['f', false],
   ])('reads allow %j as %j', async (allow, expected) => {
     const h = await harness()
-    expect((await setDownloads(h, { email: 'a@x.com', allow })).downloads).toBe(expected)
+    expect((await setDownloads({ h, body: { email: 'a@x.com', allow } })).downloads).toBe(expected)
   })
 
   it.each([2, 0.5, '', ' true', 'maybe', null])('refuses allow %j with a 422', async (allow) => {
     const h = await harness()
-    expect((await post(h, '/admin/set-downloads', { email: 'a@x.com', allow })).statusCode).toBe(
-      422,
-    )
+    expect(
+      (await post({ h, url: '/admin/set-downloads', payload: { email: 'a@x.com', allow } }))
+        .statusCode,
+    ).toBe(422)
   })
 
   it.each([1, true, null])('refuses a non-string email %j with a 422', async (email) => {
     const h = await harness()
-    expect((await post(h, '/admin/notes', { email, notes: 'n' })).statusCode).toBe(422)
+    expect(
+      (await post({ h, url: '/admin/notes', payload: { email, notes: 'n' } })).statusCode,
+    ).toBe(422)
   })
 
   it('refuses a missing field with a 422 in the detail shape', async () => {
     const h = await harness()
-    const answer = await post(h, '/admin/notes', { email: 'a@x.com' })
+    const answer = await post({ h, url: '/admin/notes', payload: { email: 'a@x.com' } })
     expect(answer.statusCode).toBe(422)
     expect(Array.isArray(answer.json().detail)).toBe(true)
   })
 
   it('ignores extra fields, and reads a left-out optional as null', async () => {
     const h = await harness()
-    expect(await setTag(h, { email: 'a@x.com', extra: 1 })).toEqual({ email: 'a@x.com', tag: null })
+    expect(await setTag({ h, body: { email: 'a@x.com', extra: 1 } })).toEqual({
+      email: 'a@x.com',
+      tag: null,
+    })
   })
 
   it('treats an empty plex_email as an unlink', async () => {
     const h = await harness()
-    const answer = await linkAddress(h, { stripe_email: ' Pays@x.com ', plex_email: '' })
+    const answer = await linkAddress({ h, body: { stripe_email: ' Pays@x.com ', plex_email: '' } })
     expect(bodyOf({ answer, is: isLinkAddressResult })).toEqual({
       stripe_email: 'pays@x.com',
       plex_email: null,
@@ -1892,7 +1978,7 @@ describe('request bodies, as pydantic read them', () => {
 
   it('refuses a blank stripe_email', async () => {
     const h = await harness()
-    const answer = await linkAddress(h, { stripe_email: '  ' })
+    const answer = await linkAddress({ h, body: { stripe_email: '  ' } })
     expect(answer.statusCode).toBe(400)
     expect(answer.json()).toEqual({ detail: 'stripe_email is required' })
   })

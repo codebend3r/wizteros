@@ -3,6 +3,7 @@ import { createTransport as nodemailerTransport } from 'nodemailer'
 import { renderInviteEmail } from '@/clients/emailTemplate.js'
 import type { SmtpConfig } from '@/config.js'
 import type { Alert, Mailer } from '@/types.js'
+import { stackOf } from '@/errors.js'
 
 // SMTP invite mail, shared by the Stripe webhook flow and the admin API, plus
 // the operator alerts every flow copies to the admins.
@@ -122,10 +123,7 @@ export const smtpMailer = ({
         text: body,
       })
     } catch (error) {
-      log.error(
-        `alert email failed: ${subject}`,
-        error instanceof Error ? error.stack : String(error),
-      )
+      log.error(`alert email failed: ${subject}`, stackOf(error))
     }
   }
 

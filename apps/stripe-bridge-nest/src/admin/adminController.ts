@@ -58,6 +58,7 @@ import type {
   StripeSubscription,
   WizarrInvitation,
 } from '@/types.js'
+import { stackOf } from '@/errors.js'
 
 const log = new Logger('bridge.admin')
 
@@ -92,10 +93,6 @@ export const pyRepr = (text: string): string => {
     .join('')
   return `${quote}${escaped}${quote}`
 }
-
-/** The stack Python's log.exception() would have printed with its message. */
-const trace = (error: unknown): string =>
-  error instanceof Error ? (error.stack ?? error.message) : String(error)
 
 /**
  * The latest period end among the flagged subscriptions, as an ISO stamp.
@@ -182,7 +179,7 @@ export class AdminController {
     try {
       return await this.bridge.stripe.searchCustomerId(email)
     } catch (error) {
-      log.error(`stripe customer lookup failed for ${email}`, trace(error))
+      log.error(`stripe customer lookup failed for ${email}`, stackOf(error))
       return null
     }
   }
@@ -210,7 +207,7 @@ export class AdminController {
     const invitations = await this.bridge.wizarr
       .listInvitations()
       .catch((error: unknown): WizarrInvitation[] => {
-        log.error(`could not read invitations while resolving ${email}`, trace(error))
+        log.error(`could not read invitations while resolving ${email}`, stackOf(error))
         return []
       })
     const members = assembleMembers({
@@ -514,7 +511,7 @@ export class AdminController {
         }
       },
       (error: unknown) => {
-        log.error(`ban: could not flag subscriptions for ${email}`, trace(error))
+        log.error(`ban: could not flag subscriptions for ${email}`, stackOf(error))
         return {
           flagged: [],
           cancelAt: null,
@@ -657,7 +654,7 @@ export class AdminController {
     const emailed = await mailer.sendInvite({ to: email, inviteUrl: url }).then(
       () => true,
       (error: unknown) => {
-        log.error(`invite email to ${email} failed`, trace(error))
+        log.error(`invite email to ${email} failed`, stackOf(error))
         return false
       },
     )

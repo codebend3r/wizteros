@@ -100,10 +100,13 @@ const setup = ({
 }
 
 /** The invitation list with the first entry's fields replaced. */
-const withFirst = (
-  invitations: readonly WizarrInvitation[],
-  fields: Partial<WizarrInvitation>,
-): WizarrInvitation[] => invitations.map((inv, i) => (i === 0 ? { ...inv, ...fields } : inv))
+const withFirst = ({
+  invitations,
+  fields,
+}: {
+  invitations: readonly WizarrInvitation[]
+  fields: Partial<WizarrInvitation>
+}): WizarrInvitation[] => invitations.map((inv, i) => (i === 0 ? { ...inv, ...fields } : inv))
 
 describe('baseline invites', () => {
   afterEach(() => {
@@ -206,7 +209,7 @@ describe('baseline invites', () => {
   it('audit flags a baseline with no expiry', async () => {
     const { bridge, client } = setup()
     await rotateBaselineInvites({ bridge, now: NOW })
-    client.invitations = withFirst(client.invitations, { expires: null })
+    client.invitations = withFirst({ invitations: client.invitations, fields: { expires: null } })
     const report = await auditBaselineInvites({ bridge, now: NOW })
     expect(report.ok).toBe(false)
     expect(report.no_expiry.length).toBeGreaterThan(0)
@@ -215,8 +218,11 @@ describe('baseline invites', () => {
   it('audit flags scope beyond the share server', async () => {
     const { bridge, client } = setup()
     await rotateBaselineInvites({ bridge, now: NOW })
-    client.invitations = withFirst(client.invitations, {
-      server_names: ['Meleys', 'Vermithor', 'Syrax'],
+    client.invitations = withFirst({
+      invitations: client.invitations,
+      fields: {
+        server_names: ['Meleys', 'Vermithor', 'Syrax'],
+      },
     })
     const report = await auditBaselineInvites({ bridge, now: NOW })
     expect(report.ok).toBe(false)

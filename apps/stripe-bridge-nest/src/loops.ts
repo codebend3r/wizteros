@@ -17,6 +17,7 @@ import { reconcilePendingExpiries } from '@/reconcile.js'
 import type { UpstreamSnapshot } from '@/snapshot.js'
 import { checkPaymentStates, checkTierScopes, checkVipAccess } from '@/sweeps.js'
 import type { Bridge } from '@/types.js'
+import { stackOf } from '@/errors.js'
 
 // The three jobs the bridge runs between webhooks, each on its own clock:
 // the reconcile sweep (drift alarms plus the expiry stamp) every
@@ -37,7 +38,7 @@ const guarded = async ({ label, run }: { label: string; run: () => Promise<unkno
   try {
     await run()
   } catch (error) {
-    log.error(label, error instanceof Error ? error.stack : String(error))
+    log.error(label, stackOf(error))
   }
 }
 

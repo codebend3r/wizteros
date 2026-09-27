@@ -543,8 +543,7 @@ const onSubscriptionUpdated: EventHandler = async ({ bridge, obj }) => {
   const status = truthyText({ obj, key: 'status' }) ?? ''
   const mapping = customerId ? getMapping({ path: bridge.dbPath, customerId }) : null
   const email =
-    (mapping ? mapping.email : null) ||
-    (customerId ? await customerEmail({ bridge, customerId }) : null)
+    (mapping?.email ?? null) || (customerId ? await customerEmail({ bridge, customerId }) : null)
   syncPaymentState({ bridge, email, status })
   log.log(`subscription for ${shown(email)} is ${status}`)
 }
@@ -553,7 +552,7 @@ const onSubscriptionUpdated: EventHandler = async ({ bridge, obj }) => {
 const onSubscriptionDeleted: EventHandler = async ({ bridge, obj }) => {
   const customerId = requiredText({ obj, key: 'customer' })
   const mapping = getMapping({ path: bridge.dbPath, customerId })
-  const email = (mapping ? mapping.email : null) || (await customerEmail({ bridge, customerId }))
+  const email = (mapping?.email ?? null) || (await customerEmail({ bridge, customerId }))
   // This customer really did stop, but the person behind it may not
   // have: a second customer at the same address (they re-checked out
   // from scratch), or a linked second address (they pay under another

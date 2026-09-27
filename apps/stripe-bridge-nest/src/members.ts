@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common'
 import { customerIdsForEmail, getMapping, getMemberLink } from '@/store.js'
 import type { StripeApi, WizarrApi } from '@/types.js'
+import { stackOf } from '@/errors.js'
 
 // Who a Stripe customer is in Wizarr, resolved live.
 //
@@ -57,7 +58,8 @@ const fromInvite = async ({
   customerId: string
 }): Promise<number[]> => {
   const mapping = getMapping({ path: dbPath, customerId })
-  return mapping?.invite_code ? wizarr.findUserIdsByInvite(mapping.invite_code) : []
+  const code = mapping?.invite_code ?? null
+  return code ? wizarr.findUserIdsByInvite(code) : []
 }
 
 /** One sentence on whether the member can watch right now, for an alert body. */
@@ -75,10 +77,7 @@ export const accessLine = async ({
   const held = await resolveUserIds({ wizarr, dbPath, customerId, email }).then(
     (ids) => ids.length > 0,
     (error: unknown) => {
-      log.error(
-        `could not read Wizarr records for ${email}`,
-        error instanceof Error ? error.stack : String(error),
-      )
+      log.error(`could not read Wizarr records for ${email}`, stackOf(error))
       return null
     },
   )
@@ -114,12 +113,24 @@ const rank = (status: string | undefined): number => SUB_STATUS_RANK.get(status 
 /** Every customer's best subscription status, straight from Stripe. */
 export const stripeStatusByCustomer = async (
   stripe: StripeApi,
-): Promise<ReadonlyMap<string, string>> =>
-  (await stripe.allSubscriptions()).reduce(
-    (best, { customer, status }) =>
-      rank(status) > rank(best.get(customer)) ? best.set(customer, status) : best,
-    new Map<string, string>(),
+): Promise<ReadonlyMap<string, string>> => {
+  const subscriptions = await stripe.allSubscriptions()
+  const best = (customer: string): string | undefined =>
+    subscriptions
+      .filter((subscription) => subscription.customer === customer)
+      .reduce<string | undefined>(
+        (current, { status }) => (rank(status) > rank(current) ? status : current),
+        undefined,
+      )
+  return new Map(
+    [...new Set(subscriptions.map(({ customer }) => customer))].flatMap(
+      (customer): [string, string][] => {
+        const status = best(customer)
+        return status === undefined ? [] : [[customer, status]]
+      },
+    ),
   )
+}
 
 /**
  * Another Stripe customer at the same address that Stripe still says is paying.

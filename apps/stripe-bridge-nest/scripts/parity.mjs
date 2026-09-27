@@ -245,8 +245,10 @@ const inSequence = (checks) =>
 // --- the grid -------------------------------------------------------------------
 
 const fixed = await inSequence([
-  { path: '/version', auth: false },
-  { path: '/stripe/version', auth: false },
+  // Status only: release.sh bumps the port's marker, and the Python bridge's
+  // __version__ stays where it was when the marker moved.
+  { path: '/version', auth: false, bodyMatters: false },
+  { path: '/stripe/version', auth: false, bodyMatters: false },
   { path: '/admin/members', auth: false },
   { path: '/admin/members' },
   { path: '/stripe/admin/members' },

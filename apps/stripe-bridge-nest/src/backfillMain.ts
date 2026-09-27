@@ -1,7 +1,7 @@
 import { parseArgs } from 'node:util'
 import { runBackfill } from '@/backfill.js'
 import { wizarrClient } from '@/clients/wizarr.js'
-import { mapDbPath, wizarrApiKey, wizarrBaseUrl } from '@/config.js'
+import { backfillExpiryDays, mapDbPath, wizarrApiKey, wizarrBaseUrl } from '@/config.js'
 
 // The one-time Invited backfill, run by hand inside the bridge container,
 // where the bridge's own environment already points at production:
@@ -20,10 +20,9 @@ if (!baseUrl || !apiKey) {
   process.exit(1)
 }
 
-const expiryDays = process.env.BACKFILL_EXPIRY_DAYS
 await runBackfill({
   dbPath: mapDbPath(),
   wizarr: wizarrClient({ baseUrl, apiKey }),
   dryRun: values['dry-run'],
-  ...(expiryDays === undefined ? {} : { expiryDays: Number.parseInt(expiryDays, 10) }),
+  expiryDays: backfillExpiryDays(),
 })

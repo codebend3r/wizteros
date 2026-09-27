@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common'
+import { stackOf } from '@/errors.js'
 
 const log = new Logger('bridge.snapshot')
 
@@ -54,10 +55,7 @@ export class UpstreamSnapshot<T> {
       try {
         await this.refresh()
       } catch (error) {
-        log.error(
-          'background snapshot refresh failed; serving previous value',
-          error instanceof Error ? error.stack : String(error),
-        )
+        log.error('background snapshot refresh failed; serving previous value', stackOf(error))
       } finally {
         this.inFlight = null
       }

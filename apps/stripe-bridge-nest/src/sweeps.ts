@@ -11,6 +11,7 @@ import {
 } from '@/store.js'
 import { libraryCacheProblems, tierScopeProblems } from '@/tiers.js'
 import type { Alert, Bridge, Mailer, WizarrUser } from '@/types.js'
+import { stackOf } from '@/errors.js'
 
 // The drift alarms the reconcile loop runs between webhooks.
 //
@@ -22,9 +23,6 @@ import type { Alert, Bridge, Mailer, WizarrUser } from '@/types.js'
 const log = new Logger('bridge')
 
 /** The stack of a thrown value, for the second argument of Logger.error. */
-const stackOf = (error: unknown): string =>
-  error instanceof Error ? (error.stack ?? String(error)) : String(error)
-
 /** Python's repr() of a str, which the log lines below print lists of. */
 const pyReprString = (value: string): string => {
   const quote = value.includes("'") && !value.includes('"') ? '"' : "'"

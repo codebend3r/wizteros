@@ -5,6 +5,7 @@ import { mapInOrder } from '@/sequence.js'
 import { allBaselineInvites, forgetBaselineInvite, recordBaselineInvite } from '@/store.js'
 import { SHARE_SERVER, TIER_DOWNLOADS, tierScopeProblems, withoutStale } from '@/tiers.js'
 import type { Bridge, CreatedInvite, WizarrInvitation, WizarrLibrary } from '@/types.js'
+import { stackOf } from '@/errors.js'
 
 const log = new Logger('bridge.baseline')
 
@@ -45,9 +46,6 @@ export type BaselineAudit = Readonly<{
 }>
 
 /** The stack of a thrown value, for the second argument of Logger.error. */
-const stackOf = (error: unknown): string =>
-  error instanceof Error ? (error.stack ?? String(error)) : String(error)
-
 /** Python's repr() of a list of ints, as the rotation log line printed server ids. */
 const intList = (items: readonly number[]): string => `[${items.join(', ')}]`
 

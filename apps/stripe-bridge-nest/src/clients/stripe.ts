@@ -93,9 +93,10 @@ export const stripeApi = ({ apiKey }: { apiKey: string }): StripeApi => {
  * signature is missing, malformed, stale or wrong (a
  * `StripeSignatureVerificationError`), and when a correctly signed payload is
  * not JSON (a `SyntaxError`); returns nothing when the event is genuine. The
- * webhook route turns any throw here into a 400 "invalid signature", as the
- * Python's `except (ValueError, stripe.error.SignatureVerificationError)` did;
- * `isSignatureError` names exactly those two cases.
+ * webhook route answers those two cases, which `isSignatureError` names, with a
+ * 400 "invalid signature", as the Python's
+ * `except (ValueError, stripe.error.SignatureVerificationError)` did; anything
+ * else it throws is left to fail the delivery as a 500.
  */
 export const verifyWebhook = ({
   payload,

@@ -24,10 +24,13 @@ const setup = (): Setup => {
 }
 
 /** Stripe's subscription listing answers with these (customer, status) pairs. */
-const stripeSubs = (
-  fake: FakeBridge,
-  subs: readonly Readonly<{ customer: string; status: string }>[],
-): void => {
+const stripeSubs = ({
+  fake,
+  subs,
+}: {
+  fake: FakeBridge
+  subs: readonly Readonly<{ customer: string; status: string }>[]
+}): void => {
   fake.stripe.allSubscriptions.mockResolvedValue(subs.map((sub) => subscription(sub)))
 }
 
@@ -70,10 +73,13 @@ describe('sweeps', () => {
       inviteCode: 'def',
       tier: 'bronze',
     })
-    stripeSubs(fake, [
-      { customer: 'cus_due', status: 'past_due' },
-      { customer: 'cus_ok', status: 'active' },
-    ])
+    stripeSubs({
+      fake,
+      subs: [
+        { customer: 'cus_due', status: 'past_due' },
+        { customer: 'cus_ok', status: 'active' },
+      ],
+    })
 
     expect(await checkPaymentStates(bridge)).toEqual(['due@x.com'])
     const rows = allCustomerRows({ path: db })
@@ -103,7 +109,7 @@ describe('sweeps', () => {
       tier: 'bronze',
     })
     setPaymentState({ path: db, email: 'a@x.com', state: 'past_due' })
-    stripeSubs(fake, [{ customer: 'cus_1', status: 'active' }])
+    stripeSubs({ fake, subs: [{ customer: 'cus_1', status: 'active' }] })
 
     expect(await checkPaymentStates(bridge)).toEqual([])
     expect(allCustomerRows({ path: db }).get('a@x.com')?.payment_state).toBeNull()
@@ -122,10 +128,13 @@ describe('sweeps', () => {
       inviteCode: 'abc',
       tier: 'bronze',
     })
-    stripeSubs(fake, [
-      { customer: 'cus_1', status: 'canceled' },
-      { customer: 'cus_1', status: 'active' },
-    ])
+    stripeSubs({
+      fake,
+      subs: [
+        { customer: 'cus_1', status: 'canceled' },
+        { customer: 'cus_1', status: 'active' },
+      ],
+    })
     expect(await checkPaymentStates(bridge)).toEqual([])
     expect(allCustomerRows({ path: db }).get('a@x.com')?.payment_state).toBeNull()
   })
@@ -149,7 +158,7 @@ describe('sweeps', () => {
     })
     // The canceled member's old sub is past_due in Stripe's history; the other
     // member has no subscription in the listing at all.
-    stripeSubs(fake, [{ customer: 'cus_gone', status: 'past_due' }])
+    stripeSubs({ fake, subs: [{ customer: 'cus_gone', status: 'past_due' }] })
 
     expect(await checkPaymentStates(bridge)).toEqual([])
     const rows = allCustomerRows({ path: db })
