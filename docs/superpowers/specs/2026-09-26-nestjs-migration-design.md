@@ -363,6 +363,21 @@ Found by the same review and left for their own PRs, in rough order of value:
   `sanity-check.yml` image smoke test (both servers), and the skills that name Python
   paths (`deploy-nas`, `arr-stack-update`, `version-bumper`).
 
+#### What Phase 3 did
+
+- Deleted both Python apps, both parity scripts (they diffed against the Python), and
+  `scripts/py-tool.sh` and `scripts/lint-staged-py.sh`; `lint:py`, `setup:py*`,
+  `test:unit`, the `pyToolchain` input and the pytest paths left Nx, the root scripts,
+  CI and the hooks.
+- Renamed `apps/stripe-bridge-nest` and `apps/fleet-monitor-nest` to `apps/stripe-bridge`
+  and `apps/fleet-monitor`, with their packages, Nx projects and image tags. Compose
+  keeps the image names it had (`wizteros-stripe-bridge`, `wizteros-fleet-monitor`).
+- The skills lost their `python3` fallbacks, which only existed for the pre-cutover
+  bridge image. That is why this phase merges after the Phase 2 cutover.
+- The sync never deletes, so the NAS keeps the `-nest` directories and the Python files
+  inside the renamed ones. `deploy-nas` documents removing them by hand after the first
+  deploy.
+
 ## Verification
 
 - **Per project:** `test`, `lint:ts`, `format:check`, `typecheck`, `build` and
