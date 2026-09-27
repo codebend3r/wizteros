@@ -24,3 +24,4 @@ export {
   pydanticTimestamp,
   secondsBetween,
 } from './time.js'
+export { fastApiValidationPipe } from './validation.js'
