@@ -43,7 +43,7 @@ const wz = (path, opts = {}) =>
     headers: {
       'X-API-Key': WIZARR_API_KEY,
       'Content-Type': 'application/json',
-      ...(opts.headers || {}),
+      ...opts.headers,
     },
     signal: AbortSignal.timeout(60_000),
   })
@@ -108,15 +108,18 @@ function expectedNames({ tier, libs }) {
   )
   if (tier === 'youth') {
     const allow = new Set(['Family Movies', '4K Family Movies', 'Kid Shows'])
-    return onShare.filter((l) => allow.has(libraryTitle(l.name))).map((l) => l.name).sort()
+    return onShare
+      .filter((l) => allow.has(libraryTitle(l.name)))
+      .map((l) => l.name)
+      .toSorted()
   }
   if (tier === 'bronze') {
     return onShare
       .filter((l) => !l.name.toLowerCase().includes('4k'))
       .map((l) => l.name)
-      .sort()
+      .toSorted()
   }
-  return onShare.map((l) => l.name).sort()
+  return onShare.map((l) => l.name).toSorted()
 }
 
 const EXPECT_DOWNLOADS = { bronze: false, silver: false, gold: true, youth: true }
@@ -145,11 +148,11 @@ async function main() {
 
     // /api/invitations reports specific_libraries: [] even when the scoping is
     // correct, so treat it as best-effort and always assert the server scope.
-    const servers = (invite.server_names ?? []).sort()
+    const servers = (invite.server_names ?? []).toSorted()
     const gotNames = (invite.specific_libraries ?? [])
       .map((id) => byId.get(id)?.name)
       .filter(Boolean)
-      .sort()
+      .toSorted()
     const wantNames = expectedNames({ tier, libs })
 
     const problems = []

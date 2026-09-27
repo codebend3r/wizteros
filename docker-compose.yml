@@ -1,8 +1,15 @@
 name: stripe-bridge
 
 services:
+  # The NestJS port of the bridge, built from the repo root because the app
+  # depends on libs/server-common through the bun workspace. The Python app
+  # under apps/stripe-bridge stays in the tree until Phase 3 of the migration,
+  # but nothing builds it any more. TZ comes from .env, which is what keeps the
+  # baseline rotation firing at the same local hour.
   stripe-bridge:
-    build: ./apps/stripe-bridge
+    build:
+      context: .
+      dockerfile: apps/stripe-bridge-nest/Dockerfile
     image: wizteros-stripe-bridge
     container_name: stripe-bridge
     restart: unless-stopped

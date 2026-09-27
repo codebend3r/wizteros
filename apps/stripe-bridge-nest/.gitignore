@@ -1,2 +1,4 @@
 node_modules
 dist
+# the local e2e container's bridge.db (bun run bridge:up)
+data/

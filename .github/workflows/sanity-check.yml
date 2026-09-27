@@ -26,8 +26,9 @@ jobs:
           test -s apps/admin-portal/dist/index.html || { echo "::error::💥 apps/admin-portal/dist/index.html is missing or empty"; exit 1; }
           echo "✅ Bundle looks sane — $(du -sh apps/admin-portal/dist | cut -f1) across $(find apps/admin-portal/dist -type f | wc -l | tr -d ' ') files"
 
-  # Proves the image still builds and the FastAPI app imports cleanly — a broken
-  # import only shows up at container start, long after the merge.
+  # Proves the bridge image still builds and the server boots and answers: a
+  # broken import or a missing env check only shows up at container start,
+  # long after the merge. Built from the repo root, as compose builds it.
   bridge-image:
     name: 🐳 Bridge image + boot smoke
     runs-on: ubuntu-latest
@@ -35,10 +36,10 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v7
       - name: 🐳 Build image
-        run: docker build -t stripe-bridge:sanity ./apps/stripe-bridge
-      - name: 🚦 Smoke test the app
+        run: docker build -f apps/stripe-bridge-nest/Dockerfile -t stripe-bridge:sanity .
+      - name: 🚦 Smoke test the server
         run: |
-          docker run --rm -i \
+          docker run -d --name bridge-sanity -p 8000:8000 \
             -e STRIPE_API_KEY=sk_test_sanity \
             -e STRIPE_WEBHOOK_SECRET=whsec_sanity \
             -e WIZARR_BASE_URL=http://wizarr.invalid \
@@ -50,15 +51,26 @@ jobs:
             -e SMTP_PASS=sanity \
             -e FROM_ADDR=sanity@invalid \
             -e MAP_DB_PATH=/tmp/sanity.db \
-            stripe-bridge:sanity python - <<'PY'
-          from stripe_bridge.stripe_wizarr_bridge import app
-
-          paths = sorted(filter(None, (getattr(r, "path", None) for r in app.routes)))
-          print(f"🛣️  Routes registered: {paths}")
-          missing = [p for p in ("/stripe/webhook", "/webhook") if p not in paths]
-          assert not missing, f"💥 Missing Stripe webhook route(s): {missing}"
-          print("✅ App imports and both Stripe webhook routes are wired up")
-          PY
+            stripe-bridge:sanity
+          for _ in $(seq 1 30); do
+            curl -sf http://localhost:8000/version >/dev/null && break
+            sleep 1
+          done
+          expect() {
+            got="$(curl -s -o /dev/null -w '%{http_code}' "${@:2}")"
+            if [ "$got" != "$1" ]; then
+              echo "::error::💥 ${*:2} answered $got, expected $1"
+              docker logs bridge-sanity
+              exit 1
+            fi
+            echo "✅ ${*: -1} -> $got"
+          }
+          expect 200 http://localhost:8000/version
+          expect 200 http://localhost:8000/stripe/version
+          expect 401 http://localhost:8000/admin/members
+          expect 400 -X POST -H 'Content-Type: application/json' -d '{}' http://localhost:8000/webhook
+          expect 400 -X POST -H 'Content-Type: application/json' -d '{}' http://localhost:8000/stripe/webhook
+          echo "✅ The server boots and both Stripe webhook routes are wired up"
 
   # The Netlify build and the release tag both read these; drift means a shipped
   # bundle reporting the wrong version.
@@ -68,16 +80,21 @@ jobs:
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v7
-      - name: 🧮 Compare root and admin portal versions
+      - name: 🧮 Compare root, admin portal and bridge versions
         run: |
           root=$(node -p "require('./package.json').version")
           portal=$(node -p "require('./apps/admin-portal/package.json').version")
-          echo "📦 root=$root  🌐 admin-portal=$portal"
+          bridge=$(node -p "require('./apps/stripe-bridge-nest/package.json').version")
+          echo "📦 root=$root  🌐 admin-portal=$portal  🌉 stripe-bridge-nest=$bridge"
           if [ "$root" != "$portal" ]; then
             echo "::error::💥 Version drift — root is $root but apps/admin-portal/ is $portal"
             exit 1
           fi
-          echo "✅ Both apps agree on v$root"
+          if [ "$root" != "$bridge" ]; then
+            echo "::error::💥 Version drift — root is $root but apps/stripe-bridge-nest/ is $bridge"
+            exit 1
+          fi
+          echo "✅ All three markers agree on v$root"
 
   summary:
     name: 🎉 Sanity verdict
