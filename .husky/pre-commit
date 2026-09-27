@@ -1,6 +1,6 @@
 # Staged-file pass: oxlint --fix and oxfmt on staged TS and .mjs, stylelint
-# --fix and oxfmt on staged SCSS, ruff --fix on staged Python, oxfmt on staged
-# JSON, Markdown, YAML and TOML. Fixes are written back and re-staged, so the
+# --fix and oxfmt on staged SCSS, oxfmt on staged JSON, Markdown, YAML and
+# TOML. Fixes are written back and re-staged, so the
 # gate below sees the corrected files.
 bun run lint:staged
 

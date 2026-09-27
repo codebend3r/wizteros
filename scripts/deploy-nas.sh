@@ -26,9 +26,6 @@ fi
 echo "→ Deploying code to $DEST"
 rsync -av \
   --exclude '.git' \
-  --exclude '.venv' \
-  --exclude '.pytest_cache' \
-  --exclude '.ruff_cache' \
   --exclude 'node_modules' \
   --exclude '.nx' \
   --exclude 'dist' \

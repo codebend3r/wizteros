@@ -138,10 +138,7 @@ export type PageInfo = Readonly<{
   offset: number
 }>
 
-// PARSERS: the probes port adds the rest of fleet_monitor/probes/plex.py below
-// this line (_SECTION_KIND, _RESOLUTION_LABELS, history_id, page_info,
-// parse_history, quality_bucket, parse_items, parse_accounts, parse_devices,
-// parse_sections, parse_server), keeping every type and constant above as is.
+// The parsers for each Plex payload the collector reads.
 
 // What a section's own `type` means in leaf terms.
 const SECTION_KIND: ReadonlyMap<string, Kind> = new Map([

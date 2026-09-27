@@ -1,15 +1,13 @@
 name: stripe-bridge
 
 services:
-  # The NestJS port of the bridge, built from the repo root because the app
-  # depends on libs/server-common through the bun workspace. The Python app
-  # under apps/stripe-bridge stays in the tree until Phase 3 of the migration,
-  # but nothing builds it any more. TZ comes from .env, which is what keeps the
+  # Built from the repo root because the app depends on libs/server-common
+  # through the bun workspace. TZ comes from .env, which is what keeps the
   # baseline rotation firing at the same local hour.
   stripe-bridge:
     build:
       context: .
-      dockerfile: apps/stripe-bridge-nest/Dockerfile
+      dockerfile: apps/stripe-bridge/Dockerfile
     image: wizteros-stripe-bridge
     container_name: stripe-bridge
     restart: unless-stopped
@@ -33,14 +31,12 @@ services:
   # independently - a collector wedged on a slow box must not take the
   # dashboard down with it, and restarting either one alone is safe.
   #
-  # Both run the NestJS port, built from the repo root because the app depends
-  # on libs/server-common through the bun workspace. The Python app under
-  # apps/fleet-monitor stays in the tree until Phase 3 of the migration, but
-  # nothing builds it any more.
+  # Both are built from the repo root because the app depends on
+  # libs/server-common through the bun workspace.
   fleet-monitor:
     build:
       context: .
-      dockerfile: apps/fleet-monitor-nest/Dockerfile
+      dockerfile: apps/fleet-monitor/Dockerfile
     image: wizteros-fleet-monitor
     container_name: fleet-monitor
     restart: unless-stopped
@@ -67,7 +63,7 @@ services:
   fleet-collector:
     build:
       context: .
-      dockerfile: apps/fleet-monitor-nest/Dockerfile
+      dockerfile: apps/fleet-monitor/Dockerfile
     image: wizteros-fleet-monitor
     container_name: fleet-collector
     restart: unless-stopped

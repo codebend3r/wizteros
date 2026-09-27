@@ -13,11 +13,8 @@
       "!{projectRoot}/**/*.test.{ts,tsx}",
       "!{projectRoot}/src/test/**/*",
       "!{projectRoot}/src/test-setup.ts",
-      "!{projectRoot}/tests/**/*",
       "!{projectRoot}/scripts/**/*",
-      "!{projectRoot}/bunfig.toml",
-      "!{projectRoot}/requirements-dev.txt",
-      "!{projectRoot}/pytest.ini"
+      "!{projectRoot}/bunfig.toml"
     ]
   },
   "targetDefaults": {
@@ -34,7 +31,7 @@
     },
     "test": {
       "dependsOn": ["^build"],
-      "inputs": ["default", "^production", "{workspaceRoot}/scripts/py-tool.sh"],
+      "inputs": ["default", "^production"],
       "cache": true
     },
     "lint:ts": {
@@ -43,10 +40,6 @@
     },
     "lint:css": {
       "inputs": ["default"],
-      "cache": true
-    },
-    "lint:py": {
-      "inputs": ["default", "pyToolchain", "{workspaceRoot}/scripts/py-tool.sh"],
       "cache": true
     },
     "format:check": {

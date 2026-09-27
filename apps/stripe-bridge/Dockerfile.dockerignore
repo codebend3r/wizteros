@@ -5,7 +5,7 @@
 !package.json
 !bun.lock
 !libs/server-common
-!apps/stripe-bridge-nest
+!apps/stripe-bridge
 **/node_modules
 **/dist
 **/*.test.ts
