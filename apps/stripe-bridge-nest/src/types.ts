@@ -1,11 +1,13 @@
-// The shapes the bridge's modules hand each other, and the four outside
-// services it talks to, as ports. Records keep snake_case field names: most of
-// them are read off, or written onto, a JSON wire that the portal and Wizarr
-// already agree on.
+import type { BridgeStore } from '@/store/openStore.js'
+
+// The shapes the bridge's modules hand each other, and what it talks to, as
+// ports: its own SQLite store and the four outside services. Records keep
+// snake_case field names: most of them are read off, or written onto, a JSON
+// wire that the portal and Wizarr already agree on.
 //
-// Every module that talks to Wizarr, Stripe, plex.tv or SMTP takes the port it
-// needs as an argument rather than importing a client, which is what lets a
-// test hand in a fake.
+// Every module that reads the store or talks to Wizarr, Stripe, plex.tv or SMTP
+// takes the port it needs from a Bridge rather than importing a client, which
+// is what lets a test hand in a fake.
 
 // --- Wizarr --------------------------------------------------------------------
 
@@ -160,7 +162,7 @@ export type Settings = Readonly<{
 
 /** Everything a handler, route or sweep needs, handed in rather than imported. */
 export type Bridge = Readonly<{
-  dbPath: string
+  store: BridgeStore
   wizarr: WizarrApi
   stripe: StripeApi
   plex: PlexApi

@@ -4,24 +4,7 @@ import { accessRestored, bannedCheckout, describeInvoice, paymentFailed, signup 
 import { liveScope, mint, TierScopeEmpty } from '@/invites.js'
 import { accessLine, liveSiblingCustomer, resolveUserIds } from '@/members.js'
 import { eachInOrder } from '@/sequence.js'
-import {
-  allCustomerRows,
-  allMemberLinks,
-  customerRow,
-  getMapping,
-  getMemberTag,
-  getSessionInvite,
-  isEventProcessed,
-  markEventProcessed,
-  markSessionInviteEmailed,
-  PAYMENT_STATE_BY_STATUS,
-  recordEvent,
-  recordSessionInvite,
-  setPaymentState,
-  setSubscribed,
-  upsertPending,
-  upsertPendingByEmail,
-} from '@/store.js'
+import { PAYMENT_STATE_BY_STATUS } from '@/subscriptionStatus.js'
 import { normalizeTier, staleRecordIds } from '@/tiers.js'
 import type { Bridge, Settings, TierScope } from '@/types.js'
 
@@ -112,13 +95,13 @@ export const accessExpiryIso = (settings: Settings): string =>
  * on either half of the pair.
  */
 export const linkedAddresses = ({
-  dbPath,
+  bridge,
   email,
 }: {
-  dbPath: string
+  bridge: Bridge
   email: string
 }): ReadonlySet<string> => {
-  const links = allMemberLinks({ path: dbPath })
+  const links = bridge.store.allMemberLinks()
   const lowered = email.toLowerCase()
   const owner = links.get(lowered) ?? lowered
   return new Set([
@@ -136,15 +119,15 @@ export const linkedAddresses = ({
  * cancellation revokes access somebody is currently paying for.
  */
 export const stillSubscribedElsewhere = ({
-  dbPath,
+  bridge,
   email,
 }: {
-  dbPath: string
+  bridge: Bridge
   email: string
 }): string | null => {
-  const rows = allCustomerRows({ path: dbPath })
+  const rows = bridge.store.allCustomerRows()
   const lowered = email.toLowerCase()
-  const others = [...linkedAddresses({ dbPath, email })]
+  const others = [...linkedAddresses({ bridge, email })]
     .filter((address) => address !== lowered)
     .toSorted()
   return others.find((address) => rows.get(address)?.subscribed ?? false) ?? null
@@ -223,8 +206,7 @@ export const paymentFailedAlert = async ({
       email,
       invoice,
       access: await accessLine({
-        wizarr: bridge.wizarr,
-        dbPath: bridge.dbPath,
+        bridge,
         customerId: truthyText({ obj: invoice, key: 'customer' }),
         email,
       }),
@@ -267,14 +249,13 @@ export const restoreAccess = async ({
     scope: access,
   })
   if (customerId) {
-    upsertPending({ path: bridge.dbPath, customerId, email, inviteCode: code, tier: resolved })
+    bridge.store.upsertPending({ customerId, email, inviteCode: code, tier: resolved })
   } else {
-    upsertPendingByEmail({ path: bridge.dbPath, email, inviteCode: code, tier: resolved })
+    bridge.store.upsertPendingByEmail({ email, inviteCode: code, tier: resolved })
   }
   await bridge.mailer.sendInvite({ to: email, inviteUrl: inviteUrl({ bridge, code }) })
   log.error(`payment for ${email} found no records; reissued ${resolved} invite ${code}`)
-  recordEvent({
-    path: bridge.dbPath,
+  bridge.store.recordEvent({
     email,
     action: 'Access restored',
     detail: `paid with no active records; ${resolved} invite reissued`,
@@ -294,8 +275,7 @@ export const syncPaymentState = ({
   status: string
 }): void => {
   if (email && PAYMENT_STATE_BY_STATUS.has(status)) {
-    setPaymentState({
-      path: bridge.dbPath,
+    bridge.store.setPaymentState({
       email,
       state: PAYMENT_STATE_BY_STATUS.get(status) ?? null,
     })
@@ -317,8 +297,7 @@ const blockBannedCheckout = async ({
   customerId: string | null
 }): Promise<void> => {
   log.error(`checkout ${sessionId ?? 'with no id'} by banned member ${email}; no invite issued`)
-  recordEvent({
-    path: bridge.dbPath,
+  bridge.store.recordEvent({
     email,
     action: 'Checkout blocked',
     detail: `banned member paid for ${tier}; no invite issued`,
@@ -347,7 +326,7 @@ const resetExistingRecords = async ({
   const existing =
     records.length > 0
       ? staleRecordIds({ records, coveredServers: access.server_names })
-      : await resolveUserIds({ wizarr: bridge.wizarr, dbPath: bridge.dbPath, customerId, email })
+      : await resolveUserIds({ bridge, customerId, email })
   await eachInOrder({ items: existing, run: (userId) => bridge.wizarr.disableUser(userId) })
   if (existing.length > 0) {
     log.log(`reset ${existing.length} existing record(s) for ${email} pending re-join`)
@@ -380,7 +359,7 @@ const onCheckoutCompleted: EventHandler = async ({ bridge, obj }) => {
     return
   }
   const tier = normalizeTier(nested({ obj, key: 'metadata' }).tier)
-  const tag = getMemberTag({ path: bridge.dbPath, email })
+  const tag = bridge.store.getMemberTag({ email })
   // A banned address can still reach a Payment Link. Nothing is issued
   // and nothing is recorded against the customer; the operator is told,
   // because the charge itself went through and is theirs to refund.
@@ -403,28 +382,29 @@ const onCheckoutCompleted: EventHandler = async ({ bridge, obj }) => {
   // a throw leaves the event unmarked so Stripe retries the whole handler.
   // The session -> invite binding is what stops that retry from minting a
   // second invite and mailing the member a second link.
-  const issued = sessionId ? getSessionInvite({ path: bridge.dbPath, sessionId }) : null
+  const issued = sessionId ? bridge.store.getSessionInvite({ sessionId }) : null
   const code = issued
     ? issued.invite_code
     : (await mint({ wizarr: bridge.wizarr, settings: bridge.settings, tier, scope: access })).code
   if (issued) {
     log.log(`checkout ${sessionId ?? 'with no id'} already has invite ${code}; reusing it`)
   } else if (sessionId) {
-    recordSessionInvite({ path: bridge.dbPath, sessionId, inviteCode: code })
+    bridge.store.recordSessionInvite({ sessionId, inviteCode: code })
   }
-  if (customerId) {
-    upsertPending({ path: bridge.dbPath, customerId, email, inviteCode: code, tier })
-  }
-  // A completed checkout settles whatever failed on the previous cycle.
-  setPaymentState({ path: bridge.dbPath, email, state: null })
+  bridge.store.transaction((store) => {
+    if (customerId) {
+      store.upsertPending({ customerId, email, inviteCode: code, tier })
+    }
+    // A completed checkout settles whatever failed on the previous cycle.
+    store.setPaymentState({ email, state: null })
+  })
   if (!(issued?.emailed ?? false)) {
     await bridge.mailer.sendInvite({ to: email, inviteUrl: inviteUrl({ bridge, code }) })
     log.log(`sent invite to ${email}`)
     if (sessionId) {
-      markSessionInviteEmailed({ path: bridge.dbPath, sessionId })
+      bridge.store.markSessionInviteEmailed({ sessionId })
     }
-    recordEvent({
-      path: bridge.dbPath,
+    bridge.store.recordEvent({
       email,
       action: 'Signed up',
       detail: `${tier} tier — invite emailed`,
@@ -452,18 +432,17 @@ const onInvoicePaid: EventHandler = async ({ bridge, obj }) => {
   // otherwise skipped below. A retry that finally succeeds is exactly
   // the case this flag exists to close out.
   if (email) {
-    setPaymentState({ path: bridge.dbPath, email, state: null })
+    bridge.store.setPaymentState({ email, state: null })
   }
   if (obj.billing_reason === 'subscription_create') {
     log.log(`skipping first (signup) invoice for ${customerId}`)
     return
   }
-  const tag = email ? getMemberTag({ path: bridge.dbPath, email }) : null
+  const tag = email ? bridge.store.getMemberTag({ email }) : null
   // A ban outranks a payment: nothing is extended and nothing restored.
   if (email && tag === 'banned') {
     log.warn(`renewal: ${email} is banned; access not extended`)
-    recordEvent({
-      path: bridge.dbPath,
+    bridge.store.recordEvent({
       email,
       action: 'Payment received',
       detail: 'banned; access not extended',
@@ -471,32 +450,25 @@ const onInvoicePaid: EventHandler = async ({ bridge, obj }) => {
     return
   }
   if (email) {
-    setSubscribed({ path: bridge.dbPath, email, value: true })
+    bridge.store.setSubscribed({ email, value: true })
   }
   // VIP access is never time-boxed — acknowledge the payment, leave expiry alone.
   if (email && tag === 'vip') {
     log.log(`renewal: ${email} is VIP — expiry untouched`)
-    recordEvent({
-      path: bridge.dbPath,
+    bridge.store.recordEvent({
       email,
       action: 'Payment received',
       detail: 'VIP — expiry untouched',
     })
     return
   }
-  const ids = await resolveUserIds({
-    wizarr: bridge.wizarr,
-    dbPath: bridge.dbPath,
-    customerId,
-    email,
-  })
+  const ids = await resolveUserIds({ bridge, customerId, email })
   const expires = accessExpiryIso(bridge.settings)
   await eachInOrder({ items: ids, run: (userId) => bridge.wizarr.setExpiry({ userId, expires }) })
   if (ids.length > 0) {
     log.log(`renewed ${ids.length} record(s) for ${email ?? customerId} (expires ${expires})`)
     if (email) {
-      recordEvent({
-        path: bridge.dbPath,
+      bridge.store.recordEvent({
         email,
         action: 'Payment received',
         detail: `access extended to ${expires.slice(0, 10)}`,
@@ -505,7 +477,7 @@ const onInvoicePaid: EventHandler = async ({ bridge, obj }) => {
   } else if (email) {
     // Paid, but nothing to extend. Never leave this as a log line: the
     // member is locked out right now and only a new invite fixes it.
-    const row = customerRow({ path: bridge.dbPath, email })
+    const row = bridge.store.customerRow({ email })
     await restoreAccess({ bridge, email, customerId, tier: row ? row.tier : null })
   } else {
     log.warn(`renewal: no wizarr user for ${customerId}, which has no email`)
@@ -525,12 +497,11 @@ const onPaymentFailed: EventHandler = async ({ bridge, obj }) => {
     log.warn(`payment failed for ${customerId ?? 'no customer'} with no resolvable email`)
     return
   }
-  setPaymentState({ path: bridge.dbPath, email, state: 'past_due' })
+  bridge.store.setPaymentState({ email, state: 'past_due' })
   log.warn(
     `payment failed for ${email} (invoice ${truthyText({ obj, key: 'id' }) ?? 'with no id'})`,
   )
-  recordEvent({
-    path: bridge.dbPath,
+  bridge.store.recordEvent({
     email,
     action: 'Payment failed',
     detail: `Stripe charge declined; access held while it retries (${describeInvoice(obj)})`,
@@ -542,7 +513,7 @@ const onPaymentFailed: EventHandler = async ({ bridge, obj }) => {
 const onSubscriptionUpdated: EventHandler = async ({ bridge, obj }) => {
   const customerId = truthyText({ obj, key: 'customer' })
   const status = truthyText({ obj, key: 'status' }) ?? ''
-  const mapping = customerId ? getMapping({ path: bridge.dbPath, customerId }) : null
+  const mapping = customerId ? bridge.store.getMapping({ customerId }) : null
   const email =
     (mapping?.email ?? null) || (customerId ? await customerEmail({ bridge, customerId }) : null)
   syncPaymentState({ bridge, email, status })
@@ -552,7 +523,7 @@ const onSubscriptionUpdated: EventHandler = async ({ bridge, obj }) => {
 /** Disable the member's records, unless somebody still pays for them. */
 const onSubscriptionDeleted: EventHandler = async ({ bridge, obj }) => {
   const customerId = requiredText({ obj, key: 'customer' })
-  const mapping = getMapping({ path: bridge.dbPath, customerId })
+  const mapping = bridge.store.getMapping({ customerId })
   const email = (mapping?.email ?? null) || (await customerEmail({ bridge, customerId }))
   // This customer really did stop, but the person behind it may not
   // have: a second customer at the same address (they re-checked out
@@ -560,38 +531,30 @@ const onSubscriptionDeleted: EventHandler = async ({ bridge, obj }) => {
   // email). subscribed and payment_state are per email, so they only
   // move when nothing of theirs at this address still pays.
   const sibling = email
-    ? await liveSiblingCustomer({
-        stripe: bridge.stripe,
-        dbPath: bridge.dbPath,
-        email,
-        deadCustomer: customerId,
-      })
+    ? await liveSiblingCustomer({ bridge, email, deadCustomer: customerId })
     : null
   if (email && sibling) {
-    setPaymentState({ path: bridge.dbPath, email, state: null })
+    bridge.store.setPaymentState({ email, state: null })
   } else if (email) {
-    setSubscribed({ path: bridge.dbPath, email, value: false })
+    bridge.store.setSubscribed({ email, value: false })
   }
   // A VIP's access is a standing grant, not something the subscription
   // buys. The renewal handler already leaves their expiry alone and the
   // sweep skips them; disabling them here undid both.
-  if (email && getMemberTag({ path: bridge.dbPath, email }) === 'vip') {
+  if (email && bridge.store.getMemberTag({ email }) === 'vip') {
     log.log(`cancel: ${email} is VIP; access left alone`)
-    recordEvent({
-      path: bridge.dbPath,
+    bridge.store.recordEvent({
       email,
       action: 'Canceled',
       detail: 'subscription ended; access kept, VIP',
     })
     return
   }
-  const paying =
-    sibling || (email ? stillSubscribedElsewhere({ dbPath: bridge.dbPath, email }) : null)
+  const paying = sibling || (email ? stillSubscribedElsewhere({ bridge, email }) : null)
   if (paying) {
     log.log(`cancel: ${email ?? customerId} still pays under ${paying}; access left alone`)
     if (email) {
-      recordEvent({
-        path: bridge.dbPath,
+      bridge.store.recordEvent({
         email,
         action: 'Canceled',
         detail: `subscription ended; access kept, still paying under ${paying}`,
@@ -599,12 +562,7 @@ const onSubscriptionDeleted: EventHandler = async ({ bridge, obj }) => {
     }
     return
   }
-  const ids = await resolveUserIds({
-    wizarr: bridge.wizarr,
-    dbPath: bridge.dbPath,
-    customerId,
-    email,
-  })
+  const ids = await resolveUserIds({ bridge, customerId, email })
   await eachInOrder({ items: ids, run: (userId) => bridge.wizarr.disableUser(userId) })
   if (ids.length > 0) {
     log.log(`disabled ${ids.length} record(s) for ${email ?? customerId}`)
@@ -612,8 +570,7 @@ const onSubscriptionDeleted: EventHandler = async ({ bridge, obj }) => {
     log.log(`cancel: no wizarr user for ${customerId} / ${email ?? 'no email'}`)
   }
   if (email) {
-    recordEvent({
-      path: bridge.dbPath,
+    bridge.store.recordEvent({
       email,
       action: 'Canceled',
       detail: `subscription ended — ${ids.length} server record(s) disabled`,
@@ -657,7 +614,7 @@ export const handleEvent = async ({
   event: unknown
 }): Promise<void> => {
   const eventId = isRow(event) ? truthyText({ obj: event, key: 'id' }) : null
-  if (eventId && isEventProcessed({ path: bridge.dbPath, eventId })) {
+  if (eventId && bridge.store.isEventProcessed({ eventId })) {
     log.log(`skipping already-processed event ${eventId}`)
     return
   }
@@ -675,6 +632,6 @@ export const handleEvent = async ({
   }
 
   if (eventId) {
-    markEventProcessed({ path: bridge.dbPath, eventId })
+    bridge.store.markEventProcessed({ eventId })
   }
 }

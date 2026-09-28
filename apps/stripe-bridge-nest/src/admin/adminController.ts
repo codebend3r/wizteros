@@ -29,25 +29,6 @@ import { PlexUnavailable } from '@/clients/plex.js'
 import { liveScope, mint, TierScopeEmpty } from '@/invites.js'
 import { assembleMembers, memberFromCustomer, withOverrides, withPlexAccess } from '@/roster.js'
 import { eachInOrder, mapInOrder } from '@/sequence.js'
-import {
-  allCustomerRows,
-  allEvents,
-  allMemberDownloads,
-  allMemberLinks,
-  allMemberTags,
-  customerIdsForEmail,
-  eventsForEmail,
-  getMemberDownloads,
-  getMemberNotes,
-  getMemberTag,
-  recordEvent,
-  setMemberDownloads,
-  setMemberLink,
-  setMemberNotes,
-  setMemberTag,
-  setTier,
-  upsertPendingByEmail,
-} from '@/store.js'
 import { normalizeTier, staleRecordIds, TIER_DOWNLOADS } from '@/tiers.js'
 import type {
   Bridge,
@@ -132,11 +113,10 @@ export class AdminController {
 
   /** Stamp each member with the admin overrides the store holds. */
   private withOverrides(members: readonly Member[]): Member[] {
-    const path = this.bridge.dbPath
     return withOverrides({
       members,
-      tags: allMemberTags({ path }),
-      downloads: allMemberDownloads({ path }),
+      tags: this.bridge.store.allMemberTags(),
+      downloads: this.bridge.store.allMemberDownloads(),
     })
   }
 
@@ -153,13 +133,12 @@ export class AdminController {
   @Get('members')
   async listMembers(): Promise<Member[]> {
     const snap = await this.snapshot.get()
-    const path = this.bridge.dbPath
     const members = assembleMembers({
       users: snap.users,
       libraries: snap.libraries,
       invitations: snap.invitations,
-      customers: allCustomerRows({ path }),
-      links: allMemberLinks({ path }),
+      customers: this.bridge.store.allCustomerRows(),
+      links: this.bridge.store.allMemberLinks(),
     })
     return this.withOverrides(withPlexAccess({ members, access: snap.plex_access }))
   }
@@ -197,8 +176,7 @@ export class AdminController {
     @Query({ schema: EmailQuery }) query: z.output<typeof EmailQuery>,
   ): Promise<Member> {
     const { email } = query
-    const path = this.bridge.dbPath
-    const customers = allCustomerRows({ path })
+    const customers = this.bridge.store.allCustomerRows()
     const libraries = await this.bridge.wizarr.listLibraries()
     const users = await this.bridge.wizarr.listUsers()
     // Best effort: a Wizarr that will not list invitations costs the member
@@ -214,7 +192,7 @@ export class AdminController {
       libraries,
       invitations,
       customers,
-      links: allMemberLinks({ path }),
+      links: this.bridge.store.allMemberLinks(),
     })
     const wanted = email.toLowerCase()
     const listed = members.find((m) => m.email.toLowerCase() === wanted)
@@ -260,10 +238,9 @@ export class AdminController {
   getEvents(
     @Query({ schema: OptionalEmailQuery }) query: z.output<typeof OptionalEmailQuery>,
   ): EventRow[] {
-    const path = this.bridge.dbPath
     return query.email === undefined
-      ? allEvents({ path })
-      : eventsForEmail({ path, email: query.email })
+      ? this.bridge.store.allEvents()
+      : this.bridge.store.eventsForEmail({ email: query.email })
   }
 
   /** The admin's notes for an email; empty when none have been saved yet. */
@@ -274,7 +251,7 @@ export class AdminController {
   } {
     return {
       email: query.email,
-      notes: getMemberNotes({ path: this.bridge.dbPath, email: query.email }),
+      notes: this.bridge.store.getMemberNotes({ email: query.email }),
     }
   }
 
@@ -285,7 +262,7 @@ export class AdminController {
     email: string
     notes: string
   } {
-    setMemberNotes({ path: this.bridge.dbPath, email: body.email, notes: body.notes })
+    this.bridge.store.setMemberNotes({ email: body.email, notes: body.notes })
     return { email: body.email, notes: body.notes }
   }
 
@@ -304,10 +281,8 @@ export class AdminController {
     if (tag !== null && !MEMBER_TAGS.includes(tag)) {
       throw httpError({ status: 400, detail: `unknown tag ${JSON.stringify(tag)}` })
     }
-    const path = this.bridge.dbPath
-    setMemberTag({ path, email, tag })
-    recordEvent({
-      path,
+    this.bridge.store.setMemberTag({ email, tag })
+    this.bridge.store.recordEvent({
       email,
       action: 'Tag changed',
       detail: tag ? `tagged ${tag.toUpperCase()}` : 'tag cleared',
@@ -330,10 +305,8 @@ export class AdminController {
     downloads: boolean
   } {
     const { email, allow } = body
-    const path = this.bridge.dbPath
-    setMemberDownloads({ path, email, allow })
-    recordEvent({
-      path,
+    this.bridge.store.setMemberDownloads({ email, allow })
+    this.bridge.store.recordEvent({
       email,
       action: 'Downloads toggled',
       detail: `turned ${allow ? 'on' : 'off'} by admin`,
@@ -369,8 +342,7 @@ export class AdminController {
     }
     // Chains would make "whose row is this" depend on resolution order, and the
     // shape they describe (A pays for B, B pays for C) is not a real one.
-    const path = this.bridge.dbPath
-    const links = allMemberLinks({ path })
+    const links = this.bridge.store.allMemberLinks()
     const payer = plexEmail ? links.get(plexEmail) : undefined
     if (plexEmail && payer !== undefined) {
       throw httpError({
@@ -379,23 +351,20 @@ export class AdminController {
       })
     }
 
-    setMemberLink({ path, stripeEmail, plexEmail })
+    this.bridge.store.setMemberLink({ stripeEmail, plexEmail })
     if (plexEmail) {
-      recordEvent({
-        path,
+      this.bridge.store.recordEvent({
         email: plexEmail,
         action: 'Address linked',
         detail: `pays under ${stripeEmail}`,
       })
-      recordEvent({
-        path,
+      this.bridge.store.recordEvent({
         email: stripeEmail,
         action: 'Address linked',
         detail: `billing address for ${plexEmail}`,
       })
     } else {
-      recordEvent({
-        path,
+      this.bridge.store.recordEvent({
         email: stripeEmail,
         action: 'Address unlinked',
         detail: 'stands as its own member again',
@@ -416,7 +385,7 @@ export class AdminController {
    * order.
    */
   private async flagSubscriptions(email: string): Promise<Flagged> {
-    const mapped = customerIdsForEmail({ path: this.bridge.dbPath, email })
+    const mapped = this.bridge.store.customerIdsForEmail({ email })
     const customerIds =
       mapped.length > 0 ? mapped : await this.bridge.stripe.customerIdsForEmail(email)
     const perCustomer = await mapInOrder({
@@ -464,8 +433,7 @@ export class AdminController {
     }
     const cancelAt = cancelAtOf([...flagged, ...already])
     if (flagged.length > 0) {
-      recordEvent({
-        path: this.bridge.dbPath,
+      this.bridge.store.recordEvent({
         email,
         action: 'Cancellation scheduled',
         detail: cancelAt ? `by admin — access ends ${cancelAt.slice(0, 10)}` : 'by admin',
@@ -496,8 +464,7 @@ export class AdminController {
     cancel_at: string | null
   }> {
     const { email } = body
-    const path = this.bridge.dbPath
-    setMemberTag({ path, email, tag: 'banned' })
+    this.bridge.store.setMemberTag({ email, tag: 'banned' })
     const ids = await this.bridge.wizarr.findUserIdsByEmail(email)
     await eachInOrder({ items: ids, run: (id) => this.bridge.wizarr.disableUser(id) })
     const billing = await this.flagSubscriptions(email).then(
@@ -520,7 +487,11 @@ export class AdminController {
     )
     const revoked =
       ids.length > 0 ? `${ids.length} server record(s) disabled` : 'no server records to disable'
-    recordEvent({ path, email, action: 'Banned', detail: `${revoked}; ${billing.line}` })
+    this.bridge.store.recordEvent({
+      email,
+      action: 'Banned',
+      detail: `${revoked}; ${billing.line}`,
+    })
     this.snapshot.refreshAsync()
     return {
       email,
@@ -553,7 +524,7 @@ export class AdminController {
       items: ids,
       run: (userId) => this.bridge.wizarr.setExpiry({ userId, expires }),
     })
-    recordEvent({ path: this.bridge.dbPath, email: body.email, action: 'Expiry reset', detail })
+    this.bridge.store.recordEvent({ email: body.email, action: 'Expiry reset', detail })
     this.snapshot.refreshAsync()
     return { updated: ids.length, expires }
   }
@@ -593,9 +564,8 @@ export class AdminController {
     if (!TIER_DOWNLOADS.has(tier)) {
       throw httpError({ status: 400, detail: `unknown tier ${JSON.stringify(tier)}` })
     }
-    const path = this.bridge.dbPath
-    setTier({ path, email, tier })
-    recordEvent({ path, email, action: 'Tier reset', detail: `hard reset to ${tier}` })
+    this.bridge.store.setTier({ email, tier })
+    this.bridge.store.recordEvent({ email, action: 'Tier reset', detail: `hard reset to ${tier}` })
     return { email, tier }
   }
 
@@ -617,11 +587,11 @@ export class AdminController {
     @Body({ schema: ReissueInviteBody }) body: z.output<typeof ReissueInviteBody>,
   ): Promise<{ url: string; code: string; tier: string; disabled: number; emailed: boolean }> {
     const { email } = body
-    const { wizarr, plex, mailer, settings, dbPath: path } = this.bridge
+    const { wizarr, plex, mailer, settings, store } = this.bridge
     if (!settings.publicInviteBase) {
       throw httpError({ status: 500, detail: 'PUBLIC_INVITE_BASE not configured' })
     }
-    if (getMemberTag({ path, email }) === 'banned') {
+    if (store.getMemberTag({ email }) === 'banned') {
       throw httpError({ status: 409, detail: 'member is banned; clear the tag first' })
     }
     const tier = normalizeTier(body.tier)
@@ -636,14 +606,14 @@ export class AdminController {
     )
     const records = await wizarr.findUsersByEmail(email)
     // The admin's downloads toggle wins over the tier default when set.
-    const override = getMemberDownloads({ path, email })
+    const override = store.getMemberDownloads({ email })
     // Create the invite BEFORE any disable: disableUser is account-wide (it
     // severs the plex.tv friendship on every server), so if createInvite threw
     // after a disable loop the member would be locked out with no link to redeem.
     const invite = await mint({ wizarr, settings, tier, scope: access, allowDownloads: override })
     // The store row keeps the member on /admin/members while the invite is
     // pending and stamps invited_at for the grace-period status.
-    upsertPendingByEmail({ path, email, inviteCode: invite.code, tier })
+    store.upsertPendingByEmail({ email, inviteCode: invite.code, tier })
     const stale = staleRecordIds({ records, coveredServers: access.server_names })
     await eachInOrder({ items: stale, run: (id) => wizarr.disableUser(id) })
     const url = `${settings.publicInviteBase}/j/${invite.code}`
@@ -656,8 +626,7 @@ export class AdminController {
         return false
       },
     )
-    recordEvent({
-      path,
+    store.recordEvent({
       email,
       action: 'Invite issued',
       detail: `${tier} tier — ${emailed ? 'link emailed' : 'email failed, link sent manually'}`,

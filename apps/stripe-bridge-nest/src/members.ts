@@ -1,13 +1,9 @@
 import { Logger } from '@nestjs/common'
-import { customerIdsForEmail, getMapping, getMemberLink } from '@/store.js'
-import type { StripeApi, WizarrApi } from '@/types.js'
+import type { Bridge, StripeApi } from '@/types.js'
 import { stackOf } from '@/errors.js'
 
-// Who a Stripe customer is in Wizarr, resolved live.
-//
-// Shared by the webhook handlers and the sweeps, which is why it takes the
-// Wizarr port and the store path as arguments instead of reaching for the
-// bridge's own.
+// Who a Stripe customer is in Wizarr, resolved live. Shared by the webhook
+// handlers and the sweeps.
 
 const log = new Logger('bridge')
 
@@ -24,57 +20,50 @@ const log = new Logger('bridge')
  * and mint yet another invite they have no reason to click.
  */
 export const resolveUserIds = async ({
-  wizarr,
-  dbPath,
+  bridge,
   customerId,
   email,
 }: {
-  wizarr: WizarrApi
-  dbPath: string
+  bridge: Bridge
   customerId: string | null
   email: string | null
 }): Promise<number[]> => {
-  const byEmail = email ? await wizarr.findUserIdsByEmail(email) : []
+  const byEmail = email ? await bridge.wizarr.findUserIdsByEmail(email) : []
   if (byEmail.length > 0 || !email) {
-    return byEmail.length > 0 || !customerId ? byEmail : fromInvite({ wizarr, dbPath, customerId })
+    return byEmail.length > 0 || !customerId ? byEmail : fromInvite({ bridge, customerId })
   }
-  const linked = getMemberLink({ path: dbPath, stripeEmail: email })
-  const byLink = linked ? await wizarr.findUserIdsByEmail(linked) : []
+  const linked = bridge.store.getMemberLink({ stripeEmail: email })
+  const byLink = linked ? await bridge.wizarr.findUserIdsByEmail(linked) : []
   if (byLink.length > 0) {
     log.log(`resolved ${email} through its linked address ${linked}`)
     return byLink
   }
-  return customerId ? fromInvite({ wizarr, dbPath, customerId }) : []
+  return customerId ? fromInvite({ bridge, customerId }) : []
 }
 
 /** The records that redeemed the invite stored against a customer, or none. */
 const fromInvite = async ({
-  wizarr,
-  dbPath,
+  bridge,
   customerId,
 }: {
-  wizarr: WizarrApi
-  dbPath: string
+  bridge: Bridge
   customerId: string
 }): Promise<number[]> => {
-  const mapping = getMapping({ path: dbPath, customerId })
-  const code = mapping?.invite_code ?? null
-  return code ? wizarr.findUserIdsByInvite(code) : []
+  const code = bridge.store.getMapping({ customerId })?.invite_code ?? null
+  return code ? bridge.wizarr.findUserIdsByInvite(code) : []
 }
 
 /** One sentence on whether the member can watch right now, for an alert body. */
 export const accessLine = async ({
-  wizarr,
-  dbPath,
+  bridge,
   customerId,
   email,
 }: {
-  wizarr: WizarrApi
-  dbPath: string
+  bridge: Bridge
   customerId: string | null
   email: string
 }): Promise<string> => {
-  const held = await resolveUserIds({ wizarr, dbPath, customerId, email }).then(
+  const held = await resolveUserIds({ bridge, customerId, email }).then(
     (ids) => ids.length > 0,
     (error: unknown) => {
       log.error(`could not read Wizarr records for ${email}`, stackOf(error))
@@ -141,22 +130,20 @@ export const stripeStatusByCustomer = async (
  * apart; Stripe can. One Stripe call, and only when a sibling row exists.
  */
 export const liveSiblingCustomer = async ({
-  stripe,
-  dbPath,
+  bridge,
   email,
   deadCustomer,
 }: {
-  stripe: StripeApi
-  dbPath: string
+  bridge: Bridge
   email: string
   deadCustomer: string
 }): Promise<string | null> => {
-  const siblings = customerIdsForEmail({ path: dbPath, email }).filter(
-    (customer) => customer !== deadCustomer,
-  )
+  const siblings = bridge.store
+    .customerIdsForEmail({ email })
+    .filter((customer) => customer !== deadCustomer)
   if (siblings.length === 0) {
     return null
   }
-  const status = await stripeStatusByCustomer(stripe)
+  const status = await stripeStatusByCustomer(bridge.stripe)
   return siblings.find((customer) => LIVE_STATUSES.has(status.get(customer) ?? '')) ?? null
 }

@@ -1,4 +1,5 @@
 import { type Mock, vi } from 'vitest'
+import { type BridgeStore, openStore } from '@/store/openStore.js'
 import type {
   Bridge,
   Mailer,
@@ -23,7 +24,7 @@ export type FakePlex = Mocked<PlexApi>
 export type FakeMailer = Mocked<Mailer>
 
 export type FakeBridge = Readonly<{
-  dbPath: string
+  store: BridgeStore
   wizarr: FakeWizarr
   stripe: FakeStripe
   plex: FakePlex
@@ -91,8 +92,9 @@ export const TEST_SETTINGS: Settings = {
 }
 
 /**
- * A bridge over `dbPath` with every service faked. The store is not created
- * here; a test that reads or writes it calls initDb first.
+ * A bridge over a real store at `dbPath` with every service faked. The tables
+ * are not created here; a test that reads or writes them calls `store.init()`
+ * first.
  */
 export const fakeBridge = ({
   dbPath,
@@ -101,7 +103,7 @@ export const fakeBridge = ({
   dbPath: string
   settings?: Settings
 }): FakeBridge => ({
-  dbPath,
+  store: openStore(dbPath),
   wizarr: fakeWizarr(),
   stripe: fakeStripe(),
   plex: fakePlex(),

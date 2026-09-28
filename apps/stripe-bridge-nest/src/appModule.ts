@@ -6,7 +6,6 @@ import { BridgeModule } from '@/bridgeModule.js'
 import { BRIDGE } from '@/bridgeToken.js'
 import { adminAuthConfig } from '@/config.js'
 import { BackgroundLoops } from '@/loops.js'
-import { initDb } from '@/store.js'
 import type { Bridge } from '@/types.js'
 import { VersionController } from '@/version/versionController.js'
 import { WebhookModule } from '@/webhook/webhookModule.js'
@@ -31,6 +30,6 @@ export class AppModule implements OnModuleInit {
    * file; the process that serves requests always can.
    */
   onModuleInit(): void {
-    initDb({ path: this.bridge.dbPath })
+    this.bridge.store.init()
   }
 }

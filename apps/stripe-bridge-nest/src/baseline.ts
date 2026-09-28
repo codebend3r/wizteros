@@ -2,7 +2,6 @@ import { Logger } from '@nestjs/common'
 import { isoformat, parseIso } from '@wizteros/server-common'
 import { mint, tierScope, TierScopeEmpty } from '@/invites.js'
 import { mapInOrder } from '@/sequence.js'
-import { allBaselineInvites, forgetBaselineInvite, recordBaselineInvite } from '@/store.js'
 import { SHARE_SERVER, TIER_DOWNLOADS, tierScopeProblems, withoutStale } from '@/tiers.js'
 import type { Bridge, CreatedInvite, WizarrInvitation, WizarrLibrary } from '@/types.js'
 import { stackOf } from '@/errors.js'
@@ -106,8 +105,7 @@ export const mintBaselineInvite = async ({
     expiresInDays: days,
     unlimited: true,
   })
-  recordBaselineInvite({
-    path: bridge.dbPath,
+  bridge.store.recordBaselineInvite({
     code: invite.code,
     tier,
     expiresAt,
@@ -139,13 +137,13 @@ export const reapExpiredBaselines = async ({
 }): Promise<string[]> => {
   const byCode = byCodeOf(invitations)
   const outcomes = await mapInOrder({
-    items: allBaselineInvites({ path: bridge.dbPath }),
+    items: bridge.store.allBaselineInvites(),
     run: async (row): Promise<string | null> => {
       const expiresAt = parseStamp(row.expires_at)
       if (expiresAt === null || expiresAt.getTime() > now.getTime()) return null
       const live = byCode.get(row.code)
       if (live === undefined) {
-        forgetBaselineInvite({ path: bridge.dbPath, code: row.code })
+        bridge.store.forgetBaselineInvite({ code: row.code })
         return null
       }
       try {
@@ -154,7 +152,7 @@ export const reapExpiredBaselines = async ({
         log.error(`baseline: could not delete expired invite ${row.code}`, stackOf(error))
         return null
       }
-      forgetBaselineInvite({ path: bridge.dbPath, code: row.code })
+      bridge.store.forgetBaselineInvite({ code: row.code })
       return row.code
     },
   })
@@ -242,7 +240,7 @@ export const auditBaselineInvites = async ({
   now?: Date
 }): Promise<BaselineAudit> => {
   const invitations = await bridge.wizarr.listInvitations()
-  const owned = new Map(allBaselineInvites({ path: bridge.dbPath }).map((row) => [row.code, row]))
+  const owned = new Map(bridge.store.allBaselineInvites().map((row) => [row.code, row]))
   const byCode = byCodeOf(invitations)
 
   // An owned invite with no expiry is still live (and flagged); one whose

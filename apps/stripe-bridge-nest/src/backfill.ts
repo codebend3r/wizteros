@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common'
 import { eachInOrder, mapInOrder } from '@/sequence.js'
-import { allCustomerRows, allMemberTags, recordEvent, stampInvited } from '@/store.js'
+import type { BridgeStore } from '@/store/openStore.js'
 import type { WizarrApi } from '@/types.js'
 import { addSeconds, isoformat } from '@wizteros/server-common'
 
@@ -87,22 +87,22 @@ type Verdict = 'vip' | 'subscribed' | 'eligible'
  * nor to Wizarr. Wizarr is called one record at a time, in list order.
  */
 export const runBackfill = async ({
-  dbPath,
+  store,
   wizarr,
   dryRun,
   emails = BACKFILL_EMAILS,
   expiryDays = BACKFILL_EXPIRY_DAYS,
   now = new Date(),
 }: {
-  dbPath: string
+  store: BridgeStore
   wizarr: WizarrApi
   dryRun: boolean
   emails?: readonly string[]
   expiryDays?: number
   now?: Date
 }): Promise<BackfillSummary> => {
-  const tags = allMemberTags({ path: dbPath })
-  const rows = allCustomerRows({ path: dbPath })
+  const tags = store.allMemberTags()
+  const rows = store.allCustomerRows()
   const expires = isoformat(addSeconds({ at: now, seconds: expiryDays * DAY_SECONDS }))
   const prefix = dryRun ? '[dry-run] ' : ''
 
@@ -134,13 +134,12 @@ export const runBackfill = async ({
         return verdict
       }
 
-      stampInvited({ path: dbPath, email })
+      store.stampInvited({ email })
       await eachInOrder({
         items: uids,
         run: (userId) => wizarr.setExpiry({ userId, expires }),
       })
-      recordEvent({
-        path: dbPath,
+      store.recordEvent({
         email,
         action: 'Invited',
         detail: `manual — access ends ${expires.slice(0, 10)}`,

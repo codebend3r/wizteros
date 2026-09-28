@@ -4,7 +4,7 @@ import type { Bridge } from '@/types.js'
 
 /**
  * Provides the one `Bridge` app-wide, so the webhook, the admin routes and the
- * background loops all act through the same store path and service ports.
+ * background loops all act through the same store and service ports.
  * Built lazily from a factory, so importing the module reads no environment.
  */
 @Module({})

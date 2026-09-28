@@ -1,26 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import {
-  allCustomerRows,
-  eventsForEmail,
-  initDb,
-  setMemberTag,
-  setPaymentState,
-  setSubscribed,
-  upsertPending,
-} from '@/store.js'
 import { checkPaymentStates, checkVipAccess, resetChangeAlerts } from '@/sweeps.js'
 import { asBridge, type FakeBridge, fakeBridge, subscription } from '@/test/fakes.js'
 import { removeTempDirs, tempDbPath } from '@/test/support.js'
 import type { Bridge } from '@/types.js'
 
-type Setup = Readonly<{ db: string; fake: FakeBridge; bridge: Bridge }>
+type Setup = Readonly<{ fake: FakeBridge; bridge: Bridge }>
 
 /** A freshly initialised store and a bridge over it with every service faked. */
 const setup = (): Setup => {
-  const db = tempDbPath()
-  initDb({ path: db })
-  const fake = fakeBridge({ dbPath: db })
-  return { db, fake, bridge: asBridge(fake) }
+  const fake = fakeBridge({ dbPath: tempDbPath() })
+  fake.store.init()
+  return { fake, bridge: asBridge(fake) }
 }
 
 /** Stripe's subscription listing answers with these (customer, status) pairs. */
@@ -35,8 +25,8 @@ const stripeSubs = ({
 }
 
 /** The action names in a member's history. */
-const actionsFor = ({ db, email }: { db: string; email: string }): string[] =>
-  eventsForEmail({ path: db, email }).map((event) => event.action)
+const actionsFor = ({ bridge, email }: { bridge: Bridge; email: string }): string[] =>
+  bridge.store.eventsForEmail({ email }).map((event) => event.action)
 
 describe('sweeps', () => {
   // The Python suites reloaded the module so the last-alerted state started
@@ -58,16 +48,14 @@ describe('sweeps', () => {
     // type was not enabled on the endpoint for weeks) sat as Subscribed Monthly
     // while Stripe declined them three times. Stripe's own subscription status
     // is the truth the sweep reads back.
-    const { db, fake, bridge } = setup()
-    upsertPending({
-      path: db,
+    const { fake, bridge } = setup()
+    bridge.store.upsertPending({
       customerId: 'cus_due',
       email: 'due@x.com',
       inviteCode: 'abc',
       tier: 'bronze',
     })
-    upsertPending({
-      path: db,
+    bridge.store.upsertPending({
       customerId: 'cus_ok',
       email: 'ok@x.com',
       inviteCode: 'def',
@@ -82,7 +70,7 @@ describe('sweeps', () => {
     })
 
     expect(await checkPaymentStates(bridge)).toEqual(['due@x.com'])
-    const rows = allCustomerRows({ path: db })
+    const rows = bridge.store.allCustomerRows()
     expect(rows.get('due@x.com')?.payment_state).toBe('past_due')
     expect(rows.get('ok@x.com')?.payment_state).toBeNull()
     expect(rows.get('due@x.com')?.subscribed).toBe(true) // access is never the sweep's to take
@@ -93,36 +81,34 @@ describe('sweeps', () => {
     expect(body).toContain('due@x.com')
     expect(body).toContain('NO server access')
     expect(body).not.toContain('ok@x.com')
-    expect(actionsFor({ db, email: 'due@x.com' })).toContain('Payment failed')
+    expect(actionsFor({ bridge, email: 'due@x.com' })).toContain('Payment failed')
     // Writing the flag is what silences the next sweep: no second mail.
     expect(await checkPaymentStates(bridge)).toEqual([])
     expect(fake.mailer.sendAlert).toHaveBeenCalledOnce()
   })
 
   it('payment state check clears the flag once stripe says active', async () => {
-    const { db, fake, bridge } = setup()
-    upsertPending({
-      path: db,
+    const { fake, bridge } = setup()
+    bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'a@x.com',
       inviteCode: 'abc',
       tier: 'bronze',
     })
-    setPaymentState({ path: db, email: 'a@x.com', state: 'past_due' })
+    bridge.store.setPaymentState({ email: 'a@x.com', state: 'past_due' })
     stripeSubs({ fake, subs: [{ customer: 'cus_1', status: 'active' }] })
 
     expect(await checkPaymentStates(bridge)).toEqual([])
-    expect(allCustomerRows({ path: db }).get('a@x.com')?.payment_state).toBeNull()
+    expect(bridge.store.allCustomerRows().get('a@x.com')?.payment_state).toBeNull()
     expect(fake.mailer.sendAlert).not.toHaveBeenCalled()
-    expect(actionsFor({ db, email: 'a@x.com' })).toContain('Payment recovered')
+    expect(actionsFor({ bridge, email: 'a@x.com' })).toContain('Payment recovered')
   })
 
   it('payment state check reads the live subscription past a dead one', async () => {
     // A member who lapsed and re-subscribed holds a canceled sub next to the
     // live one; the live one is what they are paying.
-    const { db, fake, bridge } = setup()
-    upsertPending({
-      path: db,
+    const { fake, bridge } = setup()
+    bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'a@x.com',
       inviteCode: 'abc',
@@ -136,21 +122,19 @@ describe('sweeps', () => {
       ],
     })
     expect(await checkPaymentStates(bridge)).toEqual([])
-    expect(allCustomerRows({ path: db }).get('a@x.com')?.payment_state).toBeNull()
+    expect(bridge.store.allCustomerRows().get('a@x.com')?.payment_state).toBeNull()
   })
 
   it('payment state check leaves unsubscribed and unknown rows alone', async () => {
-    const { db, fake, bridge } = setup()
-    upsertPending({
-      path: db,
+    const { fake, bridge } = setup()
+    bridge.store.upsertPending({
       customerId: 'cus_gone',
       email: 'gone@x.com',
       inviteCode: 'abc',
       tier: 'bronze',
     })
-    setSubscribed({ path: db, email: 'gone@x.com', value: false })
-    upsertPending({
-      path: db,
+    bridge.store.setSubscribed({ email: 'gone@x.com', value: false })
+    bridge.store.upsertPending({
       customerId: 'cus_unlisted',
       email: 'quiet@x.com',
       inviteCode: 'def',
@@ -161,16 +145,15 @@ describe('sweeps', () => {
     stripeSubs({ fake, subs: [{ customer: 'cus_gone', status: 'past_due' }] })
 
     expect(await checkPaymentStates(bridge)).toEqual([])
-    const rows = allCustomerRows({ path: db })
+    const rows = bridge.store.allCustomerRows()
     expect(rows.get('gone@x.com')?.payment_state).toBeNull()
     expect(rows.get('quiet@x.com')?.payment_state).toBeNull()
     expect(fake.mailer.sendAlert).not.toHaveBeenCalled()
   })
 
   it('payment state check survives stripe being down', async () => {
-    const { db, fake, bridge } = setup()
-    upsertPending({
-      path: db,
+    const { fake, bridge } = setup()
+    bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'a@x.com',
       inviteCode: 'abc',
@@ -179,7 +162,7 @@ describe('sweeps', () => {
     fake.stripe.allSubscriptions.mockRejectedValue(new Error('stripe down'))
     // Unreachable is not a missed payment, and this runs inside the sweep.
     expect(await checkPaymentStates(bridge)).toEqual([])
-    expect(allCustomerRows({ path: db }).get('a@x.com')?.payment_state).toBeNull()
+    expect(bridge.store.allCustomerRows().get('a@x.com')?.payment_state).toBeNull()
     expect(fake.mailer.sendAlert).not.toHaveBeenCalled()
   })
 
@@ -191,9 +174,9 @@ describe('sweeps', () => {
     // A VIP can end up with no records for reasons no single guard covers: an
     // invite that was never redeemed, a manual disable, a Plex-side unshare. The
     // sweep is what turns that silence into a mail.
-    const { db, fake, bridge } = setup()
-    setMemberTag({ path: db, email: 'vip@x.com', tag: 'vip' })
-    setMemberTag({ path: db, email: 'ok@x.com', tag: 'vip' })
+    const { fake, bridge } = setup()
+    bridge.store.setMemberTag({ email: 'vip@x.com', tag: 'vip' })
+    bridge.store.setMemberTag({ email: 'ok@x.com', tag: 'vip' })
     fake.wizarr.listUsers.mockResolvedValue([
       { id: 1, email: 'ok@x.com', server: 'Meleys', expires: null },
     ])
@@ -207,8 +190,8 @@ describe('sweeps', () => {
   })
 
   it('vip access check is quiet when every vip holds access', async () => {
-    const { db, fake, bridge } = setup()
-    setMemberTag({ path: db, email: 'ok@x.com', tag: 'vip' })
+    const { fake, bridge } = setup()
+    bridge.store.setMemberTag({ email: 'ok@x.com', tag: 'vip' })
     fake.wizarr.listUsers.mockResolvedValue([
       { id: 1, email: 'ok@x.com', server: 'Meleys', expires: null },
     ])
@@ -217,8 +200,8 @@ describe('sweeps', () => {
   })
 
   it('vip access check survives wizarr being down', async () => {
-    const { db, fake, bridge } = setup()
-    setMemberTag({ path: db, email: 'vip@x.com', tag: 'vip' })
+    const { fake, bridge } = setup()
+    bridge.store.setMemberTag({ email: 'vip@x.com', tag: 'vip' })
     fake.wizarr.listUsers.mockRejectedValue(new Error('wizarr down'))
     // Unreachable is not the same as locked out, and this runs inside the sweep.
     expect(await checkVipAccess(bridge)).toEqual([])

@@ -9,19 +9,6 @@ import {
 } from '@/clients/mailer.js'
 import { TierScopeEmpty } from '@/invites.js'
 import { resolveUserIds } from '@/members.js'
-import {
-  allCustomerRows,
-  eventsForEmail,
-  getMapping,
-  initDb,
-  isEventProcessed,
-  setMemberLink,
-  setMemberTag,
-  setPaymentState,
-  setSubscribed,
-  tiersByEmail,
-  upsertPending,
-} from '@/store.js'
 import { asBridge, type FakeBridge, fakeBridge, subscription } from '@/test/fakes.js'
 import { removeTempDirs, tempDbPath } from '@/test/support.js'
 import type { WizarrLibrary } from '@/types.js'
@@ -51,12 +38,10 @@ const DAY_MS = 86_400_000
 // admin, and nothing here may reach a real SMTP host. No plex.tv by default:
 // the library list is trusted as given.
 let bridge: FakeBridge
-let path: string
 
 beforeEach(() => {
-  path = tempDbPath()
-  bridge = fakeBridge({ dbPath: path })
-  initDb({ path })
+  bridge = fakeBridge({ dbPath: tempDbPath() })
+  bridge.store.init()
   vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {})
   vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {})
   vi.spyOn(Logger.prototype, 'error').mockImplementation(() => {})
@@ -82,7 +67,7 @@ const wizarrMints = (code: string): void => {
   bridge.wizarr.createInvite.mockResolvedValue({ code, url: `http://x/j/${code}` })
 }
 
-const rowFor = (email: string) => allCustomerRows({ path }).get(email)
+const rowFor = (email: string) => bridge.store.allCustomerRows().get(email)
 
 const setExpiryIds = (): number[] => bridge.wizarr.setExpiry.mock.calls.map(([call]) => call.userId)
 const setExpiryValues = (): string[] =>
@@ -123,10 +108,10 @@ describe('checkout.session.completed', () => {
     })
     // brand-new member has no records to time-box; invite redemption sets expiry
     expect(bridge.wizarr.setExpiry).not.toHaveBeenCalled()
-    expect(getMapping({ path, customerId: 'cus_1' })?.invite_code).toBe('abc')
+    expect(bridge.store.getMapping({ customerId: 'cus_1' })?.invite_code).toBe('abc')
     // checkout is the confirmed-payment signal that drives "Subscribed Monthly"
     expect(rowFor('a@x.com')?.subscribed).toBe(true)
-    const events = eventsForEmail({ path, email: 'a@x.com' })
+    const events = bridge.store.eventsForEmail({ email: 'a@x.com' })
     expect(events[0]?.action).toBe('Signed up')
     expect(events[0]?.detail).toContain('silver')
   })
@@ -186,7 +171,7 @@ describe('checkout.session.completed', () => {
   })
 
   it('a VIP member is never time-boxed', async () => {
-    setMemberTag({ path, email: 'vip@x.com', tag: 'vip' })
+    bridge.store.setMemberTag({ email: 'vip@x.com', tag: 'vip' })
     wizarrMints('abc')
     bridge.wizarr.findUsersByEmail.mockResolvedValue([
       { id: 147, server: 'Meleys' },
@@ -280,14 +265,13 @@ describe('checkout.session.completed', () => {
   })
 
   it('clears a dunning flag left by the previous cycle', async () => {
-    upsertPending({
-      path,
+    bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'a@x.com',
       inviteCode: 'abc',
       tier: 'bronze',
     })
-    setPaymentState({ path, email: 'a@x.com', state: 'past_due' })
+    bridge.store.setPaymentState({ email: 'a@x.com', state: 'past_due' })
     wizarrMints('abc2')
     bridge.wizarr.findUsersByEmail.mockResolvedValue([])
     bridge.wizarr.findUserIdsByEmail.mockResolvedValue([])
@@ -407,7 +391,7 @@ describe('checkout.session.completed', () => {
         },
       }),
     )
-    expect(Object.fromEntries(tiersByEmail({ path }))).toEqual({ 'a@x.com': 'gold' })
+    expect(bridge.store.customerRow({ email: 'a@x.com' })?.tier).toBe('gold')
   })
 
   it('a retry after a mid-handler failure reuses the invite', async () => {
@@ -468,7 +452,7 @@ describe('checkout.session.completed', () => {
   })
 
   it('a checkout by a banned member issues nothing and alerts', async () => {
-    setMemberTag({ path, email: 'banned@x.com', tag: 'banned' })
+    bridge.store.setMemberTag({ email: 'banned@x.com', tag: 'banned' })
     bridge.wizarr.listLibraries.mockResolvedValue([...FIXTURE_LIBRARIES])
 
     await handle(
@@ -485,14 +469,14 @@ describe('checkout.session.completed', () => {
 
     expect(bridge.wizarr.createInvite).not.toHaveBeenCalled()
     expect(bridge.mailer.sendInvite).not.toHaveBeenCalled()
-    expect(getMapping({ path, customerId: 'cus_1' })).toBeNull()
+    expect(bridge.store.getMapping({ customerId: 'cus_1' })).toBeNull()
     expect(bridge.mailer.sendAlert).toHaveBeenCalledOnce()
     expect(bridge.mailer.sendAlert.mock.calls[0]?.[0].body.toLowerCase()).toContain('banned@x.com')
-    const events = eventsForEmail({ path, email: 'banned@x.com' })
+    const events = bridge.store.eventsForEmail({ email: 'banned@x.com' })
     expect(events[0]?.action).toBe('Checkout blocked')
     expect(events[0]?.detail).toContain('banned')
     // Marked processed: a retry must not raise the alarm a second time.
-    expect(isEventProcessed({ path, eventId: 'evt_checkout_banned' })).toBe(true)
+    expect(bridge.store.isEventProcessed({ eventId: 'evt_checkout_banned' })).toBe(true)
   })
 
   it('mails the admin once per signup', async () => {
@@ -561,8 +545,8 @@ describe('invoice.paid', () => {
   })
 
   it('a renewal extends', async () => {
-    upsertPending({ path, customerId: 'cus_1', email: 'a@x.com', inviteCode: 'abc' })
-    setSubscribed({ path, email: 'a@x.com', value: false }) // prove the renewal restores it
+    bridge.store.upsertPending({ customerId: 'cus_1', email: 'a@x.com', inviteCode: 'abc' })
+    bridge.store.setSubscribed({ email: 'a@x.com', value: false }) // prove the renewal restores it
     bridge.wizarr.findUserIdsByEmail.mockResolvedValue([9, 10])
     await handle(invoicePaid({ id: 'evt_inv_cycle', customer: 'cus_1', email: 'a@x.com' }))
     // renewal sets expiry on every server record, all to the same absolute date
@@ -570,33 +554,32 @@ describe('invoice.paid', () => {
     expect(new Set(setExpiryValues()).size).toBe(1) // one expiry applied uniformly
     // a paid invoice re-affirms the confirmed-payment flag
     expect(rowFor('a@x.com')?.subscribed).toBe(true)
-    const events = eventsForEmail({ path, email: 'a@x.com' })
+    const events = bridge.store.eventsForEmail({ email: 'a@x.com' })
     expect(events[0]?.action).toBe('Payment received')
     expect(events[0]?.detail).toContain('access extended to')
   })
 
   it("a renewal leaves a VIP's expiry alone", async () => {
-    upsertPending({ path, customerId: 'cus_1', email: 'vip@x.com', inviteCode: 'abc' })
-    setMemberTag({ path, email: 'vip@x.com', tag: 'vip' })
+    bridge.store.upsertPending({ customerId: 'cus_1', email: 'vip@x.com', inviteCode: 'abc' })
+    bridge.store.setMemberTag({ email: 'vip@x.com', tag: 'vip' })
     bridge.wizarr.findUserIdsByEmail.mockResolvedValue([9, 10]) // would be stamped if not VIP
     await handle(invoicePaid({ id: 'evt_inv_vip', customer: 'cus_1', email: 'vip@x.com' }))
     expect(bridge.wizarr.setExpiry).not.toHaveBeenCalled()
     // the payment itself is still acknowledged
     expect(rowFor('vip@x.com')?.subscribed).toBe(true)
-    const events = eventsForEmail({ path, email: 'vip@x.com' })
+    const events = bridge.store.eventsForEmail({ email: 'vip@x.com' })
     expect(events[0]?.action).toBe('Payment received')
   })
 
   it('a renewal on a linked address extends the Plex records', async () => {
     // The whole point: the money arrives at one address, access lives at another.
-    upsertPending({
-      path,
+    bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'pays@x.com',
       inviteCode: 'abc',
       tier: 'bronze',
     })
-    setMemberLink({ path, stripeEmail: 'pays@x.com', plexEmail: 'watches@x.com' })
+    bridge.store.setMemberLink({ stripeEmail: 'pays@x.com', plexEmail: 'watches@x.com' })
     bridge.wizarr.findUserIdsByEmail.mockImplementation(async (email) =>
       email === 'watches@x.com' ? [7] : [],
     )
@@ -612,8 +595,7 @@ describe('invoice.paid', () => {
     // landed on a second Stripe customer), and the bridge shrugs. They stay
     // locked out with money taken. A paid invoice with nothing to extend must
     // put a fresh tier-scoped invite in their inbox.
-    upsertPending({
-      path,
+    bridge.store.upsertPending({
       customerId: 'cus_lapsed',
       email: 'lapsed@x.com',
       inviteCode: 'old',
@@ -640,8 +622,10 @@ describe('invoice.paid', () => {
     expect(bridge.mailer.sendAlert).toHaveBeenCalledOnce()
     // nothing to extend, so no expiry write, and the new code is the stored one
     expect(bridge.wizarr.setExpiry).not.toHaveBeenCalled()
-    expect(getMapping({ path, customerId: 'cus_lapsed' })?.invite_code).toBe('new1')
-    const actions = eventsForEmail({ path, email: 'lapsed@x.com' }).map((event) => event.action)
+    expect(bridge.store.getMapping({ customerId: 'cus_lapsed' })?.invite_code).toBe('new1')
+    const actions = bridge.store
+      .eventsForEmail({ email: 'lapsed@x.com' })
+      .map((event) => event.action)
     expect(actions).toContain('Access restored')
   })
 
@@ -662,7 +646,7 @@ describe('invoice.paid', () => {
   })
 
   it('recovery never touches a VIP', async () => {
-    setMemberTag({ path, email: 'vip@x.com', tag: 'vip' })
+    bridge.store.setMemberTag({ email: 'vip@x.com', tag: 'vip' })
     bridge.wizarr.findUserIdsByEmail.mockResolvedValue([])
     await handle(invoicePaid({ id: 'evt_inv_vip_orphan', customer: 'cus_vip', email: 'vip@x.com' }))
     expect(bridge.wizarr.createInvite).not.toHaveBeenCalled()
@@ -670,14 +654,13 @@ describe('invoice.paid', () => {
   })
 
   it('a signup invoice clears dunning even though it is skipped', async () => {
-    upsertPending({
-      path,
+    bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'a@x.com',
       inviteCode: 'abc',
       tier: 'bronze',
     })
-    setPaymentState({ path, email: 'a@x.com', state: 'past_due' })
+    bridge.store.setPaymentState({ email: 'a@x.com', state: 'past_due' })
     await handle(
       invoicePaid({
         id: 'evt_signup_paid',
@@ -691,21 +674,20 @@ describe('invoice.paid', () => {
   })
 
   it('never extends a banned member', async () => {
-    upsertPending({
-      path,
+    bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'banned@x.com',
       inviteCode: 'abc',
       tier: 'gold',
     })
-    setMemberTag({ path, email: 'banned@x.com', tag: 'banned' })
+    bridge.store.setMemberTag({ email: 'banned@x.com', tag: 'banned' })
     bridge.wizarr.findUserIdsByEmail.mockResolvedValue([147])
 
     await handle(invoicePaid({ id: 'evt_paid_banned', customer: 'cus_1', email: 'banned@x.com' }))
 
     expect(bridge.wizarr.setExpiry).not.toHaveBeenCalled()
     expect(bridge.wizarr.createInvite).not.toHaveBeenCalled()
-    const events = eventsForEmail({ path, email: 'banned@x.com' })
+    const events = bridge.store.eventsForEmail({ email: 'banned@x.com' })
     expect(events[0]?.action).toBe('Payment received')
     expect(events[0]?.detail).toContain('banned')
   })
@@ -722,8 +704,7 @@ describe('invoice.payment_failed', () => {
   it('flags dunning without touching access', async () => {
     // Stripe retries a declined charge for weeks. The member keeps the period
     // they paid for, but must stop reading as healthy in the admin UI.
-    upsertPending({
-      path,
+    bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'a@x.com',
       inviteCode: 'abc',
@@ -740,15 +721,14 @@ describe('invoice.payment_failed', () => {
     expect(row?.subscribed).toBe(true) // still paid up for this period
     expect(bridge.wizarr.disableUser).not.toHaveBeenCalled()
     expect(bridge.wizarr.setExpiry).not.toHaveBeenCalled()
-    const actions = eventsForEmail({ path, email: 'a@x.com' }).map((event) => event.action)
+    const actions = bridge.store.eventsForEmail({ email: 'a@x.com' }).map((event) => event.action)
     expect(actions).toContain('Payment failed')
   })
 
   it('a successful retry clears the dunning flag', async () => {
     // The exact sequence that lost a member their library: charge fails, then
     // the retry succeeds. The success has to undo the failure.
-    upsertPending({
-      path,
+    bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'a@x.com',
       inviteCode: 'abc',
@@ -771,8 +751,7 @@ describe('invoice.payment_failed', () => {
     // to hear about it, and the mail has to say whether the member can even
     // watch right now: the one who paid once and never redeemed is the one
     // whose card failing nobody would otherwise notice.
-    upsertPending({
-      path,
+    bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'a@x.com',
       inviteCode: 'abc',
@@ -803,13 +782,12 @@ describe('invoice.payment_failed', () => {
     expect(alert?.body).toContain('in_9')
     expect(alert?.body).toContain('NO server access')
     // The history row carries the same facts, so the member page tells it too.
-    const events = eventsForEmail({ path, email: 'a@x.com' })
+    const events = bridge.store.eventsForEmail({ email: 'a@x.com' })
     expect(events[0]?.detail).toContain('8.00 CAD')
   })
 
   it('the mail says when access is still held', async () => {
-    upsertPending({
-      path,
+    bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'a@x.com',
       inviteCode: 'abc',
@@ -838,8 +816,7 @@ describe('invoice.payment_failed', () => {
 
 describe('customer.subscription.updated', () => {
   it('syncs the dunning flag both ways', async () => {
-    upsertPending({
-      path,
+    bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'a@x.com',
       inviteCode: 'abc',
@@ -869,14 +846,14 @@ const cancel = ({ id, customer }: { id: string; customer: string }) => ({
 
 describe('customer.subscription.deleted', () => {
   it('disables every record', async () => {
-    upsertPending({ path, customerId: 'cus_1', email: 'a@x.com', inviteCode: 'abc' })
+    bridge.store.upsertPending({ customerId: 'cus_1', email: 'a@x.com', inviteCode: 'abc' })
     bridge.wizarr.findUserIdsByEmail.mockResolvedValue([147, 57, 106, 155, 204])
     await handle(cancel({ id: 'evt_cancel', customer: 'cus_1' }))
     // cancel must disable every server record, not just the first
     expect(disabledIds().toSorted(byNumber)).toEqual([57, 106, 147, 155, 204])
     // a deleted subscription clears the confirmed-payment flag
     expect(rowFor('a@x.com')?.subscribed).toBe(false)
-    const events = eventsForEmail({ path, email: 'a@x.com' })
+    const events = bridge.store.eventsForEmail({ email: 'a@x.com' })
     expect(events[0]?.action).toBe('Canceled')
     expect(events[0]?.detail).toContain('5 server record(s)')
   })
@@ -888,10 +865,18 @@ describe('customer.subscription.deleted', () => {
     // under, so resolving it finds their real, paid-for access. Disabling that
     // because a second, abandoned subscription ended locks out a member who is
     // current.
-    upsertPending({ path, customerId: 'cus_dead', email: 'watches@x.com', inviteCode: 'INVOLD' })
-    upsertPending({ path, customerId: 'cus_live', email: 'pays@x.com', inviteCode: 'INVNEW' })
-    setSubscribed({ path, email: 'pays@x.com', value: true })
-    setMemberLink({ path, stripeEmail: 'pays@x.com', plexEmail: 'watches@x.com' })
+    bridge.store.upsertPending({
+      customerId: 'cus_dead',
+      email: 'watches@x.com',
+      inviteCode: 'INVOLD',
+    })
+    bridge.store.upsertPending({
+      customerId: 'cus_live',
+      email: 'pays@x.com',
+      inviteCode: 'INVNEW',
+    })
+    bridge.store.setSubscribed({ email: 'pays@x.com', value: true })
+    bridge.store.setMemberLink({ stripeEmail: 'pays@x.com', plexEmail: 'watches@x.com' })
     bridge.wizarr.findUserIdsByEmail.mockResolvedValue([287, 288])
 
     await handle(cancel({ id: 'evt_cancel_one_of_two', customer: 'cus_dead' }))
@@ -899,7 +884,7 @@ describe('customer.subscription.deleted', () => {
     expect(bridge.wizarr.disableUser).not.toHaveBeenCalled()
     // The dead customer really did stop, even though access is untouched.
     expect(rowFor('watches@x.com')?.subscribed).toBe(false)
-    const events = eventsForEmail({ path, email: 'watches@x.com' })
+    const events = bridge.store.eventsForEmail({ email: 'watches@x.com' })
     expect(events[0]?.action).toBe('Canceled')
     expect(events[0]?.detail).toContain('pays@x.com')
   })
@@ -911,8 +896,8 @@ describe('customer.subscription.deleted', () => {
     // sweep skips them outright, but the cancel handler disabled whatever it
     // resolved. A VIP whose card lapsed therefore lost every server the moment
     // Stripe reported the subscription gone.
-    upsertPending({ path, customerId: 'cus_1', email: 'vip@x.com', inviteCode: 'abc' })
-    setMemberTag({ path, email: 'vip@x.com', tag: 'vip' })
+    bridge.store.upsertPending({ customerId: 'cus_1', email: 'vip@x.com', inviteCode: 'abc' })
+    bridge.store.setMemberTag({ email: 'vip@x.com', tag: 'vip' })
     bridge.wizarr.findUserIdsByEmail.mockResolvedValue([147, 57, 106, 155, 204])
 
     await handle(cancel({ id: 'evt_vip_cancel', customer: 'cus_1' }))
@@ -920,17 +905,25 @@ describe('customer.subscription.deleted', () => {
     expect(bridge.wizarr.disableUser).not.toHaveBeenCalled()
     // The subscription really did end, so the payment flag still clears.
     expect(rowFor('vip@x.com')?.subscribed).toBe(false)
-    const events = eventsForEmail({ path, email: 'vip@x.com' })
+    const events = bridge.store.eventsForEmail({ email: 'vip@x.com' })
     expect(events[0]?.action).toBe('Canceled')
     expect(events[0]?.detail).toContain('VIP')
   })
 
   it('still disables when the linked address has stopped too', async () => {
     // Once nothing is paying, the guard must get out of the way.
-    upsertPending({ path, customerId: 'cus_dead', email: 'watches@x.com', inviteCode: 'INVOLD' })
-    upsertPending({ path, customerId: 'cus_live', email: 'pays@x.com', inviteCode: 'INVNEW' })
-    setSubscribed({ path, email: 'pays@x.com', value: false })
-    setMemberLink({ path, stripeEmail: 'pays@x.com', plexEmail: 'watches@x.com' })
+    bridge.store.upsertPending({
+      customerId: 'cus_dead',
+      email: 'watches@x.com',
+      inviteCode: 'INVOLD',
+    })
+    bridge.store.upsertPending({
+      customerId: 'cus_live',
+      email: 'pays@x.com',
+      inviteCode: 'INVNEW',
+    })
+    bridge.store.setSubscribed({ email: 'pays@x.com', value: false })
+    bridge.store.setMemberLink({ stripeEmail: 'pays@x.com', plexEmail: 'watches@x.com' })
     bridge.wizarr.findUserIdsByEmail.mockResolvedValue([287, 288])
 
     await handle(cancel({ id: 'evt_cancel_last_one', customer: 'cus_dead' }))
@@ -943,10 +936,18 @@ describe('customer.subscription.deleted', () => {
     //
     // Cancelling the payer while the Plex address itself still carries a live
     // subscription is the same person in the same situation, mirrored.
-    upsertPending({ path, customerId: 'cus_live', email: 'watches@x.com', inviteCode: 'INVOLD' })
-    upsertPending({ path, customerId: 'cus_dead', email: 'pays@x.com', inviteCode: 'INVNEW' })
-    setSubscribed({ path, email: 'watches@x.com', value: true })
-    setMemberLink({ path, stripeEmail: 'pays@x.com', plexEmail: 'watches@x.com' })
+    bridge.store.upsertPending({
+      customerId: 'cus_live',
+      email: 'watches@x.com',
+      inviteCode: 'INVOLD',
+    })
+    bridge.store.upsertPending({
+      customerId: 'cus_dead',
+      email: 'pays@x.com',
+      inviteCode: 'INVNEW',
+    })
+    bridge.store.setSubscribed({ email: 'watches@x.com', value: true })
+    bridge.store.setMemberLink({ stripeEmail: 'pays@x.com', plexEmail: 'watches@x.com' })
     bridge.wizarr.findUserIdsByEmail.mockResolvedValue([287])
 
     await handle(cancel({ id: 'evt_cancel_payer', customer: 'cus_dead' }))
@@ -956,8 +957,8 @@ describe('customer.subscription.deleted', () => {
 
   it('an unlinked member cancelling is unaffected by the guard', async () => {
     // The ordinary case has no links at all and must keep disabling.
-    upsertPending({ path, customerId: 'cus_1', email: 'solo@x.com', inviteCode: 'abc' })
-    setSubscribed({ path, email: 'other@x.com', value: true }) // unrelated member
+    bridge.store.upsertPending({ customerId: 'cus_1', email: 'solo@x.com', inviteCode: 'abc' })
+    bridge.store.setSubscribed({ email: 'other@x.com', value: true }) // unrelated member
     bridge.wizarr.findUserIdsByEmail.mockResolvedValue([12])
 
     await handle(cancel({ id: 'evt_cancel_solo', customer: 'cus_1' }))
@@ -971,21 +972,19 @@ describe('customer.subscription.deleted', () => {
     // Two customers, one email. The old one dies in dunning the night after the
     // new one paid. The cancel used to clear the per-email flags and disable the
     // records the new subscription had just bought.
-    upsertPending({
-      path,
+    bridge.store.upsertPending({
       customerId: 'cus_old',
       email: 'a@x.com',
       inviteCode: 'old',
       tier: 'bronze',
     })
-    upsertPending({
-      path,
+    bridge.store.upsertPending({
       customerId: 'cus_new',
       email: 'a@x.com',
       inviteCode: 'new',
       tier: 'silver',
     })
-    setPaymentState({ path, email: 'a@x.com', state: 'past_due' })
+    bridge.store.setPaymentState({ email: 'a@x.com', state: 'past_due' })
     bridge.stripe.allSubscriptions.mockResolvedValue([
       subscription({ customer: 'cus_old', status: 'canceled' }),
       subscription({ customer: 'cus_new', status: 'active' }),
@@ -996,21 +995,19 @@ describe('customer.subscription.deleted', () => {
     const row = rowFor('a@x.com')
     expect(row?.subscribed).toBe(true)
     expect(row?.payment_state).toBeNull() // the dead customer's dunning is over
-    const events = eventsForEmail({ path, email: 'a@x.com' })
+    const events = bridge.store.eventsForEmail({ email: 'a@x.com' })
     expect(events[0]?.action).toBe('Canceled')
     expect(events[0]?.detail).toContain('still paying under cus_new')
   })
 
   it('disables when the other customer at the address is not paying', async () => {
-    upsertPending({
-      path,
+    bridge.store.upsertPending({
       customerId: 'cus_old',
       email: 'a@x.com',
       inviteCode: 'old',
       tier: 'bronze',
     })
-    upsertPending({
-      path,
+    bridge.store.upsertPending({
       customerId: 'cus_new',
       email: 'a@x.com',
       inviteCode: 'new',
@@ -1027,7 +1024,7 @@ describe('customer.subscription.deleted', () => {
   })
 
   it('asks Stripe nothing when the address has one customer', async () => {
-    upsertPending({ path, customerId: 'cus_1', email: 'a@x.com', inviteCode: 'abc' })
+    bridge.store.upsertPending({ customerId: 'cus_1', email: 'a@x.com', inviteCode: 'abc' })
     bridge.wizarr.findUserIdsByEmail.mockResolvedValue([9])
     await handle(cancel({ id: 'evt_cancel_only_customer', customer: 'cus_1' }))
     expect(bridge.stripe.allSubscriptions).not.toHaveBeenCalled()
@@ -1042,7 +1039,7 @@ describe('customer.subscription.deleted', () => {
   })
 
   it('prefers the stored email over a Stripe lookup', async () => {
-    upsertPending({ path, customerId: 'cus_1', email: 'a@x.com', inviteCode: 'abc' })
+    bridge.store.upsertPending({ customerId: 'cus_1', email: 'a@x.com', inviteCode: 'abc' })
     bridge.wizarr.findUserIdsByEmail.mockResolvedValue([9])
     await handle(cancel({ id: 'evt_cancel_mapped', customer: 'cus_1' }))
     // mapping has the email, so no Stripe API round-trip is needed
@@ -1054,7 +1051,7 @@ describe('customer.subscription.deleted', () => {
 
 describe('handleEvent', () => {
   it('drops a duplicate event', async () => {
-    upsertPending({ path, customerId: 'cus_1', email: 'a@x.com', inviteCode: 'abc' })
+    bridge.store.upsertPending({ customerId: 'cus_1', email: 'a@x.com', inviteCode: 'abc' })
     bridge.wizarr.findUserIdsByEmail.mockResolvedValue([9])
     const event = invoicePaid({ id: 'evt_inv_cycle_dup', customer: 'cus_1', email: 'a@x.com' })
     await handle(event)
@@ -1074,7 +1071,7 @@ describe('handleEvent', () => {
     bridge.wizarr.listLibraries.mockResolvedValue([])
     await expect(handle(event)).rejects.toBeInstanceOf(TierScopeEmpty)
     expect(bridge.wizarr.createInvite).not.toHaveBeenCalled()
-    expect(isEventProcessed({ path, eventId: 'evt_retry_me' })).toBe(false)
+    expect(bridge.store.isEventProcessed({ eventId: 'evt_retry_me' })).toBe(false)
 
     // fix the fake and re-handle the SAME event id -- it must not be skipped
     wizarrMints('abc')
@@ -1087,7 +1084,7 @@ describe('handleEvent', () => {
     // A type missing from the table falls through untouched, and is marked so
     // Stripe stops redelivering it.
     await handle({ type: 'customer.created', id: 'evt_unknown', data: { object: {} } })
-    expect(isEventProcessed({ path, eventId: 'evt_unknown' })).toBe(true)
+    expect(bridge.store.isEventProcessed({ eventId: 'evt_unknown' })).toBe(true)
     expect(bridge.wizarr.listLibraries).not.toHaveBeenCalled()
   })
 
@@ -1096,7 +1093,7 @@ describe('handleEvent', () => {
     await expect(handle({ id: 'evt_malformed', data: { object: {} } })).rejects.toThrow(
       'the Stripe event carries no type',
     )
-    expect(isEventProcessed({ path, eventId: 'evt_malformed' })).toBe(false)
+    expect(bridge.store.isEventProcessed({ eventId: 'evt_malformed' })).toBe(false)
   })
 })
 
@@ -1115,13 +1112,12 @@ describe('customerEmail', () => {
 
 describe('resolveUserIds', () => {
   it('falls back from email to the invite', async () => {
-    upsertPending({ path, customerId: 'cus_1', email: 'a@x.com', inviteCode: 'abc' })
+    bridge.store.upsertPending({ customerId: 'cus_1', email: 'a@x.com', inviteCode: 'abc' })
     // email miss (Stripe email != Plex email) -> resolve via the stored invite code
     bridge.wizarr.findUserIdsByEmail.mockResolvedValue([])
     bridge.wizarr.findUserIdsByInvite.mockResolvedValue([7, 8])
     const ids = await resolveUserIds({
-      wizarr: bridge.wizarr,
-      dbPath: path,
+      bridge: asBridge(bridge),
       customerId: 'cus_1',
       email: 'a@x.com',
     })
@@ -1136,16 +1132,15 @@ describe('resolveUserIds', () => {
     // has no Wizarr record under its own email and holds an invite that was
     // never redeemed, so both existing lookups come back empty and the member's
     // access is never extended.
-    upsertPending({ path, customerId: 'cus_1', email: 'pays@x.com', inviteCode: 'abc' })
-    setMemberLink({ path, stripeEmail: 'pays@x.com', plexEmail: 'watches@x.com' })
+    bridge.store.upsertPending({ customerId: 'cus_1', email: 'pays@x.com', inviteCode: 'abc' })
+    bridge.store.setMemberLink({ stripeEmail: 'pays@x.com', plexEmail: 'watches@x.com' })
     bridge.wizarr.findUserIdsByEmail.mockImplementation(async (email) =>
       email === 'watches@x.com' ? [7, 8] : [],
     )
     bridge.wizarr.findUserIdsByInvite.mockResolvedValue([99])
 
     const ids = await resolveUserIds({
-      wizarr: bridge.wizarr,
-      dbPath: path,
+      bridge: asBridge(bridge),
       customerId: 'cus_1',
       email: 'pays@x.com',
     })
@@ -1155,12 +1150,11 @@ describe('resolveUserIds', () => {
   })
 
   it("still prefers the member's own email over a link", async () => {
-    upsertPending({ path, customerId: 'cus_1', email: 'pays@x.com', inviteCode: 'abc' })
-    setMemberLink({ path, stripeEmail: 'pays@x.com', plexEmail: 'watches@x.com' })
+    bridge.store.upsertPending({ customerId: 'cus_1', email: 'pays@x.com', inviteCode: 'abc' })
+    bridge.store.setMemberLink({ stripeEmail: 'pays@x.com', plexEmail: 'watches@x.com' })
     bridge.wizarr.findUserIdsByEmail.mockResolvedValue([1])
     const ids = await resolveUserIds({
-      wizarr: bridge.wizarr,
-      dbPath: path,
+      bridge: asBridge(bridge),
       customerId: 'cus_1',
       email: 'pays@x.com',
     })

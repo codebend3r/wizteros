@@ -1,7 +1,6 @@
 import { Logger } from '@nestjs/common'
 import { isoformat, parseIso } from '@wizteros/server-common'
 import { eachInOrder, mapInOrder } from '@/sequence.js'
-import { allCustomerRows, allMemberLinks, allMemberTags, recordEvent } from '@/store.js'
 import type { Bridge, CustomerRow, WizarrUser } from '@/types.js'
 import { accessDays, plusDays } from '@/webhook/handlers.js'
 
@@ -65,9 +64,9 @@ const unstampedRecords = async ({
  * already-stamped members cost no extra Wizarr calls.
  */
 export const reconcilePendingExpiries = async (bridge: Bridge): Promise<number> => {
-  const customers = allCustomerRows({ path: bridge.dbPath })
-  const tags = allMemberTags({ path: bridge.dbPath })
-  const links = allMemberLinks({ path: bridge.dbPath })
+  const customers = bridge.store.allCustomerRows()
+  const tags = bridge.store.allMemberTags()
+  const links = bridge.store.allMemberLinks()
   const pending = [...customers].filter(
     ([email, row]) => row.subscribed && !!row.invited_at && !EXEMPT_TAGS.has(tags.get(email) ?? ''),
   )
@@ -101,8 +100,7 @@ export const reconcilePendingExpiries = async (bridge: Bridge): Promise<number> 
         `reconcile: stamped expiry ${expires} on ${records.length} record(s) for ${email}` +
           (lapsed ? ' (signup window had lapsed)' : ''),
       )
-      recordEvent({
-        path: bridge.dbPath,
+      bridge.store.recordEvent({
         email,
         action: 'Expiry stamped',
         detail: lapsed

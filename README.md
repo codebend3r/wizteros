@@ -50,7 +50,7 @@ wizteros/
 
 Two things that are easy to get wrong:
 
-- Bridge modules import through the `@/` alias with a `.js` extension (`@/store.js`), never relative; `nest build` rewrites the alias in `dist`.
+- Bridge modules import through the `@/` alias with a `.js` extension (`@/store/openStore.js`), never relative; `nest build` rewrites the alias in `dist`.
 - Web imports use the `@/` alias, never parent-relative `../`. Same-directory `./` imports are fine.
 
 ## Tech stack

@@ -2,15 +2,6 @@ import { Logger } from '@nestjs/common'
 import { parseIso, withSqlite } from '@wizteros/server-common'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { reconcilePendingExpiries } from '@/reconcile.js'
-import {
-  allCustomerRows,
-  eventsForEmail,
-  initDb,
-  setMemberLink,
-  setMemberTag,
-  stampInvited,
-  upsertPending,
-} from '@/store.js'
 import { asBridge, type FakeBridge, fakeBridge } from '@/test/fakes.js'
 import { removeTempDirs, tempDbPath } from '@/test/support.js'
 
@@ -22,7 +13,7 @@ let path: string
 beforeEach(() => {
   path = tempDbPath()
   bridge = fakeBridge({ dbPath: path })
-  initDb({ path })
+  bridge.store.init()
   vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {})
 })
 
@@ -40,15 +31,14 @@ const byNumber = (a: number, b: number): number => a - b
 
 /** The member's signup anchor as stored, in epoch milliseconds. */
 const invitedAt = (email: string): number =>
-  parseIso(allCustomerRows({ path }).get(email)?.invited_at ?? '').getTime()
+  parseIso(bridge.store.allCustomerRows().get(email)?.invited_at ?? '').getTime()
 
 describe('reconcilePendingExpiries', () => {
   it('stamps new member records that joined without an expiry', async () => {
     // Wizarr never applies an invite's duration to the records it creates, so a
     // brand-new member redeems into expires=None. The sweep must stamp
     // invited_at + ACCESS_DURATION on exactly those records.
-    upsertPending({
-      path,
+    bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'new@x.com',
       inviteCode: 'abc',
@@ -63,14 +53,14 @@ describe('reconcilePendingExpiries', () => {
     expect(stampedIds().toSorted(byNumber)).toEqual([259, 260])
     const expected = invitedAt('new@x.com') + 35 * DAY_MS
     expect(stampedAt().every((at) => at === expected)).toBe(true)
-    const events = eventsForEmail({ path, email: 'new@x.com' })
+    const events = bridge.store.eventsForEmail({ email: 'new@x.com' })
     expect(events[0]?.action).toBe('Expiry stamped')
   })
 
   it('skips VIPs and records that carry an expiry', async () => {
-    upsertPending({ path, customerId: 'cus_1', email: 'vip@x.com', inviteCode: 'abc' })
-    setMemberTag({ path, email: 'vip@x.com', tag: 'vip' })
-    upsertPending({ path, customerId: 'cus_2', email: 'paid@x.com', inviteCode: 'def' })
+    bridge.store.upsertPending({ customerId: 'cus_1', email: 'vip@x.com', inviteCode: 'abc' })
+    bridge.store.setMemberTag({ email: 'vip@x.com', tag: 'vip' })
+    bridge.store.upsertPending({ customerId: 'cus_2', email: 'paid@x.com', inviteCode: 'def' })
     bridge.wizarr.listUsers.mockResolvedValue([
       { id: 1, email: 'vip@x.com', server: 'Vermithor', expires: null },
       { id: 2, email: 'paid@x.com', server: 'Vermithor', expires: '2099-01-01T00:00:00' },
@@ -80,7 +70,7 @@ describe('reconcilePendingExpiries', () => {
   })
 
   it('ignores unsubscribed members', async () => {
-    stampInvited({ path, email: 'invited@x.com' }) // invited, never paid
+    bridge.store.stampInvited({ email: 'invited@x.com' }) // invited, never paid
     bridge.wizarr.listUsers.mockResolvedValue([
       { id: 1, email: 'invited@x.com', server: 'Vermithor', expires: null },
     ])
@@ -97,7 +87,7 @@ describe('reconcilePendingExpiries', () => {
     // at all: their signup is older than the access window, so the computed date
     // is always past and the sweep passed over them forever. Re-anchor at the
     // sweep instead, which is the same window every payment grants.
-    upsertPending({ path, customerId: 'cus_1', email: 'old@x.com', inviteCode: 'abc' })
+    bridge.store.upsertPending({ customerId: 'cus_1', email: 'old@x.com', inviteCode: 'abc' })
     withSqlite({
       path,
       work: (database) =>
@@ -114,7 +104,7 @@ describe('reconcilePendingExpiries', () => {
     // the sweep must never stamp a date that is already past
     expect(stamped).toBeGreaterThan(before)
     expect(stamped).toBeLessThanOrEqual(Date.now() + 35 * DAY_MS)
-    const events = eventsForEmail({ path, email: 'old@x.com' })
+    const events = bridge.store.eventsForEmail({ email: 'old@x.com' })
     expect(events[0]?.action).toBe('Expiry stamped')
     expect(events[0]?.detail).toContain('signup window had already lapsed')
   })
@@ -125,14 +115,13 @@ describe('reconcilePendingExpiries', () => {
     // Neither existing path reaches them: nothing matches the Stripe email, and
     // the invite their checkout issued was never redeemed, so the invite
     // fallback finds nothing either. Without the link they keep unbounded access.
-    upsertPending({
-      path,
+    bridge.store.upsertPending({
       customerId: 'cus_live',
       email: 'pays@x.com',
       inviteCode: 'INVNEW',
       tier: 'bronze',
     })
-    setMemberLink({ path, stripeEmail: 'pays@x.com', plexEmail: 'watches@x.com' })
+    bridge.store.setMemberLink({ stripeEmail: 'pays@x.com', plexEmail: 'watches@x.com' })
     bridge.wizarr.listUsers.mockResolvedValue([
       { id: 287, email: 'watches@x.com', server: 'Vermithor', expires: null },
       { id: 288, email: 'watches@x.com', server: 'Meleys', expires: null },
@@ -148,8 +137,12 @@ describe('reconcilePendingExpiries', () => {
 
   it("leaves a linked member's stamped records alone", async () => {
     // Resolving through the link must not re-stamp what already has an expiry.
-    upsertPending({ path, customerId: 'cus_live', email: 'pays@x.com', inviteCode: 'INVNEW' })
-    setMemberLink({ path, stripeEmail: 'pays@x.com', plexEmail: 'watches@x.com' })
+    bridge.store.upsertPending({
+      customerId: 'cus_live',
+      email: 'pays@x.com',
+      inviteCode: 'INVNEW',
+    })
+    bridge.store.setMemberLink({ stripeEmail: 'pays@x.com', plexEmail: 'watches@x.com' })
     bridge.wizarr.listUsers.mockResolvedValue([
       { id: 287, email: 'watches@x.com', server: 'Vermithor', expires: '2099-01-01T00:00:00' },
     ])
@@ -162,8 +155,7 @@ describe('reconcilePendingExpiries', () => {
     // (relay addresses, Google/Apple sign-up), so the email join finds nothing
     // and their records would otherwise never get an expiry. The sweep must
     // then locate the records through the invite the member redeemed.
-    upsertPending({
-      path,
+    bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'stripe@x.com',
       inviteCode: 'abc',
@@ -177,14 +169,14 @@ describe('reconcilePendingExpiries', () => {
     expect(await reconcile()).toBe(1)
     expect(bridge.wizarr.findUserIdsByInvite).toHaveBeenCalledExactlyOnceWith('abc')
     expect(stampedIds()).toEqual([300])
-    const events = eventsForEmail({ path, email: 'stripe@x.com' })
+    const events = bridge.store.eventsForEmail({ email: 'stripe@x.com' })
     expect(events[0]?.action).toBe('Expiry stamped')
   })
 
   it('skips the invite lookup when the email matches stamped records', async () => {
     // An email-resolvable member whose records already carry an expiry needs no
     // fallback; the invite lookup costs live Wizarr calls per member per sweep.
-    upsertPending({ path, customerId: 'cus_1', email: 'paid@x.com', inviteCode: 'abc' })
+    bridge.store.upsertPending({ customerId: 'cus_1', email: 'paid@x.com', inviteCode: 'abc' })
     bridge.wizarr.listUsers.mockResolvedValue([
       { id: 2, email: 'paid@x.com', server: 'Meleys', expires: '2099-01-01T00:00:00' },
     ])
@@ -196,7 +188,7 @@ describe('reconcilePendingExpiries', () => {
   it('stamps nothing through the invite fallback on an unredeemed invite', async () => {
     // Paid but not yet redeemed: no records exist anywhere, and the invite has
     // no used_by yet, so the sweep must leave everything alone until next time.
-    upsertPending({ path, customerId: 'cus_1', email: 'pending@x.com', inviteCode: 'abc' })
+    bridge.store.upsertPending({ customerId: 'cus_1', email: 'pending@x.com', inviteCode: 'abc' })
     bridge.wizarr.listUsers.mockResolvedValue([])
     bridge.wizarr.findUserIdsByInvite.mockResolvedValue([])
     expect(await reconcile()).toBe(0)
@@ -204,14 +196,13 @@ describe('reconcilePendingExpiries', () => {
   })
 
   it('skips banned members', async () => {
-    upsertPending({
-      path,
+    bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'banned@x.com',
       inviteCode: 'abc',
       tier: 'gold',
     })
-    setMemberTag({ path, email: 'banned@x.com', tag: 'banned' })
+    bridge.store.setMemberTag({ email: 'banned@x.com', tag: 'banned' })
     bridge.wizarr.listUsers.mockResolvedValue([
       { id: 1, email: 'banned@x.com', server: 'Meleys', expires: null },
     ])

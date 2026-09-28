@@ -269,7 +269,10 @@ The branch first broke Netlify's deploy preview at "Install dependencies": Bun r
   without it.
 - **Every module takes a `Bridge`.** The Python suites rebound module attributes
   (`bridge.client = MagicMock()`); ESM modules cannot be patched that way, so the
-  store path and the four service ports are handed in, and the tests hand in fakes.
+  store and the four service ports are handed in, and the tests hand in fakes. The
+  store is a port like the others (`store/`, one module per group of tables), so no
+  module threads a database path, and `store.transaction` lands a checkout's
+  customer-map writes together.
 - **Python is imitated only where its bytes reach another system:** timestamps
   stored in SQLite, the JSON the portal reads, and the `duration` Wizarr is sent.
   Log lines, exception text and alert wording are the port's own. The admin bodies

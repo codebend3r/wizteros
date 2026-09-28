@@ -2,13 +2,7 @@ import { Logger } from '@nestjs/common'
 import { dunningSweep, type DunningFinding, tierScopes, vipsWithoutAccess } from '@/alerts.js'
 import { accessLine, stripeStatusByCustomer } from '@/members.js'
 import { mapInOrder } from '@/sequence.js'
-import {
-  allCustomerRows,
-  allMemberTags,
-  PAYMENT_STATE_BY_STATUS,
-  recordEvent,
-  setPaymentState,
-} from '@/store.js'
+import { PAYMENT_STATE_BY_STATUS } from '@/subscriptionStatus.js'
 import { libraryCacheProblems, tierScopeProblems } from '@/tiers.js'
 import type { Alert, Bridge, Mailer, WizarrUser } from '@/types.js'
 import { stackOf } from '@/errors.js'
@@ -101,9 +95,8 @@ export const checkPaymentStates = async (bridge: Bridge): Promise<string[]> => {
     return null
   })
   if (byCustomer === null) return []
-  const dbPath = bridge.dbPath
   const outcomes = await mapInOrder({
-    items: [...allCustomerRows({ path: dbPath }).entries()],
+    items: [...bridge.store.allCustomerRows().entries()],
     run: async ([email, row]): Promise<DunningFinding | null> => {
       const status = row.customer_id === null ? undefined : byCustomer.get(row.customer_id)
       if (!row.subscribed || status === undefined || !PAYMENT_STATE_BY_STATUS.has(status)) {
@@ -111,28 +104,21 @@ export const checkPaymentStates = async (bridge: Bridge): Promise<string[]> => {
       }
       const state = PAYMENT_STATE_BY_STATUS.get(status) ?? null
       if (state === row.payment_state) return null
-      setPaymentState({ path: dbPath, email, state })
+      bridge.store.setPaymentState({ email, state })
       if (state) {
         log.warn(`payment state check: ${email} is ${status} in Stripe; no webhook said so`)
-        recordEvent({
-          path: dbPath,
+        bridge.store.recordEvent({
           email,
           action: 'Payment failed',
           detail:
             `Stripe reports the subscription ${status}; found by the sweep, ` +
             `no webhook was received`,
         })
-        const line = await accessLine({
-          wizarr: bridge.wizarr,
-          dbPath,
-          customerId: row.customer_id,
-          email,
-        })
+        const line = await accessLine({ bridge, customerId: row.customer_id, email })
         return { email, status, line }
       }
       log.log(`payment state check: ${email} is paying again`)
-      recordEvent({
-        path: dbPath,
+      bridge.store.recordEvent({
         email,
         action: 'Payment recovered',
         detail: 'Stripe reports the subscription active again',
@@ -158,7 +144,7 @@ export const checkPaymentStates = async (bridge: Bridge): Promise<string[]> => {
  * loop, and an unreachable Wizarr is not a lockout.
  */
 export const checkVipAccess = async (bridge: Bridge): Promise<string[]> => {
-  const tags = allMemberTags({ path: bridge.dbPath })
+  const tags = bridge.store.allMemberTags()
   const vips = [...tags.entries()]
     .filter(([, tag]) => tag === 'vip')
     .map(([email]) => email)

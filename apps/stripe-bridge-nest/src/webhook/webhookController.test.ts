@@ -2,7 +2,6 @@ import { Logger } from '@nestjs/common'
 import type { NestFastifyApplication } from '@nestjs/platform-fastify'
 import { Stripe } from 'stripe'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { initDb, isEventProcessed } from '@/store.js'
 import { asBridge, type FakeBridge, fakeBridge } from '@/test/fakes.js'
 import { serve } from '@/test/serve.js'
 import { removeTempDirs, tempDbPath } from '@/test/support.js'
@@ -30,7 +29,7 @@ beforeEach(async () => {
   vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {})
   vi.spyOn(Logger.prototype, 'error').mockImplementation(() => {})
   bridge = fakeBridge({ dbPath: tempDbPath() })
-  initDb({ path: bridge.dbPath })
+  bridge.store.init()
   app = await serve({ imports: [WebhookModule], bridge: asBridge(bridge) })
 })
 
@@ -91,7 +90,7 @@ describe('POST /webhook', () => {
     expect(response.statusCode).toBe(400)
     expect(response.json()).toEqual({ detail: 'invalid signature' })
     expect(bridge.wizarr.createInvite).not.toHaveBeenCalled()
-    expect(isEventProcessed({ path: bridge.dbPath, eventId: 'evt_bad_sig' })).toBe(false)
+    expect(bridge.store.isEventProcessed({ eventId: 'evt_bad_sig' })).toBe(false)
   })
 
   it('is served on both Funnel paths', async () => {
@@ -106,8 +105,8 @@ describe('POST /webhook', () => {
       payload: JSON.stringify({ id: 'evt_prefixed', type: 'ping', data: { object: {} } }),
     })
     expect([bare.statusCode, prefixed.statusCode]).toEqual([200, 200])
-    expect(isEventProcessed({ path: bridge.dbPath, eventId: 'evt_bare' })).toBe(true)
-    expect(isEventProcessed({ path: bridge.dbPath, eventId: 'evt_prefixed' })).toBe(true)
+    expect(bridge.store.isEventProcessed({ eventId: 'evt_bare' })).toBe(true)
+    expect(bridge.store.isEventProcessed({ eventId: 'evt_prefixed' })).toBe(true)
   })
 
   it('checks the signature against the raw bytes, not a re-serialized body', async () => {
@@ -145,7 +144,7 @@ describe('POST /webhook', () => {
       payload: JSON.stringify({ id: 'evt_next', type: 'ping', data: { object: {} } }),
     })
     expect(failed.statusCode).toBe(500)
-    expect(isEventProcessed({ path: bridge.dbPath, eventId: 'evt_fails' })).toBe(false)
+    expect(bridge.store.isEventProcessed({ eventId: 'evt_fails' })).toBe(false)
     expect(next.statusCode).toBe(200)
   })
 })

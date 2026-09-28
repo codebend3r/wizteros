@@ -1,7 +1,6 @@
 import { isoformat } from '@wizteros/server-common'
 import { afterEach, describe, expect, it } from 'vitest'
 import { auditBaselineInvites, BASELINE_TIERS, rotateBaselineInvites } from '@/baseline.js'
-import { allBaselineInvites, initDb } from '@/store.js'
 import { asBridge, type FakeBridge, fakeBridge } from '@/test/fakes.js'
 import { removeTempDirs, tempDbPath } from '@/test/support.js'
 import { resolveTierAccess, TIER_DOWNLOADS } from '@/tiers.js'
@@ -44,7 +43,7 @@ type WizarrState = {
   nextId: number
 }
 
-type Setup = Readonly<{ db: string; fake: FakeBridge; bridge: Bridge; client: WizarrState }>
+type Setup = Readonly<{ fake: FakeBridge; bridge: Bridge; client: WizarrState }>
 
 /**
  * A fresh store and a Wizarr stand-in that records invites in memory.
@@ -58,9 +57,8 @@ const setup = ({
   libraries?: readonly WizarrLibrary[]
   invitations?: readonly WizarrInvitation[]
 } = {}): Setup => {
-  const db = tempDbPath()
-  initDb({ path: db })
-  const fake = fakeBridge({ dbPath: db })
+  const fake = fakeBridge({ dbPath: tempDbPath() })
+  fake.store.init()
   const client: WizarrState = { libraries, invitations, created: [], deleted: [], nextId: 100 }
   fake.wizarr.listLibraries.mockImplementation(async () => [...client.libraries])
   fake.wizarr.listInvitations.mockImplementation(async () => [...client.invitations])
@@ -96,7 +94,7 @@ const setup = ({
     client.deleted = [...client.deleted, invitationId]
     client.invitations = client.invitations.filter((inv) => inv.id !== invitationId)
   })
-  return { db, fake, bridge: asBridge(fake), client }
+  return { fake, bridge: asBridge(fake), client }
 }
 
 /** The invitation list with the first entry's fields replaced. */
@@ -122,13 +120,13 @@ describe('baseline invites', () => {
   })
 
   it('minted invites are unlimited and carry an expiry', async () => {
-    const { bridge, client, db } = setup()
+    const { bridge, client } = setup()
     await rotateBaselineInvites({ bridge, now: NOW })
     expect(client.created.every((c) => c.unlimited)).toBe(true)
     expect(
       client.created.every((c) => c.expiresInDays === bridge.settings.baselineExpiresDays),
     ).toBe(true)
-    expect(allBaselineInvites({ path: db }).every((row) => !!row.expires_at)).toBe(true)
+    expect(bridge.store.allBaselineInvites().every((row) => !!row.expires_at)).toBe(true)
   })
 
   it('minted scope matches the tier rules', async () => {
@@ -170,13 +168,13 @@ describe('baseline invites', () => {
   })
 
   it('reaps the previous generation once it expires', async () => {
-    const { bridge, client, db } = setup()
+    const { bridge, client } = setup()
     await rotateBaselineInvites({ bridge, now: NOW })
     const first = new Set(client.invitations.map((inv) => inv.id))
     const later = at(bridge.settings.baselineExpiresDays * DAY_MS + HOUR_MS)
     await rotateBaselineInvites({ bridge, now: later })
     expect(new Set(client.deleted)).toEqual(first)
-    expect(allBaselineInvites({ path: db })).toHaveLength(BASELINE_TIERS.length)
+    expect(bridge.store.allBaselineInvites()).toHaveLength(BASELINE_TIERS.length)
   })
 
   it('broken tier is skipped and keeps its existing invite', async () => {

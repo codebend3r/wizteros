@@ -11,19 +11,6 @@ import { MEMBERS_SNAPSHOT, type MembersSnapshot } from '@/admin/membersSnapshot.
 import { PlexUnavailable } from '@/clients/plex.js'
 import { wizarrClient } from '@/clients/wizarr.js'
 import { mapInOrder } from '@/sequence.js'
-import {
-  allCustomerTiers,
-  allMemberLinks,
-  eventsForEmail,
-  getMemberTag,
-  initDb,
-  recordEvent,
-  setMemberDownloads,
-  setMemberLink,
-  setMemberTag,
-  upsertPending,
-  upsertPendingByEmail,
-} from '@/store.js'
 import { asBridge, type FakeBridge, fakeBridge, subscription, TEST_SETTINGS } from '@/test/fakes.js'
 import { serve } from '@/test/serve.js'
 import { removeTempDirs, tempDbPath } from '@/test/support.js'
@@ -303,7 +290,6 @@ const FIXTURE_LIBRARIES: WizarrLibrary[] = [
 type Harness = Readonly<{
   app: NestFastifyApplication
   bridge: FakeBridge
-  dbp: string
   snapshot: MembersSnapshot
 }>
 
@@ -323,13 +309,12 @@ const harness = async ({
   settings?: Settings
   adapt?: (bridge: FakeBridge) => Bridge
 } = {}): Promise<Harness> => {
-  const dbp = tempDbPath()
-  initDb({ path: dbp })
-  const bridge = fakeBridge({ dbPath: dbp, settings })
+  const bridge = fakeBridge({ dbPath: tempDbPath(), settings })
+  bridge.store.init()
   bridge.wizarr.listUsers.mockResolvedValue(USERS)
   bridge.wizarr.listLibraries.mockResolvedValue(LIBRARIES)
   const app = await serve({ imports: [AdminModule], bridge: adapt(bridge) })
-  const made = { app, bridge, dbp, snapshot: app.get<MembersSnapshot>(MEMBERS_SNAPSHOT) }
+  const made = { app, bridge, snapshot: app.get<MembersSnapshot>(MEMBERS_SNAPSHOT) }
   running.push(made)
   return made
 }
@@ -376,6 +361,10 @@ const getEvents = async ({ h, email }: { h: Harness; email?: string }): Promise<
     }),
     is: isMemberEventArray,
   })
+
+/** Lowercased email -> recorded tier, as the members list reads it. */
+const tiersOf = (h: Harness): ReadonlyMap<string, string | null> =>
+  new Map([...h.bridge.store.allCustomerRows()].map(([email, row]) => [email, row.tier]))
 
 /** The members keyed by lowercased email. */
 const byEmail = (members: readonly MemberPayload[]): ReadonlyMap<string, MemberPayload> =>
@@ -452,13 +441,13 @@ describe('require_admin', () => {
   let app: NestFastifyApplication
 
   beforeEach(async () => {
-    const dbp = tempDbPath()
-    initDb({ path: dbp })
+    const bridge = fakeBridge({ dbPath: tempDbPath() })
+    bridge.store.init()
     vi.stubEnv('SUPABASE_URL', SUPABASE_URL)
     vi.stubEnv('ADMIN_ALLOWED_EMAILS', 'cj.rivas.dev@gmail.com')
     app = await serve({
       imports: [AdminModule],
-      bridge: asBridge(fakeBridge({ dbPath: dbp })),
+      bridge: asBridge(bridge),
       keySet: publicKeySet,
     })
   })
@@ -500,8 +489,7 @@ describe('require_admin', () => {
 describe('GET /admin/members', () => {
   it('dedupes and joins the tier', async () => {
     const h = await harness()
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'a@x.com',
       inviteCode: 'abc',
@@ -529,8 +517,7 @@ describe('GET /admin/members', () => {
 
   it('unions the live plex share', async () => {
     const h = await harness()
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'a@x.com',
       inviteCode: 'abc',
@@ -555,8 +542,7 @@ describe('GET /admin/members', () => {
 
   it('gives plex-only servers to a member who never joined', async () => {
     const h = await harness()
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_max',
       email: 'max@x.com',
       inviteCode: 'INV1',
@@ -575,8 +561,7 @@ describe('GET /admin/members', () => {
 
   it('falls back to tier access without a plex token', async () => {
     const h = await harness()
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'a@x.com',
       inviteCode: 'abc',
@@ -591,8 +576,7 @@ describe('GET /admin/members', () => {
   it('survives a plex.tv failure', async () => {
     // plex.tv is an enrichment, never a dependency: the table must still load.
     const h = await harness()
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'a@x.com',
       inviteCode: 'abc',
@@ -610,7 +594,7 @@ describe('GET /admin/members', () => {
     // invite (no confirmed payment). subscribed must be false despite the expiry
     // — this is what lets a member read "Invited" while a 14-day clock counts down.
     const h = await harness()
-    upsertPendingByEmail({ path: h.dbp, email: 'a@x.com', inviteCode: 'INV1', tier: 'gold' })
+    h.bridge.store.upsertPendingByEmail({ email: 'a@x.com', inviteCode: 'INV1', tier: 'gold' })
     const cj = memberOf({ members: await listMembers(h), email: 'a@x.com' })
     expect(cj.expires).toBe('2026-09-10T00:00:00+00:00') // future expiry present
     expect(cj.subscribed).toBe(false) // but no payment on record
@@ -620,8 +604,7 @@ describe('GET /admin/members', () => {
   it('includes subscribers not yet joined', async () => {
     const h = await harness()
     // a Stripe subscriber the bridge knows who never redeemed a Wizarr invite
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_max',
       email: 'max@x.com',
       inviteCode: 'INV1',
@@ -645,15 +628,13 @@ describe('GET /admin/members', () => {
 
   it("gives a pending subscriber their tier's libraries as entitlement", async () => {
     const h = await harness()
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_g',
       email: 'gold@x.com',
       inviteCode: 'INV1',
       tier: 'gold',
     })
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_y',
       email: 'youth@x.com',
       inviteCode: 'INV2',
@@ -671,8 +652,7 @@ describe('GET /admin/members', () => {
   it('shows nothing for a pending subscriber with an unknown tier', async () => {
     // No tier recorded means no basis to claim any access.
     const h = await harness()
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_n',
       email: 'notier@x.com',
       inviteCode: 'INV1',
@@ -686,8 +666,7 @@ describe('GET /admin/members', () => {
 
   it('never shows a pending subscriber a private library', async () => {
     const h = await harness()
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_g',
       email: 'gold@x.com',
       inviteCode: 'INV1',
@@ -701,7 +680,7 @@ describe('GET /admin/members', () => {
   it('never pays for a stripe lookup', async () => {
     // The list is one row per member; a per-row Stripe search would crawl.
     const h = await harness()
-    upsertPendingByEmail({ path: h.dbp, email: 'max@x.com', inviteCode: 'INV1', tier: 'youth' })
+    h.bridge.store.upsertPendingByEmail({ email: 'max@x.com', inviteCode: 'INV1', tier: 'youth' })
     await listMembers(h)
     expect(h.bridge.stripe.searchCustomerId).not.toHaveBeenCalled()
   })
@@ -720,7 +699,7 @@ describe('GET /admin/members', () => {
   it('keeps overrides live on a cached snapshot', async () => {
     const h = await harness()
     await listMembers(h)
-    setMemberTag({ path: h.dbp, email: 'a@x.com', tag: 'vip' })
+    h.bridge.store.setMemberTag({ email: 'a@x.com', tag: 'vip' })
     // DB join fresh despite cached upstream
     expect(memberOf({ members: await listMembers(h), email: 'a@x.com' }).tag).toBe('vip')
   })
@@ -730,8 +709,7 @@ describe('GET /admin/members', () => {
     // it cannot answer "what does this tier grant". `entitled` is the tier rules
     // alone — the baseline the member page compares the live plex.tv share to.
     const h = await harness()
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'a@x.com',
       inviteCode: 'abc',
@@ -746,8 +724,7 @@ describe('GET /admin/members', () => {
 
   it('makes entitlement follow the tier, not the records', async () => {
     const h = await harness()
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'a@x.com',
       inviteCode: 'abc',
@@ -768,8 +745,7 @@ describe('GET /admin/members', () => {
     // withPlexAccess rewrites `libraries` with what plex.tv reports; the
     // entitlement baseline must NOT be overwritten or the comparison collapses.
     const h = await harness()
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'a@x.com',
       inviteCode: 'abc',
@@ -786,8 +762,7 @@ describe('GET /admin/members', () => {
     // The two must not be conflated: entitled is what the tier grants on
     // redeeming, libraries is what they can watch right now.
     const h = await harness()
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_g',
       email: 'gold@x.com',
       inviteCode: 'INV1',
@@ -835,8 +810,7 @@ describe('the stripe address and the plex address', () => {
     // holding no access and one Plex row that never paid. The invite is what ties
     // them together, because whoever redeemed it is the person who paid for it.
     const h = await harness()
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'stripe-only@x.com',
       inviteCode: 'INV1',
@@ -862,8 +836,7 @@ describe('the stripe address and the plex address', () => {
   it('carries no separate stripe email for matching addresses', async () => {
     // The common case must not render the same string twice.
     const h = await harness()
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'a@x.com',
       inviteCode: 'INV1',
@@ -879,8 +852,7 @@ describe('the stripe address and the plex address', () => {
   it('links nothing through an unredeemed invite', async () => {
     // Until someone redeems it, the bridge has no basis to merge two rows.
     const h = await harness()
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'stripe-only@x.com',
       inviteCode: 'INV1',
@@ -902,15 +874,14 @@ describe('the stripe address and the plex address', () => {
     // and `used_by` can never tie the two together. The admin's link is the only
     // thing that can, and it has to produce exactly what the invite join would.
     const h = await harness()
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_new',
       email: 'stripe-only@x.com',
       inviteCode: 'INV1',
       tier: 'gold',
     })
     h.bridge.wizarr.listInvitations.mockResolvedValue([{ id: 1, code: 'INV1', used_by: null }])
-    setMemberLink({ path: h.dbp, stripeEmail: 'stripe-only@x.com', plexEmail: 'nora@x.com' })
+    h.bridge.store.setMemberLink({ stripeEmail: 'stripe-only@x.com', plexEmail: 'nora@x.com' })
     h.snapshot.clear()
 
     const members = await listMembers(h)
@@ -930,22 +901,20 @@ describe('the stripe address and the plex address', () => {
     // the row that merely matches on email would show the abandoned subscription
     // and its tier while the money arrives somewhere else.
     const h = await harness()
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_dead',
       email: 'nora@x.com',
       inviteCode: 'INVOLD',
       tier: 'bronze',
     })
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_live',
       email: 'stripe-only@x.com',
       inviteCode: 'INV1',
       tier: 'gold',
     })
     h.bridge.wizarr.listInvitations.mockResolvedValue([{ id: 1, code: 'INV1', used_by: null }])
-    setMemberLink({ path: h.dbp, stripeEmail: 'stripe-only@x.com', plexEmail: 'nora@x.com' })
+    h.bridge.store.setMemberLink({ stripeEmail: 'stripe-only@x.com', plexEmail: 'nora@x.com' })
     h.snapshot.clear()
 
     const members = await listMembers(h)
@@ -958,16 +927,15 @@ describe('the stripe address and the plex address', () => {
 
   it('puts an unlinked address back on its own', async () => {
     const h = await harness()
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_new',
       email: 'stripe-only@x.com',
       inviteCode: 'INV1',
       tier: 'gold',
     })
     h.bridge.wizarr.listInvitations.mockResolvedValue([{ id: 1, code: 'INV1', used_by: null }])
-    setMemberLink({ path: h.dbp, stripeEmail: 'stripe-only@x.com', plexEmail: 'nora@x.com' })
-    setMemberLink({ path: h.dbp, stripeEmail: 'stripe-only@x.com', plexEmail: null })
+    h.bridge.store.setMemberLink({ stripeEmail: 'stripe-only@x.com', plexEmail: 'nora@x.com' })
+    h.bridge.store.setMemberLink({ stripeEmail: 'stripe-only@x.com', plexEmail: null })
     h.snapshot.clear()
 
     const members = await listMembers(h)
@@ -978,8 +946,7 @@ describe('the stripe address and the plex address', () => {
   it('resolves a plain username in used_by too', async () => {
     // Wizarr returns a repr today; a real username must keep working.
     const h = await harness()
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'stripe-only@x.com',
       inviteCode: 'INV1',
@@ -994,8 +961,7 @@ describe('the stripe address and the plex address', () => {
 
   it('shows the stripe address on the member page', async () => {
     const h = await harness()
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'stripe-only@x.com',
       inviteCode: 'INV1',
@@ -1011,8 +977,7 @@ describe('the stripe address and the plex address', () => {
 
   it('keeps the member page up when wizarr refuses the invitation list', async () => {
     const h = await harness()
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'stripe-only@x.com',
       inviteCode: 'INV1',
@@ -1037,7 +1002,7 @@ describe('POST /admin/link-address', () => {
 
   it('refuses a chain', async () => {
     const h = await harness()
-    setMemberLink({ path: h.dbp, stripeEmail: 'b@x.com', plexEmail: 'c@x.com' })
+    h.bridge.store.setMemberLink({ stripeEmail: 'b@x.com', plexEmail: 'c@x.com' })
     const answer = await linkAddress({
       h,
       body: { stripe_email: 'a@x.com', plex_email: 'b@x.com' },
@@ -1056,11 +1021,11 @@ describe('POST /admin/link-address', () => {
       stripe_email: 'pays@x.com',
       plex_email: 'watches@x.com',
     })
-    expect(allMemberLinks({ path: h.dbp })).toEqual(new Map([['pays@x.com', 'watches@x.com']]))
-    expect(eventsForEmail({ path: h.dbp, email: 'watches@x.com' }).map((e) => e.action)).toEqual([
+    expect(h.bridge.store.allMemberLinks()).toEqual(new Map([['pays@x.com', 'watches@x.com']]))
+    expect(h.bridge.store.eventsForEmail({ email: 'watches@x.com' }).map((e) => e.action)).toEqual([
       'Address linked',
     ])
-    expect(eventsForEmail({ path: h.dbp, email: 'pays@x.com' }).map((e) => e.action)).toEqual([
+    expect(h.bridge.store.eventsForEmail({ email: 'pays@x.com' }).map((e) => e.action)).toEqual([
       'Address linked',
     ])
   })
@@ -1071,8 +1036,7 @@ describe('POST /admin/link-address', () => {
 describe('GET /admin/member', () => {
   it('finds a member, and 404s a missing one', async () => {
     const h = await harness()
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'a@x.com',
       inviteCode: 'abc',
@@ -1088,8 +1052,7 @@ describe('GET /admin/member', () => {
 
   it("shows a pending subscriber their tier's libraries", async () => {
     const h = await harness()
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_g',
       email: 'gold@x.com',
       inviteCode: 'INV1',
@@ -1105,8 +1068,7 @@ describe('GET /admin/member', () => {
 
   it('falls back to the subscriber', async () => {
     const h = await harness()
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_max',
       email: 'max@x.com',
       inviteCode: 'INV1',
@@ -1123,14 +1085,13 @@ describe('GET /admin/member', () => {
   it('carries the stripe customer id on both member payloads', async () => {
     // Real cus_ ids surface on both endpoints; admin placeholders never leak.
     const h = await harness()
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'a@x.com',
       inviteCode: 'abc',
       tier: 'gold',
     })
-    upsertPendingByEmail({ path: h.dbp, email: 'max@x.com', inviteCode: 'INV1', tier: 'youth' })
+    h.bridge.store.upsertPendingByEmail({ email: 'max@x.com', inviteCode: 'INV1', tier: 'youth' })
 
     const members = await listMembers(h)
     expect(memberOf({ members, email: 'a@x.com' }).customer_id).toBe('cus_1')
@@ -1149,7 +1110,7 @@ describe('GET /admin/member', () => {
     // from that placeholder that they have no Stripe record is how a paying
     // member's billing history became unreachable from their own page.
     const h = await harness()
-    upsertPendingByEmail({ path: h.dbp, email: 'max@x.com', inviteCode: 'INV1', tier: 'youth' })
+    h.bridge.store.upsertPendingByEmail({ email: 'max@x.com', inviteCode: 'INV1', tier: 'youth' })
     h.bridge.stripe.searchCustomerId.mockResolvedValue('cus_real')
     expect((await getMember({ h, email: 'max@x.com' })).customer_id).toBe('cus_real')
     expect(h.bridge.stripe.searchCustomerId).toHaveBeenCalledTimes(1)
@@ -1158,15 +1119,14 @@ describe('GET /admin/member', () => {
 
   it('survives a stripe lookup failure', async () => {
     const h = await harness()
-    upsertPendingByEmail({ path: h.dbp, email: 'max@x.com', inviteCode: 'INV1', tier: 'youth' })
+    h.bridge.store.upsertPendingByEmail({ email: 'max@x.com', inviteCode: 'INV1', tier: 'youth' })
     h.bridge.stripe.searchCustomerId.mockRejectedValue(new Error('stripe is down'))
     expect((await getMember({ h, email: 'max@x.com' })).customer_id).toBeNull() // page still renders
   })
 
   it('carries the entitlement too', async () => {
     const h = await harness()
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'a@x.com',
       inviteCode: 'abc',
@@ -1254,14 +1214,12 @@ describe('history and notes', () => {
 
   it('lists every member without an email', async () => {
     const h = await harness()
-    recordEvent({
-      path: h.dbp,
+    h.bridge.store.recordEvent({
       email: 'a@x.com',
       action: 'Signed up',
       detail: 'gold tier — invite emailed',
     })
-    recordEvent({
-      path: h.dbp,
+    h.bridge.store.recordEvent({
       email: 'b@x.com',
       action: 'Signed up',
       detail: 'bronze tier — invite emailed',
@@ -1413,8 +1371,7 @@ describe('POST /admin/reset-tier', () => {
 
   it('hard-sets the record and logs', async () => {
     const h = await harness()
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'a@x.com',
       inviteCode: 'abc',
@@ -1422,7 +1379,7 @@ describe('POST /admin/reset-tier', () => {
     })
     const out = await resetTier({ h, body: { email: 'A@X.com', tier: 'bronze' } })
     expect(out).toEqual({ email: 'A@X.com', tier: 'bronze' })
-    expect(allCustomerTiers({ path: h.dbp })).toEqual(new Map([['a@x.com', 'bronze']]))
+    expect(tiersOf(h)).toEqual(new Map([['a@x.com', 'bronze']]))
     const events = await getEvents({ h, email: 'a@x.com' })
     expect(events[0]?.action).toBe('Tier reset')
     expect(events[0]?.detail).toBe('hard reset to bronze')
@@ -1433,8 +1390,7 @@ describe('POST /admin/reset-tier', () => {
 
   it.each(['bronze', 'silver', 'gold', 'youth'])('hard-sets each tier: %s', async (tier) => {
     const h = await harness()
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'a@x.com',
       inviteCode: 'abc',
@@ -1442,7 +1398,7 @@ describe('POST /admin/reset-tier', () => {
     })
     const out = await resetTier({ h, body: { email: 'a@x.com', tier } })
     expect(out).toEqual({ email: 'a@x.com', tier })
-    expect(allCustomerTiers({ path: h.dbp })).toEqual(new Map([['a@x.com', tier]]))
+    expect(tiersOf(h)).toEqual(new Map([['a@x.com', tier]]))
     expect((await getEvents({ h, email: 'a@x.com' }))[0]?.detail).toBe(`hard reset to ${tier}`)
   })
 
@@ -1455,7 +1411,7 @@ describe('POST /admin/reset-tier', () => {
     })
     expect(answer.statusCode).toBe(400)
     expect(answer.json()).toEqual({ detail: 'unknown tier "platinum"' })
-    expect(allCustomerTiers({ path: h.dbp })).toEqual(new Map())
+    expect(tiersOf(h)).toEqual(new Map())
   })
 })
 
@@ -1575,7 +1531,7 @@ describe('POST /admin/reissue-invite', () => {
     h.bridge.wizarr.listLibraries.mockResolvedValue(FIXTURE_LIBRARIES)
     h.bridge.wizarr.findUsersByEmail.mockResolvedValue([{ id: 9, server: 'Vermithor' }])
     h.bridge.wizarr.createInvite.mockResolvedValue({ code: 'xyz', url: 'http://wizarr-lan/j/xyz' })
-    setMemberDownloads({ path: h.dbp, email: 'a@x.com', allow: true })
+    h.bridge.store.setMemberDownloads({ email: 'a@x.com', allow: true })
 
     await reissue({ h, body: { email: 'a@x.com', tier: 'silver' } })
 
@@ -1597,7 +1553,7 @@ describe('POST /admin/reissue-invite', () => {
 
   it('refuses a banned member', async () => {
     const h = await harness()
-    setMemberTag({ path: h.dbp, email: 'a@x.com', tag: 'banned' })
+    h.bridge.store.setMemberTag({ email: 'a@x.com', tag: 'banned' })
     const answer = await post({
       h,
       url: '/admin/reissue-invite',
@@ -1652,8 +1608,7 @@ describe('the two mounts', () => {
     'answers every route under %s, POSTs with a 200',
     async (prefix) => {
       const h = await harness()
-      upsertPending({
-        path: h.dbp,
+      h.bridge.store.upsertPending({
         customerId: 'cus_1',
         email: 'a@x.com',
         inviteCode: 'abc',
@@ -1684,8 +1639,7 @@ describe('the two mounts', () => {
 describe('POST /admin/cancel-subscription', () => {
   it('flags the subscriptions of the stored customer', async () => {
     const h = await harness()
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_9',
       email: 'a@x.com',
       inviteCode: 'abc',
@@ -1705,7 +1659,7 @@ describe('POST /admin/cancel-subscription', () => {
     expect(h.bridge.stripe.customerIdsForEmail).not.toHaveBeenCalled() // mapping wins over email lookup
     expect(result.canceled).toBe(1)
     expect(result.cancel_at?.startsWith('2026-') ?? false).toBe(true)
-    const events = eventsForEmail({ path: h.dbp, email: 'a@x.com' })
+    const events = h.bridge.store.eventsForEmail({ email: 'a@x.com' })
     expect(events[0]?.action).toBe('Cancellation scheduled')
     expect(events[0]?.detail).toContain('by admin')
   })
@@ -1737,8 +1691,7 @@ describe('POST /admin/cancel-subscription', () => {
     expect(noCustomer.statusCode).toBe(404)
     expect(noCustomer.json()).toEqual({ detail: 'no stripe customer for that email' })
 
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_idle',
       email: 'idle@x.com',
       inviteCode: 'abc',
@@ -1755,8 +1708,7 @@ describe('POST /admin/cancel-subscription', () => {
 
   it('is idempotent for already-flagged subscriptions', async () => {
     const h = await harness()
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_9',
       email: 'a@x.com',
       inviteCode: 'abc',
@@ -1771,7 +1723,7 @@ describe('POST /admin/cancel-subscription', () => {
     expect(h.bridge.stripe.cancelAtPeriodEnd).not.toHaveBeenCalled()
     expect(result.canceled).toBe(0)
     expect(result.cancel_at?.startsWith('2026-') ?? false).toBe(true)
-    expect(eventsForEmail({ path: h.dbp, email: 'a@x.com' })).toEqual([]) // no duplicate history row
+    expect(h.bridge.store.eventsForEmail({ email: 'a@x.com' })).toEqual([]) // no duplicate history row
   })
 })
 
@@ -1790,7 +1742,7 @@ describe('tags and downloads', () => {
     await setTag({ h, body: { email: 'a@x.com', tag: null } })
     expect((await getMember({ h, email: 'a@x.com' })).tag).toBeNull()
 
-    const events = eventsForEmail({ path: h.dbp, email: 'a@x.com' })
+    const events = h.bridge.store.eventsForEmail({ email: 'a@x.com' })
     expect(events.map((e) => e.detail)).toEqual(['tag cleared', 'tagged VIP'])
   })
 
@@ -1807,8 +1759,7 @@ describe('tags and downloads', () => {
 
   it('overrides the tier default in member payloads with the downloads toggle', async () => {
     const h = await harness()
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_1',
       email: 'a@x.com',
       inviteCode: 'abc',
@@ -1822,7 +1773,7 @@ describe('tags and downloads', () => {
 
     expect((await getMember({ h, email: 'a@x.com' })).downloads).toBe(false) // override beats gold's true
     expect(memberOf({ members: await listMembers(h), email: 'a@x.com' }).downloads).toBe(false)
-    const events = eventsForEmail({ path: h.dbp, email: 'a@x.com' })
+    const events = h.bridge.store.eventsForEmail({ email: 'a@x.com' })
     expect(events[0]?.action).toBe('Downloads toggled')
     expect(events[0]?.detail).toBe('turned off by admin')
 
@@ -1844,8 +1795,7 @@ describe('tags and downloads', () => {
 describe('POST /admin/ban', () => {
   it('tags the member and cancels their billing', async () => {
     const h = await harness()
-    upsertPending({
-      path: h.dbp,
+    h.bridge.store.upsertPending({
       customerId: 'cus_9',
       email: 'a@x.com',
       inviteCode: 'abc',
@@ -1869,7 +1819,7 @@ describe('POST /admin/ban', () => {
     expect(h.bridge.wizarr.disableUser.mock.calls).toEqual([[1], [2]])
     expect(h.bridge.stripe.cancelAtPeriodEnd).toHaveBeenCalledTimes(1)
     expect(h.bridge.stripe.cancelAtPeriodEnd).toHaveBeenCalledWith('sub_1')
-    const events = eventsForEmail({ path: h.dbp, email: 'a@x.com' })
+    const events = h.bridge.store.eventsForEmail({ email: 'a@x.com' })
     expect(events[0]?.action).toBe('Banned')
     expect(events[0]?.detail).toContain('2 server record(s) disabled')
     expect(events[0]?.detail).toContain('billing stops 2026-09-21')
@@ -1884,8 +1834,8 @@ describe('POST /admin/ban', () => {
     const result = await ban({ h, email: 'gone@x.com' })
 
     expect(result).toEqual({ email: 'gone@x.com', disabled: 0, canceled: 0, cancel_at: null })
-    expect(getMemberTag({ path: h.dbp, email: 'gone@x.com' })).toBe('banned')
-    expect(eventsForEmail({ path: h.dbp, email: 'gone@x.com' })[0]?.detail).toBe(
+    expect(h.bridge.store.getMemberTag({ email: 'gone@x.com' })).toBe('banned')
+    expect(h.bridge.store.eventsForEmail({ email: 'gone@x.com' })[0]?.detail).toBe(
       'no server records to disable; no subscription to cancel',
     )
   })
@@ -1900,8 +1850,8 @@ describe('POST /admin/ban', () => {
 
     expect(result.disabled).toBe(1)
     expect(result.canceled).toBe(0)
-    expect(getMemberTag({ path: h.dbp, email: 'a@x.com' })).toBe('banned')
-    expect(eventsForEmail({ path: h.dbp, email: 'a@x.com' })[0]?.detail).toContain(
+    expect(h.bridge.store.getMemberTag({ email: 'a@x.com' })).toBe('banned')
+    expect(h.bridge.store.eventsForEmail({ email: 'a@x.com' })[0]?.detail).toContain(
       'could not reach Stripe',
     )
   })
@@ -1976,7 +1926,9 @@ describe('request bodies', () => {
       stripe_email: 'pays@x.com',
       plex_email: null,
     })
-    expect(eventsForEmail({ path: h.dbp, email: 'pays@x.com' })[0]?.action).toBe('Address unlinked')
+    expect(h.bridge.store.eventsForEmail({ email: 'pays@x.com' })[0]?.action).toBe(
+      'Address unlinked',
+    )
   })
 
   it('refuses a blank stripe_email', async () => {

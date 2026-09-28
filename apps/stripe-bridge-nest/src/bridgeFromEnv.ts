@@ -16,6 +16,7 @@ import {
   wizarrApiKey,
   wizarrBaseUrl,
 } from '@/config.js'
+import { openStore } from '@/store/openStore.js'
 import type { Bridge } from '@/types.js'
 
 /**
@@ -23,7 +24,7 @@ import type { Bridge } from '@/types.js'
  * over the environment's settings, built once when the app starts.
  */
 export const bridgeFromEnv = (): Bridge => ({
-  dbPath: mapDbPath(),
+  store: openStore(mapDbPath()),
   wizarr: wizarrClient({ baseUrl: wizarrBaseUrl(), apiKey: wizarrApiKey() }),
   stripe: stripeApi({ apiKey: stripeApiKey() }),
   plex: plexApi({ token: plexToken(), base: plexTvBase() }),
