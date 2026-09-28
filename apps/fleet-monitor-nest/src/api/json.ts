@@ -1,5 +1,5 @@
 import type { NestFastifyApplication } from '@nestjs/platform-fastify'
-import { pydanticTimestamp } from '@/time.js'
+import { pydanticTimestamp } from '@wizteros/server-common'
 
 // Every response body leaves through here, so a Date anywhere in a view is
 // written the way FastAPI wrote it. JSON.stringify calls a Date's toJSON

@@ -3,7 +3,8 @@ import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fa
 import { Test } from '@nestjs/testing'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { fastApiValidationPipe, intQuery, textQuery } from '@/api/validation.js'
+import { fastApiValidationPipe } from '@wizteros/server-common'
+import { intQuery, textQuery } from '@/api/validation.js'
 
 const Probe = z.object({
   minutes: intQuery({ fallback: 60, min: 2, max: 10080 }),

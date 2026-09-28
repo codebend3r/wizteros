@@ -28,41 +28,41 @@ wizteros/
 │   ├── admin-portal/           Vite + React SPA, deploys to Netlify
 │   │   ├── public/
 │   │   └── src/                components/ pages/ lib/ stores/ styles/ test/
-│   └── stripe-bridge/          FastAPI service, runs in Docker on the NAS
-│       ├── stripe_bridge/      runtime package (the only code the image copies)
-│       ├── scripts/            lint, test, and e2e entrypoints
-│       └── tests/              pytest suite
+│   ├── stripe-bridge/          the Python bridge, kept only as the reference its port's parity check diffs against
+│   └── stripe-bridge-nest/     NestJS port of the bridge, runs in Docker on the NAS
+│       ├── src/                runtime code, with each module's *.test.ts beside it
+│       └── scripts/            e2e, parity, and library snapshot entrypoints
 ├── docs/                       specs, plans, and PRDs for both apps
 ├── scripts/                    release, backfill, and deploy entrypoints
 ├── .claude/agents/             repo-scoped Claude Code subagents
 ├── .claude/skills/             repo-scoped Claude Code skills
-├── docker-compose.yml          builds and runs stripe-bridge only
+├── docker-compose.yml          builds and runs the bridge and the fleet monitor
 ├── netlify.toml                builds admin-portal only
 ├── nx.json                     target defaults, cacheable targets, named inputs
 └── package.json                bun workspaces plus aliases that delegate to Nx
 ```
 
-| Path                                | What lives there                                                                                                                                                         |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `apps/admin-portal/src/`            | Public landing page and the password-gated admin pages. The `@/*` import alias maps here                                                                                 |
-| `apps/stripe-bridge/stripe_bridge/` | Bridge runtime: `stripe_wizarr_bridge.py` (entrypoint), plus `wizarr.py`, `plex.py`, `store.py`, `tiers.py`, `mailer.py`, `email_template.py`, `admin.py`, `snapshot.py` |
-| `apps/*/` roots                     | Per-app config: `vite.config.ts`, `tsconfig.json`, `bunfig.toml`, `pytest.ini`, `ruff.toml`, `Dockerfile`, lint and format configs                                       |
+| Path                           | What lives there                                                                                                                                      |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/admin-portal/src/`       | Public landing page and the password-gated admin pages. The `@/*` import alias maps here                                                              |
+| `apps/stripe-bridge-nest/src/` | Bridge runtime: `webhook/` (the Stripe handlers), `admin/` (the admin API), `loops.ts`, `store.ts`, `tiers.ts`, and the service clients in `clients/` |
+| `apps/*/` roots                | Per-app config: `vite.config.ts`, `tsconfig.json`, `bunfig.toml`, `pytest.ini`, `ruff.toml`, `Dockerfile`, lint and format configs                    |
 
 Two things that are easy to get wrong:
 
-- Bridge modules import package-absolute (`from stripe_bridge import store`), never relative. New modules go inside `stripe_bridge/` and need no Dockerfile change, since the image copies the whole package.
+- Bridge modules import through the `@/` alias with a `.js` extension (`@/store/openStore.js`), never relative; `nest build` rewrites the alias in `dist`.
 - Web imports use the `@/` alias, never parent-relative `../`. Same-directory `./` imports are fine.
 
 ## Tech stack
 
 **Services**
 
-| Component                                        | Role                                                                                                            |
-| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| [Wizarr](https://github.com/wizarrrr/wizarr)     | Invite-based user onboarding                                                                                    |
-| [Tautulli](https://github.com/Tautulli/Tautulli) | Usage monitoring and analytics                                                                                  |
-| `apps/stripe-bridge/`                            | FastAPI (Python 3.12): turns Stripe webhooks into Wizarr API calls and serves the admin API. Tested with pytest |
-| `apps/admin-portal/`                             | Vite + React 19 SPA (TypeScript, SCSS modules, zustand, TanStack Query). Tested with bun test                   |
+| Component                                        | Role                                                                                                        |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| [Wizarr](https://github.com/wizarrrr/wizarr)     | Invite-based user onboarding                                                                                |
+| [Tautulli](https://github.com/Tautulli/Tautulli) | Usage monitoring and analytics                                                                              |
+| `apps/stripe-bridge-nest/`                       | NestJS on Node 24: turns Stripe webhooks into Wizarr API calls and serves the admin API. Tested with Vitest |
+| `apps/admin-portal/`                             | Vite + React 19 SPA (TypeScript, SCSS modules, zustand, TanStack Query). Tested with bun test               |
 
 **Tooling**
 
@@ -162,7 +162,7 @@ Caching is declared in `nx.json` under `targetDefaults`. Anything that touches D
 
 ## Releases
 
-Three version markers move in lockstep: root `package.json`, `apps/admin-portal/package.json`, and `__version__` in `apps/stripe-bridge/stripe_bridge/__init__.py`. The bridge one is the only marker that reaches the container, and it is what `GET /version` reports.
+Three version markers move in lockstep: root `package.json`, `apps/admin-portal/package.json`, and `apps/stripe-bridge-nest/package.json`. The bridge one is the only marker that reaches the container, and it is what `GET /version` reports.
 
 ```bash
 bun run release:patch      # bump all three, commit, and tag

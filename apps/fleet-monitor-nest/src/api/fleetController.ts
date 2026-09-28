@@ -1,5 +1,5 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common'
-import { SupabaseAdminGuard } from '@wizteros/server-common'
+import { addSeconds, SupabaseAdminGuard } from '@wizteros/server-common'
 import { z } from 'zod'
 import { intQuery } from '@/api/validation.js'
 import { dbPath } from '@/config.js'
@@ -8,7 +8,6 @@ import { ageSeconds, type FleetView, fleetView, STALE_AFTER_SECONDS } from '@/fl
 import { history, type Incident, openIncidents } from '@/incidents.js'
 import { fleetHistory, type Kind, type MetricHistoryView } from '@/series.js'
 import { lastHeartbeat } from '@/store.js'
-import { addSeconds } from '@/time.js'
 
 // Liveness, the fleet, its charts and its incidents. Every route opens one
 // session for its whole response, and in `read` mode: the API never writes the

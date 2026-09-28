@@ -142,7 +142,7 @@ else
 fi
 
 # 401 is the liveness probe, not 200. There is no /health route; /admin/members
-# returning 401 proves FastAPI mounted the router and auth is wired, which a
+# returning 401 proves the admin routes mounted and auth is wired, which a
 # bare port check or a 404 would not.
 BRIDGE_PROBE="$(http_code "$HTTP_TIMEOUT" "http://$NAS_IP:$BRIDGE_PORT/admin/members")"
 note "GET http://$NAS_IP:$BRIDGE_PORT/admin/members -> ${BRIDGE_PROBE:-no response} (expect 401)"
@@ -288,7 +288,8 @@ else
         # The counts describe SHAs, not work, so report what actually differs in
         # the paths the NAS builds from. Same list as deploy-nas.sh's NAS_PATHS.
         DRIFT_FILES="$(git diff --name-only "$DEPLOYED" "$ORIGIN" \
-          -- apps/stripe-bridge docker-compose.yml scripts package.json 2>/dev/null \
+          -- apps/stripe-bridge apps/stripe-bridge-nest apps/fleet-monitor apps/fleet-monitor-nest \
+          libs/server-common docker-compose.yml scripts package.json bun.lock 2>/dev/null \
           | grep -c . || true)"
         if [ -z "$MERGE_BASE" ]; then
           note "common ancestor:   none, the two histories share no commits"
@@ -319,8 +320,8 @@ else
   LOGS="$($SSH "$NAS_HOST" "sudo -n $DOCKER logs --tail $LOG_LINES $SERVICE 2>&1" || true)"
 
   # The bridge logs three different 'tier scope check' lines and they do NOT mean
-  # the same thing (see check_tier_scopes and _reconcile_loop in
-  # apps/stripe-bridge/stripe_bridge/stripe_wizarr_bridge.py):
+  # the same thing (see checkTierScopes in apps/stripe-bridge-nest/src/sweeps.ts
+  # and the reconcile loop in apps/stripe-bridge-nest/src/loops.ts):
   #
   #   "tier scope check: <tier> -> <reason>"                    real drift alarm
   #   "tier scope check: could not read libraries from Wizarr"  check could not run
@@ -347,13 +348,17 @@ else
     TIER_UNRAN=1
   fi
 
-  TRACEBACKS="$(printf '%s' "$LOGS" | grep -c 'Traceback (most recent call last)' || true)"
+  # A failure is a Nest ERROR line with its stack beneath, or a traceback from
+  # the Python bridge the NestJS one replaced. Nest wraps the level in colour
+  # codes, so it is matched up to the next non-letter rather than a space.
+  FAILURE_LINE=' ERROR[^A-Za-z]|Traceback \(most recent call last\)'
+  TRACEBACKS="$(printf '%s' "$LOGS" | grep -caE "$FAILURE_LINE" || true)"
   TRACEBACKS="${TRACEBACKS:-0}"
   if [ "$TRACEBACKS" != "0" ]; then
-    say "  ⚠ $TRACEBACKS traceback(s) in the last $LOG_LINES lines:"
+    say "  ⚠ $TRACEBACKS error(s) in the last $LOG_LINES lines:"
     # `|| true` because head closing the pipe early SIGPIPEs grep, and pipefail
-    # would otherwise take the whole probe down on a long traceback.
-    printf '%s' "$LOGS" | grep -A3 'Traceback' | head -20 | sed 's/^/      /' || true
+    # would otherwise take the whole probe down on a long stack.
+    printf '%s' "$LOGS" | grep -aA3 -E "$FAILURE_LINE" | head -20 | sed 's/^/      /' || true
   fi
 
   if [ "$TIER_ALARM" = 1 ]; then

@@ -12,6 +12,33 @@
         "command": "docker build -f apps/stripe-bridge-nest/Dockerfile -t stripe-bridge-nest .",
         "cwd": "{workspaceRoot}"
       }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "commands": [
+          "docker rm -f stripe-bridge-e2e >/dev/null 2>&1; docker run -d --name stripe-bridge-e2e -p 8000:8000 --env-file .env -v \"$PWD/apps/stripe-bridge-nest/data:/data\" stripe-bridge-nest"
+        ],
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "stop": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "docker rm -f stripe-bridge-e2e",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "logs": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "continuous": true,
+      "options": {
+        "command": "docker logs -f stripe-bridge-e2e",
+        "cwd": "{workspaceRoot}"
+      }
     }
   }
 }

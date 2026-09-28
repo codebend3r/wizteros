@@ -10,6 +10,7 @@ stripe-bridge-data/
 
 # node
 node_modules/
+dist/
 
 # nx
 .nx/cache

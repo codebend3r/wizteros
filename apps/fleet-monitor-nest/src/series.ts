@@ -16,7 +16,7 @@ import { HOSTS } from '@/config.js'
 import { METRICS as CPU_METRICS, busySeries } from '@/cpu.js'
 import type { Connection } from '@/db.js'
 import { metricSeries, metricSeriesPrefix, rateSeries, type Series } from '@/store.js'
-import { addSeconds, secondsBetween } from '@/time.js'
+import { addSeconds, secondsBetween } from '@wizteros/server-common'
 import { floorDivide, pythonRound, pythonSum } from '@/pythonMath.js'
 
 // A series carries one point per collector tick, so a long window is thousands

@@ -1,29 +1,7 @@
-import { StandardSchemaValidationPipe } from '@nestjs/common'
-import { httpError } from '@wizteros/server-common'
 import { z } from 'zod'
 
-// Query validation the way FastAPI did it: a parameter that fails its bounds or
-// its type is a 422 with a `detail` list, not Nest's 400. The list's entries
-// only have to be readable; the portal shows the text and never parses it.
-
-type Issue = Readonly<{ message: string; path?: readonly unknown[] }>
-
-const segment = (part: unknown): unknown =>
-  typeof part === 'object' && part !== null && 'key' in part ? part.key : part
-
-/** The route pipe that turns a failed schema into FastAPI's 422. */
-export const fastApiValidationPipe = (): StandardSchemaValidationPipe =>
-  new StandardSchemaValidationPipe({
-    exceptionFactory: (issues: readonly Issue[]) =>
-      httpError({
-        status: 422,
-        detail: issues.map((issue) => ({
-          type: 'value_error',
-          loc: (issue.path ?? []).map(segment),
-          msg: issue.message,
-        })),
-      }),
-  })
+// Query parameter schemas with FastAPI's parsing rules. The 422 they fail with
+// comes from fastApiValidationPipe in @wizteros/server-common.
 
 // FastAPI parsed an `int` query strictly: `6e1`, `2.5` and `` are refused,
 // where Number() would read the first two as numbers and the last as zero.

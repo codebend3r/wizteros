@@ -1,19 +1,27 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { session } from '@/db.js'
-import { asRow, asRows, fields, flag } from '@/rows.js'
-import { removeTempDirs, tempDbPath } from '@/test/support.js'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { asRow, asRows, fields, flag } from './rows.js'
+import { withSqlite } from './sqlite.js'
 
 describe('rows', () => {
+  let dir = ''
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'server-common-'))
+  })
+
   afterEach(() => {
-    removeTempDirs()
+    rmSync(dir, { recursive: true, force: true })
   })
 
   it('reads typed columns from a real row', () => {
-    const path = tempDbPath()
-    const row = session({
-      path,
-      work: (connection) =>
-        asRow(connection.prepare("SELECT 'a' AS name, 1.5 AS value, NULL AS gone").get()),
+    const row = withSqlite({
+      path: join(dir, 'test.db'),
+      mode: 'read',
+      work: (database) =>
+        asRow(database.prepare("SELECT 'a' AS name, 1.5 AS value, NULL AS gone").get()),
     })
     expect(row).not.toBeNull()
     const read = fields(row ?? {})

@@ -11,7 +11,7 @@
 //   bun run refresh:libraries        (from the workspace root)
 //
 // A failing test after a refresh is the point: it means a rename changed what
-// a tier grants. Fix tiers.py to match the new names, never the other way.
+// a tier grants. Fix tiers.ts to match the new names, never the other way.
 import { writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -26,7 +26,8 @@ if (!WIZARR_BASE_URL || !WIZARR_API_KEY) {
 const OUT = join(
   dirname(fileURLToPath(import.meta.url)),
   '..',
-  'tests',
+  'src',
+  'test',
   'fixtures',
   'live-libraries.json',
 )
@@ -47,7 +48,7 @@ if (!res.ok) {
 const libraries = ((await res.json()).libraries ?? [])
   .map((lib) => Object.fromEntries(FIELDS.map((f) => [f, lib[f] ?? null])))
   // Stable order so an unrelated Wizarr response reshuffle is not a diff.
-  .sort((a, b) => a.server_id - b.server_id || a.name.localeCompare(b.name))
+  .toSorted((a, b) => a.server_id - b.server_id || a.name.localeCompare(b.name))
 
 if (libraries.length === 0) {
   console.error('Wizarr returned no libraries — refusing to write an empty snapshot')
@@ -62,7 +63,7 @@ const byServer = libraries.reduce((acc, lib) => {
 }, {})
 
 console.log(`Wrote ${libraries.length} libraries to ${OUT}`)
-for (const [server, count] of Object.entries(byServer).sort()) {
+for (const [server, count] of Object.entries(byServer).toSorted()) {
   console.log(`  ${server}: ${count}`)
 }
 console.log('\nReview the diff, then run: bun run test:bridge')

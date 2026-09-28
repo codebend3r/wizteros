@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { addSeconds, epochSeconds, isoformat, parseIso, secondsBetween } from '@/time.js'
+import {
+  addDays,
+  addSeconds,
+  epochSeconds,
+  isoformat,
+  parseIso,
+  parseIsoOrNull,
+  secondsBetween,
+} from './time.js'
 
 describe('isoformat', () => {
   it('writes what datetime.isoformat() wrote for an aware UTC instant', () => {
@@ -49,6 +57,14 @@ describe('parseIso', () => {
   it('refuses text that is not a timestamp', () => {
     expect(() => parseIso('yesterday')).toThrow(RangeError)
   })
+
+  it('parseIsoOrNull answers null for a missing or malformed value', () => {
+    expect(parseIsoOrNull('2026-09-26T07:00:00+00:00')?.getTime()).toBe(Date.UTC(2026, 8, 26, 7))
+    expect(parseIsoOrNull('yesterday')).toBeNull()
+    expect(parseIsoOrNull('')).toBeNull()
+    expect(parseIsoOrNull(null)).toBeNull()
+    expect(parseIsoOrNull(undefined)).toBeNull()
+  })
 })
 
 describe('arithmetic', () => {
@@ -61,5 +77,10 @@ describe('arithmetic', () => {
   it('moves by seconds and measures the distance back', () => {
     const later = addSeconds({ at, seconds: 90.5 })
     expect(secondsBetween({ from: at, to: later })).toBe(90.5)
+  })
+
+  it('moves by whole days', () => {
+    expect(addDays({ at, days: 14 }).getTime()).toBe(at.getTime() + 14 * 86_400_000)
+    expect(addDays({ at, days: -1 }).getTime()).toBe(at.getTime() - 86_400_000)
   })
 })

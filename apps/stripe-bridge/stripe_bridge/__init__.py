@@ -1,9 +1,9 @@
 """Stripe-to-Wizarr bridge service.
 
-`__version__` tracks the workspace release version and is bumped in lockstep
-with the root and admin-portal package.json files by `scripts/release.sh`.
-It is the only version marker that reaches the running container, so
-`GET /version` is the authoritative answer to "what release is the NAS on".
+No longer shipped: the NAS runs the NestJS port in apps/stripe-bridge-nest,
+whose package.json is the version marker scripts/release.sh moves. This
+`__version__` stays at the release the marker moved on, and the Python app
+remains only as the reference the port's parity check diffs against.
 """
 
 __version__ = "0.3.9"

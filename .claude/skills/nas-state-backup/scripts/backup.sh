@@ -173,13 +173,18 @@ while [ "$i" -lt "$COUNT" ]; do
       break
     fi
 
-    # python:3.12-slim carries no sqlite3 CLI, so the python stdlib module is the
-    # expected path here. The CLI branch is kept for a future base image that has
-    # it. Neither form contains a double quote, so it survives the SSH quoting.
+    # Neither image carries the sqlite3 CLI, so the snapshot runs on whatever the
+    # container does have. The NestJS bridge (node:24-slim) has better-sqlite3,
+    # resolved from libs/server-common because bun's isolated install links it
+    # there and nowhere else; the Python bridge it replaced (python:3.12-slim)
+    # has the stdlib module. The CLI branch is kept for a future base image
+    # that has it. No form contains a double quote, so each survives the SSH
+    # quoting.
+    NODE_JS="const D = require('node:module').createRequire('/repo/libs/server-common/package.json')('better-sqlite3'); const src = new D('/data/bridge.db', { readonly: true }); src.backup('/data/$SNAPSHOT_NAME').then(() => src.close(), (e) => { console.error(e); process.exit(1) })"
     PY="import sqlite3; src = sqlite3.connect('/data/bridge.db'); dst = sqlite3.connect('/data/$SNAPSHOT_NAME'); src.backup(dst); dst.close(); src.close()"
 
     if [ "$DRY_RUN" = 1 ]; then
-      say "  would run: sudo -n $DOCKER exec $SERVICE <sqlite3 .backup, or python3 sqlite3.Connection.backup> -> /data/$SNAPSHOT_NAME"
+      say "  would run: sudo -n $DOCKER exec $SERVICE <sqlite3 .backup, better-sqlite3 backup, or python3 sqlite3.Connection.backup> -> /data/$SNAPSHOT_NAME"
       SNAPSHOT_NOTE="planned (dry run)"
       break
     fi
@@ -188,6 +193,10 @@ while [ "$i" -lt "$COUNT" ]; do
       say "  · using the sqlite3 CLI inside the container"
       nas "sudo -n $DOCKER exec $SERVICE sqlite3 /data/bridge.db \".backup '/data/$SNAPSHOT_NAME'\"" \
         || die "sqlite3 .backup failed inside $SERVICE. No backup written."
+    elif nas "sudo -n $DOCKER exec $SERVICE sh -c 'command -v node >/dev/null 2>&1'" >/dev/null 2>&1; then
+      say "  · no sqlite3 binary in the image, using better-sqlite3's online backup"
+      nas "sudo -n $DOCKER exec $SERVICE node -e \"$NODE_JS\"" \
+        || die "better-sqlite3 backup failed inside $SERVICE. No backup written."
     else
       say "  · no sqlite3 binary in the image, using python3 sqlite3.Connection.backup"
       nas "sudo -n $DOCKER exec $SERVICE python3 -c \"$PY\"" \

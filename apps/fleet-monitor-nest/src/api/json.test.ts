@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { toJson } from '@/api/json.js'
-import { pydanticTimestamp } from '@/time.js'
+import { pydanticTimestamp } from '@wizteros/server-common'
 
 describe('pydanticTimestamp', () => {
   // Both strings are what FastAPI 0.141 with pydantic 2.13 put on the wire for

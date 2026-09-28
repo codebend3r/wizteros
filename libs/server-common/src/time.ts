@@ -56,6 +56,22 @@ export const epochSeconds = (at: Date): number => Math.floor(at.getTime() / 1000
 export const addSeconds = ({ at, seconds }: { at: Date; seconds: number }): Date =>
   new Date(at.getTime() + seconds * 1000)
 
+/** `at` moved by a number of whole days: the access windows and invite expiries the bridge stamps. */
+export const addDays = ({ at, days }: { at: Date; days: number }): Date =>
+  addSeconds({ at, seconds: days * 86_400 })
+
+/** `parseIso` for a stored value that may be missing or malformed: null instead of a throw. */
+export const parseIsoOrNull = (text: string | null | undefined): Date | null => {
+  if (!text) {
+    return null
+  }
+  try {
+    return parseIso(text)
+  } catch {
+    return null
+  }
+}
+
 /** Seconds from `from` to `to`, as a float, like `(to - from).total_seconds()`. */
 export const secondsBetween = ({ from, to }: { from: Date; to: Date }): number =>
   (to.getTime() - from.getTime()) / 1000

@@ -29,6 +29,10 @@ RUN bun install --frozen-lockfile --ignore-scripts --production --filter stripe-
 
 FROM node:24-slim
 ENV NODE_ENV=production
+# The customer map, tags, links and event log. compose bind-mounts
+# stripe-bridge-data here, the same file the Python bridge wrote.
+ENV MAP_DB_PATH=/data/bridge.db
+VOLUME ["/data"]
 WORKDIR /repo
 COPY --from=deps /repo ./
 COPY --from=build /repo/libs/server-common/dist libs/server-common/dist

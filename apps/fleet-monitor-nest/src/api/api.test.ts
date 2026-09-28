@@ -29,7 +29,7 @@ import {
   type MetricHistory,
   type MetricPoint,
 } from '@/test/wire.js'
-import { addSeconds } from '@/time.js'
+import { addSeconds } from '@wizteros/server-common'
 
 const HOUR = 3600
 const DAY = 24 * HOUR

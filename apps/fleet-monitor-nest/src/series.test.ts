@@ -13,7 +13,7 @@ import {
 } from '@/series.js'
 import { initDb, type Series, writeSamples } from '@/store.js'
 import { openTestConnection, removeTempDirs } from '@/test/support.js'
-import { addSeconds } from '@/time.js'
+import { addSeconds } from '@wizteros/server-common'
 
 const T0 = new Date(Date.UTC(2026, 7, 23, 12, 0, 0))
 

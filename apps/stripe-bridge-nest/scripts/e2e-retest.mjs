@@ -43,7 +43,7 @@ const wz = (path, opts = {}) =>
     headers: {
       'X-API-Key': WIZARR_API_KEY,
       'Content-Type': 'application/json',
-      ...(opts.headers || {}),
+      ...opts.headers,
     },
   })
 

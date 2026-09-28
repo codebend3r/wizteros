@@ -17,11 +17,11 @@ judgment and never hand-edits a version field.
 
 The three markers, which must always agree:
 
-| Marker                                         | Why                                                       |
-| ---------------------------------------------- | --------------------------------------------------------- |
-| `package.json`                                 | Workspace root, the source of truth                       |
-| `apps/admin-portal/package.json`               | The SPA                                                   |
-| `apps/stripe-bridge/stripe_bridge/__init__.py` | `__version__`, the only marker that reaches the container |
+| Marker                                 | Why                                             |
+| -------------------------------------- | ----------------------------------------------- |
+| `package.json`                         | Workspace root, the source of truth             |
+| `apps/admin-portal/package.json`       | The SPA                                         |
+| `apps/stripe-bridge-nest/package.json` | The only marker that reaches the bridge's image |
 
 `release.sh` hard-fails when they disagree, both before and after the bump, so a
 mismatch is a stop-and-report, never something to patch by hand.
@@ -72,22 +72,26 @@ git log <baseline-sha>..origin/main --format='== %h %s' --stat
 Split the commits into two piles:
 
 - **Shipped surface**: anything that changes what runs in production.
-  `apps/admin-portal/` (ships via Netlify from main), `apps/stripe-bridge/`, and the
-  deploy config that alters the running stack (`docker-compose.yml`, `netlify.toml`,
-  `apps/stripe-bridge/Dockerfile`).
+  `apps/admin-portal/` (ships via Netlify from main), the two NestJS servers
+  (`apps/stripe-bridge-nest/`, `apps/fleet-monitor-nest/`) and `libs/server-common/`
+  they share, and the deploy config that alters the running stack
+  (`docker-compose.yml`, `netlify.toml`, each server's `Dockerfile`).
 - **Housekeeping**: `docs/`, `.github/`, `.claude/`, `scripts/` tooling, CI, test-only
   changes, and the monorepo wiring itself (`nx.json`, root `package.json` aliases,
-  `apps/stripe-bridge/project.json` target definitions, `nx.includedScripts` in
-  `apps/admin-portal/package.json`). Task plumbing changes how the repo is built, not
+  `project.json` target definitions, `nx.includedScripts` in any app's
+  `package.json`). The Python apps under `apps/stripe-bridge/` and
+  `apps/fleet-monitor/` no longer ship; until Phase 3 deletes them they are
+  housekeeping too. Task plumbing changes how the repo is built, not
   what runs in production.
 
 Living under an app root does not by itself make a file shipped surface. Three cases to
 get right:
 
-- `apps/admin-portal/package.json`: moves on every release by definition, so a diff
-  touching only its `version` field is the bump commit, not shipped surface.
-- `apps/stripe-bridge/tests/` and `apps/admin-portal/src/test/`: test-only, housekeeping.
-  The runtime code is `apps/stripe-bridge/stripe_bridge/` and `apps/admin-portal/src/`.
+- `apps/admin-portal/package.json` and `apps/stripe-bridge-nest/package.json`: move on
+  every release by definition, so a diff touching only their `version` field is the
+  bump commit, not shipped surface.
+- `*.test.ts`, `src/test/` and `apps/admin-portal/src/test/`: test-only, housekeeping.
+  The runtime code is the rest of each server's `src/` and `apps/admin-portal/src/`.
 - App-root config (`vite.config.ts`, `tsconfig.json`, `pytest.ini`, lint or format
   config): shipped surface only when it changes the built output. A lint-rule tweak is
   housekeeping; a Vite build or alias change is not.
@@ -150,7 +154,7 @@ the global autonomy rules forbid.
    changelog section. It skips versions that already have one, so it is safe to re-run.
 7. Verify: `git ls-remote --tags origin` shows the new tag, all three markers read the new
    version, and `gh release view vX.Y.Z` returns the notes.
-8. If the released range touched `apps/stripe-bridge/`, point at the deploy-nas skill as
+8. If the released range touched either server or the lib, point at the deploy-nas skill as
    the follow-up, and confirm the deploy with `curl -s <bridge>/version` once it is done.
    `apps/admin-portal/` needs nothing; Netlify redeploys from main on its own.
 9. Return to the branch the session started on if it was not main.
@@ -169,8 +173,9 @@ the global autonomy rules forbid.
 - Recommending a bump for a docs/CI-only pile: nothing shipped, nothing to version.
 - Counting an Nx retarget (`nx.json`, `project.json`, root script aliases) as shipped
   surface: it changes how the repo builds, not what production runs.
-- Bumping only the two `package.json` files: the bridge `__version__` is the third marker
-  and the only one the running container can report. `release.sh` blocks this, so hitting
+- Bumping only the root and portal `package.json` files: the bridge's
+  `apps/stripe-bridge-nest/package.json` is the third marker and the only one the running
+  container can report. `release.sh` blocks this, so hitting
   it means someone edited a version by hand.
 - Tagging a release without a `CHANGELOG.md` section: the tag then says nothing about what
   shipped, which is the state every tag was in before 2026-08-08.

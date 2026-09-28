@@ -5,6 +5,8 @@ import { SupabaseAdminGuard } from '@wizteros/server-common'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp } from '@/app.js'
 import { AppModule } from '@/appModule.js'
+import { REQUIRED_ENV } from '@/config.js'
+import { removeTempDirs, tempDbPath } from '@/test/support.js'
 
 const PORTAL = 'https://westeroz.netlify.app'
 
@@ -26,10 +28,17 @@ const preflight = ({ app, origin }: { app: NestFastifyApplication; origin: strin
     },
   })
 
+// What the bridge refuses to boot without.
+const stubRequiredEnv = (): void => {
+  REQUIRED_ENV.forEach((name) => vi.stubEnv(name, 'x'))
+  vi.stubEnv('MAP_DB_PATH', tempDbPath())
+}
+
 describe('createApp', () => {
   let app: NestFastifyApplication
 
   beforeEach(async () => {
+    stubRequiredEnv()
     vi.stubEnv('ADMIN_ALLOWED_ORIGINS', ` ${PORTAL} , http://localhost:5173`)
     app = await createApp({ quiet: true })
     await app.init()
@@ -39,6 +48,7 @@ describe('createApp', () => {
   afterEach(async () => {
     await app.close()
     vi.unstubAllEnvs()
+    removeTempDirs()
   })
 
   it('lets an allowed portal origin preflight an admin write', async () => {
@@ -63,6 +73,20 @@ describe('createApp', () => {
   })
 })
 
+describe('booting without the required environment', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('refuses, naming everything that is missing at once', async () => {
+    REQUIRED_ENV.forEach((name) => vi.stubEnv(name, undefined))
+    vi.stubEnv('STRIPE_API_KEY', 'sk_test_x')
+    await expect(createApp({ quiet: true })).rejects.toThrow(
+      'missing required environment: STRIPE_WEBHOOK_SECRET, WIZARR_BASE_URL, WIZARR_API_KEY, PUBLIC_INVITE_BASE, SMTP_HOST, SMTP_USER, SMTP_PASS',
+    )
+  })
+})
+
 @Controller('gated')
 @UseGuards(SupabaseAdminGuard)
 class GatedProbeController {
@@ -79,6 +103,7 @@ describe('a gated route in this app', () => {
   let app: NestFastifyApplication
 
   beforeEach(async () => {
+    stubRequiredEnv()
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
       controllers: [GatedProbeController],
@@ -92,6 +117,8 @@ describe('a gated route in this app', () => {
 
   afterEach(async () => {
     await app.close()
+    vi.unstubAllEnvs()
+    removeTempDirs()
   })
 
   it('answers a read without a session with the 401 the portal expects', async () => {

@@ -50,9 +50,9 @@ Run it as a single Bash invocation so the user sees the whole transcript. Defaul
    tar over SSH. Then verifies a checksum matches before rebuilding.
 5. **Rebuilds** — `sudo -n /usr/local/bin/docker compose up -d --build`.
 6. **Verifies**: container `running`; `GET /admin/members` returns `401`; `GET /version`
-   matches the `__version__` in the synced tree (a 401 proves _a_ bridge is up, the
-   version proves it is _this_ one); boot logs scanned for the tier-scope alarm and
-   tracebacks.
+   matches the `version` in the synced `apps/stripe-bridge-nest/package.json` (a 401
+   proves _a_ bridge is up, the version proves it is _this_ one); boot logs scanned for
+   the tier-scope alarm and `ERROR` lines.
 7. **Rolls back** on a failed health check, re-tagging the previous image, and restores
    the old `.deployed-sha`.
 

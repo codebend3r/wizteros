@@ -21,7 +21,7 @@ import { checkResult, history, type CheckResult, observedRun, openIncidents } fr
 import { lastHeartbeat, latest, series } from '@/store.js'
 import { logRaised } from '@/tasks.js'
 import { removeTempDirs, tempDbPath } from '@/test/support.js'
-import { addSeconds } from '@/time.js'
+import { addSeconds } from '@wizteros/server-common'
 import type { HttpResult } from '@/transport/http.js'
 import type { SshResult } from '@/transport/ssh.js'
 

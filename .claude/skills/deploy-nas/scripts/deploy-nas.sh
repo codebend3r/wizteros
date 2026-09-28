@@ -44,9 +44,11 @@ die()  { printf '\n✗ %s\n' "$*" >&2; exit 1; }
 # apps/fleet-monitor is here because the compose project builds it too: the
 # monitor API and the collector are two containers off that one image, and a
 # commit touching only them used to read as "nothing to do" and need --force.
-# The monitor now builds from apps/fleet-monitor-nest and libs/server-common
-# through the bun workspace, so the root manifests and lockfile count as well.
-NAS_PATHS=(apps/stripe-bridge apps/fleet-monitor apps/fleet-monitor-nest libs/server-common docker-compose.yml scripts package.json bun.lock)
+# Both servers now build from their NestJS ports (apps/stripe-bridge-nest,
+# apps/fleet-monitor-nest) and libs/server-common through the bun workspace,
+# so the root manifests and lockfile count as well. The Python apps stay
+# listed until Phase 3 deletes them, since they still ship in the synced tree.
+NAS_PATHS=(apps/stripe-bridge apps/stripe-bridge-nest apps/fleet-monitor apps/fleet-monitor-nest libs/server-common docker-compose.yml scripts package.json bun.lock)
 
 say "═══════════════════════════════════════════"
 say "deploy-nas — wizteros stripe-bridge"
@@ -104,7 +106,7 @@ else
     say "  · NAS is $COUNT commit(s) behind (deployed ${DEPLOYED:0:7}, local $(git rev-parse --short HEAD))"
     CHANGED="$(git diff --name-only "$DEPLOYED" "$LOCAL" -- "${NAS_PATHS[@]}" 2>/dev/null || true)"
     if [ -z "$CHANGED" ]; then
-      say "  · none of those commits touch NAS-built paths (apps/stripe-bridge/, compose, scripts)"
+      say "  · none of those commits touch NAS-built paths (the two servers, the lib, compose, scripts)"
       if [ "$FORCE" = 0 ]; then
         say ""
         say "✓ Nothing the NAS builds from has changed — skipping rebuild."
@@ -169,11 +171,12 @@ fi
 say "  · code synced"
 
 # Prove the bytes landed rather than trusting the transport's exit code.
-REMOTE_SUM="$($SSH "$NAS_HOST" "cd $NAS_PATH && md5sum apps/stripe-bridge/stripe_bridge/tiers.py 2>/dev/null | cut -d' ' -f1" | tr -d '[:space:]')"
-LOCAL_SUM="$(md5 -q "$REPO/apps/stripe-bridge/stripe_bridge/tiers.py" 2>/dev/null || md5sum "$REPO/apps/stripe-bridge/stripe_bridge/tiers.py" | cut -d' ' -f1)"
+SUM_FILE="apps/stripe-bridge-nest/src/tiers.ts"
+REMOTE_SUM="$($SSH "$NAS_HOST" "cd $NAS_PATH && md5sum $SUM_FILE 2>/dev/null | cut -d' ' -f1" | tr -d '[:space:]')"
+LOCAL_SUM="$(md5 -q "$REPO/$SUM_FILE" 2>/dev/null || md5sum "$REPO/$SUM_FILE" | cut -d' ' -f1)"
 [ -n "$REMOTE_SUM" ] && [ "$REMOTE_SUM" = "$LOCAL_SUM" ] \
-  || die "sync verification failed: tiers.py on the NAS does not match local. NOT rebuilding."
-say "  · verified: tiers.py checksum matches"
+  || die "sync verification failed: $SUM_FILE on the NAS does not match local. NOT rebuilding."
+say "  · verified: tiers.ts checksum matches"
 
 # ─── rebuild ──────────────────────────────────────────────────────────────────
 step "Rebuilding $SERVICE on the NAS"
@@ -209,8 +212,8 @@ else
   say "  · container state: $STATUS"
   [ "$STATUS" = "running" ] || rollback
 
-  # 2. the app answers — 401 from the admin router proves FastAPI mounted and
-  #    auth is wired, which a bare port check or a 404 would not.
+  # 2. the app answers — 401 from the admin router proves the routes mounted
+  #    and auth is wired, which a bare port check or a 404 would not.
   PROBE=""
   for i in 1 2 3 4 5 6 7 8 9 10; do
     PROBE="$($SSH "$NAS_HOST" "curl -s -o /dev/null -m 5 -w '%{http_code}' http://localhost:8000/admin/members || true" | tr -d '[:space:]')"
@@ -222,14 +225,15 @@ else
 
   # 2b. the running code is the code we just shipped. A 401 proves *a* bridge is
   #     up; only the version proves it is *this* one. Both sides read the same
-  #     stripe_bridge/__init__.py, so they must match exactly (main sitting ahead
-  #     of the last release does not change this; neither side has bumped).
-  WANT_VERSION="$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' "$REPO/apps/stripe-bridge/stripe_bridge/__init__.py")"
+  #     apps/stripe-bridge-nest/package.json, so they must match exactly (main
+  #     sitting ahead of the last release does not change this; neither side
+  #     has bumped).
+  WANT_VERSION="$(node -p "require('$REPO/apps/stripe-bridge-nest/package.json').version" 2>/dev/null || true)"
   GOT_VERSION="$($SSH "$NAS_HOST" "curl -s -m 5 http://localhost:8000/version || true" |
     sed -n 's/.*"version" *: *"\([^"]*\)".*/\1/p')"
   say "  · GET /version -> ${GOT_VERSION:-no response} (expect $WANT_VERSION)"
   if [ -z "$WANT_VERSION" ]; then
-    say "  ⚠ could not read the local __version__; skipping the version assertion"
+    say "  ⚠ could not read the local bridge version; skipping the version assertion"
   elif [ "$GOT_VERSION" != "$WANT_VERSION" ]; then
     say "  ✗ the NAS is serving a different build than the one just synced"
     rollback
@@ -254,9 +258,12 @@ else
     TIER_ALARM=0
   fi
 
-  if printf '%s' "$LOGS" | grep -qE 'Traceback \(most recent call last\)'; then
-    say "  ⚠ tracebacks present in the boot logs:"
-    printf '%s' "$LOGS" | grep -A3 'Traceback' | head -20 | sed 's/^/      /'
+  # Nest logs every failure as an ERROR line with the stack under it; that is
+  # what a Python traceback used to look like here. The level is wrapped in
+  # colour codes, so it is matched up to the next non-letter, not a space.
+  if printf '%s' "$LOGS" | grep -qaE ' ERROR[^A-Za-z]'; then
+    say "  ⚠ errors present in the boot logs:"
+    printf '%s' "$LOGS" | grep -aA3 -E ' ERROR[^A-Za-z]' | head -20 | sed 's/^/      /'
   fi
 fi
 

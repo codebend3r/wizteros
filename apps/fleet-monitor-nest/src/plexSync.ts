@@ -37,7 +37,7 @@ import type { CheckResult } from '@/incidents.js'
 import * as plays from '@/plays/index.js'
 import * as plex from '@/probes/plex.js'
 import { logRaised } from '@/tasks.js'
-import { addSeconds, epochSeconds } from '@/time.js'
+import { addSeconds, epochSeconds } from '@wizteros/server-common'
 import { getJson, type HttpResult, send } from '@/transport/http.js'
 
 const log = new Logger('fleet.plex')

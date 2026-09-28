@@ -16,7 +16,7 @@ import { type ContainerView, fromSamples } from '@/probes/docker.js'
 import { pythonRound } from '@/pythonMath.js'
 import { MEMORY_AVAILABLE_METRIC, MEMORY_TOTAL_METRIC } from '@/series.js'
 import { coverageSince, lastHeartbeat, latest, metricAges } from '@/store.js'
-import { addSeconds, secondsBetween } from '@/time.js'
+import { addSeconds, secondsBetween } from '@wizteros/server-common'
 
 // Three missed vitals ticks. Past this the dashboard is showing history, not
 // the present, and must say so. This is collector liveness only: it says

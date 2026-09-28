@@ -16,7 +16,7 @@ import {
   writeSamples,
 } from '@/store.js'
 import { openTestConnection, removeTempDirs } from '@/test/support.js'
-import { addSeconds } from '@/time.js'
+import { addSeconds } from '@wizteros/server-common'
 
 const HOUR = 3600
 const DAY = 24 * HOUR

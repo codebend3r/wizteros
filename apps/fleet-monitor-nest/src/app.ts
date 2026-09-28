@@ -1,8 +1,7 @@
 import { HttpAdapterHost, NestFactory } from '@nestjs/core'
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify'
-import { HttpDetailFilter, starletteCors } from '@wizteros/server-common'
+import { fastApiValidationPipe, HttpDetailFilter, starletteCors } from '@wizteros/server-common'
 import { useFastApiJson } from '@/api/json.js'
-import { fastApiValidationPipe } from '@/api/validation.js'
 import { AppModule } from '@/appModule.js'
 
 /**
