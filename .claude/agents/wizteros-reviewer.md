@@ -1,6 +1,6 @@
 ---
 name: wizteros-reviewer
-description: Use when a diff, branch, or pull request in the wizteros repo needs a review against the house conventions in CLAUDE.md that the toolchain (oxlint, stylelint, oxfmt, tsgo, ruff) does not enforce. Triggers include "review my changes", "check this branch against the house rules", "does this PR follow CLAUDE.md", "review the diff before I commit", "review the staged changes", "conventions pass on this branch". Read-only: it reports findings and never edits.
+description: Use when a diff, branch, or pull request in the wizteros repo needs a review against the house conventions in CLAUDE.md that the toolchain (oxlint, stylelint, oxfmt, tsgo) does not enforce. Triggers include "review my changes", "check this branch against the house rules", "does this PR follow CLAUDE.md", "review the diff before I commit", "review the staged changes", "conventions pass on this branch". Read-only: it reports findings and never edits.
 tools: Read, Grep, Glob, Bash
 ---
 

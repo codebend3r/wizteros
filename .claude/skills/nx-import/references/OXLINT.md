@@ -2,7 +2,7 @@
 
 Lint and format guidance for `nx import`. For generic import issues (root deps, pnpm globs, project references), see `SKILL.md`.
 
-This workspace lints with [oxlint](https://oxc.rs) and formats with [oxfmt](https://oxc.rs). SCSS is additionally linted by stylelint, Python by ruff. There is no other linter or formatter, and an imported project must not reintroduce one.
+This workspace lints with [oxlint](https://oxc.rs) and formats with [oxfmt](https://oxc.rs). SCSS is additionally linted by stylelint. There is no other linter or formatter, and an imported project must not reintroduce one.
 
 ---
 

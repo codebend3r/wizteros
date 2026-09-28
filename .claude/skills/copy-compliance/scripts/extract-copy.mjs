@@ -76,7 +76,7 @@ const PAYMENT_SURFACES = [
   'apps/stripe-bridge/src/clients/mailer.ts',
 ]
 
-const SCANNED_EXTENSIONS = ['.tsx', '.ts', '.html', '.py']
+const SCANNED_EXTENSIONS = ['.tsx', '.ts', '.html']
 
 // Single words that describe what a member gets to consume rather than what
 // they are paying to keep running. Grouped only to make the list easy to grow.
@@ -223,53 +223,21 @@ const extractStringLiterals = (lines) =>
       .map((text) => ({ line: index + 1, origin: 'string', text }))
   })
 
-const TS_COMMENT_RE = /^\s*(?:\/\/|\*|\/\*)/
-const PY_COMMENT_RE = /^\s*#/
+const COMMENT_RE = /^\s*(?:\/\/|\*|\/\*)/
 
-const extractComments = (lines, pattern) =>
+const extractComments = (lines) =>
   lines.flatMap((rawLine, index) =>
-    pattern.test(rawLine) ? [{ line: index + 1, origin: 'comment', text: rawLine.trim() }] : [],
+    COMMENT_RE.test(rawLine) ? [{ line: index + 1, origin: 'comment', text: rawLine.trim() }] : [],
   )
-
-/**
- * Python: every line inside a triple-quoted block counts as copy, which is how
- * both the HTML invite template and the plain-text alternative get read. The
- * toggle is per triple-quote occurrence, so a one-line `"""doc"""` cancels out.
- * Markup is stripped so what is reported is the prose a member reads. Attribute
- * values survive anyway, the quoted-literal pass reads them off the same line.
- */
-const extractPythonText = (lines) =>
-  lines.reduce(
-    (accumulator, rawLine, index) => {
-      const markers = (rawLine.match(/"""|'''/g) ?? []).length
-      const insideAfter = markers % 2 === 1 ? !accumulator.inside : accumulator.inside
-      const counts = accumulator.inside || markers > 0
-      const text = rawLine
-        .replace(/[frbuFRBU]{0,2}(?:"""|''')/g, ' ')
-        .replace(/<[^<>]*>/g, ' ')
-        .trim()
-      const entry =
-        counts && /[A-Za-z]/.test(text) ? [{ line: index + 1, origin: 'text', text }] : []
-      return { inside: insideAfter, entries: [...accumulator.entries, ...entry] }
-    },
-    { inside: false, entries: [] },
-  ).entries
 
 const extractFile = ({ relativePath, source }) => {
   const lines = source.split('\n')
   const lineOf = makeLineLookup(source)
-  if (relativePath.endsWith('.py')) {
-    return [
-      ...extractPythonText(lines),
-      ...extractStringLiterals(lines),
-      ...extractComments(lines, PY_COMMENT_RE),
-    ]
-  }
   if (relativePath.endsWith('.html')) {
     return extractTagText(source, lineOf)
   }
   const tagText = relativePath.endsWith('.tsx') ? extractTagText(source, lineOf) : []
-  return [...tagText, ...extractStringLiterals(lines), ...extractComments(lines, TS_COMMENT_RE)]
+  return [...tagText, ...extractStringLiterals(lines), ...extractComments(lines)]
 }
 
 /** Collapse to one record per source line, so a line is reported exactly once. */

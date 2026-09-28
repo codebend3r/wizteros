@@ -175,26 +175,19 @@ while [ "$i" -lt "$COUNT" ]; do
 
     # The image (node:24-slim) carries no sqlite3 CLI, so the snapshot runs
     # through better-sqlite3's online backup, resolved from libs/server-common
-    # because bun's isolated install links it there and nowhere else. The CLI
-    # branch is kept for a future base image that has it. Neither form contains
-    # a double quote, so each survives the SSH quoting.
+    # because bun's isolated install links it there and nowhere else. The
+    # program contains no double quote, so it survives the SSH quoting.
     NODE_JS="const D = require('node:module').createRequire('/repo/libs/server-common/package.json')('better-sqlite3'); const src = new D('/data/bridge.db', { readonly: true }); src.backup('/data/$SNAPSHOT_NAME').then(() => src.close(), (e) => { console.error(e); process.exit(1) })"
 
     if [ "$DRY_RUN" = 1 ]; then
-      say "  would run: sudo -n $DOCKER exec $SERVICE <sqlite3 .backup, or better-sqlite3 backup> -> /data/$SNAPSHOT_NAME"
+      say "  would run: sudo -n $DOCKER exec $SERVICE node -e <better-sqlite3 backup> -> /data/$SNAPSHOT_NAME"
       SNAPSHOT_NOTE="planned (dry run)"
       break
     fi
 
-    if nas "sudo -n $DOCKER exec $SERVICE sh -c 'command -v sqlite3 >/dev/null 2>&1'" >/dev/null 2>&1; then
-      say "  · using the sqlite3 CLI inside the container"
-      nas "sudo -n $DOCKER exec $SERVICE sqlite3 /data/bridge.db \".backup '/data/$SNAPSHOT_NAME'\"" \
-        || die "sqlite3 .backup failed inside $SERVICE. No backup written."
-    else
-      say "  · no sqlite3 binary in the image, using better-sqlite3's online backup"
-      nas "sudo -n $DOCKER exec $SERVICE node -e \"$NODE_JS\"" \
-        || die "better-sqlite3 backup failed inside $SERVICE. No backup written."
-    fi
+    say "  · using better-sqlite3's online backup inside the container"
+    nas "sudo -n $DOCKER exec $SERVICE node -e \"$NODE_JS\"" \
+      || die "better-sqlite3 backup failed inside $SERVICE. No backup written."
 
     # The exec wrote to /data, whichever host dir that is bind-mounted from. Find
     # it rather than assuming, and register it for cleanup.

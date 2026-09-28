@@ -7,7 +7,7 @@
 # Three version markers move together:
 #   package.json                         workspace root, the source of truth
 #   apps/admin-portal/package.json       the SPA
-#   apps/stripe-bridge/package.json the only marker that reaches the container
+#   apps/stripe-bridge/package.json      the only marker that reaches the container
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -50,7 +50,7 @@ if [ "$ROOT_BEFORE" != "$WEB_BEFORE" ] || [ "$ROOT_BEFORE" != "$BRIDGE_BEFORE" ]
     echo "version markers disagree; fix them to match before releasing:"
     echo "  package.json                 $ROOT_BEFORE"
     echo "  apps/admin-portal            $WEB_BEFORE"
-    echo "  apps/stripe-bridge      $BRIDGE_BEFORE"
+    echo "  apps/stripe-bridge           $BRIDGE_BEFORE"
   } >&2
   exit 1
 fi
@@ -68,7 +68,7 @@ if [ "$ROOT_AFTER" != "$VERSION" ] || [ "$WEB_AFTER" != "$VERSION" ] || [ "$BRID
     echo "bump did not apply cleanly to every marker; nothing committed:"
     echo "  package.json                 $ROOT_AFTER"
     echo "  apps/admin-portal            $WEB_AFTER"
-    echo "  apps/stripe-bridge      $BRIDGE_AFTER"
+    echo "  apps/stripe-bridge           $BRIDGE_AFTER"
     echo "expected $VERSION everywhere. Restore with: git checkout -- ."
   } >&2
   exit 1
