@@ -2,7 +2,7 @@ import { Logger } from '@nestjs/common'
 import { isoformat, parseIso } from '@wizteros/server-common'
 import { mint, tierScope, TierScopeEmpty } from '@/invites.js'
 import { mapInOrder } from '@/sequence.js'
-import { SHARE_SERVER, TIER_DOWNLOADS, tierScopeProblems, withoutStale } from '@/tiers.js'
+import { SHARE_SERVER, type Tier, TIERS, tierScopeProblems, withoutStale } from '@/tiers.js'
 import type { Bridge, CreatedInvite, WizarrInvitation, WizarrLibrary } from '@/types.js'
 import { stackOf } from '@/errors.js'
 
@@ -11,13 +11,13 @@ const log = new Logger('bridge.baseline')
 // The four tiers a prospective member can be handed a link for. Derived from
 // the tier rules rather than hard-coded so a new tier cannot be added without
 // the baseline set following it.
-export const BASELINE_TIERS: readonly string[] = [...TIER_DOWNLOADS.keys()].toSorted()
+export const BASELINE_TIERS: readonly Tier[] = TIERS.toSorted()
 
 const DAY_MS = 86_400_000
 const HOUR_MS = 3_600_000
 
 /** One baseline tier minted by a rotation. */
-export type MintedBaseline = Readonly<{ tier: string; code: string }>
+export type MintedBaseline = Readonly<{ tier: Tier; code: string }>
 
 /** What one rotation did: tiers minted, tiers skipped, expired codes reaped. */
 export type RotationResult = Readonly<{
@@ -79,7 +79,7 @@ export const mintBaselineInvite = async ({
   now,
 }: {
   bridge: Bridge
-  tier: string
+  tier: Tier
   libraries: readonly WizarrLibrary[]
   now: Date
 }): Promise<CreatedInvite | null> => {
@@ -164,7 +164,7 @@ export const reapExpiredBaselines = async ({
 }
 
 /** How one tier fared in a rotation: minted with a code, or skipped. */
-type TierOutcome = Readonly<{ tier: string; code: string | null }>
+type TierOutcome = Readonly<{ tier: Tier; code: string | null }>
 
 /**
  * Mint a fresh baseline invite per tier, then reap the ones already expired.

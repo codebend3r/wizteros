@@ -1,15 +1,13 @@
 import { Logger } from '@nestjs/common'
 import { isoformat, parseIso } from '@wizteros/server-common'
 import { eachInOrder, mapInOrder } from '@/sequence.js'
+import { isTimeBoxed } from '@/standing.js'
 import type { Bridge, CustomerRow, WizarrUser } from '@/types.js'
 import { accessDays, plusDays } from '@/webhook/handlers.js'
 
 // The expiry sweep the reconcile loop runs after its drift alarms.
 
 const log = new Logger('bridge')
-
-/** Tags whose holders the sweep never time-boxes. */
-const EXEMPT_TAGS: ReadonlySet<string> = new Set(['vip', 'banned'])
 
 /** A record's email lowercased, '' when it has none: `(u.get("email") or "").lower()`. */
 const emailOf = (user: WizarrUser): string => (user.email || '').toLowerCase()
@@ -68,7 +66,7 @@ export const reconcilePendingExpiries = async (bridge: Bridge): Promise<number> 
   const tags = bridge.store.allMemberTags()
   const links = bridge.store.allMemberLinks()
   const pending = [...customers].filter(
-    ([email, row]) => row.subscribed && !!row.invited_at && !EXEMPT_TAGS.has(tags.get(email) ?? ''),
+    ([email, row]) => row.subscribed && !!row.invited_at && isTimeBoxed(tags.get(email) ?? null),
   )
   if (pending.length === 0) {
     return 0

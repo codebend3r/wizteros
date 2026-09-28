@@ -1,4 +1,5 @@
 import { asRow, asRows, fields, flag, type Row } from '@wizteros/server-common'
+import { isMemberTag, type MemberTag } from '@/standing.js'
 import type { Units } from '@/store/units.js'
 
 // The admin's per-member overrides: notes, a tag, a downloads toggle, and the
@@ -9,7 +10,8 @@ import type { Units } from '@/store/units.js'
 /**
  * One address-keyed table: read one value, write or clear one, read them all.
  * `encode` turns a value into what the column holds and `decode` reads it
- * back; the key is always stored lowercased.
+ * back, answering null for a stored value it does not recognise, which then
+ * reads as absent. The key is always stored lowercased.
  */
 const addressKeyed = <T>({
   units,
@@ -24,7 +26,7 @@ const addressKeyed = <T>({
   key: string
   column: string
   encode: (value: T) => string | number
-  decode: (row: Row) => T
+  decode: (row: Row) => T | null
 }) => ({
   get: ({ address }: { address: string }): T | null => {
     const row = units.read((connection) =>
@@ -57,7 +59,10 @@ const addressKeyed = <T>({
         .read((connection) =>
           asRows(connection.prepare(`SELECT ${key}, ${column} FROM ${table}`).all()),
         )
-        .map((row) => [fields(row).text(key), decode(row)] as const),
+        .flatMap((row) => {
+          const value = decode(row)
+          return value === null ? [] : [[fields(row).text(key), value] as const]
+        }),
     ),
 })
 
@@ -77,8 +82,11 @@ export const overrideStore = (units: Units) => {
     table: 'member_tags',
     key: 'email',
     column: 'tag',
-    encode: same,
-    decode: (row) => fields(row).text('tag'),
+    encode: (tag: MemberTag) => tag,
+    decode: (row) => {
+      const tag = fields(row).text('tag')
+      return isMemberTag(tag) ? tag : null
+    },
   })
   const downloads = addressKeyed({
     units,
@@ -105,15 +113,15 @@ export const overrideStore = (units: Units) => {
     setMemberNotes: ({ email, notes: text }: { email: string; notes: string }): void =>
       notes.set({ address: email, value: text }),
 
-    /** The member's manual designation ("vip"/"hvu"/"banned"), or null when untagged. */
-    getMemberTag: ({ email }: { email: string }): string | null => tags.get({ address: email }),
+    /** The member's manual designation, or null when untagged. */
+    getMemberTag: ({ email }: { email: string }): MemberTag | null => tags.get({ address: email }),
 
     /** Save the manual designation for an email; null clears it. */
-    setMemberTag: ({ email, tag }: { email: string; tag: string | null }): void =>
+    setMemberTag: ({ email, tag }: { email: string; tag: MemberTag | null }): void =>
       tags.set({ address: email, value: tag }),
 
     /** Map lowercased email -> manual tag for every tagged member. */
-    allMemberTags: (): ReadonlyMap<string, string> => tags.all(),
+    allMemberTags: (): ReadonlyMap<string, MemberTag> => tags.all(),
 
     /** The downloads override for an email; null when the tier default applies. */
     getMemberDownloads: ({ email }: { email: string }): boolean | null =>

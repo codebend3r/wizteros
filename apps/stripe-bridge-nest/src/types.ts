@@ -1,4 +1,7 @@
+import type { MemberTag } from '@/standing.js'
 import type { BridgeStore } from '@/store/openStore.js'
+import type { PaymentState } from '@/subscriptionStatus.js'
+import type { Tier } from '@/tiers.js'
 
 // The shapes the bridge's modules hand each other, and what it talks to, as
 // ports: its own SQLite store and the four outside services. Records keep
@@ -187,7 +190,7 @@ export type CustomerRow = Readonly<{
   tier: string | null
   invited_at: string | null
   subscribed: boolean
-  payment_state: string | null
+  payment_state: PaymentState | null
 }>
 
 /** One entry of a member's action history. */
@@ -222,16 +225,17 @@ export type TierScope = Readonly<{
 export type Member = Readonly<{
   member: string
   email: string
-  tier: string
+  /** The recorded tier, or 'unknown' for a member the bridge has no tier for. */
+  tier: Tier | 'unknown'
   downloads: boolean | null
   expires: string | null
   servers: readonly string[]
   libraries: Readonly<Record<string, readonly string[]>>
   entitled: Readonly<Record<string, readonly string[]>>
   subscribed: boolean
-  payment_state: string | null
+  payment_state: PaymentState | null
   invited_at: string | null
   customer_id: string | null
   stripe_email: string | null
-  tag?: string | null
+  tag?: MemberTag | null
 }>

@@ -43,17 +43,16 @@ export const YOUTH_LIBRARY_TITLES: ReadonlySet<string> = new Set([
 // Leading "NN. " ordering prefix on a Plex library name.
 export const LIBRARY_PREFIX_RE = /^\d+\.\s*/
 
-// Every known tier and whether it may download, in the order the tiers are
-// checked and reported: bronze, silver, gold, youth.
-export const TIER_DOWNLOADS: ReadonlyMap<string, boolean> = new Map([
-  ['bronze', false],
-  ['silver', false],
-  ['gold', true],
-  ['youth', true],
-])
+/** A paid tier. */
+export type Tier = 'bronze' | 'silver' | 'gold' | 'youth'
+
+/** Every tier, in the order the tiers are checked and reported. */
+export const TIERS: readonly Tier[] = ['bronze', 'silver', 'gold', 'youth']
+
+export const isTier = (value: unknown): value is Tier => TIERS.some((tier) => tier === value)
 
 // Pre-rebrand tier names still live in old Stripe metadata and stored DB rows.
-export const LEGACY_TIER_ALIASES: ReadonlyMap<string, string> = new Map([['kids', 'youth']])
+export const LEGACY_TIER_ALIASES: ReadonlyMap<string, Tier> = new Map([['kids', 'youth']])
 
 /** A library row as `staleLibraries` reports it: the row plus Plex's current title. */
 export type StaleLibrary = WizarrLibrary & Readonly<{ live_name: string | null }>
@@ -62,7 +61,47 @@ export type StaleLibrary = WizarrLibrary & Readonly<{ live_name: string | null }
 export type ServerRecord = Readonly<{ id: number; server?: string | null }>
 
 /** Whether a tier's rules include a library, before the server and private filters. */
-export type TierWants = (rule: { tier: string; library: WizarrLibrary }) => boolean
+export type TierWants = (rule: { tier: Tier; library: WizarrLibrary }) => boolean
+
+/** A library's name with its "NN. " ordering prefix stripped. */
+export const libraryTitle = (library: Pick<WizarrLibrary, 'name'>): string =>
+  (library.name ?? '').replace(LIBRARY_PREFIX_RE, '')
+
+/** Case-insensitive '4K' match on the library name. */
+const is4k = (library: WizarrLibrary): boolean => (library.name ?? '').toLowerCase().includes('4k')
+
+/** What one tier grants. */
+type TierRule = Readonly<{
+  /** Whether its members may download. */
+  downloads: boolean
+  /**
+   * Where it shares from: 'fleet' is every server the fleet has except the
+   * retired ones, 'entry' is ENTRY_SHARE_SERVERS alone.
+   */
+  shares: 'fleet' | 'entry'
+  /** The library titles it is limited to, or null when its rule is not a list. */
+  titles: ReadonlySet<string> | null
+  /** Whether its rule includes a library, before the server and private filters. */
+  wants: (library: WizarrLibrary) => boolean
+}>
+
+/** A rule limited to an allowlist of library titles. */
+const limitedTo = (titles: ReadonlySet<string>): Pick<TierRule, 'titles' | 'wants'> => ({
+  titles,
+  wants: (library) => titles.has(libraryTitle(library)),
+})
+
+const everything = (): boolean => true
+
+const TIER_RULES: Readonly<Record<Tier, TierRule>> = {
+  bronze: { downloads: false, shares: 'entry', titles: null, wants: (library) => !is4k(library) },
+  silver: { downloads: false, shares: 'entry', titles: null, wants: everything },
+  gold: { downloads: true, shares: 'fleet', titles: null, wants: everything },
+  youth: { downloads: true, shares: 'entry', ...limitedTo(YOUTH_LIBRARY_TITLES) },
+}
+
+/** Whether a tier's members may download. */
+export const tierDownloads = (tier: Tier): boolean => TIER_RULES[tier].downloads
 
 /**
  * The Plex servers a tier may share from, retired servers already removed.
@@ -79,11 +118,11 @@ export const tierShareServers = ({
   tier,
   libraries,
 }: {
-  tier: string
+  tier: Tier
   libraries: readonly WizarrLibrary[]
 }): ReadonlySet<string> => {
   const wanted =
-    tier === 'gold'
+    TIER_RULES[tier].shares === 'fleet'
       ? libraries.flatMap((lib) => (lib.server_name ? [lib.server_name] : []))
       : [...ENTRY_SHARE_SERVERS]
   return new Set(wanted.filter((server) => !RETIRED_SERVERS.has(server)))
@@ -95,19 +134,18 @@ export const allShareServers = ({
 }: {
   libraries: readonly WizarrLibrary[]
 }): ReadonlySet<string> =>
-  new Set(
-    [...TIER_DOWNLOADS.keys()].flatMap((tier) => Array.from(tierShareServers({ tier, libraries }))),
-  )
+  new Set(TIERS.flatMap((tier) => [...tierShareServers({ tier, libraries })]))
 
-/** A stored tier string mapped through the legacy aliases; no bronze fallback. */
-export const canonicalTier = <T>(raw: T): T | string =>
-  typeof raw === 'string' ? (LEGACY_TIER_ALIASES.get(raw) ?? raw) : raw
+/** A stored tier mapped through the legacy aliases; null when it names no tier. */
+export const canonicalTier = (raw: string | null): Tier | null => {
+  const tier = raw === null ? null : (LEGACY_TIER_ALIASES.get(raw) ?? raw)
+  return isTier(tier) ? tier : null
+}
 
 /** Map checkout metadata to a known tier; unknown, missing, or non-string falls back to bronze. */
-export const normalizeTier = (raw: unknown): string => {
-  const trimmed = typeof raw === 'string' ? raw.trim().toLowerCase() : ''
-  const tier = LEGACY_TIER_ALIASES.get(trimmed) ?? trimmed
-  if (!TIER_DOWNLOADS.has(tier)) {
+export const normalizeTier = (raw: unknown): Tier => {
+  const tier = canonicalTier(typeof raw === 'string' ? raw.trim().toLowerCase() : null)
+  if (tier === null) {
     log.error(`unknown tier ${JSON.stringify(raw)} on checkout session; defaulting to bronze`)
     return 'bronze'
   }
@@ -124,13 +162,6 @@ export const normalizeTier = (raw: unknown): string => {
 export const isPrivate = (library: Pick<WizarrLibrary, 'name'>): boolean =>
   PRIVATE_NAME_RE.test(library.name ?? '')
 
-/** A library's name with its "NN. " ordering prefix stripped. */
-export const libraryTitle = (library: Pick<WizarrLibrary, 'name'>): string =>
-  (library.name ?? '').replace(LIBRARY_PREFIX_RE, '')
-
-/** Case-insensitive '4K' match on the library name. */
-const is4k = (library: WizarrLibrary): boolean => (library.name ?? '').toLowerCase().includes('4k')
-
 /**
  * Whether a library sits on a server this tier is allowed to share from.
  *
@@ -138,24 +169,19 @@ const is4k = (library: WizarrLibrary): boolean => (library.name ?? '').toLowerCa
  * server is refused before the tier is even consulted, so neither a rename
  * nor a widened tier can leak a retired box's copy.
  *
- * Gold needs no allowlist membership beyond that: it spans the whole fleet,
- * so anything not retired is in scope. Reading it off the library row rather
- * than off tierShareServers keeps this a per-library test with no need to
- * thread the whole list down here.
+ * A fleet tier needs no allowlist membership beyond that: anything not
+ * retired is in scope. Reading it off the library row rather than off
+ * tierShareServers keeps this a per-library test with no need to thread the
+ * whole list down here.
  */
-const isOnShareServer = ({ library, tier }: { library: WizarrLibrary; tier: string }): boolean => {
+const isOnShareServer = ({ library, tier }: { library: WizarrLibrary; tier: Tier }): boolean => {
   const server = library.server_name
   if (!server || RETIRED_SERVERS.has(server)) return false
-  return tier === 'gold' || ENTRY_SHARE_SERVERS.has(server)
+  return TIER_RULES[tier].shares === 'fleet' || ENTRY_SHARE_SERVERS.has(server)
 }
 
 /** Whether a tier's rules include a library (before the server/private filters). */
-export const tierWants: TierWants = ({ tier, library }) => {
-  if (tier === 'youth') return YOUTH_LIBRARY_TITLES.has(libraryTitle(library))
-  if (tier === 'bronze') return !is4k(library)
-  // silver / gold: everything
-  return true
-}
+export const tierWants: TierWants = ({ tier, library }) => TIER_RULES[tier].wants(library)
 
 /**
  * Enabled libraries on a tier's servers that its rules include.
@@ -170,7 +196,7 @@ export const shareableLibraries = ({
   libraries,
   wants = tierWants,
 }: {
-  tier: string
+  tier: Tier
   libraries: readonly WizarrLibrary[]
   wants?: TierWants
 }): WizarrLibrary[] =>
@@ -178,22 +204,33 @@ export const shareableLibraries = ({
     .filter((library) => !!library.enabled && wants({ tier, library }))
     .filter((library) => isOnShareServer({ library, tier }) && !isPrivate(library))
 
+/** The allowlisted titles a tier's shareable libraries do not cover, sorted. */
+const missingTitles = ({
+  tier,
+  shareable,
+}: {
+  tier: Tier
+  shareable: readonly WizarrLibrary[]
+}): string[] => {
+  const found = new Set(shareable.map(libraryTitle))
+  return [...(TIER_RULES[tier].titles ?? [])].filter((title) => !found.has(title)).toSorted()
+}
+
 /**
  * Shareable library names a tier grants, grouped by server name.
  *
  * Keyed by server for the admin UI's per-server breakdown: one entry for the
  * entry tiers, one per fleet server for gold. Derived from the tier rules
  * (what invites are scoped to), not read back from Plex — Wizarr's users API
- * doesn't expose per-user libraries. Unknown tiers grant nothing.
+ * doesn't expose per-user libraries.
  */
 export const tierServerLibraries = ({
   tier,
   libraries,
 }: {
-  tier: string
+  tier: Tier
   libraries: readonly WizarrLibrary[]
 }): Record<string, string[]> => {
-  if (!TIER_DOWNLOADS.has(tier)) return {}
   const shareable = shareableLibraries({ tier, libraries })
   const servers = new Set(shareable.flatMap((lib) => (lib.server_name ? [lib.server_name] : [])))
   return Object.fromEntries(
@@ -213,25 +250,22 @@ export const resolveTierAccess = ({
   libraries,
   wants = tierWants,
 }: {
-  tier: string
+  tier: Tier
   libraries: readonly WizarrLibrary[]
   wants?: TierWants
 }): TierScope => {
   const shareable = shareableLibraries({ tier, libraries, wants })
-  if (tier === 'youth' && shareable.length < YOUTH_LIBRARY_TITLES.size) {
-    const found = new Set(shareable.map(libraryTitle))
-    const missing = [...YOUTH_LIBRARY_TITLES].filter((title) => !found.has(title)).toSorted()
-    log.error(`youth allowlist mismatch on ${SHARE_SERVER}; missing ${missing.join(', ')}`)
+  const missing = missingTitles({ tier, shareable })
+  if (missing.length > 0) {
+    log.error(`${tier} allowlist mismatch on ${SHARE_SERVER}; missing ${missing.join(', ')}`)
   }
-  const allowDownloads = TIER_DOWNLOADS.get(tier)
-  if (allowDownloads === undefined) throw new Error(`unknown tier ${JSON.stringify(tier)}`)
   return {
     library_ids: shareable.map((lib) => lib.id),
     server_ids: [...new Set(shareable.map((lib) => lib.server_id))].toSorted((a, b) => a - b),
     server_names: [
       ...new Set(shareable.flatMap((lib) => (lib.server_name ? [lib.server_name] : []))),
     ].toSorted(),
-    allow_downloads: allowDownloads,
+    allow_downloads: tierDownloads(tier),
   }
 }
 
@@ -250,7 +284,7 @@ export const tierScopeProblems = ({
   libraries: readonly WizarrLibrary[]
 }): Record<string, string> =>
   Object.fromEntries(
-    [...TIER_DOWNLOADS.keys()].flatMap((tier): [string, string][] => {
+    TIERS.flatMap((tier): [string, string][] => {
       const shareable = shareableLibraries({ tier, libraries })
       if (shareable.length === 0) {
         const servers = [...tierShareServers({ tier, libraries })].toSorted().join(', ')
@@ -261,9 +295,7 @@ export const tierScopeProblems = ({
           ],
         ]
       }
-      if (tier !== 'youth') return []
-      const found = new Set(shareable.map(libraryTitle))
-      const missing = [...YOUTH_LIBRARY_TITLES].filter((title) => !found.has(title)).toSorted()
+      const missing = missingTitles({ tier, shareable })
       return missing.length > 0
         ? [[tier, `allowlist entries missing from ${SHARE_SERVER}: ${missing.join(', ')}`]]
         : []

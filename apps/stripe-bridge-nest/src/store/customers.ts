@@ -8,6 +8,7 @@ import {
   type SqliteDatabase,
 } from '@wizteros/server-common'
 import type { Units } from '@/store/units.js'
+import type { PaymentState } from '@/subscriptionStatus.js'
 import type { CustomerRow } from '@/types.js'
 
 // customer_map: what the bridge knows about each paying address. A row is keyed
@@ -48,7 +49,7 @@ const customerRowOf = (row: Row): CustomerRow => {
     tier: read.textOrNull('tier'),
     invited_at: read.textOrNull('invited_at'),
     subscribed: !!read.number('subscribed'),
-    payment_state: read.textOrNull('payment_state'),
+    payment_state: read.textOrNull('payment_state') === 'past_due' ? 'past_due' : null,
   }
 }
 
@@ -212,7 +213,7 @@ export const customerStore = ({ read, write }: Units) => ({
    * has still paid for the period they are in, so their access is untouched.
    * What changes is that the admin UI stops calling them healthy.
    */
-  setPaymentState: ({ email, state }: { email: string; state: string | null }): void => {
+  setPaymentState: ({ email, state }: { email: string; state: PaymentState | null }): void => {
     write((connection) =>
       connection
         .prepare('UPDATE customer_map SET payment_state = ? WHERE lower(email) = lower(?)')

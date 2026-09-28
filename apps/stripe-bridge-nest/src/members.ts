@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common'
-import type { Bridge, StripeApi } from '@/types.js'
+import { isLiveStatus, stripeStatusByCustomer } from '@/subscriptionStatus.js'
+import type { Bridge } from '@/types.js'
 import { stackOf } from '@/errors.js'
 
 // Who a Stripe customer is in Wizarr, resolved live. Shared by the webhook
@@ -85,42 +86,6 @@ export const accessLine = async ({
   )
 }
 
-/** A subscription Stripe is still charging for, or trying to. */
-export const LIVE_STATUSES: ReadonlySet<string> = new Set(['active', 'trialing'])
-
-// When one customer holds several subscriptions (an old canceled one next to
-// the live one), the one that is paying, or failing to, is the one that counts.
-const SUB_STATUS_RANK: ReadonlyMap<string, number> = new Map([
-  ['active', 2],
-  ['trialing', 2],
-  ['past_due', 1],
-  ['unpaid', 1],
-])
-
-const rank = (status: string | undefined): number => SUB_STATUS_RANK.get(status ?? '') ?? 0
-
-/** Every customer's best subscription status, straight from Stripe. */
-export const stripeStatusByCustomer = async (
-  stripe: StripeApi,
-): Promise<ReadonlyMap<string, string>> => {
-  const subscriptions = await stripe.allSubscriptions()
-  const best = (customer: string): string | undefined =>
-    subscriptions
-      .filter((subscription) => subscription.customer === customer)
-      .reduce<string | undefined>(
-        (current, { status }) => (rank(status) > rank(current) ? status : current),
-        undefined,
-      )
-  return new Map(
-    [...new Set(subscriptions.map(({ customer }) => customer))].flatMap(
-      (customer): [string, string][] => {
-        const status = best(customer)
-        return status === undefined ? [] : [[customer, status]]
-      },
-    ),
-  )
-}
-
 /**
  * Another Stripe customer at the same address that Stripe still says is paying.
  *
@@ -145,5 +110,5 @@ export const liveSiblingCustomer = async ({
     return null
   }
   const status = await stripeStatusByCustomer(bridge.stripe)
-  return siblings.find((customer) => LIVE_STATUSES.has(status.get(customer) ?? '')) ?? null
+  return siblings.find((customer) => isLiveStatus(status.get(customer) ?? '')) ?? null
 }

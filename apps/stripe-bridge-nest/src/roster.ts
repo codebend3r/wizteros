@@ -1,5 +1,6 @@
 import { redeemerEmail } from '@/clients/wizarr.js'
-import { canonicalTier, TIER_DOWNLOADS, tierServerLibraries } from '@/tiers.js'
+import { canonicalTier, type Tier, tierDownloads, tierServerLibraries } from '@/tiers.js'
+import type { MemberTag } from '@/standing.js'
 import type {
   CustomerRow,
   Member,
@@ -33,12 +34,6 @@ export type LinkedCustomer = CustomerRow &
     manual_link: boolean
   }>
 
-/**
- * Whatever billing row a member is read from: their own customer row, a linked
- * one, or nothing at all, so every field may be missing.
- */
-type BillingRow = Partial<CustomerRow> & Readonly<{ stripe_email?: string; manual_link?: boolean }>
-
 /** The items in first-seen order with duplicates dropped. */
 const distinct = <T>(items: readonly T[]): T[] => [...new Set(items)]
 
@@ -49,13 +44,28 @@ const byName = (members: readonly Member[]): Member[] =>
     .toSorted((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
     .map(({ member }) => member)
 
-/** A tier's downloads default; null for an unknown tier. */
-const tierDownloads = (tier: string): boolean | null =>
-  tier === 'unknown' ? null : (TIER_DOWNLOADS.get(tier) ?? null)
+/** What a member's recorded tier says they get. */
+type TierGrant = Readonly<{
+  tier: Tier | 'unknown'
+  /** The tier's downloads default; null for an unknown tier. */
+  downloads: boolean | null
+  /** The libraries the tier grants, by server; none for an unknown tier. */
+  entitled: LibraryMap
+}>
 
-/** The stored tier mapped through the legacy aliases, "unknown" when missing or empty. */
-const resolvedTier = (raw: string | null | undefined): string =>
-  canonicalTier(raw ?? null) || 'unknown'
+/** The grant behind a stored tier, read through the legacy aliases. */
+const tierGrant = ({
+  recorded,
+  libraries,
+}: {
+  recorded: string | null
+  libraries: readonly WizarrLibrary[]
+}): TierGrant => {
+  const tier = canonicalTier(recorded)
+  return tier === null
+    ? { tier: 'unknown', downloads: null, entitled: {} }
+    : { tier, downloads: tierDownloads(tier), entitled: tierServerLibraries({ tier, libraries }) }
+}
 
 /**
  * Invite code -> the Plex account email that redeemed it, both lowercased.
@@ -182,35 +192,36 @@ export const dedupeMembers = ({
       // A manual link outranks even that: "they pay under X" is only ever
       // stated about someone whose own address is the dead or failing one,
       // so billing has to read from the customer the admin pointed at.
-      const link: BillingRow = linked.get(key) ?? {}
+      const link = linked.get(key)
       const own = customers.get(key)
-      const row: BillingRow = link.manual_link ? link : (own ?? link)
-      const tier = resolvedTier(row.tier)
+      const billedByLink = link !== undefined && (link.manual_link || own === undefined)
+      const row = billedByLink ? link : own
+      const { tier, downloads, entitled } = tierGrant({
+        recorded: row?.tier ?? null,
+        libraries,
+      })
       const servers = [...person.servers].toSorted()
-      const tierLibraries: LibraryMap = tierServerLibraries({ tier, libraries })
       return {
         member: person.member,
         email: person.email,
         tier,
-        downloads: tierDownloads(tier),
+        downloads,
         expires: person.expires,
         servers,
-        libraries: Object.fromEntries(
-          servers.map((server) => [server, tierLibraries[server] ?? []]),
-        ),
+        libraries: Object.fromEntries(servers.map((server) => [server, entitled[server] ?? []])),
         // The tier rules alone, NOT narrowed to the servers this member
         // happens to hold records on — that is what makes it comparable to
         // the live plex.tv share, which is how the member page tells
         // "entitled to" apart from "actually sharing".
-        entitled: tierLibraries,
-        subscribed: !!row.subscribed,
-        payment_state: row.payment_state ?? null,
-        invited_at: row.invited_at ?? null,
-        customer_id: row.customer_id ?? null,
+        entitled,
+        subscribed: row?.subscribed ?? false,
+        payment_state: row?.payment_state ?? null,
+        invited_at: row?.invited_at ?? null,
+        customer_id: row?.customer_id ?? null,
         // Only set when the member pays under a different address than
         // their Plex account uses. Equal addresses are the norm and would
         // just be the same string twice in the UI.
-        stripe_email: row.stripe_email ?? null,
+        stripe_email: billedByLink ? link.stripe_email : null,
       }
     }),
   )
@@ -236,17 +247,14 @@ export const memberFromCustomer = ({
   row: CustomerRow
   libraries: readonly WizarrLibrary[]
 }): Member => {
-  const tier = resolvedTier(row.tier)
   return {
     member: email.split('@')[0] ?? '',
     email,
-    tier,
-    downloads: tierDownloads(tier),
+    ...tierGrant({ recorded: row.tier, libraries }),
     expires: null,
     servers: [],
     libraries: {},
-    entitled: tierServerLibraries({ tier, libraries }),
-    subscribed: !!row.subscribed,
+    subscribed: row.subscribed,
     payment_state: row.payment_state,
     invited_at: row.invited_at,
     customer_id: row.customer_id,
@@ -310,7 +318,7 @@ export const withOverrides = ({
   downloads,
 }: {
   members: readonly Member[]
-  tags: ReadonlyMap<string, string>
+  tags: ReadonlyMap<string, MemberTag>
   downloads: ReadonlyMap<string, boolean>
 }): Member[] =>
   members.map((member) => {

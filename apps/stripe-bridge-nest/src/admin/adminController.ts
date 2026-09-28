@@ -29,7 +29,8 @@ import { PlexUnavailable } from '@/clients/plex.js'
 import { liveScope, mint, TierScopeEmpty } from '@/invites.js'
 import { assembleMembers, memberFromCustomer, withOverrides, withPlexAccess } from '@/roster.js'
 import { eachInOrder, mapInOrder } from '@/sequence.js'
-import { normalizeTier, staleRecordIds, TIER_DOWNLOADS } from '@/tiers.js'
+import { isBanned, isMemberTag } from '@/standing.js'
+import { isTier, normalizeTier, staleRecordIds } from '@/tiers.js'
 import type {
   Bridge,
   EventRow,
@@ -41,10 +42,6 @@ import type {
 import { stackOf } from '@/errors.js'
 
 const log = new Logger('bridge.admin')
-
-// banned is the one tag with teeth: the bridge refuses to invite, extend or
-// restore a banned address, whatever Stripe says about it.
-export const MEMBER_TAGS: readonly string[] = ['vip', 'hvu', 'banned']
 
 const DAY_MS = 86_400_000
 
@@ -278,7 +275,7 @@ export class AdminController {
     tag: string | null
   } {
     const { email, tag } = body
-    if (tag !== null && !MEMBER_TAGS.includes(tag)) {
+    if (tag !== null && !isMemberTag(tag)) {
       throw httpError({ status: 400, detail: `unknown tag ${JSON.stringify(tag)}` })
     }
     this.bridge.store.setMemberTag({ email, tag })
@@ -561,7 +558,7 @@ export class AdminController {
     tier: string
   } {
     const { email, tier } = body
-    if (!TIER_DOWNLOADS.has(tier)) {
+    if (!isTier(tier)) {
       throw httpError({ status: 400, detail: `unknown tier ${JSON.stringify(tier)}` })
     }
     this.bridge.store.setTier({ email, tier })
@@ -591,7 +588,7 @@ export class AdminController {
     if (!settings.publicInviteBase) {
       throw httpError({ status: 500, detail: 'PUBLIC_INVITE_BASE not configured' })
     }
-    if (store.getMemberTag({ email }) === 'banned') {
+    if (isBanned(store.getMemberTag({ email }))) {
       throw httpError({ status: 409, detail: 'member is banned; clear the tag first' })
     }
     const tier = normalizeTier(body.tier)

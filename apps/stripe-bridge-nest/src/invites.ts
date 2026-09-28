@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common'
-import { resolveTierAccess, withoutStale } from '@/tiers.js'
+import { resolveTierAccess, type Tier, withoutStale } from '@/tiers.js'
 import type {
   CreatedInvite,
   PlexApi,
@@ -44,7 +44,7 @@ export const tierScope = ({
   libraries,
   context,
 }: {
-  tier: string
+  tier: Tier
   libraries: readonly WizarrLibrary[]
   context: string
 }): TierScope => {
@@ -70,7 +70,7 @@ export const liveScope = async ({
 }: {
   wizarr: WizarrApi
   plex: PlexApi
-  tier: string
+  tier: Tier
   context: string
 }): Promise<TierScope> => {
   const libraries = withoutStale({
@@ -99,7 +99,7 @@ export const mint = async ({
 }: {
   wizarr: WizarrApi
   settings: Settings
-  tier: string
+  tier: Tier
   scope: TierScope
   allowDownloads?: boolean | null
   expiresInDays?: number

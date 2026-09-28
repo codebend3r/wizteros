@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common'
 import { eachInOrder, mapInOrder } from '@/sequence.js'
+import { holdsStandingGrant } from '@/standing.js'
 import type { BridgeStore } from '@/store/openStore.js'
 import type { WizarrApi } from '@/types.js'
 import { addSeconds, isoformat } from '@wizteros/server-common'
@@ -107,7 +108,7 @@ export const runBackfill = async ({
   const prefix = dryRun ? '[dry-run] ' : ''
 
   const verdictFor = (key: string): Verdict => {
-    if (tags.get(key) === 'vip') {
+    if (holdsStandingGrant(tags.get(key) ?? null)) {
       return 'vip'
     }
     return (rows.get(key)?.subscribed ?? false) ? 'subscribed' : 'eligible'

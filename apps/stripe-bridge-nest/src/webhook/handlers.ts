@@ -4,8 +4,9 @@ import { accessRestored, bannedCheckout, describeInvoice, paymentFailed, signup 
 import { liveScope, mint, TierScopeEmpty } from '@/invites.js'
 import { accessLine, liveSiblingCustomer, resolveUserIds } from '@/members.js'
 import { eachInOrder } from '@/sequence.js'
-import { PAYMENT_STATE_BY_STATUS } from '@/subscriptionStatus.js'
-import { normalizeTier, staleRecordIds } from '@/tiers.js'
+import { holdsStandingGrant, isBanned } from '@/standing.js'
+import { statusRule } from '@/subscriptionStatus.js'
+import { normalizeTier, staleRecordIds, type Tier } from '@/tiers.js'
 import type { Bridge, Settings, TierScope } from '@/types.js'
 
 // Stripe events in, Wizarr and store changes out: checkout -> invite,
@@ -149,7 +150,7 @@ export const resolveTierScope = async ({
   context,
 }: {
   bridge: Bridge
-  tier: string
+  tier: Tier
   context: string
 }): Promise<TierScope> => {
   try {
@@ -176,7 +177,7 @@ export const signupAlert = async ({
 }: {
   bridge: Bridge
   email: string
-  tier: string
+  tier: Tier
   session: StripeObject
   code: string
 }): Promise<void> =>
@@ -274,11 +275,9 @@ export const syncPaymentState = ({
   email: string | null
   status: string
 }): void => {
-  if (email && PAYMENT_STATE_BY_STATUS.has(status)) {
-    bridge.store.setPaymentState({
-      email,
-      state: PAYMENT_STATE_BY_STATUS.get(status) ?? null,
-    })
+  const rule = statusRule(status)
+  if (email && rule !== undefined) {
+    bridge.store.setPaymentState({ email, state: rule.paymentState })
   }
 }
 
@@ -292,7 +291,7 @@ const blockBannedCheckout = async ({
 }: {
   bridge: Bridge
   email: string
-  tier: string
+  tier: Tier
   sessionId: string | null
   customerId: string | null
 }): Promise<void> => {
@@ -363,7 +362,7 @@ const onCheckoutCompleted: EventHandler = async ({ bridge, obj }) => {
   // A banned address can still reach a Payment Link. Nothing is issued
   // and nothing is recorded against the customer; the operator is told,
   // because the charge itself went through and is theirs to refund.
-  if (tag === 'banned') {
+  if (isBanned(tag)) {
     await blockBannedCheckout({
       bridge,
       email,
@@ -416,7 +415,7 @@ const onCheckoutCompleted: EventHandler = async ({ bridge, obj }) => {
   // VIP access is never time-boxed or reshuffled — a VIP's checkout is
   // just a contribution, so their records stay exactly as they are (no
   // disable, no expiry stamp).
-  if (tag === 'vip') {
+  if (holdsStandingGrant(tag)) {
     log.log(`${email} is VIP — existing records left untouched`)
     return
   }
@@ -440,7 +439,7 @@ const onInvoicePaid: EventHandler = async ({ bridge, obj }) => {
   }
   const tag = email ? bridge.store.getMemberTag({ email }) : null
   // A ban outranks a payment: nothing is extended and nothing restored.
-  if (email && tag === 'banned') {
+  if (email && isBanned(tag)) {
     log.warn(`renewal: ${email} is banned; access not extended`)
     bridge.store.recordEvent({
       email,
@@ -453,7 +452,7 @@ const onInvoicePaid: EventHandler = async ({ bridge, obj }) => {
     bridge.store.setSubscribed({ email, value: true })
   }
   // VIP access is never time-boxed — acknowledge the payment, leave expiry alone.
-  if (email && tag === 'vip') {
+  if (email && holdsStandingGrant(tag)) {
     log.log(`renewal: ${email} is VIP — expiry untouched`)
     bridge.store.recordEvent({
       email,
@@ -541,7 +540,7 @@ const onSubscriptionDeleted: EventHandler = async ({ bridge, obj }) => {
   // A VIP's access is a standing grant, not something the subscription
   // buys. The renewal handler already leaves their expiry alone and the
   // sweep skips them; disabling them here undid both.
-  if (email && bridge.store.getMemberTag({ email }) === 'vip') {
+  if (email && holdsStandingGrant(bridge.store.getMemberTag({ email }))) {
     log.log(`cancel: ${email} is VIP; access left alone`)
     bridge.store.recordEvent({
       email,

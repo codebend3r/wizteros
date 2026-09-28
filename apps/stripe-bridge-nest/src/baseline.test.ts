@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { auditBaselineInvites, BASELINE_TIERS, rotateBaselineInvites } from '@/baseline.js'
 import { asBridge, type FakeBridge, fakeBridge } from '@/test/fakes.js'
 import { removeTempDirs, tempDbPath } from '@/test/support.js'
-import { resolveTierAccess, TIER_DOWNLOADS } from '@/tiers.js'
+import { resolveTierAccess, tierDownloads } from '@/tiers.js'
 import type { Bridge, WizarrInvitation, WizarrLibrary } from '@/types.js'
 
 const NOW = new Date(Date.UTC(2026, 7, 11, 3, 0))
@@ -133,12 +133,12 @@ describe('baseline invites', () => {
     const { bridge, client } = setup()
     await rotateBaselineInvites({ bridge, now: NOW })
     expect(client.created).toHaveLength(BASELINE_TIERS.length)
-    client.created.forEach((created, i) => {
-      const tier = BASELINE_TIERS[i] ?? ''
+    BASELINE_TIERS.forEach((tier, i) => {
+      const created = client.created[i]
       const access = resolveTierAccess({ tier, libraries: LIBRARIES })
-      expect(created.libraryIds).toEqual(access.library_ids)
-      expect(created.serverIds).toEqual(access.server_ids)
-      expect(created.allowDownloads).toBe(TIER_DOWNLOADS.get(tier))
+      expect(created?.libraryIds).toEqual(access.library_ids)
+      expect(created?.serverIds).toEqual(access.server_ids)
+      expect(created?.allowDownloads).toBe(tierDownloads(tier))
     })
   })
 

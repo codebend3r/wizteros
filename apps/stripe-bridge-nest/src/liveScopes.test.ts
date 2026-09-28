@@ -17,7 +17,8 @@ import {
   PRIVATE_NAME_RE,
   RETIRED_SERVERS,
   SHARE_SERVER,
-  TIER_DOWNLOADS,
+  type Tier,
+  TIERS,
   YOUTH_LIBRARY_TITLES,
   resolveTierAccess,
   tierScopeProblems,
@@ -56,18 +57,18 @@ const loadLibraries = (): readonly SnapshotLibrary[] => {
 
 const LIBRARIES = loadLibraries()
 
-const TIERS = [...TIER_DOWNLOADS.keys()].toSorted()
-const ENTRY_TIERS = TIERS.filter((tier) => tier !== 'gold')
+const SORTED_TIERS = TIERS.toSorted()
+const ENTRY_TIERS = SORTED_TIERS.filter((tier) => tier !== 'gold')
 
 /** The resolved access for a tier against the recorded snapshot. */
-const scope = (tier: string): TierScope => resolveTierAccess({ tier, libraries: LIBRARIES })
+const scope = (tier: Tier): TierScope => resolveTierAccess({ tier, libraries: LIBRARIES })
 
 /** Library names a tier grants on the share server, sorted. */
-const names = (tier: string): string[] =>
+const names = (tier: Tier): string[] =>
   tierServerLibraries({ tier, libraries: LIBRARIES })[SHARE_SERVER] ?? []
 
 /** Every library name a tier grants, across all of its servers, sorted. */
-const allNames = (tier: string): string[] =>
+const allNames = (tier: Tier): string[] =>
   Object.values(tierServerLibraries({ tier, libraries: LIBRARIES }))
     .flat()
     .toSorted()

@@ -2,7 +2,7 @@ import { Logger } from '@nestjs/common'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
-  TIER_DOWNLOADS,
+  TIERS,
   canonicalTier,
   isPrivate,
   normalizeTier,
@@ -71,7 +71,6 @@ const FLEET_IDS: ReadonlySet<number> = new Set([9, 17, 22, 40])
 const PRIVATE_IDS: ReadonlySet<number> = new Set([37, 61])
 const FOUR_K_IDS: ReadonlySet<number> = new Set([24, 26, 28])
 const ENTRY_TIERS = ['bronze', 'silver', 'youth'] as const
-const TIERS = [...TIER_DOWNLOADS.keys()]
 
 /** Whether two id collections share no member. */
 const disjoint = ({ a, b }: { a: ReadonlySet<number>; b: readonly number[] }): boolean =>
@@ -239,7 +238,7 @@ describe('tier scopes', () => {
   })
 
   it('disabled libraries are never shared', () => {
-    ;['bronze', 'silver', 'gold'].forEach((tier) => {
+    ;(['bronze', 'silver', 'gold'] as const).forEach((tier) => {
       const out = resolveTierAccess({ tier, libraries: LIBRARIES })
       expect(out.library_ids, tier).not.toContain(50)
     })
@@ -303,10 +302,6 @@ describe('tierServerLibraries', () => {
         tier,
       ).toBe(false)
     })
-  })
-
-  it('unknown tier grants nothing', () => {
-    expect(tierServerLibraries({ tier: 'unknown', libraries: LIBRARIES })).toEqual({})
   })
 })
 

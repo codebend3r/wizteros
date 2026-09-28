@@ -1,8 +1,9 @@
 import { Logger } from '@nestjs/common'
 import { dunningSweep, type DunningFinding, tierScopes, vipsWithoutAccess } from '@/alerts.js'
-import { accessLine, stripeStatusByCustomer } from '@/members.js'
+import { accessLine } from '@/members.js'
 import { mapInOrder } from '@/sequence.js'
-import { PAYMENT_STATE_BY_STATUS } from '@/subscriptionStatus.js'
+import { holdsStandingGrant } from '@/standing.js'
+import { statusRule, stripeStatusByCustomer } from '@/subscriptionStatus.js'
 import { libraryCacheProblems, tierScopeProblems } from '@/tiers.js'
 import type { Alert, Bridge, Mailer, WizarrUser } from '@/types.js'
 import { stackOf } from '@/errors.js'
@@ -99,10 +100,11 @@ export const checkPaymentStates = async (bridge: Bridge): Promise<string[]> => {
     items: [...bridge.store.allCustomerRows().entries()],
     run: async ([email, row]): Promise<DunningFinding | null> => {
       const status = row.customer_id === null ? undefined : byCustomer.get(row.customer_id)
-      if (!row.subscribed || status === undefined || !PAYMENT_STATE_BY_STATUS.has(status)) {
+      const rule = status === undefined ? undefined : statusRule(status)
+      if (!row.subscribed || status === undefined || rule === undefined) {
         return null
       }
-      const state = PAYMENT_STATE_BY_STATUS.get(status) ?? null
+      const state = rule.paymentState
       if (state === row.payment_state) return null
       bridge.store.setPaymentState({ email, state })
       if (state) {
@@ -146,7 +148,7 @@ export const checkPaymentStates = async (bridge: Bridge): Promise<string[]> => {
 export const checkVipAccess = async (bridge: Bridge): Promise<string[]> => {
   const tags = bridge.store.allMemberTags()
   const vips = [...tags.entries()]
-    .filter(([, tag]) => tag === 'vip')
+    .filter(([, tag]) => holdsStandingGrant(tag))
     .map(([email]) => email)
     .toSorted()
   if (vips.length === 0) {

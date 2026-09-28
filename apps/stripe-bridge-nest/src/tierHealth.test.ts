@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   LIBRARY_PREFIX_RE,
-  TIER_DOWNLOADS,
+  TIERS,
   YOUTH_LIBRARY_TITLES,
   resolveTierAccess,
   tierScopeProblems,
@@ -21,8 +21,6 @@ const HEALTHY: readonly WizarrLibrary[] = [
   { id: 26, name: '04. 4K Family Movies', server_id: 2, server_name: 'Meleys', enabled: true },
   { id: 29, name: '14. Kid Shows', server_id: 2, server_name: 'Meleys', enabled: true },
 ]
-
-const TIERS = [...TIER_DOWNLOADS.keys()]
 
 /** HEALTHY with every library moved onto a server that is not the share server. */
 const movedOffTheShareServer = (): WizarrLibrary[] =>
