@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common'
 import { MEMBERS_SNAPSHOT } from '@/admin/membersSnapshot.js'
 import { rotateBaselineInvites } from '@/baseline.js'
+import { type SweepAlerts, sweepAlerts } from '@/changeAlert.js'
 import { BRIDGE } from '@/bridgeToken.js'
 import {
   baselineRotateHour,
@@ -60,10 +61,24 @@ export const msUntilHour = ({ hour, now }: { hour: number; now: Date }): number 
  *
  * The checks run first and independently of each other: they are the drift
  * alarms, so each must still fire on a sweep where another pass throws.
+ * `alerts` remembers what each alarm last mailed about, so a standing problem
+ * mails once across sweeps rather than every time.
  */
-export const reconcileOnce = async (bridge: Bridge): Promise<void> => {
-  await guarded({ label: 'tier scope check failed', run: () => checkTierScopes(bridge) })
-  await guarded({ label: 'vip access check failed', run: () => checkVipAccess(bridge) })
+export const reconcileOnce = async ({
+  bridge,
+  alerts,
+}: {
+  bridge: Bridge
+  alerts: SweepAlerts
+}): Promise<void> => {
+  await guarded({
+    label: 'tier scope check failed',
+    run: () => checkTierScopes({ bridge, alert: alerts.tierScope }),
+  })
+  await guarded({
+    label: 'vip access check failed',
+    run: () => checkVipAccess({ bridge, alert: alerts.vipAccess }),
+  })
   await guarded({ label: 'payment state check failed', run: () => checkPaymentStates(bridge) })
   await guarded({
     label: 'expiry reconcile sweep failed',
@@ -121,6 +136,7 @@ export const startLoops = ({
 }): (() => void) => {
   const pending = new Set<NodeJS.Timeout>()
   const state = { stopped: false }
+  const alerts = sweepAlerts()
 
   const schedule = ({ ms, run }: { ms: number; run: () => Promise<void> }): void => {
     if (state.stopped) {
@@ -134,7 +150,7 @@ export const startLoops = ({
   }
 
   const reconcile = async (): Promise<void> => {
-    await reconcileOnce(bridge)
+    await reconcileOnce({ bridge, alerts })
     schedule({ ms: reconcileSeconds * 1000, run: reconcile })
   }
 

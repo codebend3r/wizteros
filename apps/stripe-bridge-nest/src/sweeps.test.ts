@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { checkPaymentStates, checkVipAccess, resetChangeAlerts } from '@/sweeps.js'
+import { type SweepAlerts, sweepAlerts } from '@/changeAlert.js'
+import { checkPaymentStates, checkVipAccess } from '@/sweeps.js'
 import { asBridge, type FakeBridge, fakeBridge, subscription } from '@/test/fakes.js'
 import { removeTempDirs, tempDbPath } from '@/test/support.js'
 import type { Bridge } from '@/types.js'
@@ -28,11 +29,12 @@ const stripeSubs = ({
 const actionsFor = ({ bridge, email }: { bridge: Bridge; email: string }): string[] =>
   bridge.store.eventsForEmail({ email }).map((event) => event.action)
 
+let alerts: SweepAlerts
+
 describe('sweeps', () => {
-  // The Python suites reloaded the module so the last-alerted state started
-  // empty for each test.
+  // Fresh alarms per test, so the first problem set always mails.
   beforeEach(() => {
-    resetChangeAlerts()
+    alerts = sweepAlerts()
   })
 
   afterEach(() => {
@@ -181,11 +183,11 @@ describe('sweeps', () => {
       { id: 1, email: 'ok@x.com', server: 'Meleys', expires: null },
     ])
 
-    expect(await checkVipAccess(bridge)).toEqual(['vip@x.com'])
+    expect(await checkVipAccess({ bridge, alert: alerts.vipAccess })).toEqual(['vip@x.com'])
     expect(fake.mailer.sendAlert).toHaveBeenCalledOnce()
     expect(fake.mailer.sendAlert.mock.calls[0]?.[0].body).toContain('vip@x.com')
     // A standing problem mails once, not every sweep.
-    expect(await checkVipAccess(bridge)).toEqual(['vip@x.com'])
+    expect(await checkVipAccess({ bridge, alert: alerts.vipAccess })).toEqual(['vip@x.com'])
     expect(fake.mailer.sendAlert).toHaveBeenCalledOnce()
   })
 
@@ -195,7 +197,7 @@ describe('sweeps', () => {
     fake.wizarr.listUsers.mockResolvedValue([
       { id: 1, email: 'ok@x.com', server: 'Meleys', expires: null },
     ])
-    expect(await checkVipAccess(bridge)).toEqual([])
+    expect(await checkVipAccess({ bridge, alert: alerts.vipAccess })).toEqual([])
     expect(fake.mailer.sendAlert).not.toHaveBeenCalled()
   })
 
@@ -204,6 +206,6 @@ describe('sweeps', () => {
     bridge.store.setMemberTag({ email: 'vip@x.com', tag: 'vip' })
     fake.wizarr.listUsers.mockRejectedValue(new Error('wizarr down'))
     // Unreachable is not the same as locked out, and this runs inside the sweep.
-    expect(await checkVipAccess(bridge)).toEqual([])
+    expect(await checkVipAccess({ bridge, alert: alerts.vipAccess })).toEqual([])
   })
 })

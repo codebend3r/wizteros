@@ -89,10 +89,6 @@ export const baselineRotateHour = (): number =>
 export const baselineExpiresDays = (): number =>
   intEnv({ name: 'BASELINE_EXPIRES_DAYS', fallback: 2 })
 
-/** How far out the one-time Invited backfill sets each member's expiry, in days. */
-export const backfillExpiryDays = (): number =>
-  intEnv({ name: 'BACKFILL_EXPIRY_DAYS', fallback: 14 })
-
 /** The Plex owner token; empty means plex.tv is not consulted at all. */
 export const plexToken = (): string => process.env.PLEX_TOKEN ?? ''
 

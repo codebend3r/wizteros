@@ -2,14 +2,7 @@ import { Logger } from '@nestjs/common'
 import { addDays, isoformat, parseIsoOrNull } from '@wizteros/server-common'
 import { mint } from '@/invites.js'
 import { mapInOrder } from '@/sequence.js'
-import {
-  resolveTierAccess,
-  SHARE_SERVER,
-  type Tier,
-  TIERS,
-  tierScopeProblems,
-  withoutStale,
-} from '@/tiers.js'
+import { resolveTierAccess, type Tier, TIERS, tierScopeProblems, withoutStale } from '@/tiers.js'
 import type { Bridge, CreatedInvite, TierScope, WizarrInvitation } from '@/types.js'
 import { stackOf } from '@/errors.js'
 
@@ -20,8 +13,6 @@ const log = new Logger('bridge.baseline')
 // the baseline set following it.
 export const BASELINE_TIERS: readonly Tier[] = TIERS.toSorted()
 
-const HOUR_MS = 3_600_000
-
 /** One baseline tier minted by a rotation. */
 export type MintedBaseline = Readonly<{ tier: Tier; code: string }>
 
@@ -30,24 +21,6 @@ export type RotationResult = Readonly<{
   minted: readonly MintedBaseline[]
   skipped: readonly string[]
   reaped: readonly string[]
-}>
-
-/** One live baseline invite, as the audit lists it under its tier. */
-export type LiveBaseline = Readonly<{ code: string; expires: string | null }>
-
-/** How the live invitation set diverges from the baseline rules. */
-export type BaselineAudit = Readonly<{
-  tiers_missing: readonly string[]
-  no_expiry: readonly Readonly<{ code: string; tier: string }>[]
-  wrong_scope: readonly Readonly<{ code: string; tier: string; servers: readonly string[] }>[]
-  rotation_stale: readonly string[]
-  strays: readonly Readonly<{
-    code: string | null
-    servers: readonly string[]
-    expires: string | null
-  }>[]
-  live_by_tier: Readonly<Record<string, readonly LiveBaseline[]>>
-  ok: boolean
 }>
 
 /** The invitation list keyed by code; a repeated code keeps the last. */
@@ -193,89 +166,4 @@ export const rotateBaselineInvites = async ({
     now,
   })
   return { minted, skipped, reaped }
-}
-
-/** One owned baseline that is still live, with how it failed the rules. */
-type OwnedLive = Readonly<{
-  code: string
-  tier: string
-  noExpiry: boolean
-  servers: readonly string[]
-  expires: string | null
-}>
-
-/**
- * Report how the live invitation set diverges from the baseline rules.
- *
- * Read-only. Scope is judged on server_names because Wizarr's serializer
- * reports specific_libraries as [] even for a correctly scoped invite, so
- * that field cannot separate a scoped invite from an unscoped one.
- */
-export const auditBaselineInvites = async ({
-  bridge,
-  now = new Date(),
-}: {
-  bridge: Bridge
-  now?: Date
-}): Promise<BaselineAudit> => {
-  const invitations = await bridge.wizarr.listInvitations()
-  const owned = new Map(bridge.store.allBaselineInvites().map((row) => [row.code, row]))
-  const byCode = byCodeOf(invitations)
-
-  // An owned invite with no expiry is still live (and flagged); one whose
-  // expiry has passed drops out of every other check.
-  const live = [...owned.values()].flatMap((row): OwnedLive[] => {
-    const inv = byCode.get(row.code)
-    if (inv === undefined) return []
-    const expires = parseIsoOrNull(inv.expires)
-    if (expires !== null && expires.getTime() <= now.getTime()) return []
-    return [
-      {
-        code: row.code,
-        tier: row.tier,
-        noExpiry: expires === null,
-        servers: [...(inv.server_names ?? [])].toSorted(),
-        expires: inv.expires ?? null,
-      },
-    ]
-  })
-  const noExpiry = live
-    .filter(({ noExpiry: missing }) => missing)
-    .map(({ code, tier }) => ({ code, tier }))
-  const wrongScope = live
-    .filter(({ servers }) => !(servers.length === 1 && servers[0] === SHARE_SERVER))
-    .map(({ code, tier, servers }) => ({ code, tier, servers }))
-  // Tiers in the order their first live invite was seen.
-  const liveByTier: Readonly<Record<string, readonly LiveBaseline[]>> = Object.fromEntries(
-    [...new Set(live.map(({ tier }) => tier))].map((tier) => [
-      tier,
-      live.filter((entry) => entry.tier === tier).map(({ code, expires }) => ({ code, expires })),
-    ]),
-  )
-
-  const missing = BASELINE_TIERS.filter((tier) => (liveByTier[tier] ?? []).length === 0)
-  const stale = Object.entries(liveByTier)
-    .filter(([, entries]) =>
-      entries.every(({ code }) => {
-        const created = parseIsoOrNull(owned.get(code)?.created_at ?? null)
-        return created === null || now.getTime() - created.getTime() > 24 * HOUR_MS
-      }),
-    )
-    .map(([tier]) => tier)
-  const strays = invitations
-    .filter((inv) => !!inv.unlimited && (inv.code == null || !owned.has(inv.code)))
-    .map((inv) => ({
-      code: inv.code ?? null,
-      servers: [...(inv.server_names ?? [])].toSorted(),
-      expires: inv.expires ?? null,
-    }))
-  return {
-    tiers_missing: missing,
-    no_expiry: noExpiry,
-    wrong_scope: wrongScope,
-    rotation_stale: stale.toSorted(),
-    strays,
-    live_by_tier: liveByTier,
-    ok: !(missing.length > 0 || noExpiry.length > 0 || wrongScope.length > 0 || stale.length > 0),
-  }
 }

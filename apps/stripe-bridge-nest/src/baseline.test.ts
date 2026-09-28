@@ -1,6 +1,6 @@
 import { isoformat } from '@wizteros/server-common'
 import { afterEach, describe, expect, it } from 'vitest'
-import { auditBaselineInvites, BASELINE_TIERS, rotateBaselineInvites } from '@/baseline.js'
+import { BASELINE_TIERS, rotateBaselineInvites } from '@/baseline.js'
 import { asBridge, type FakeBridge, fakeBridge } from '@/test/fakes.js'
 import { removeTempDirs, tempDbPath } from '@/test/support.js'
 import { resolveTierAccess, tierDownloads } from '@/tiers.js'
@@ -97,15 +97,6 @@ const setup = ({
   return { fake, bridge: asBridge(fake), client }
 }
 
-/** The invitation list with the first entry's fields replaced. */
-const withFirst = ({
-  invitations,
-  fields,
-}: {
-  invitations: readonly WizarrInvitation[]
-  fields: Partial<WizarrInvitation>
-}): WizarrInvitation[] => invitations.map((inv, i) => (i === 0 ? { ...inv, ...fields } : inv))
-
 describe('baseline invites', () => {
   afterEach(() => {
     removeTempDirs()
@@ -184,70 +175,5 @@ describe('baseline invites', () => {
     const result = await rotateBaselineInvites({ bridge, now: NOW })
     expect(result.skipped).toContain('youth')
     expect(result.minted.map((m) => m.tier)).not.toContain('youth')
-  })
-
-  it('audit is clean right after a rotation', async () => {
-    const { bridge } = setup()
-    await rotateBaselineInvites({ bridge, now: NOW })
-    const report = await auditBaselineInvites({ bridge, now: NOW })
-    expect(report.ok).toBe(true)
-    expect(report.tiers_missing).toEqual([])
-  })
-
-  it('audit flags a missing tier', async () => {
-    const { bridge, client } = setup()
-    await rotateBaselineInvites({ bridge, now: NOW })
-    const firstCode = client.created[0]?.code
-    client.invitations = client.invitations.filter((inv) => inv.code !== firstCode)
-    const report = await auditBaselineInvites({ bridge, now: NOW })
-    expect(report.ok).toBe(false)
-    expect(report.tiers_missing.length).toBeGreaterThan(0)
-  })
-
-  it('audit flags a baseline with no expiry', async () => {
-    const { bridge, client } = setup()
-    await rotateBaselineInvites({ bridge, now: NOW })
-    client.invitations = withFirst({ invitations: client.invitations, fields: { expires: null } })
-    const report = await auditBaselineInvites({ bridge, now: NOW })
-    expect(report.ok).toBe(false)
-    expect(report.no_expiry.length).toBeGreaterThan(0)
-  })
-
-  it('audit flags scope beyond the share server', async () => {
-    const { bridge, client } = setup()
-    await rotateBaselineInvites({ bridge, now: NOW })
-    client.invitations = withFirst({
-      invitations: client.invitations,
-      fields: {
-        server_names: ['Meleys', 'Vermithor', 'Syrax'],
-      },
-    })
-    const report = await auditBaselineInvites({ bridge, now: NOW })
-    expect(report.ok).toBe(false)
-    expect(report.wrong_scope[0]?.servers).toEqual(['Meleys', 'Syrax', 'Vermithor'])
-  })
-
-  it('audit reports strays without deleting them', async () => {
-    const stray: WizarrInvitation = {
-      id: 1,
-      code: '1PYO3B8VPQ',
-      unlimited: true,
-      server_names: ['Vermithor', 'Meleys', 'Syrax'],
-      used_by: null,
-      expires: null,
-    }
-    const { bridge, client } = setup({ invitations: [stray] })
-    await rotateBaselineInvites({ bridge, now: NOW })
-    const report = await auditBaselineInvites({ bridge, now: NOW })
-    expect(report.strays.map((s) => s.code)).toEqual(['1PYO3B8VPQ'])
-    expect(client.deleted).not.toContain(1)
-  })
-
-  it('audit flags a rotation that stopped running', async () => {
-    const { bridge } = setup()
-    await rotateBaselineInvites({ bridge, now: NOW })
-    const report = await auditBaselineInvites({ bridge, now: at(DAY_MS + 2 * HOUR_MS) })
-    expect(report.ok).toBe(false)
-    expect([...report.rotation_stale].toSorted()).toEqual([...BASELINE_TIERS].toSorted())
   })
 })

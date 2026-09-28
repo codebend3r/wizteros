@@ -1,11 +1,12 @@
 import { Logger } from '@nestjs/common'
+import type { ChangeAlert } from '@/changeAlert.js'
 import { dunningSweep, type DunningFinding, tierScopes, vipsWithoutAccess } from '@/alerts.js'
 import { accessLine } from '@/members.js'
 import { mapInOrder } from '@/sequence.js'
 import { holdsStandingGrant } from '@/standing.js'
 import { statusRule, stripeStatusByCustomer } from '@/subscriptionStatus.js'
 import { libraryCacheProblems, tierScopeProblems } from '@/tiers.js'
-import type { Alert, Bridge, Mailer, WizarrUser } from '@/types.js'
+import type { Bridge, WizarrUser } from '@/types.js'
 import { stackOf } from '@/errors.js'
 
 // The drift alarms the reconcile loop runs between webhooks.
@@ -13,71 +14,11 @@ import { stackOf } from '@/errors.js'
 // Each check never throws, alerts once per new problem rather than every
 // sweep, and never touches a member's access: that stays with the webhook
 // handlers. They take the bridge as their argument so the loop, the tests,
-// and any one-off script call them the same way.
+// and any one-off script call them the same way; the two that mail on a set
+// changing take their alarm too, so the loop keeps one for the life of the
+// process while a test starts fresh.
 
 const log = new Logger('bridge')
-
-/**
- * A structural key for a problem set, so two equal sets compare equal
- * whatever order their object keys were built in.
- */
-const canonicalKey = (value: unknown): string =>
-  JSON.stringify(value, (_key, inner: unknown) =>
-    typeof inner === 'object' && inner !== null && !Array.isArray(inner)
-      ? Object.fromEntries(
-          Object.entries(inner).toSorted(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
-        )
-      : inner,
-  )
-
-/**
- * Mails once per distinct problem set, not once per sweep.
- *
- * A standing breakage is alerted on the sweep that finds it and then stays
- * quiet; a change in the set, or a recovery followed by a relapse, alerts
- * again. The remembered set lives for the life of the process, so a restart
- * re-alerts on whatever is still broken.
- */
-export class ChangeAlert {
-  // Nothing outstanding to start with, so the first problem set always mails.
-  private last: string | null = null
-
-  /** Forget the outstanding set: the same problem returning mails again. */
-  clear(): void {
-    this.last = null
-  }
-
-  /** Mail the alert unless this exact set is the one already alerted on. */
-  async fire({
-    current,
-    alert,
-    mailer,
-  }: {
-    current: unknown
-    alert: Alert
-    mailer: Mailer
-  }): Promise<void> {
-    const key = canonicalKey(current)
-    if (key !== this.last) {
-      this.last = key
-      await mailer.sendAlert(alert)
-    }
-  }
-}
-
-const tierScopeAlert = new ChangeAlert()
-const vipAccessAlert = new ChangeAlert()
-
-/**
- * Forget what both alarms last mailed about.
- *
- * The Python suites reloaded the module between tests to get this; the
- * process-long state is otherwise only reset by a restart.
- */
-export const resetChangeAlerts = (): void => {
-  tierScopeAlert.clear()
-  vipAccessAlert.clear()
-}
 
 /**
  * Mirror Stripe's own dunning state onto the store; alert on what the webhooks missed.
@@ -145,14 +86,20 @@ export const checkPaymentStates = async (bridge: Bridge): Promise<string[]> => {
  * an invite that quietly expired). Never throws: it runs inside the reconcile
  * loop, and an unreachable Wizarr is not a lockout.
  */
-export const checkVipAccess = async (bridge: Bridge): Promise<string[]> => {
+export const checkVipAccess = async ({
+  bridge,
+  alert,
+}: {
+  bridge: Bridge
+  alert: ChangeAlert
+}): Promise<string[]> => {
   const tags = bridge.store.allMemberTags()
   const vips = [...tags.entries()]
     .filter(([, tag]) => holdsStandingGrant(tag))
     .map(([email]) => email)
     .toSorted()
   if (vips.length === 0) {
-    vipAccessAlert.clear()
+    alert.clear()
     return []
   }
   const users = await bridge.wizarr.listUsers().catch((error: unknown): WizarrUser[] | null => {
@@ -163,11 +110,11 @@ export const checkVipAccess = async (bridge: Bridge): Promise<string[]> => {
   const held = new Set(users.map((user) => (user.email ?? '').toLowerCase()))
   const stranded = vips.filter((email) => !held.has(email))
   if (stranded.length === 0) {
-    vipAccessAlert.clear()
+    alert.clear()
     return []
   }
   log.error(`vip access check: ${stranded.length} VIP(s) hold no records: ${stranded.join(', ')}`)
-  await vipAccessAlert.fire({
+  await alert.fire({
     current: stranded,
     alert: vipsWithoutAccess(stranded),
     mailer: bridge.mailer,
@@ -189,7 +136,13 @@ export const checkVipAccess = async (bridge: Bridge): Promise<string[]> => {
  * plex.tv that cannot be reached is reported as healthy — unreachable is not
  * misconfigured, and the next sweep will try again.
  */
-export const checkTierScopes = async (bridge: Bridge): Promise<Record<string, string>> => {
+export const checkTierScopes = async ({
+  bridge,
+  alert,
+}: {
+  bridge: Bridge
+  alert: ChangeAlert
+}): Promise<Record<string, string>> => {
   const libraries = await bridge.wizarr.listLibraries().catch((error: unknown) => {
     log.error('tier scope check: could not read libraries from Wizarr', stackOf(error))
     return null
@@ -200,13 +153,13 @@ export const checkTierScopes = async (bridge: Bridge): Promise<Record<string, st
     ...libraryCacheProblems({ libraries, live: await bridge.plex.liveSectionsOrNone() }),
   }
   if (Object.keys(problems).length === 0) {
-    tierScopeAlert.clear()
+    alert.clear()
     return {}
   }
   Object.entries(problems).forEach(([tier, reason]) => {
     log.error(`tier scope check: ${tier} -> ${reason}`)
   })
-  await tierScopeAlert.fire({
+  await alert.fire({
     current: problems,
     alert: tierScopes(problems),
     mailer: bridge.mailer,

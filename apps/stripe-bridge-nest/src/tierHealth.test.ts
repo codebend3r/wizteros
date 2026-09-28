@@ -8,7 +8,8 @@ import {
   resolveTierAccess,
   tierScopeProblems,
 } from '@/tiers.js'
-import { checkTierScopes, resetChangeAlerts } from '@/sweeps.js'
+import { type SweepAlerts, sweepAlerts } from '@/changeAlert.js'
+import { checkTierScopes } from '@/sweeps.js'
 import { asBridge, type FakeBridge, fakeBridge } from '@/test/fakes.js'
 import type { WizarrLibrary } from '@/types.js'
 import { resolveTierScope } from '@/webhook/handlers.js'
@@ -115,17 +116,19 @@ const alertsSent = (fake: FakeBridge): { subject: string; body: string }[] =>
 /** HEALTHY with youth's three allowlist libraries gone. */
 const youthBroken = (): WizarrLibrary[] => HEALTHY.filter((lib) => ![25, 26, 29].includes(lib.id))
 
+let alerts: SweepAlerts
+
 describe('checkTierScopes', () => {
-  // The Python suite reloaded sweeps to reset the last-alerted state.
+  // Fresh alarms per test, so the first problem set always mails.
   beforeEach(() => {
-    resetChangeAlerts()
+    alerts = sweepAlerts()
   })
 
   it('health check alerts when a tier breaks', async () => {
     const fake = sweepsBridge()
     fake.wizarr.listLibraries.mockResolvedValue(youthBroken())
     const errors = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => {})
-    const broken = await checkTierScopes(asBridge(fake))
+    const broken = await checkTierScopes({ bridge: asBridge(fake), alert: alerts.tierScope })
     const logged = errors.mock.calls.map(([message]) => String(message))
     errors.mockRestore()
     expect(broken).toHaveProperty('youth')
@@ -138,7 +141,7 @@ describe('checkTierScopes', () => {
   it('health check stays quiet while healthy', async () => {
     const fake = sweepsBridge()
     fake.wizarr.listLibraries.mockResolvedValue([...HEALTHY])
-    expect(await checkTierScopes(asBridge(fake))).toEqual({})
+    expect(await checkTierScopes({ bridge: asBridge(fake), alert: alerts.tierScope })).toEqual({})
     expect(fake.mailer.sendAlert).not.toHaveBeenCalled()
   })
 
@@ -146,36 +149,36 @@ describe('checkTierScopes', () => {
     // The sweep runs hourly; a standing breakage must not mail hourly.
     const fake = sweepsBridge()
     fake.wizarr.listLibraries.mockImplementation(async () => youthBroken())
-    await checkTierScopes(asBridge(fake))
-    await checkTierScopes(asBridge(fake))
-    await checkTierScopes(asBridge(fake))
+    await checkTierScopes({ bridge: asBridge(fake), alert: alerts.tierScope })
+    await checkTierScopes({ bridge: asBridge(fake), alert: alerts.tierScope })
+    await checkTierScopes({ bridge: asBridge(fake), alert: alerts.tierScope })
     expect(fake.mailer.sendAlert).toHaveBeenCalledTimes(1)
   })
 
   it('health check re-alerts when the problem changes', async () => {
     const fake = sweepsBridge()
     fake.wizarr.listLibraries.mockResolvedValue(youthBroken())
-    await checkTierScopes(asBridge(fake))
+    await checkTierScopes({ bridge: asBridge(fake), alert: alerts.tierScope })
     fake.wizarr.listLibraries.mockResolvedValue([]) // every tier now broken
-    await checkTierScopes(asBridge(fake))
+    await checkTierScopes({ bridge: asBridge(fake), alert: alerts.tierScope })
     expect(fake.mailer.sendAlert).toHaveBeenCalledTimes(2)
   })
 
   it('health check alerts again after a recovery', async () => {
     const fake = sweepsBridge()
     fake.wizarr.listLibraries.mockResolvedValue(youthBroken())
-    await checkTierScopes(asBridge(fake))
+    await checkTierScopes({ bridge: asBridge(fake), alert: alerts.tierScope })
     fake.wizarr.listLibraries.mockResolvedValue([...HEALTHY]) // recovered
-    await checkTierScopes(asBridge(fake))
+    await checkTierScopes({ bridge: asBridge(fake), alert: alerts.tierScope })
     fake.wizarr.listLibraries.mockResolvedValue(youthBroken())
-    await checkTierScopes(asBridge(fake)) // broke again -> alert again
+    await checkTierScopes({ bridge: asBridge(fake), alert: alerts.tierScope }) // broke again -> alert again
     expect(fake.mailer.sendAlert).toHaveBeenCalledTimes(2)
   })
 
   it('health check survives wizarr being down', async () => {
     const fake = sweepsBridge()
     fake.wizarr.listLibraries.mockRejectedValue(new Error('wizarr down'))
-    expect(await checkTierScopes(asBridge(fake))).toEqual({})
+    expect(await checkTierScopes({ bridge: asBridge(fake), alert: alerts.tierScope })).toEqual({})
     expect(fake.mailer.sendAlert).not.toHaveBeenCalled() // unreachable != misconfigured
   })
 })
@@ -192,9 +195,9 @@ const LIVE_MELEYS: Readonly<Record<string, string>> = Object.fromEntries(
 )
 const RENAMED_ON_PLEX = { Meleys: { ...LIVE_MELEYS, x29: '22. Kid Shows' } }
 
-describe('check_tier_scopes and resolve_tier_scope against the Plex cache', () => {
+describe('checkTierScopes and resolveTierScope against the Plex cache', () => {
   beforeEach(() => {
-    resetChangeAlerts()
+    alerts = sweepAlerts()
   })
 
   it('health check reports a stale wizarr cache', async () => {
@@ -204,7 +207,7 @@ describe('check_tier_scopes and resolve_tier_scope against the Plex cache', () =
     const fake = sweepsBridge()
     fake.wizarr.listLibraries.mockResolvedValue([...CACHED])
     fake.plex.liveSectionsOrNone.mockResolvedValue(RENAMED_ON_PLEX)
-    const problems = await checkTierScopes(asBridge(fake))
+    const problems = await checkTierScopes({ bridge: asBridge(fake), alert: alerts.tierScope })
     expect(problems).toHaveProperty(['wizarr cache on Meleys'])
     expect(problems['wizarr cache on Meleys']).toContain('14. Kid Shows')
     expect(fake.mailer.sendAlert).toHaveBeenCalledOnce()
@@ -215,7 +218,7 @@ describe('check_tier_scopes and resolve_tier_scope against the Plex cache', () =
     const fake = sweepsBridge()
     fake.wizarr.listLibraries.mockResolvedValue([...CACHED])
     fake.plex.liveSectionsOrNone.mockResolvedValue(null)
-    expect(await checkTierScopes(asBridge(fake))).toEqual({})
+    expect(await checkTierScopes({ bridge: asBridge(fake), alert: alerts.tierScope })).toEqual({})
     expect(fake.mailer.sendAlert).not.toHaveBeenCalled()
   })
 
@@ -223,7 +226,7 @@ describe('check_tier_scopes and resolve_tier_scope against the Plex cache', () =
     const fake = sweepsBridge()
     fake.wizarr.listLibraries.mockResolvedValue([...CACHED])
     fake.plex.liveSectionsOrNone.mockResolvedValue({ Meleys: LIVE_MELEYS })
-    expect(await checkTierScopes(asBridge(fake))).toEqual({})
+    expect(await checkTierScopes({ bridge: asBridge(fake), alert: alerts.tierScope })).toEqual({})
     expect(fake.mailer.sendAlert).not.toHaveBeenCalled()
   })
 

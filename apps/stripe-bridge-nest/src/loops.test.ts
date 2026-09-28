@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { rotateBaselineInvites } from '@/baseline.js'
+import { sweepAlerts } from '@/changeAlert.js'
 import { msUntilHour, reconcileOnce, rotateOnce, startLoops, type Timers } from '@/loops.js'
 import { reconcilePendingExpiries } from '@/reconcile.js'
 import { UpstreamSnapshot } from '@/snapshot.js'
@@ -87,13 +88,13 @@ describe('reconcileOnce', () => {
     vi.mocked(reconcilePendingExpiries).mockImplementationOnce(
       async () => (order.push('expiry'), 0),
     )
-    await reconcileOnce(bridge)
+    await reconcileOnce({ bridge, alerts: sweepAlerts() })
     expect(order).toEqual(['tiers', 'vips', 'dunning', 'expiry'])
   })
 
   it('still runs every other pass when one throws, and logs the one that did', async () => {
     vi.mocked(checkVipAccess).mockRejectedValueOnce(new Error('wizarr down'))
-    await reconcileOnce(bridge)
+    await reconcileOnce({ bridge, alerts: sweepAlerts() })
     expect(checkPaymentStates).toHaveBeenCalledTimes(1)
     expect(reconcilePendingExpiries).toHaveBeenCalledTimes(1)
     expect(Logger.prototype.error).toHaveBeenCalledWith(
