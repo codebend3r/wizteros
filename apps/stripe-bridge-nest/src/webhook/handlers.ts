@@ -1,8 +1,13 @@
 import { Logger } from '@nestjs/common'
-import { isoformat, isRow, type Row } from '@wizteros/server-common'
+import { addDays, isoformat, isRow, type Row } from '@wizteros/server-common'
 import { accessRestored, bannedCheckout, describeInvoice, paymentFailed, signup } from '@/alerts.js'
-import { liveScope, mint, TierScopeEmpty } from '@/invites.js'
-import { accessLine, liveSiblingCustomer, resolveUserIds } from '@/members.js'
+import { inviteUrl, issueInvite, liveScope, mint, TierScopeEmpty } from '@/invites.js'
+import {
+  accessLine,
+  liveSiblingCustomer,
+  resolveUserIds,
+  stillSubscribedElsewhere,
+} from '@/members.js'
 import { eachInOrder } from '@/sequence.js'
 import { holdsStandingGrant, isBanned } from '@/standing.js'
 import { statusRule } from '@/subscriptionStatus.js'
@@ -48,22 +53,6 @@ const requiredText = ({ obj, key }: { obj: StripeObject; key: string }): string 
   return value
 }
 
-// Surrounding whitespace and one sign are fine; anything else throws, which is
-// what a malformed ACCESS_DURATION should do.
-const INTEGER = /^\s*[+-]?\d+\s*$/
-
-/** ACCESS_DURATION as a whole number of days. */
-export const accessDays = (settings: Settings): number => {
-  if (!INTEGER.test(settings.accessDuration)) {
-    throw new Error(`ACCESS_DURATION is not an integer: ${JSON.stringify(settings.accessDuration)}`)
-  }
-  return Number.parseInt(settings.accessDuration, 10)
-}
-
-/** `at` moved forward by a number of whole days. */
-export const plusDays = ({ at, days }: { at: Date; days: number }): Date =>
-  new Date(at.getTime() + days * 86_400_000)
-
 /**
  * Email on the Stripe customer record, or null if they have none on file.
  *
@@ -83,56 +72,9 @@ export const customerEmail = async ({
   return bridge.stripe.customerEmail(customerId)
 }
 
-/** Absolute expiry for a paid record: the update time plus ACCESS_DURATION. */
-export const accessExpiryIso = (settings: Settings): string =>
-  isoformat(plusDays({ at: new Date(), days: accessDays(settings) }))
-
-/**
- * Every address belonging to the same person as `email`, lowercased.
- *
- * Links point payer -> Plex account, so the person is identified by the Plex
- * address: either this address pays for someone (follow the link) or it is
- * the account itself. Both directions matter, since a cancellation can land
- * on either half of the pair.
- */
-export const linkedAddresses = ({
-  bridge,
-  email,
-}: {
-  bridge: Bridge
-  email: string
-}): ReadonlySet<string> => {
-  const links = bridge.store.allMemberLinks()
-  const lowered = email.toLowerCase()
-  const owner = links.get(lowered) ?? lowered
-  return new Set([
-    owner,
-    ...[...links].filter(([, plex]) => plex === owner).map(([payer]) => payer),
-  ])
-}
-
-/**
- * Another address of the same person still carrying a live subscription.
- *
- * A member can hold two Stripe customers, and only one of them dying is the
- * normal way that ends. Records resolve by email, so the dead customer's
- * address is the same one the live member watches under: disabling on its
- * cancellation revokes access somebody is currently paying for.
- */
-export const stillSubscribedElsewhere = ({
-  bridge,
-  email,
-}: {
-  bridge: Bridge
-  email: string
-}): string | null => {
-  const rows = bridge.store.allCustomerRows()
-  const lowered = email.toLowerCase()
-  const others = [...linkedAddresses({ bridge, email })]
-    .filter((address) => address !== lowered)
-    .toSorted()
-  return others.find((address) => rows.get(address)?.subscribed ?? false) ?? null
-}
+/** Absolute expiry for a paid record: the update time plus the access window. */
+const accessExpiryIso = (settings: Settings): string =>
+  isoformat(addDays({ at: new Date(), days: settings.accessDays }))
 
 /**
  * The tier's live library scope, or throw so the delivery is retried.
@@ -163,59 +105,8 @@ export const resolveTierScope = async ({
   }
 }
 
-/** The link a member opens, on the public invite origin. */
-const inviteUrl = ({ bridge, code }: { bridge: Bridge; code: string }): string =>
-  `${bridge.settings.publicInviteBase}/j/${code}`
-
-/** Tell the admin who just signed up, with the same link the member got. */
-export const signupAlert = async ({
-  bridge,
-  email,
-  tier,
-  session,
-  code,
-}: {
-  bridge: Bridge
-  email: string
-  tier: Tier
-  session: StripeObject
-  code: string
-}): Promise<void> =>
-  bridge.mailer.sendAlert(
-    signup({
-      email,
-      tier,
-      session,
-      sessionId: truthyText({ obj: session, key: 'id' }),
-      customerId: truthyText({ obj: session, key: 'customer' }),
-      inviteUrl: inviteUrl({ bridge, code }),
-    }),
-  )
-
-/** Tell the admin about one declined attempt; each is a day closer to a cancel. */
-export const paymentFailedAlert = async ({
-  bridge,
-  email,
-  invoice,
-}: {
-  bridge: Bridge
-  email: string
-  invoice: StripeObject
-}): Promise<void> =>
-  bridge.mailer.sendAlert(
-    paymentFailed({
-      email,
-      invoice,
-      access: await accessLine({
-        bridge,
-        customerId: truthyText({ obj: invoice, key: 'customer' }),
-        email,
-      }),
-    }),
-  )
-
 /**
- * Re-invite a paid-up member who holds no Wizarr records; true when one was sent.
+ * Re-invite a paid-up member who holds no Wizarr records.
  *
  * A payment landing on a member with nothing to extend is the shape of the
  * worst failure this bridge has: they are paid, they are locked out, and the
@@ -226,7 +117,7 @@ export const paymentFailedAlert = async ({
  * an admin would press by hand (issue a tier-scoped invite and mail it), so
  * the bridge does it itself and tells the operator it happened.
  */
-export const restoreAccess = async ({
+const restoreAccess = async ({
   bridge,
   email,
   customerId,
@@ -236,25 +127,15 @@ export const restoreAccess = async ({
   email: string
   customerId: string | null
   tier: string | null
-}): Promise<boolean> => {
+}): Promise<void> => {
   const resolved = normalizeTier(tier)
-  const access = await resolveTierScope({
+  const scope = await resolveTierScope({
     bridge,
     tier: resolved,
     context: `access recovery for ${email}`,
   })
-  const { code } = await mint({
-    wizarr: bridge.wizarr,
-    settings: bridge.settings,
-    tier: resolved,
-    scope: access,
-  })
-  if (customerId) {
-    bridge.store.upsertPending({ customerId, email, inviteCode: code, tier: resolved })
-  } else {
-    bridge.store.upsertPendingByEmail({ email, inviteCode: code, tier: resolved })
-  }
-  await bridge.mailer.sendInvite({ to: email, inviteUrl: inviteUrl({ bridge, code }) })
+  const { code, url } = await issueInvite({ bridge, email, tier: resolved, scope, customerId })
+  await bridge.mailer.sendInvite({ to: email, inviteUrl: url })
   log.error(`payment for ${email} found no records; reissued ${resolved} invite ${code}`)
   bridge.store.recordEvent({
     email,
@@ -262,23 +143,6 @@ export const restoreAccess = async ({
     detail: `paid with no active records; ${resolved} invite reissued`,
   })
   await bridge.mailer.sendAlert(accessRestored({ email, tier: resolved }))
-  return true
-}
-
-/** Mirror a Stripe subscription status onto the member's dunning flag. */
-export const syncPaymentState = ({
-  bridge,
-  email,
-  status,
-}: {
-  bridge: Bridge
-  email: string | null
-  status: string
-}): void => {
-  const rule = statusRule(status)
-  if (email && rule !== undefined) {
-    bridge.store.setPaymentState({ email, state: rule.paymentState })
-  }
 }
 
 /** Record and alert on a banned member's checkout; no invite, no access. */
@@ -346,6 +210,45 @@ const resetExistingRecords = async ({
   }
 }
 
+/** Stamp the paid expiry on every record the customer resolves to: the ids stamped, and the expiry. */
+const renewRecords = async ({
+  bridge,
+  customerId,
+  email,
+}: {
+  bridge: Bridge
+  customerId: string
+  email: string | null
+}): Promise<{ ids: number[]; expires: string }> => {
+  const ids = await resolveUserIds({ bridge, customerId, email })
+  const expires = accessExpiryIso(bridge.settings)
+  await eachInOrder({ items: ids, run: (userId) => bridge.wizarr.setExpiry({ userId, expires }) })
+  if (ids.length > 0) {
+    log.log(`renewed ${ids.length} record(s) for ${email ?? customerId} (expires ${expires})`)
+  }
+  return { ids, expires }
+}
+
+/** Disable every record the customer resolves to; how many there were. */
+const disableRecords = async ({
+  bridge,
+  customerId,
+  email,
+}: {
+  bridge: Bridge
+  customerId: string
+  email: string | null
+}): Promise<number> => {
+  const ids = await resolveUserIds({ bridge, customerId, email })
+  await eachInOrder({ items: ids, run: (userId) => bridge.wizarr.disableUser(userId) })
+  if (ids.length > 0) {
+    log.log(`disabled ${ids.length} record(s) for ${email ?? customerId}`)
+  } else {
+    log.log(`cancel: no wizarr user for ${customerId} / ${email ?? 'no email'}`)
+  }
+  return ids.length
+}
+
 /** Mint and mail the tier invite for a completed checkout, once per session. */
 const onCheckoutCompleted: EventHandler = async ({ bridge, obj }) => {
   const email =
@@ -363,13 +266,7 @@ const onCheckoutCompleted: EventHandler = async ({ bridge, obj }) => {
   // and nothing is recorded against the customer; the operator is told,
   // because the charge itself went through and is theirs to refund.
   if (isBanned(tag)) {
-    await blockBannedCheckout({
-      bridge,
-      email,
-      tier,
-      sessionId,
-      customerId,
-    })
+    await blockBannedCheckout({ bridge, email, tier, sessionId, customerId })
     return
   }
   const access = await resolveTierScope({
@@ -398,7 +295,8 @@ const onCheckoutCompleted: EventHandler = async ({ bridge, obj }) => {
     store.setPaymentState({ email, state: null })
   })
   if (!(issued?.emailed ?? false)) {
-    await bridge.mailer.sendInvite({ to: email, inviteUrl: inviteUrl({ bridge, code }) })
+    const url = inviteUrl({ settings: bridge.settings, code })
+    await bridge.mailer.sendInvite({ to: email, inviteUrl: url })
     log.log(`sent invite to ${email}`)
     if (sessionId) {
       bridge.store.markSessionInviteEmailed({ sessionId })
@@ -410,7 +308,9 @@ const onCheckoutCompleted: EventHandler = async ({ bridge, obj }) => {
     })
     // Inside the once-per-checkout branch on purpose: a Stripe retry of
     // a session whose invite already went out must not mail twice.
-    await signupAlert({ bridge, email, tier, session: obj, code })
+    await bridge.mailer.sendAlert(
+      signup({ email, tier, session: obj, sessionId, customerId, inviteUrl: url }),
+    )
   }
   // VIP access is never time-boxed or reshuffled — a VIP's checkout is
   // just a contribution, so their records stay exactly as they are (no
@@ -437,9 +337,18 @@ const onInvoicePaid: EventHandler = async ({ bridge, obj }) => {
     log.log(`skipping first (signup) invoice for ${customerId}`)
     return
   }
-  const tag = email ? bridge.store.getMemberTag({ email }) : null
+  if (!email) {
+    // Nobody to record the payment against; the records the customer's
+    // invite resolves to still get their window.
+    const { ids } = await renewRecords({ bridge, customerId, email: null })
+    if (ids.length === 0) {
+      log.warn(`renewal: no wizarr user for ${customerId}, which has no email`)
+    }
+    return
+  }
+  const tag = bridge.store.getMemberTag({ email })
   // A ban outranks a payment: nothing is extended and nothing restored.
-  if (email && isBanned(tag)) {
+  if (isBanned(tag)) {
     log.warn(`renewal: ${email} is banned; access not extended`)
     bridge.store.recordEvent({
       email,
@@ -448,11 +357,9 @@ const onInvoicePaid: EventHandler = async ({ bridge, obj }) => {
     })
     return
   }
-  if (email) {
-    bridge.store.setSubscribed({ email, value: true })
-  }
+  bridge.store.setSubscribed({ email, value: true })
   // VIP access is never time-boxed — acknowledge the payment, leave expiry alone.
-  if (email && holdsStandingGrant(tag)) {
+  if (holdsStandingGrant(tag)) {
     log.log(`renewal: ${email} is VIP — expiry untouched`)
     bridge.store.recordEvent({
       email,
@@ -461,26 +368,19 @@ const onInvoicePaid: EventHandler = async ({ bridge, obj }) => {
     })
     return
   }
-  const ids = await resolveUserIds({ bridge, customerId, email })
-  const expires = accessExpiryIso(bridge.settings)
-  await eachInOrder({ items: ids, run: (userId) => bridge.wizarr.setExpiry({ userId, expires }) })
+  const { ids, expires } = await renewRecords({ bridge, customerId, email })
   if (ids.length > 0) {
-    log.log(`renewed ${ids.length} record(s) for ${email ?? customerId} (expires ${expires})`)
-    if (email) {
-      bridge.store.recordEvent({
-        email,
-        action: 'Payment received',
-        detail: `access extended to ${expires.slice(0, 10)}`,
-      })
-    }
-  } else if (email) {
-    // Paid, but nothing to extend. Never leave this as a log line: the
-    // member is locked out right now and only a new invite fixes it.
-    const row = bridge.store.customerRow({ email })
-    await restoreAccess({ bridge, email, customerId, tier: row ? row.tier : null })
-  } else {
-    log.warn(`renewal: no wizarr user for ${customerId}, which has no email`)
+    bridge.store.recordEvent({
+      email,
+      action: 'Payment received',
+      detail: `access extended to ${expires.slice(0, 10)}`,
+    })
+    return
   }
+  // Paid, but nothing to extend. Never leave this as a log line: the
+  // member is locked out right now and only a new invite fixes it.
+  const row = bridge.store.customerRow({ email })
+  await restoreAccess({ bridge, email, customerId, tier: row ? row.tier : null })
 }
 
 /** Flag the payer as past due and alert; access is held while Stripe retries. */
@@ -505,7 +405,11 @@ const onPaymentFailed: EventHandler = async ({ bridge, obj }) => {
     action: 'Payment failed',
     detail: `Stripe charge declined; access held while it retries (${describeInvoice(obj)})`,
   })
-  await paymentFailedAlert({ bridge, email, invoice: obj })
+  // Each declined attempt is a day closer to a cancel, so the admin hears
+  // about every one.
+  await bridge.mailer.sendAlert(
+    paymentFailed({ email, invoice: obj, access: await accessLine({ bridge, customerId, email }) }),
+  )
 }
 
 /** Mirror the subscription's new status onto the member's dunning flag. */
@@ -515,7 +419,10 @@ const onSubscriptionUpdated: EventHandler = async ({ bridge, obj }) => {
   const mapping = customerId ? bridge.store.getMapping({ customerId }) : null
   const email =
     (mapping?.email ?? null) || (customerId ? await customerEmail({ bridge, customerId }) : null)
-  syncPaymentState({ bridge, email, status })
+  const rule = statusRule(status)
+  if (email && rule !== undefined) {
+    bridge.store.setPaymentState({ email, state: rule.paymentState })
+  }
   log.log(`subscription for ${email ?? customerId ?? 'no customer'} is ${status}`)
 }
 
@@ -524,23 +431,27 @@ const onSubscriptionDeleted: EventHandler = async ({ bridge, obj }) => {
   const customerId = requiredText({ obj, key: 'customer' })
   const mapping = bridge.store.getMapping({ customerId })
   const email = (mapping?.email ?? null) || (await customerEmail({ bridge, customerId }))
+  if (!email) {
+    // Nobody to record the cancellation against; the records the customer's
+    // invite resolves to are still disabled.
+    await disableRecords({ bridge, customerId, email: null })
+    return
+  }
   // This customer really did stop, but the person behind it may not
   // have: a second customer at the same address (they re-checked out
   // from scratch), or a linked second address (they pay under another
   // email). subscribed and payment_state are per email, so they only
   // move when nothing of theirs at this address still pays.
-  const sibling = email
-    ? await liveSiblingCustomer({ bridge, email, deadCustomer: customerId })
-    : null
-  if (email && sibling) {
+  const sibling = await liveSiblingCustomer({ bridge, email, deadCustomer: customerId })
+  if (sibling) {
     bridge.store.setPaymentState({ email, state: null })
-  } else if (email) {
+  } else {
     bridge.store.setSubscribed({ email, value: false })
   }
   // A VIP's access is a standing grant, not something the subscription
   // buys. The renewal handler already leaves their expiry alone and the
   // sweep skips them; disabling them here undid both.
-  if (email && holdsStandingGrant(bridge.store.getMemberTag({ email }))) {
+  if (holdsStandingGrant(bridge.store.getMemberTag({ email }))) {
     log.log(`cancel: ${email} is VIP; access left alone`)
     bridge.store.recordEvent({
       email,
@@ -549,32 +460,22 @@ const onSubscriptionDeleted: EventHandler = async ({ bridge, obj }) => {
     })
     return
   }
-  const paying = sibling || (email ? stillSubscribedElsewhere({ bridge, email }) : null)
+  const paying = sibling || stillSubscribedElsewhere({ bridge, email })
   if (paying) {
-    log.log(`cancel: ${email ?? customerId} still pays under ${paying}; access left alone`)
-    if (email) {
-      bridge.store.recordEvent({
-        email,
-        action: 'Canceled',
-        detail: `subscription ended; access kept, still paying under ${paying}`,
-      })
-    }
-    return
-  }
-  const ids = await resolveUserIds({ bridge, customerId, email })
-  await eachInOrder({ items: ids, run: (userId) => bridge.wizarr.disableUser(userId) })
-  if (ids.length > 0) {
-    log.log(`disabled ${ids.length} record(s) for ${email ?? customerId}`)
-  } else {
-    log.log(`cancel: no wizarr user for ${customerId} / ${email ?? 'no email'}`)
-  }
-  if (email) {
+    log.log(`cancel: ${email} still pays under ${paying}; access left alone`)
     bridge.store.recordEvent({
       email,
       action: 'Canceled',
-      detail: `subscription ended — ${ids.length} server record(s) disabled`,
+      detail: `subscription ended; access kept, still paying under ${paying}`,
     })
+    return
   }
+  const disabled = await disableRecords({ bridge, customerId, email })
+  bridge.store.recordEvent({
+    email,
+    action: 'Canceled',
+    detail: `subscription ended — ${disabled} server record(s) disabled`,
+  })
 }
 
 // Every event type the bridge acts on. A type missing from the table falls

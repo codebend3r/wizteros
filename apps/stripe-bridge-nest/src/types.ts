@@ -155,8 +155,8 @@ export type Mailer = Readonly<{
 export type Settings = Readonly<{
   /** Origin invite links are built on: `${publicInviteBase}/j/${code}`. */
   publicInviteBase: string
-  /** Days of access a payment buys, as the text Wizarr is sent. */
-  accessDuration: string
+  /** Days of access a payment buys: what a renewal stamps, and the `duration` an invite carries. */
+  accessDays: number
   /** Days an issued invite stays redeemable. */
   inviteDays: number
   /** Days a baseline invite stays redeemable. */

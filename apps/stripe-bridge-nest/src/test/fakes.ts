@@ -86,7 +86,7 @@ export const fakeMailer = (): FakeMailer => ({
 /** The settings every test runs under unless it hands in its own. */
 export const TEST_SETTINGS: Settings = {
   publicInviteBase: 'http://inv.test',
-  accessDuration: '35',
+  accessDays: 35,
   inviteDays: 14,
   baselineExpiresDays: 2,
 }

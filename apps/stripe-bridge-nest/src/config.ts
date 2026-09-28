@@ -58,12 +58,8 @@ export const wizarrApiKey = (): string => process.env.WIZARR_API_KEY ?? ''
 /** How long an issued invite link stays redeemable, in days. */
 export const inviteDays = (): number => intEnv({ name: 'INVITE_EXPIRES_DAYS', fallback: 14 })
 
-/**
- * How long the access a payment buys lasts once redeemed, in days. Kept as
- * the text the environment holds, because that string is what Wizarr's
- * invite `duration` is sent as.
- */
-export const accessDuration = (): string => process.env.ACCESS_DURATION ?? '35'
+/** How long the access a payment buys lasts once redeemed, in days. */
+export const accessDays = (): number => intEnv({ name: 'ACCESS_DURATION', fallback: 35 })
 
 /** The public origin members' invite links are built on. */
 export const publicInviteBase = (): string => trimTrailingSlashes(process.env.PUBLIC_INVITE_BASE)

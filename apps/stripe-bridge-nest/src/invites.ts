@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common'
 import { resolveTierAccess, type Tier, withoutStale } from '@/tiers.js'
 import type {
+  Bridge,
   CreatedInvite,
   PlexApi,
   Settings,
@@ -108,7 +109,7 @@ export const mint = async ({
   const invite = await wizarr.createInvite({
     serverIds: scope.server_ids,
     expiresInDays,
-    duration: settings.accessDuration,
+    duration: String(settings.accessDays),
     libraryIds: scope.library_ids,
     allowDownloads: allowDownloads ?? scope.allow_downloads,
     ...(unlimited ? { unlimited: true } : {}),
@@ -117,4 +118,48 @@ export const mint = async ({
     `created ${tier} invite (${scope.library_ids.length} libraries, servers [${scope.server_ids.join(', ')}])`,
   )
   return invite
+}
+
+/** The link a member opens, on the public invite origin. */
+export const inviteUrl = ({ settings, code }: { settings: Settings; code: string }): string =>
+  `${settings.publicInviteBase}/j/${code}`
+
+/** An invite issued to a member: its code, the link they open, and what it grants. */
+export type IssuedInvite = Readonly<{ code: string; url: string; scope: TierScope }>
+
+/**
+ * Mint a tier invite for a member and record it against them.
+ *
+ * The store row is what keeps the member on the members list while the
+ * invite is pending and what restarts their grace clock: keyed by the Stripe
+ * customer when there is one, else by the address alone.
+ */
+export const issueInvite = async ({
+  bridge,
+  email,
+  tier,
+  scope,
+  customerId = null,
+  allowDownloads = null,
+}: {
+  bridge: Bridge
+  email: string
+  tier: Tier
+  scope: TierScope
+  customerId?: string | null
+  allowDownloads?: boolean | null
+}): Promise<IssuedInvite> => {
+  const { code } = await mint({
+    wizarr: bridge.wizarr,
+    settings: bridge.settings,
+    tier,
+    scope,
+    allowDownloads,
+  })
+  if (customerId) {
+    bridge.store.upsertPending({ customerId, email, inviteCode: code, tier })
+  } else {
+    bridge.store.upsertPendingByEmail({ email, inviteCode: code, tier })
+  }
+  return { code, url: inviteUrl({ settings: bridge.settings, code }), scope }
 }

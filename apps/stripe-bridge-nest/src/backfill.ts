@@ -3,7 +3,7 @@ import { eachInOrder, mapInOrder } from '@/sequence.js'
 import { holdsStandingGrant } from '@/standing.js'
 import type { BridgeStore } from '@/store/openStore.js'
 import type { WizarrApi } from '@/types.js'
-import { addSeconds, isoformat } from '@wizteros/server-common'
+import { addDays, isoformat } from '@wizteros/server-common'
 
 // One-time backfill: mark the 44 non-VIP members Invited with a 14-day expiry.
 //
@@ -21,8 +21,6 @@ import { addSeconds, isoformat } from '@wizteros/server-common'
 // read these members as "Subscribed Monthly" the moment they get an expiry.
 
 const log = new Logger('bridge.backfill')
-
-const DAY_SECONDS = 24 * 60 * 60
 
 /** The expiry default, BACKFILL_EXPIRY_DAYS in the Python script's env. */
 export const BACKFILL_EXPIRY_DAYS = 14
@@ -104,7 +102,7 @@ export const runBackfill = async ({
 }): Promise<BackfillSummary> => {
   const tags = store.allMemberTags()
   const rows = store.allCustomerRows()
-  const expires = isoformat(addSeconds({ at: now, seconds: expiryDays * DAY_SECONDS }))
+  const expires = isoformat(addDays({ at: now, days: expiryDays }))
   const prefix = dryRun ? '[dry-run] ' : ''
 
   const verdictFor = (key: string): Verdict => {

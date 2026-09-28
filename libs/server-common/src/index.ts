@@ -17,10 +17,12 @@ export {
 } from './sqlite.js'
 export { asRow, asRows, fields, flag, isRow, type Row } from './rows.js'
 export {
+  addDays,
   addSeconds,
   epochSeconds,
   isoformat,
   parseIso,
+  parseIsoOrNull,
   pydanticTimestamp,
   secondsBetween,
 } from './time.js'

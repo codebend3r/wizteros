@@ -1,9 +1,8 @@
 import { Logger } from '@nestjs/common'
-import { isoformat, parseIso } from '@wizteros/server-common'
+import { addDays, isoformat, parseIso } from '@wizteros/server-common'
 import { eachInOrder, mapInOrder } from '@/sequence.js'
 import { isTimeBoxed } from '@/standing.js'
 import type { Bridge, CustomerRow, WizarrUser } from '@/types.js'
-import { accessDays, plusDays } from '@/webhook/handlers.js'
 
 // The expiry sweep the reconcile loop runs after its drift alarms.
 
@@ -80,8 +79,8 @@ export const reconcilePendingExpiries = async (bridge: Bridge): Promise<number> 
       if (records.length === 0 || !row.invited_at) {
         return 0
       }
-      const days = accessDays(bridge.settings)
-      const anchored = plusDays({ at: parseIso(row.invited_at), days })
+      const days = bridge.settings.accessDays
+      const anchored = addDays({ at: parseIso(row.invited_at), days })
       // A signup older than the access window computes a past date on every
       // sweep. Stamping it would let a background job revoke a paying
       // member's access; skipping it, which is what used to happen, left
@@ -89,7 +88,7 @@ export const reconcilePendingExpiries = async (bridge: Bridge): Promise<number> 
       // at the sweep instead: the same window any payment grants, and their
       // next renewal re-stamps it from the payment date.
       const lapsed = anchored.getTime() <= now.getTime()
-      const expires = isoformat(lapsed ? plusDays({ at: now, days }) : anchored)
+      const expires = isoformat(lapsed ? addDays({ at: now, days }) : anchored)
       await eachInOrder({
         items: records,
         run: (user) => bridge.wizarr.setExpiry({ userId: user.id, expires }),

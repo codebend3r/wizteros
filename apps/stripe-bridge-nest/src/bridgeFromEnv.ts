@@ -3,7 +3,7 @@ import { plexApi } from '@/clients/plex.js'
 import { stripeApi } from '@/clients/stripe.js'
 import { wizarrClient } from '@/clients/wizarr.js'
 import {
-  accessDuration,
+  accessDays,
   alertAddresses,
   baselineExpiresDays,
   inviteDays,
@@ -35,7 +35,7 @@ export const bridgeFromEnv = (): Bridge => ({
   }),
   settings: {
     publicInviteBase: publicInviteBase(),
-    accessDuration: accessDuration(),
+    accessDays: accessDays(),
     inviteDays: inviteDays(),
     baselineExpiresDays: baselineExpiresDays(),
   },

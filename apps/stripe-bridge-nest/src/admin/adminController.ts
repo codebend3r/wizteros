@@ -9,7 +9,13 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common'
-import { httpError, isoformat, parseIso, SupabaseAdminGuard } from '@wizteros/server-common'
+import {
+  addDays,
+  httpError,
+  isoformat,
+  parseIso,
+  SupabaseAdminGuard,
+} from '@wizteros/server-common'
 import { z } from 'zod'
 import {
   EmailBody,
@@ -26,7 +32,7 @@ import {
 import { MEMBERS_SNAPSHOT, type MembersSnapshot } from '@/admin/membersSnapshot.js'
 import { BRIDGE } from '@/bridgeToken.js'
 import { PlexUnavailable } from '@/clients/plex.js'
-import { liveScope, mint, TierScopeEmpty } from '@/invites.js'
+import { issueInvite, liveScope, TierScopeEmpty } from '@/invites.js'
 import { assembleMembers, memberFromCustomer, withOverrides, withPlexAccess } from '@/roster.js'
 import { eachInOrder, mapInOrder } from '@/sequence.js'
 import { isBanned, isMemberTag } from '@/standing.js'
@@ -42,8 +48,6 @@ import type {
 import { stackOf } from '@/errors.js'
 
 const log = new Logger('bridge.admin')
-
-const DAY_MS = 86_400_000
 
 type Flagged = Readonly<{
   /** Whether any Stripe customer answers for the email. */
@@ -68,7 +72,7 @@ export const cancelAtOf = (subscriptions: readonly StripeSubscription[]): string
  * rather than sending Wizarr a date its schema cannot parse.
  */
 const daysFromNow = (days: number): string => {
-  const at = new Date(Date.now() + days * DAY_MS)
+  const at = addDays({ at: new Date(), days })
   const year = at.getUTCFullYear()
   if (Number.isNaN(at.getTime()) || year < 1 || year > 9999) {
     throw new RangeError(`date value out of range: ${days} days`)
@@ -607,16 +611,18 @@ export class AdminController {
     // Create the invite BEFORE any disable: disableUser is account-wide (it
     // severs the plex.tv friendship on every server), so if createInvite threw
     // after a disable loop the member would be locked out with no link to redeem.
-    const invite = await mint({ wizarr, settings, tier, scope: access, allowDownloads: override })
-    // The store row keeps the member on /admin/members while the invite is
-    // pending and stamps invited_at for the grace-period status.
-    store.upsertPendingByEmail({ email, inviteCode: invite.code, tier })
+    const invite = await issueInvite({
+      bridge: this.bridge,
+      email,
+      tier,
+      scope: access,
+      allowDownloads: override,
+    })
     const stale = staleRecordIds({ records, coveredServers: access.server_names })
     await eachInOrder({ items: stale, run: (id) => wizarr.disableUser(id) })
-    const url = `${settings.publicInviteBase}/j/${invite.code}`
     // An SMTP failure must not fail the reissue (it already happened); report
     // it so the admin sends the link manually instead of re-inviting.
-    const emailed = await mailer.sendInvite({ to: email, inviteUrl: url }).then(
+    const emailed = await mailer.sendInvite({ to: email, inviteUrl: invite.url }).then(
       () => true,
       (error: unknown) => {
         log.error(`invite email to ${email} failed`, stackOf(error))
@@ -629,6 +635,6 @@ export class AdminController {
       detail: `${tier} tier — ${emailed ? 'link emailed' : 'email failed, link sent manually'}`,
     })
     this.snapshot.refreshAsync()
-    return { url, code: invite.code, tier, disabled: stale.length, emailed }
+    return { url: invite.url, code: invite.code, tier, disabled: stale.length, emailed }
   }
 }

@@ -112,3 +112,50 @@ export const liveSiblingCustomer = async ({
   const status = await stripeStatusByCustomer(bridge.stripe)
   return siblings.find((customer) => isLiveStatus(status.get(customer) ?? '')) ?? null
 }
+
+/**
+ * Every address belonging to the same person as `email`, lowercased.
+ *
+ * Links point payer -> Plex account, so the person is identified by the Plex
+ * address: either this address pays for someone (follow the link) or it is
+ * the account itself. Both directions matter, since a cancellation can land
+ * on either half of the pair.
+ */
+export const linkedAddresses = ({
+  bridge,
+  email,
+}: {
+  bridge: Bridge
+  email: string
+}): ReadonlySet<string> => {
+  const links = bridge.store.allMemberLinks()
+  const lowered = email.toLowerCase()
+  const owner = links.get(lowered) ?? lowered
+  return new Set([
+    owner,
+    ...[...links].filter(([, plex]) => plex === owner).map(([payer]) => payer),
+  ])
+}
+
+/**
+ * Another address of the same person still carrying a live subscription.
+ *
+ * A member can hold two Stripe customers, and only one of them dying is the
+ * normal way that ends. Records resolve by email, so the dead customer's
+ * address is the same one the live member watches under: disabling on its
+ * cancellation revokes access somebody is currently paying for.
+ */
+export const stillSubscribedElsewhere = ({
+  bridge,
+  email,
+}: {
+  bridge: Bridge
+  email: string
+}): string | null => {
+  const rows = bridge.store.allCustomerRows()
+  const lowered = email.toLowerCase()
+  const others = [...linkedAddresses({ bridge, email })]
+    .filter((address) => address !== lowered)
+    .toSorted()
+  return others.find((address) => rows.get(address)?.subscribed ?? false) ?? null
+}

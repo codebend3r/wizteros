@@ -1,9 +1,16 @@
 import { Logger } from '@nestjs/common'
-import { isoformat, parseIso } from '@wizteros/server-common'
-import { mint, tierScope, TierScopeEmpty } from '@/invites.js'
+import { addDays, isoformat, parseIsoOrNull } from '@wizteros/server-common'
+import { mint } from '@/invites.js'
 import { mapInOrder } from '@/sequence.js'
-import { SHARE_SERVER, type Tier, TIERS, tierScopeProblems, withoutStale } from '@/tiers.js'
-import type { Bridge, CreatedInvite, WizarrInvitation, WizarrLibrary } from '@/types.js'
+import {
+  resolveTierAccess,
+  SHARE_SERVER,
+  type Tier,
+  TIERS,
+  tierScopeProblems,
+  withoutStale,
+} from '@/tiers.js'
+import type { Bridge, CreatedInvite, TierScope, WizarrInvitation } from '@/types.js'
 import { stackOf } from '@/errors.js'
 
 const log = new Logger('bridge.baseline')
@@ -13,7 +20,6 @@ const log = new Logger('bridge.baseline')
 // the baseline set following it.
 export const BASELINE_TIERS: readonly Tier[] = TIERS.toSorted()
 
-const DAY_MS = 86_400_000
 const HOUR_MS = 3_600_000
 
 /** One baseline tier minted by a rotation. */
@@ -44,22 +50,6 @@ export type BaselineAudit = Readonly<{
   ok: boolean
 }>
 
-/**
- * Parse a Wizarr/store timestamp into a UTC instant, or null.
- *
- * Wizarr emits naive ISO strings that are really UTC, so a missing offset is
- * read as UTC rather than guessed from the host's local zone. Empty or
- * unparseable input is null.
- */
-export const parseStamp = (value: string | null | undefined): Date | null => {
-  if (!value) return null
-  try {
-    return parseIso(value)
-  } catch {
-    return null
-  }
-}
-
 /** The invitation list keyed by code; a repeated code keeps the last. */
 const byCodeOf = (
   invitations: readonly WizarrInvitation[],
@@ -67,41 +57,29 @@ const byCodeOf = (
   new Map(invitations.map((inv) => [inv.code ?? null, inv] as const))
 
 /**
- * Create one tier's baseline invite and record it as ours; null if it fails.
+ * Create one tier's baseline invite and record it as ours.
  *
  * Recording the code is what licenses a later rotation to reap it, so the
  * write happens immediately after the invite exists.
  */
-export const mintBaselineInvite = async ({
+const mintBaselineInvite = async ({
   bridge,
   tier,
-  libraries,
+  scope,
   now,
 }: {
   bridge: Bridge
   tier: Tier
-  libraries: readonly WizarrLibrary[]
+  scope: TierScope
   now: Date
-}): Promise<CreatedInvite | null> => {
-  const access = (() => {
-    try {
-      return tierScope({ tier, libraries, context: `baseline rotation for ${tier}` })
-    } catch (error) {
-      if (error instanceof TierScopeEmpty) return null
-      throw error
-    }
-  })()
-  if (access === null) {
-    log.error(`baseline: ${tier} resolves to no libraries; refusing to mint`)
-    return null
-  }
+}): Promise<CreatedInvite> => {
   const days = bridge.settings.baselineExpiresDays
-  const expiresAt = isoformat(new Date(now.getTime() + days * DAY_MS))
+  const expiresAt = isoformat(addDays({ at: now, days }))
   const invite = await mint({
     wizarr: bridge.wizarr,
     settings: bridge.settings,
     tier,
-    scope: access,
+    scope,
     expiresInDays: days,
     unlimited: true,
   })
@@ -112,8 +90,8 @@ export const mintBaselineInvite = async ({
     createdAt: isoformat(now),
   })
   log.log(
-    `baseline: minted ${tier} invite ${invite.code} (${access.library_ids.length} libraries, ` +
-      `servers ${access.server_ids.join(', ')}, expires ${expiresAt})`,
+    `baseline: minted ${tier} invite ${invite.code} (${scope.library_ids.length} libraries, ` +
+      `servers ${scope.server_ids.join(', ')}, expires ${expiresAt})`,
   )
   return invite
 }
@@ -139,7 +117,7 @@ export const reapExpiredBaselines = async ({
   const outcomes = await mapInOrder({
     items: bridge.store.allBaselineInvites(),
     run: async (row): Promise<string | null> => {
-      const expiresAt = parseStamp(row.expires_at)
+      const expiresAt = parseIsoOrNull(row.expires_at)
       if (expiresAt === null || expiresAt.getTime() > now.getTime()) return null
       const live = byCode.get(row.code)
       if (live === undefined) {
@@ -196,8 +174,9 @@ export const rotateBaselineInvites = async ({
         return { tier, code: null }
       }
       try {
-        const invite = await mintBaselineInvite({ bridge, tier, libraries, now })
-        return { tier, code: invite?.code ?? null }
+        const scope = resolveTierAccess({ tier, libraries })
+        const invite = await mintBaselineInvite({ bridge, tier, scope, now })
+        return { tier, code: invite.code }
       } catch (error) {
         log.error(`baseline: minting ${tier} failed`, stackOf(error))
         return { tier, code: null }
@@ -248,7 +227,7 @@ export const auditBaselineInvites = async ({
   const live = [...owned.values()].flatMap((row): OwnedLive[] => {
     const inv = byCode.get(row.code)
     if (inv === undefined) return []
-    const expires = parseStamp(inv.expires)
+    const expires = parseIsoOrNull(inv.expires)
     if (expires !== null && expires.getTime() <= now.getTime()) return []
     return [
       {
@@ -278,7 +257,7 @@ export const auditBaselineInvites = async ({
   const stale = Object.entries(liveByTier)
     .filter(([, entries]) =>
       entries.every(({ code }) => {
-        const created = parseStamp(owned.get(code)?.created_at ?? null)
+        const created = parseIsoOrNull(owned.get(code)?.created_at ?? null)
         return created === null || now.getTime() - created.getTime() > 24 * HOUR_MS
       }),
     )
