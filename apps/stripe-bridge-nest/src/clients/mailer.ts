@@ -39,7 +39,7 @@ export type CreateTransport = (options: SmtpTransportOptions) => MailTransport
 
 const defaultCreateTransport: CreateTransport = (options) => nodemailerTransport(options)
 
-/** The plain-text invite body, the Python f-string after its .strip(). */
+/** The plain-text invite body. */
 const inviteText = ({ inviteUrl, inviteDays }: { inviteUrl: string; inviteDays: number }): string =>
   `Thanks for contributing to server costs!
 
@@ -55,8 +55,8 @@ If you cancel your contribution, access will be removed at the end of the curren
 
 /**
  * A mailer over the SMTP host in `smtp`. Each message opens its own
- * connection and closes it after, as the Python's `with smtplib.SMTP(...)`
- * did; `requireTLS` is its unconditional starttls() before login.
+ * connection and closes it after, so a dead host never poisons the next
+ * send; `requireTLS` insists on STARTTLS before login.
  */
 export const smtpMailer = ({
   smtp,

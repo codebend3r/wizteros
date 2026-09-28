@@ -9,8 +9,8 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common'
-import { httpError, isoformat, SupabaseAdminGuard } from '@wizteros/server-common'
-import type { z } from 'zod'
+import { httpError, isoformat, parseIso, SupabaseAdminGuard } from '@wizteros/server-common'
+import { z } from 'zod'
 import {
   EmailBody,
   EmailQuery,
@@ -24,7 +24,6 @@ import {
   SetTagBody,
 } from '@/admin/bodies.js'
 import { MEMBERS_SNAPSHOT, type MembersSnapshot } from '@/admin/membersSnapshot.js'
-import { pyIsoformat } from '@/admin/pyIsoformat.js'
 import { BRIDGE } from '@/bridgeToken.js'
 import { PlexUnavailable } from '@/clients/plex.js'
 import { liveScope, mint, TierScopeEmpty } from '@/invites.js'
@@ -77,28 +76,9 @@ type Flagged = Readonly<{
   already: readonly StripeSubscription[]
 }>
 
-/** Python's repr() of a str, which the 400s quote the rejected value with. */
-export const pyRepr = (text: string): string => {
-  const quote = text.includes("'") && !text.includes('"') ? '"' : "'"
-  const escaped = [...text]
-    .map((char) => {
-      const code = char.codePointAt(0) ?? 0
-      if (char === '\\') return '\\\\'
-      if (char === quote) return `\\${quote}`
-      if (char === '\n') return '\\n'
-      if (char === '\r') return '\\r'
-      if (char === '\t') return '\\t'
-      return code < 0x20 || code === 0x7f ? `\\x${code.toString(16).padStart(2, '0')}` : char
-    })
-    .join('')
-  return `${quote}${escaped}${quote}`
-}
-
 /**
- * The latest period end among the flagged subscriptions, as an ISO stamp.
- *
- * Python's `datetime.fromtimestamp(ts, timezone.utc).isoformat()`; null when
- * none of them carries a cancel_at.
+ * The latest period end among the flagged subscriptions, as an ISO stamp; null
+ * when none of them carries a cancel_at.
  */
 export const cancelAtOf = (subscriptions: readonly StripeSubscription[]): string | null => {
   const latest = subscriptions.reduce((max, sub) => Math.max(max, sub.cancel_at ?? 0), 0)
@@ -106,9 +86,8 @@ export const cancelAtOf = (subscriptions: readonly StripeSubscription[]): string
 }
 
 /**
- * `(datetime.now(timezone.utc) + timedelta(days=days)).isoformat()`. A span
- * past what a Python datetime can hold raised OverflowError there, a 500, and
- * does the same here rather than writing an unreadable date.
+ * Now plus `days`, as an ISO stamp. A span that leaves years 1 to 9999 throws
+ * rather than sending Wizarr a date its schema cannot parse.
  */
 const daysFromNow = (days: number): string => {
   const at = new Date(Date.now() + days * DAY_MS)
@@ -119,10 +98,30 @@ const daysFromNow = (days: number): string => {
   return isoformat(at)
 }
 
+// A calendar-valid ISO datetime, with or without an offset.
+const ISO_DATETIME = z.iso.datetime({ offset: true, local: true })
+
+/**
+ * An admin's absolute expiry in the form every stored timestamp takes, or
+ * null when it is not an ISO datetime. The portal sends toISOString(), which
+ * comes back unchanged apart from `Z` becoming `+00:00`; an offset is
+ * converted to UTC and a time with none is read as UTC.
+ */
+const absoluteExpiry = (text: string): string | null => {
+  if (!ISO_DATETIME.safeParse(text).success) {
+    return null
+  }
+  try {
+    return isoformat(parseIso(text))
+  } catch {
+    return null
+  }
+}
+
 // Every admin route sits behind the Supabase session gate, and answers both
 // bare and under /stripe: the Funnel strips the prefix and direct calls keep
-// it, which is why the Python app mounted this router twice. Every POST is
-// pinned to 200, FastAPI's default, where Nest would answer 201.
+// it. Every POST is pinned to 200, what the portal expects, where Nest would
+// answer 201.
 @Controller(['admin', 'stripe/admin'])
 @UseGuards(SupabaseAdminGuard)
 export class AdminController {
@@ -303,7 +302,7 @@ export class AdminController {
   } {
     const { email, tag } = body
     if (tag !== null && !MEMBER_TAGS.includes(tag)) {
-      throw httpError({ status: 400, detail: `unknown tag ${pyRepr(tag)}` })
+      throw httpError({ status: 400, detail: `unknown tag ${JSON.stringify(tag)}` })
     }
     const path = this.bridge.dbPath
     setMemberTag({ path, email, tag })
@@ -414,7 +413,7 @@ export class AdminController {
    * mapping. Subscriptions already flagged are left alone. Nothing here throws
    * for an unknown email or an email with no subscription: the caller decides
    * whether that is an error. Every Stripe call goes out one at a time, in
-   * order, as it did in Python.
+   * order.
    */
   private async flagSubscriptions(email: string): Promise<Flagged> {
     const mapped = customerIdsForEmail({ path: this.bridge.dbPath, email })
@@ -565,8 +564,7 @@ export class AdminController {
     detail: string
   } {
     if (body.expires_at !== null) {
-      // Python's fromisoformat took no "Z" before 3.11, hence the replace.
-      const expires = pyIsoformat(body.expires_at.replaceAll('Z', '+00:00'))
+      const expires = absoluteExpiry(body.expires_at)
       if (expires === null) {
         throw httpError({ status: 400, detail: 'expires_at is not an ISO datetime' })
       }
@@ -593,7 +591,7 @@ export class AdminController {
   } {
     const { email, tier } = body
     if (!TIER_DOWNLOADS.has(tier)) {
-      throw httpError({ status: 400, detail: `unknown tier ${pyRepr(tier)}` })
+      throw httpError({ status: 400, detail: `unknown tier ${JSON.stringify(tier)}` })
     }
     const path = this.bridge.dbPath
     setTier({ path, email, tier })

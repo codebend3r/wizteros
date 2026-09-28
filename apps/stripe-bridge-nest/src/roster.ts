@@ -16,9 +16,8 @@ import type {
 // what lets the list route serve them from its warm snapshot while the member
 // page fetches the same shapes live.
 //
-// Ordering follows the Python dicts these were ported from: a Map keeps the
-// position a key was first set at, as a dict does, and `toSorted` is stable,
-// as `sorted` is.
+// Ordering is part of what the portal is served: a Map keeps the position a
+// key was first set at, and `toSorted` is stable.
 
 /** Server name -> library names, the shape of `libraries` and `entitled`. */
 type LibraryMap = Readonly<Record<string, readonly string[]>>
@@ -36,21 +35,21 @@ export type LinkedCustomer = CustomerRow &
 
 /**
  * Whatever billing row a member is read from: their own customer row, a linked
- * one, or nothing at all (Python's `{}`), so every field may be missing.
+ * one, or nothing at all, so every field may be missing.
  */
 type BillingRow = Partial<CustomerRow> & Readonly<{ stripe_email?: string; manual_link?: boolean }>
 
-/** The items in first-seen order with duplicates dropped, as a dict's keys keep them. */
+/** The items in first-seen order with duplicates dropped. */
 const distinct = <T>(items: readonly T[]): T[] => [...new Set(items)]
 
-/** Python's `sorted(members, key=lambda m: m["member"].lower())`, stable. */
+/** The members by lowercased name, stable for equal names. */
 const byName = (members: readonly Member[]): Member[] =>
   members
     .map((member) => ({ member, key: member.member.toLowerCase() }))
     .toSorted((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
     .map(({ member }) => member)
 
-/** A tier's downloads default; null for an unknown tier, as `.get()` answered None. */
+/** A tier's downloads default; null for an unknown tier. */
 const tierDownloads = (tier: string): boolean | null =>
   tier === 'unknown' ? null : (TIER_DOWNLOADS.get(tier) ?? null)
 
@@ -113,7 +112,7 @@ export const customerByPlexEmail = ({
     [...customers].flatMap(([customerEmail, row]) => {
       const code = (row.invite_code ?? '').toLowerCase()
       const manual = manualLinks.get(customerEmail) ?? ''
-      // `or`, not `??`: an empty stored link counts as no link, as it did in Python.
+      // `||`, not `??`: an empty stored link counts as no link.
       const plexEmail = manual || (code ? (byInvite.get(code) ?? '') : '')
       return plexEmail && plexEmail !== customerEmail
         ? [[plexEmail, { ...row, stripe_email: customerEmail, manual_link: !!manual }] as const]
@@ -140,7 +139,7 @@ const people = (users: readonly WizarrUser[]): Person[] => {
     .filter(({ key }) => !!key)
   return distinct(keyed.map(({ key }) => key)).map((key) => {
     const records = keyed.filter((record) => record.key === key)
-    // setdefault kept the first record's name and email for the person.
+    // The first record's name and email stand for the person.
     const [first] = records
     return {
       member: first?.username ?? '',
@@ -279,7 +278,7 @@ export const withPlexAccess = ({
   return members.map((member) => {
     const key = member.email.toLowerCase()
     const shares = member.email && Object.hasOwn(access, key) ? access[key] : undefined
-    // An empty share map is falsy in Python too: nothing to union in.
+    // An empty share map has nothing to union in.
     if (shares === undefined || Object.keys(shares).length === 0) {
       return member
     }

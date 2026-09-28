@@ -5,9 +5,9 @@
 const FONT = "-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
 
 /**
- * Render the HTML alternative of the invite email. The text is Python's
- * template byte for byte; the values are interpolated unescaped, as
- * str.format did.
+ * Render the HTML alternative of the invite email. The values are
+ * interpolated unescaped: both are the bridge's own (a URL it built and a day
+ * count).
  */
 export const renderInviteEmail = ({
   inviteUrl,

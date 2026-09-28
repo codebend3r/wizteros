@@ -16,11 +16,9 @@ type SignedRequest = Readonly<{ rawBody?: Buffer }>
 /**
  * A runner that starts each job only once the one before it has settled.
  *
- * The Python route was an `async def` doing synchronous work, so the event
- * loop handled one delivery start to finish before the next. Here the
- * handlers await between their Wizarr, Stripe and store calls, and two
- * deliveries would interleave: two copies of one checkout could both pass
- * the processed check and both mint an invite. Chaining every delivery onto
+ * The handlers await between their Wizarr, Stripe and store calls, so two
+ * deliveries would otherwise interleave: two copies of one checkout could
+ * both pass the processed check and both mint an invite. Chaining every delivery onto
  * the last keeps them one at a time. A failed job settles the chain too, so
  * one bad delivery never blocks the ones behind it.
  */
@@ -66,8 +64,8 @@ export class WebhookController {
       }
       throw error
     }
-    // The verified bytes are the event; parse them as Python's
-    // json.loads(payload) did rather than trust a body parser's copy.
+    // The verified bytes are the event; parse them rather than trust a body
+    // parser's copy.
     const event: unknown = JSON.parse(payload.toString('utf8'))
     await this.serially(() => handleEvent({ bridge: this.bridge, event }))
     return { ok: true }

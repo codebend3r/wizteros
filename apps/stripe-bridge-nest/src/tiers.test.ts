@@ -213,7 +213,7 @@ describe('tier scopes', () => {
     const out = resolveTierAccess({ tier: 'youth', libraries: renamed })
     expect(out.library_ids).toEqual([25, 26])
     expect(errorLogs()).toContain('youth allowlist')
-    expect(errorLogs()).toContain("youth allowlist mismatch on Meleys; missing ['Kid Shows']")
+    expect(errorLogs()).toContain('youth allowlist mismatch on Meleys; missing Kid Shows')
   })
 
   it('youth never resolves to an empty scope', () => {
@@ -360,9 +360,9 @@ describe('normalizeTier', () => {
     expect(normalizeTier(123)).toBe('bronze')
     expect(errorLogs()).toContain('unknown tier')
     expect(errorLogs()).toContain(
-      "unknown tier 'platinum' on checkout session; defaulting to bronze",
+      'unknown tier "platinum" on checkout session; defaulting to bronze',
     )
-    expect(errorLogs()).toContain('unknown tier None on checkout session')
+    expect(errorLogs()).toContain('unknown tier null on checkout session')
     expect(errorLogs()).toContain('unknown tier 123 on checkout session')
   })
 })

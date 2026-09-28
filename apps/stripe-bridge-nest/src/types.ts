@@ -1,18 +1,18 @@
 // The shapes the bridge's modules hand each other, and the four outside
-// services it talks to, as ports. Records keep the Python bridge's snake_case
-// field names: most of them are read off, or written onto, a JSON wire that
-// the portal and Wizarr already agree on.
+// services it talks to, as ports. Records keep snake_case field names: most of
+// them are read off, or written onto, a JSON wire that the portal and Wizarr
+// already agree on.
 //
 // Every module that talks to Wizarr, Stripe, plex.tv or SMTP takes the port it
 // needs as an argument rather than importing a client, which is what lets a
-// test hand in a fake the way the Python suites rebound module attributes.
+// test hand in a fake.
 
 // --- Wizarr --------------------------------------------------------------------
 
 /**
  * One library row from Wizarr's /api/libraries. Only `id` and `server_id` are
- * always read; the rest are optional the way `.get()` made them in Python, and
- * a missing value fails closed wherever it is judged.
+ * always read; the rest may be missing, and a missing value fails closed
+ * wherever it is judged.
  */
 export type WizarrLibrary = Readonly<{
   id: number

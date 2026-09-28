@@ -90,7 +90,7 @@ describe('verifyWebhook', () => {
   })
 
   it('rejects a correctly signed payload that is not JSON', () => {
-    // Python caught this as ValueError alongside the signature error
+    // answered as a bad signature too
     const body = 'not json'
     const signature = Stripe.webhooks.generateTestHeaderString({ payload: body, secret: SECRET })
     const error = thrownBy(() =>

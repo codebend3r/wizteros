@@ -10,8 +10,8 @@ import { AppModule } from '@/appModule.js'
 import { adminAllowedOrigins, REQUIRED_ENV } from '@/config.js'
 
 /**
- * Everything that makes an app answer the way the FastAPI one did: CORS, the
- * `{detail}` error body, and FastAPI's 422 for a bad query or body.
+ * Everything the portal relies on in how the app answers: CORS, the `{detail}`
+ * error body, and a 422 listing what failed in a bad query or body.
  * `createApp` applies it, and the route tests apply it to an app built over a
  * testing module, so both answer through the same setup.
  */

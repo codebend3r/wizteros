@@ -64,30 +64,6 @@ export type ServerRecord = Readonly<{ id: number; server?: string | null }>
 /** Whether a tier's rules include a library, before the server and private filters. */
 export type TierWants = (rule: { tier: string; library: WizarrLibrary }) => boolean
 
-/** A string as Python's repr() prints it: single-quoted unless it holds only a single quote. */
-const pyReprString = (value: string): string => {
-  const quote = value.includes("'") && !value.includes('"') ? '"' : "'"
-  const body = value
-    .replaceAll('\\', '\\\\')
-    .replaceAll('\n', '\\n')
-    .replaceAll('\r', '\\r')
-    .replaceAll('\t', '\\t')
-  return quote + (quote === "'" ? body.replaceAll("'", "\\'") : body) + quote
-}
-
-/** A value as Python's `%r` would print it, for log lines that quote their input. */
-const pyRepr = (value: unknown): string => {
-  if (value == null) return 'None'
-  if (typeof value === 'string') return pyReprString(value)
-  if (typeof value === 'boolean') return value ? 'True' : 'False'
-  if (Array.isArray(value)) return `[${value.map(pyRepr).join(', ')}]`
-  if (typeof value === 'number' || typeof value === 'bigint') return String(value)
-  return JSON.stringify(value) ?? String(value)
-}
-
-/** A value as Python's `%s` would print it: None for a missing value. */
-const pyStr = (value: unknown): string => (value == null ? 'None' : String(value))
-
 /**
  * The Plex servers a tier may share from, retired servers already removed.
  *
@@ -132,7 +108,7 @@ export const normalizeTier = (raw: unknown): string => {
   const trimmed = typeof raw === 'string' ? raw.trim().toLowerCase() : ''
   const tier = LEGACY_TIER_ALIASES.get(trimmed) ?? trimmed
   if (!TIER_DOWNLOADS.has(tier)) {
-    log.error(`unknown tier ${pyRepr(raw)} on checkout session; defaulting to bronze`)
+    log.error(`unknown tier ${JSON.stringify(raw)} on checkout session; defaulting to bronze`)
     return 'bronze'
   }
   return tier
@@ -245,10 +221,10 @@ export const resolveTierAccess = ({
   if (tier === 'youth' && shareable.length < YOUTH_LIBRARY_TITLES.size) {
     const found = new Set(shareable.map(libraryTitle))
     const missing = [...YOUTH_LIBRARY_TITLES].filter((title) => !found.has(title)).toSorted()
-    log.error(`youth allowlist mismatch on ${SHARE_SERVER}; missing ${pyRepr(missing)}`)
+    log.error(`youth allowlist mismatch on ${SHARE_SERVER}; missing ${missing.join(', ')}`)
   }
   const allowDownloads = TIER_DOWNLOADS.get(tier)
-  if (allowDownloads === undefined) throw new Error(`KeyError: ${pyRepr(tier)}`)
+  if (allowDownloads === undefined) throw new Error(`unknown tier ${JSON.stringify(tier)}`)
   return {
     library_ids: shareable.map((lib) => lib.id),
     server_ids: [...new Set(shareable.map((lib) => lib.server_id))].toSorted((a, b) => a - b),
@@ -337,6 +313,9 @@ export const staleLibraries = ({
   })
 }
 
+/** The server a stale row is reported under; '?' when it names none. */
+const serverOf = (row: StaleLibrary): string => row.server_name || '?'
+
 /**
  * The library list with every stale row dropped, each drop logged with its remedy.
  *
@@ -354,20 +333,15 @@ export const withoutStale = ({
 }): WizarrLibrary[] => {
   const stale = staleLibraries({ libraries, live })
   stale.forEach((row) => {
-    const where = row.live_name
-      ? `Plex now calls it ${pyRepr(row.live_name)}`
-      : 'it is gone from Plex'
+    const where = row.live_name ? `Plex now calls it "${row.live_name}"` : 'it is gone from Plex'
     log.error(
-      `dropping stale library ${pyRepr(row.name)} on ${pyStr(row.server_name)} from the invite ` +
+      `dropping stale library "${row.name ?? ''}" on ${serverOf(row)} from the invite ` +
         `scope: ${where}; rescan the server's libraries in Wizarr to restore it`,
     )
   })
   const staleIds = new Set(stale.map((row) => row.id))
   return libraries.filter((lib) => !staleIds.has(lib.id))
 }
-
-/** The server a stale row is reported under; '?' when it names none. */
-const serverOf = (row: StaleLibrary): string => row.server_name || '?'
 
 /**
  * Servers whose Wizarr library cache no longer matches Plex, with a readable reason.
@@ -394,8 +368,8 @@ export const libraryCacheProblems = ({
       rows
         .map((row) =>
           row.live_name
-            ? `'${pyStr(row.name)}' is now '${row.live_name}' on Plex`
-            : `'${pyStr(row.name)}' is gone from Plex`,
+            ? `'${row.name ?? ''}' is now '${row.live_name}' on Plex`
+            : `'${row.name ?? ''}' is gone from Plex`,
         )
         .join('; ') +
         ". Plex rejects every invite carrying a stale name until the server's libraries are " +

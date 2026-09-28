@@ -28,8 +28,7 @@ const preflight = ({ app, origin }: { app: NestFastifyApplication; origin: strin
     },
   })
 
-// What the bridge refuses to boot without, as the Python suites set it
-// before importing the module.
+// What the bridge refuses to boot without.
 const stubRequiredEnv = (): void => {
   REQUIRED_ENV.forEach((name) => vi.stubEnv(name, 'x'))
   vi.stubEnv('MAP_DB_PATH', tempDbPath())

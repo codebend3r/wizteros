@@ -270,13 +270,16 @@ The branch first broke Netlify's deploy preview at "Install dependencies": Bun r
 - **Every module takes a `Bridge`.** The Python suites rebound module attributes
   (`bridge.client = MagicMock()`); ESM modules cannot be patched that way, so the
   store path and the four service ports are handed in, and the tests hand in fakes.
-- **pydantic's lax coercion is reproduced** for the admin bodies (integer strings,
-  `"yes"`/`"off"` booleans), checked against pydantic 2.13 itself. The 422 keeps
-  FastAPI's `{detail: [...]}` shape with zod's wording, which the portal only
-  displays.
-- **`reset-expiry` reproduces `fromisoformat(...).isoformat()`**, offsets and naive
-  times included, pinned by 51 cases taken from CPython 3.12. ISO week dates
-  (`2026-W31-1`) are the one form refused where 3.12 accepts it.
+- **Python is imitated only where its bytes reach another system:** timestamps
+  stored in SQLite, the JSON the portal reads, and the `duration` Wizarr is sent.
+  Log lines, exception text and alert wording are the port's own. The admin bodies
+  are typed the way the portal sends them, so pydantic's lax coercion (integer
+  strings, `"yes"`/`"off"` booleans) is a 422 now; the 422 keeps FastAPI's
+  `{detail: [...]}` shape with zod's wording, which the portal only displays.
+- **`reset-expiry` writes `expires_at` in the stored-timestamp form.** The portal
+  sends `toISOString()`, which comes out exactly as `fromisoformat(...).isoformat()`
+  wrote it. A hand-written offset is converted to UTC and a naive time is read as
+  UTC, where the Python kept either as given.
 - **The Stripe SDK is stripe@22.3.2,** the release pinned to `2026-06-24.dahlia`,
   the API version the production Python sent (stripe-python 15.3.1).
 - **`@nestjs/schedule` is not used.** The three jobs are timer chains in

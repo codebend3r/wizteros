@@ -1092,9 +1092,9 @@ describe('handleEvent', () => {
   })
 
   it('a malformed event (no type) throws and is not marked processed', async () => {
-    // Python's event["type"] raised KeyError: a 500, and Stripe redelivers.
+    // A 500, so Stripe redelivers it.
     await expect(handle({ id: 'evt_malformed', data: { object: {} } })).rejects.toThrow(
-      "KeyError: 'type'",
+      'the Stripe event carries no type',
     )
     expect(isEventProcessed({ path, eventId: 'evt_malformed' })).toBe(false)
   })

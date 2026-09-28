@@ -9,11 +9,9 @@ import type {
   WizarrApi,
 } from '@/types.js'
 
-// Stand-ins for the four services, the MagicMock clients the Python suites
-// built. Every method is a vi.fn with a harmless default answer (an empty
-// list, no email, nothing sent), so a test sets only what it is about and
-// asserts on the calls, as `client.x.return_value = ...` and
-// `assert_called_once_with` did.
+// Stand-ins for the four services. Every method is a vi.fn with a harmless
+// default answer (an empty list, no email, nothing sent), so a test sets only
+// what it is about and asserts on the calls.
 
 type Mocked<T> = {
   readonly [K in keyof T]: T[K] extends (...args: never[]) => unknown ? Mock<T[K]> : T[K]
@@ -84,7 +82,7 @@ export const fakeMailer = (): FakeMailer => ({
   sendAlert: vi.fn<Mailer['sendAlert']>(async () => {}),
 })
 
-/** The environment the Python suites set before importing the bridge. */
+/** The settings every test runs under unless it hands in its own. */
 export const TEST_SETTINGS: Settings = {
   publicInviteBase: 'http://inv.test',
   accessDuration: '35',
@@ -94,8 +92,7 @@ export const TEST_SETTINGS: Settings = {
 
 /**
  * A bridge over `dbPath` with every service faked. The store is not created
- * here; a test that reads or writes it calls initDb first, as the Python
- * fixtures called store.init_db.
+ * here; a test that reads or writes it calls initDb first.
  */
 export const fakeBridge = ({
   dbPath,

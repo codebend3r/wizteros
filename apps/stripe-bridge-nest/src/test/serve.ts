@@ -19,8 +19,7 @@ type Served = Readonly<{
   /**
    * Verify admin sessions for real against this key set, reading
    * SUPABASE_URL and ADMIN_ALLOWED_EMAILS from the environment on every
-   * request, as the Python tests did with monkeypatch. Left out, the gate is
-   * bypassed, the Python suites' dependency override on `require_admin`.
+   * request. Left out, the gate is bypassed.
    */
   keySet?: JWTVerifyGetKey
 }>

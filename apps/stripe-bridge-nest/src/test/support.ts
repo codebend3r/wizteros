@@ -2,8 +2,8 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-// Shared test plumbing, standing in for pytest's `tmp_path` and the recorded
-// fixtures under src/test/fixtures.
+// Shared test plumbing: throwaway database paths and the recorded fixtures
+// under src/test/fixtures.
 
 const dirs: string[] = []
 

@@ -23,15 +23,11 @@ import { stackOf } from '@/errors.js'
 // the reconcile sweep (drift alarms plus the expiry stamp) every
 // RECONCILE_INTERVAL_SECONDS, the members snapshot every
 // MEMBERS_SNAPSHOT_INTERVAL_SECONDS, and the baseline rotation once a day at
-// BASELINE_ROTATE_HOUR local time. The Python bridge ran them as asyncio
-// tasks; here each is a chain of timers, rescheduled only after its run
-// settles, so a slow Wizarr can delay a job but never stack two of it.
+// BASELINE_ROTATE_HOUR local time. Each is a chain of timers, rescheduled
+// only after its run settles, so a slow Wizarr can delay a job but never
+// stack two of it.
 
 const log = new Logger('bridge')
-
-/** Python's `%s` of a list of strings, for the rotation log line. */
-const pyList = (items: readonly string[]): string =>
-  `[${items.map((item) => `'${item}'`).join(', ')}]`
 
 /** Run one job, logging a failure with its stack instead of letting it escape. */
 const guarded = async ({ label, run }: { label: string; run: () => Promise<unknown> }) => {
@@ -47,10 +43,8 @@ const guarded = async ({ label, run }: { label: string; run: () => Promise<unkno
  *
  * Sleeping to a wall-clock target rather than on a fixed interval keeps the
  * rotation pinned to the same time every day instead of drifting forward by
- * however long each run took, and re-anchors it after a restart. The Python
- * computed this on naive local datetimes, which ignored a DST change falling
- * inside the wait; setDate moves the wall clock, so the rotation keeps its
- * hour across one.
+ * however long each run took, and re-anchors it after a restart. setDate moves
+ * the wall clock, so the rotation keeps its hour across a DST change.
  */
 export const msUntilHour = ({ hour, now }: { hour: number; now: Date }): number => {
   const target = new Date(now)
@@ -84,7 +78,7 @@ export const rotateOnce = async (bridge: Bridge): Promise<void> =>
     run: async () => {
       const { minted, skipped, reaped } = await rotateBaselineInvites({ bridge })
       log.log(
-        `baseline rotation: minted ${minted.length}, skipped ${skipped.length > 0 ? pyList(skipped) : 'none'}, reaped ${reaped.length}`,
+        `baseline rotation: minted ${minted.length}, skipped ${skipped.length > 0 ? skipped.join(', ') : 'none'}, reaped ${reaped.length}`,
       )
     },
   })

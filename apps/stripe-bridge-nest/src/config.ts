@@ -7,11 +7,10 @@ import {
 
 // Every environment variable the bridge reads, in one place, so the webhook
 // handlers, the admin routes and the invite pipeline cannot disagree about
-// what the deployment is configured as. That disagreement was real in the
-// Python bridge: the admin router read the same variables with empty-string
-// defaults while the entrypoint read them strictly, so a deploy missing
-// WIZARR_API_KEY refused webhooks and served admin routes that 500ed one
-// request at a time.
+// what the deployment is configured as. When the admin routes once read the
+// same variables with empty-string defaults while the webhook read them
+// strictly, a deploy missing WIZARR_API_KEY refused webhooks and served admin
+// routes that 500ed one request at a time.
 //
 // Each value is read when it is asked for rather than captured at import, so
 // a test can change the environment between cases. A container's environment
@@ -23,8 +22,8 @@ export const PORT = 8000
 /**
  * What the process cannot run without. The server checks these at boot so a
  * misconfigured container dies naming all of what is missing at once, rather
- * than accepting webhooks it cannot act on. The SMTP three are here because
- * the Python mailer read them strictly at import, which had the same effect.
+ * than accepting webhooks it cannot act on; that includes the SMTP login the
+ * invite mail cannot go out without.
  */
 export const REQUIRED_ENV: readonly string[] = [
   'STRIPE_API_KEY',
@@ -37,8 +36,8 @@ export const REQUIRED_ENV: readonly string[] = [
   'SMTP_PASS',
 ]
 
-// Python's int(): surrounding whitespace and one sign are fine, anything else
-// is a crash at startup, which is what a malformed interval should be.
+// Surrounding whitespace and one sign are fine; anything else is a crash at
+// startup, which is what a malformed interval should be.
 const INTEGER = /^\s*[+-]?\d+\s*$/
 
 const intEnv = ({ name, fallback }: { name: string; fallback: number }): number => {
@@ -125,7 +124,7 @@ export const smtpConfig = (): SmtpConfig => {
 /**
  * Where operational alerts go. Falls back to the admin allowlist so a fresh
  * deploy still reaches someone without another variable to remember. An empty
- * ALERT_EMAILS counts as unset, as `or` did in Python.
+ * ALERT_EMAILS counts as unset.
  */
 export const alertAddresses = (): string[] =>
   parseList(process.env.ALERT_EMAILS || process.env.ADMIN_ALLOWED_EMAILS)

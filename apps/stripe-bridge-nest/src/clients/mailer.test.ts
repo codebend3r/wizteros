@@ -8,7 +8,7 @@ import {
 } from '@/clients/mailer.js'
 import type { SmtpConfig } from '@/config.js'
 
-// The environment the Python suite set before importing the module.
+// The SMTP settings every test runs under.
 const SMTP: SmtpConfig = {
   host: 'smtp.test',
   port: 587,
@@ -19,7 +19,7 @@ const SMTP: SmtpConfig = {
 
 /**
  * A transport factory that records what it was opened with and every message
- * handed to it, standing in for the MagicMock'd smtplib.SMTP. No socket opens.
+ * handed to it. No socket opens.
  */
 const fakeSmtp = ({ fail = null }: { fail?: Error | null } = {}) => {
   const opened: SmtpTransportOptions[] = []

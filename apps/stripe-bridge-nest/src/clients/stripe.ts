@@ -1,10 +1,9 @@
 import { Stripe } from 'stripe'
 import type { StripeApi, StripeSubscription } from '@/types.js'
 
-// The API version the production Python bridge sent: stripe-python 15.3.1 on
-// the NAS, checked 2026-09-27. stripe@22.3.2 is the SDK release pinned to
-// exactly this version, so every outgoing call keeps the shapes the Python
-// bridge sent and read.
+// The API version the bridge has always sent (checked on the NAS 2026-09-27).
+// stripe@22.3.2 is the SDK release pinned to exactly this version, so every
+// outgoing call keeps the shapes the bridge was built against.
 export const STRIPE_API_VERSION = '2026-06-24.dahlia'
 
 /**
@@ -31,8 +30,8 @@ export const toSubscription = (subscription: SdkSubscription): StripeSubscriptio
 })
 
 /**
- * Every item of an auto-paginated list, page after page, as the Python's
- * `.auto_paging_iter()` walked it. Recursion stands in for a `for await` loop.
+ * Every item of an auto-paginated list, page after page. Recursion stands in
+ * for a `for await` loop.
  */
 const drain = async <T>({
   items,
@@ -55,7 +54,7 @@ export const stripeApi = ({ apiKey }: { apiKey: string }): StripeApi => {
   return {
     /**
      * The email on a customer record; null for a deleted customer or one with
-     * no email on file (Python's `getattr(customer, "email", None)`).
+     * no email on file.
      */
     customerEmail: async (customerId) => {
       const customer = await stripe.customers.retrieve(customerId)
@@ -68,7 +67,7 @@ export const stripeApi = ({ apiKey }: { apiKey: string }): StripeApi => {
       return found.data[0]?.id ?? null
     },
 
-    /** Every customer id Stripe lists for an email: one page of up to 100, as Python read. */
+    /** Every customer id Stripe lists for an email: one page of up to 100. */
     customerIdsForEmail: async (email) =>
       (await stripe.customers.list({ email, limit: 100 })).data.map((customer) => customer.id),
 
@@ -94,9 +93,8 @@ export const stripeApi = ({ apiKey }: { apiKey: string }): StripeApi => {
  * `StripeSignatureVerificationError`), and when a correctly signed payload is
  * not JSON (a `SyntaxError`); returns nothing when the event is genuine. The
  * webhook route answers those two cases, which `isSignatureError` names, with a
- * 400 "invalid signature", as the Python's
- * `except (ValueError, stripe.error.SignatureVerificationError)` did; anything
- * else it throws is left to fail the delivery as a 500.
+ * 400 "invalid signature"; anything else it throws is left to fail the
+ * delivery as a 500.
  */
 export const verifyWebhook = ({
   payload,
@@ -112,8 +110,7 @@ export const verifyWebhook = ({
 
 /**
  * Whether `error` is one `verifyWebhook` raises for a request that is not a
- * genuine Stripe event: a failed signature check or an unparseable payload,
- * the pair Python caught as SignatureVerificationError and ValueError.
+ * genuine Stripe event: a failed signature check or an unparseable payload.
  */
 export const isSignatureError = (error: unknown): boolean =>
   error instanceof Stripe.errors.StripeSignatureVerificationError || error instanceof SyntaxError

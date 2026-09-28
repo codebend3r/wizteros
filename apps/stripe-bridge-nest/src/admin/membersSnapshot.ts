@@ -26,7 +26,6 @@ export const MEMBERS_SNAPSHOT = Symbol('MEMBERS_SNAPSHOT')
 /**
  * One slow sweep of everything /admin/members needs from Wizarr and plex.tv.
  *
- * The three Wizarr reads go out one after another, as they did in Python.
  * plex_access is best effort, mirroring withPlexAccess: an unset token or a
  * plex.tv failure yields null and the members list falls back to
  * tier-derived access rather than failing.

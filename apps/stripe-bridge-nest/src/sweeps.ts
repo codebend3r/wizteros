@@ -22,22 +22,9 @@ import { stackOf } from '@/errors.js'
 
 const log = new Logger('bridge')
 
-/** The stack of a thrown value, for the second argument of Logger.error. */
-/** Python's repr() of a str, which the log lines below print lists of. */
-const pyReprString = (value: string): string => {
-  const quote = value.includes("'") && !value.includes('"') ? '"' : "'"
-  const escaped = value.replaceAll('\\', '\\\\')
-  return quote === "'" ? `'${escaped.replaceAll("'", "\\'")}'` : `"${escaped}"`
-}
-
-/** Python's repr() of a list of str, as `%s` printed one. */
-const pyStrList = (items: readonly string[]): string => `[${items.map(pyReprString).join(', ')}]`
-
 /**
- * A structural key for a problem set, so two equal sets compare equal.
- *
- * Python compared the lists and dicts by value, and a dict's equality ignores
- * key order, so object keys are sorted before serialising.
+ * A structural key for a problem set, so two equal sets compare equal
+ * whatever order their object keys were built in.
  */
 const canonicalKey = (value: unknown): string =>
   JSON.stringify(value, (_key, inner: unknown) =>
@@ -191,7 +178,7 @@ export const checkVipAccess = async (bridge: Bridge): Promise<string[]> => {
     vipAccessAlert.clear()
     return []
   }
-  log.error(`vip access check: ${stranded.length} VIP(s) hold no records: ${pyStrList(stranded)}`)
+  log.error(`vip access check: ${stranded.length} VIP(s) hold no records: ${stranded.join(', ')}`)
   await vipAccessAlert.fire({
     current: stranded,
     alert: vipsWithoutAccess(stranded),

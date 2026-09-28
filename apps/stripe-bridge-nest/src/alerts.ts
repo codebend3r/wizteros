@@ -10,10 +10,6 @@ import type { Alert } from '@/types.js'
 // to the mailer. That keeps the send where the caller's own logging and error
 // handling already are.
 
-/** The text Python's f-string printed for a value: `None` for null. */
-const pyText = (value: unknown): string =>
-  value === null || value === undefined ? 'None' : String(value)
-
 /** Stripe's minor-unit integer as '8.00 CAD'; 'unknown amount' when absent. */
 export const money = ({ amount, currency }: { amount: unknown; currency: unknown }): string => {
   if (typeof amount !== 'number' || !Number.isInteger(amount)) {
@@ -23,23 +19,17 @@ export const money = ({ amount, currency }: { amount: unknown; currency: unknown
   return `${(amount / 100).toFixed(2)} ${code}`.trim()
 }
 
-const field = ({ from, key }: { from: Readonly<Record<string, unknown>>; key: string }): unknown =>
-  from[key]
-
 /** One line of what Stripe knows about a failed invoice, for an alert body. */
 export const describeInvoice = (invoice: Readonly<Record<string, unknown>>): string => {
-  const amount = money({
-    amount: field({ from: invoice, key: 'amount_due' }),
-    currency: field({ from: invoice, key: 'currency' }),
-  })
-  const attemptCount = field({ from: invoice, key: 'attempt_count' })
-  const attempts = typeof attemptCount === 'number' && attemptCount !== 0 ? attemptCount : 0
-  const retry = field({ from: invoice, key: 'next_payment_attempt' })
+  const amount = money({ amount: invoice.amount_due, currency: invoice.currency })
+  const attempts = typeof invoice.attempt_count === 'number' ? invoice.attempt_count : 0
+  const retry = invoice.next_payment_attempt
   const when =
     typeof retry === 'number' && retry !== 0
       ? new Date(retry * 1000).toISOString().slice(0, 10)
       : 'none scheduled; Stripe has given up on this invoice'
-  return `${amount}, attempt ${attempts}, next retry ${when} (invoice ${pyText(field({ from: invoice, key: 'id' }))})`
+  const id = typeof invoice.id === 'string' ? invoice.id : 'with no id'
+  return `${amount}, attempt ${attempts}, next retry ${when} (invoice ${id})`
 }
 
 /** Tell the admin who just signed up, with the same link the member got. */
@@ -47,19 +37,23 @@ export const signup = ({
   email,
   tier,
   session,
+  sessionId,
+  customerId,
   inviteUrl,
 }: {
   email: string
   tier: string
   session: Readonly<Record<string, unknown>>
+  sessionId: string | null
+  customerId: string | null
   inviteUrl: string
 }): Alert => ({
   subject: `${email} signed up for ${tier}`,
   body:
     `${email} completed a ${tier} checkout for ` +
     `${money({ amount: session.amount_total, currency: session.currency })}.\n\n` +
-    `  session  ${pyText(session.id)}\n` +
-    `  customer ${pyText(session.customer)}\n` +
+    `  session  ${sessionId ?? 'none'}\n` +
+    `  customer ${customerId ?? 'none'}\n` +
     `  invite   ${inviteUrl}\n\n` +
     `The invite link has been emailed to them; they hold no new access ` +
     `until they open it.\n`,
@@ -93,13 +87,13 @@ export const bannedCheckout = ({
 }: {
   email: string
   tier: string
-  sessionId: unknown
-  customerId: unknown
+  sessionId: string | null
+  customerId: string | null
 }): Alert => ({
   subject: `banned member ${email} checked out`,
   body:
     `${email} is banned but completed a ${tier} checkout ` +
-    `(session ${pyText(sessionId)}, customer ${pyText(customerId)}).\n\n` +
+    `(session ${sessionId ?? 'none'}, customer ${customerId ?? 'none'}).\n\n` +
     `No invite was issued and no access was granted. Refund or ` +
     `cancel the subscription in Stripe.\n`,
 })

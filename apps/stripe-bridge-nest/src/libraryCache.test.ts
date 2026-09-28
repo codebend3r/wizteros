@@ -175,8 +175,8 @@ describe('withoutStale', () => {
     expect(errorLogs()).toContain('22. Formula 1')
     expect(errorLogs().toLowerCase()).toContain('rescan')
     expect(errorLogs()).toBe(
-      "dropping stale library '33. Formula 1' on Meleys from the invite scope: " +
-        "Plex now calls it '22. Formula 1'; rescan the server's libraries in Wizarr to " +
+      'dropping stale library "33. Formula 1" on Meleys from the invite scope: ' +
+        'Plex now calls it "22. Formula 1"; rescan the server\'s libraries in Wizarr to ' +
         'restore it',
     )
   })

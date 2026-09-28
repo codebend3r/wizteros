@@ -44,12 +44,8 @@ export const honoredExpiryDays = (days: number): number =>
 // Wizarr marshals an invitation's used_by as fields.String over a User
 // relationship with no __str__, so the live API returns the repr "<User 281>"
 // rather than a name. The number is the redeeming record's id. The username
-// path stays for a Wizarr that one day serializes a real username. Anchored at
-// both ends, as Python's fullmatch was, surrounding whitespace included.
+// path stays for a Wizarr that one day serializes a real username.
 const USED_BY_REPR = /^\s*<User (\d+)>\s*$/
-
-/** Anything carrying a used_by, whether a narrowed invitation or a raw row. */
-type Redeemable = Readonly<{ used_by?: unknown }>
 
 /**
  * The user record that redeemed `invitation`, or null when nothing resolves.
@@ -63,7 +59,7 @@ export const redeemerRecord = ({
   invitation,
   users,
 }: {
-  invitation: Redeemable
+  invitation: WizarrInvitation
   users: readonly WizarrUser[]
 }): WizarrUser | null => {
   const usedBy = invitation.used_by
@@ -88,23 +84,9 @@ export const redeemerEmail = ({
   invitation,
   users,
 }: {
-  invitation: Redeemable
+  invitation: WizarrInvitation
   users: readonly WizarrUser[]
 }): string | null => (redeemerRecord({ invitation, users })?.email ?? '').toLowerCase() || null
-
-/** A non-2xx answer from Wizarr, requests' HTTPError from raise_for_status. */
-export class WizarrHttpError extends Error {
-  readonly status: number
-  readonly url: string
-
-  /** Name the failed call the way requests did: status, then url. */
-  constructor({ status, url }: { status: number; url: string }) {
-    super(`${status} Error for url: ${url}`)
-    this.name = 'WizarrHttpError'
-    this.status = status
-    this.url = url
-  }
-}
 
 /** The part of fetch the client uses, so a test can hand in a fake. */
 export type Fetch = (url: string, init: RequestInit) => Promise<Response>
@@ -130,7 +112,7 @@ const isBooleanOrNull = (value: unknown): value is boolean | null =>
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === 'string')
 
-/** The array under `key` of a JSON object body; `.get(key, [])` in Python. */
+/** The array under `key` of a JSON object body; empty when there is none. */
 const listUnder = ({ body, key }: { body: unknown; key: string }): readonly unknown[] => {
   const value = isObject(body) ? body[key] : undefined
   return Array.isArray(value) ? value : []
@@ -205,22 +187,6 @@ const toCreatedInvite = (body: unknown): CreatedInvite => {
   return { code, url }
 }
 
-const quotePlus = (value: string): string =>
-  encodeURIComponent(value)
-    .replace(/[!*'()]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`)
-    .replace(/%20/g, '+')
-
-/**
- * Encode query params the way requests does (urllib's urlencode with
- * quote_plus): a space becomes "+", and only letters, digits and `_.-~` stay
- * literal. encodeURIComponent also leaves `!*'()` alone, so those are escaped
- * by hand.
- */
-const formEncode = (params: Readonly<Record<string, string>>): string =>
-  Object.entries(params)
-    .map(([key, value]) => `${quotePlus(key)}=${quotePlus(value)}`)
-    .join('&')
-
 /**
  * Thin wrapper around the Wizarr REST API used by the bridge.
  *
@@ -247,7 +213,7 @@ export const wizarrClient = ({
     'Content-Type': 'application/json',
   })
 
-  /** One call; throws WizarrHttpError on any non-2xx, as raise_for_status did. */
+  /** One call; throws on any non-2xx answer. */
   const call = async ({
     method,
     path,
@@ -261,7 +227,7 @@ export const wizarrClient = ({
     json?: unknown
     params?: Readonly<Record<string, string>>
   }): Promise<Response> => {
-    const query = params === undefined ? '' : formEncode(params)
+    const query = params === undefined ? '' : new URLSearchParams(params).toString()
     const url = `${base}${path}${query === '' ? '' : `?${query}`}`
     const response = await fetch(url, {
       method,
@@ -270,7 +236,7 @@ export const wizarrClient = ({
       ...(json === undefined ? {} : { body: JSON.stringify(json) }),
     })
     if (!response.ok) {
-      throw new WizarrHttpError({ status: response.status, url })
+      throw new Error(`wizarr answered ${response.status} to ${method} ${url}`)
     }
     return response
   }
@@ -290,14 +256,14 @@ export const wizarrClient = ({
     return body
   }
 
-  /** Every invitation row as Wizarr sent it, before any narrowing. */
-  const rawInvitations = async (): Promise<readonly JsonObject[]> =>
+  /** Every invitation Wizarr holds, used and unused alike. */
+  const invitations = async (): Promise<WizarrInvitation[]> =>
     objectRows(
       listUnder({
         body: await getJson({ path: '/api/invitations', timeout: DEFAULT_TIMEOUT }),
         key: 'invitations',
       }),
-    )
+    ).flatMap(toInvitation)
 
   /** Query /api/users with the given filters and return the user list. */
   const users = async (params: Readonly<Record<string, string>>): Promise<WizarrUser[]> =>
@@ -375,7 +341,7 @@ export const wizarrClient = ({
      * the serializer reports specific_libraries as [] even for a correctly
      * scoped invite, so it cannot tell a scoped invite from an unscoped one.
      */
-    listInvitations: async () => (await rawInvitations()).flatMap(toInvitation),
+    listInvitations: invitations,
 
     /** Delete one invitation by its numeric id (not its code). */
     deleteInvitation: async (invitationId) => {
@@ -400,9 +366,7 @@ export const wizarrClient = ({
      * Fallback for when the Stripe email differs from the Plex account email.
      */
     findUserIdsByInvite: async (code) => {
-      // matched on the raw rows, as Python did: an invitation needs no id to
-      // be found by its code
-      const invitation = (await rawInvitations()).find((row) => row.code === code)
+      const invitation = (await invitations()).find((row) => row.code === code)
       if (!invitation?.used_by) {
         return []
       }

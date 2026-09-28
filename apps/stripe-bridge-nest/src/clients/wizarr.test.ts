@@ -4,17 +4,15 @@ import {
   type Fetch,
   honoredExpiryDays,
   USER_WRITE_TIMEOUT,
-  WizarrHttpError,
   wizarrClient,
 } from '@/clients/wizarr.js'
 import type { WizarrApi } from '@/types.js'
 
 const BASE = 'http://wizarr.test'
 
-// The Python suite faked HTTP with `responses`; this is the same idea. A
-// table maps "METHOD url" (query string left off) to an answer, every call is
-// recorded, and a call nothing registered fails the way `responses` refused
-// an unmatched request, so no test can reach the network.
+// A table maps "METHOD url" (query string left off) to an answer, every call
+// is recorded, and a call nothing registered fails, so no test can reach the
+// network.
 
 type Answer = Readonly<{ status?: number; json: unknown }>
 
@@ -170,8 +168,7 @@ describe('createInvite', () => {
     expect(sent).toMatchObject({ allow_downloads: false })
   })
 
-  it('sends the payload keys in the order the Python built them', async () => {
-    // not a Python test: pins the wire order the port promised to keep
+  it('sends the payload keys in a fixed order', async () => {
     const http = fakeHttp()
     on({
       http,
@@ -283,9 +280,7 @@ describe('findUserIdsByEmail', () => {
     expect(await client(http).findUserIdsByEmail('a@x.com')).toEqual([9])
   })
 
-  it('sends the email as a query param encoded the way requests does', async () => {
-    // not a Python test: requests' urlencode turns "@" into %40 and a space
-    // into "+", and escapes the `!*'()` that encodeURIComponent leaves alone
+  it('sends the email as a form-encoded query param', async () => {
     const http = fakeHttp()
     on({ http, method: 'GET', path: '/api/users', json: { users: [] } })
     await client(http).findUsersByEmail("o'neil+x@a.com")
@@ -300,7 +295,7 @@ describe('findUserIdsByInvite', () => {
       http,
       method: 'GET',
       path: '/api/invitations',
-      json: { invitations: [{ code: 'abc123', used_by: 'cj' }] },
+      json: { invitations: [{ id: 1, code: 'abc123', used_by: 'cj' }] },
     })
     on({
       http,
@@ -320,7 +315,7 @@ describe('findUserIdsByInvite', () => {
       http: reset,
       method: 'GET',
       path: '/api/invitations',
-      json: { invitations: [{ code: 'abc123', used_by: null }] },
+      json: { invitations: [{ id: 1, code: 'abc123', used_by: null }] },
     })
     expect(await client(reset).findUserIdsByInvite('abc123')).toEqual([])
   })
@@ -335,7 +330,7 @@ describe('findUserIdsByInvite', () => {
       http,
       method: 'GET',
       path: '/api/invitations',
-      json: { invitations: [{ code: 'abc123', used_by: '<User 281>' }] },
+      json: { invitations: [{ id: 1, code: 'abc123', used_by: '<User 281>' }] },
     })
     usersLikeWizarr({
       http,
@@ -356,7 +351,7 @@ describe('findUserIdsByInvite', () => {
       http,
       method: 'GET',
       path: '/api/invitations',
-      json: { invitations: [{ code: 'abc123', used_by: '<User 281>' }] },
+      json: { invitations: [{ id: 1, code: 'abc123', used_by: '<User 281>' }] },
     })
     usersLikeWizarr({ http, users: [{ id: 281, username: 'cj', email: null, server: 'Meleys' }] })
     expect(await client(http).findUserIdsByInvite('abc123')).toEqual([281])
@@ -371,7 +366,7 @@ describe('findUserIdsByInvite', () => {
       http,
       method: 'GET',
       path: '/api/invitations',
-      json: { invitations: [{ code: 'abc123', used_by: ' <User 281> ' }] },
+      json: { invitations: [{ id: 1, code: 'abc123', used_by: ' <User 281> ' }] },
     })
     usersLikeWizarr({
       http,
@@ -388,7 +383,7 @@ describe('findUserIdsByInvite', () => {
       http,
       method: 'GET',
       path: '/api/invitations',
-      json: { invitations: [{ code: 'abc123', used_by: '<User 281>' }] },
+      json: { invitations: [{ id: 1, code: 'abc123', used_by: '<User 281>' }] },
     })
     usersLikeWizarr({
       http,
@@ -402,9 +397,9 @@ describe('errors', () => {
   it('propagates Wizarr HTTP errors', async () => {
     const http = fakeHttp()
     on({ http, method: 'GET', path: '/api/libraries', json: { error: 'boom' }, status: 500 })
-    const failure = client(http).listLibraries()
-    await expect(failure).rejects.toBeInstanceOf(WizarrHttpError)
-    await expect(failure).rejects.toMatchObject({ status: 500, url: `${BASE}/api/libraries` })
+    await expect(client(http).listLibraries()).rejects.toThrow(
+      `wizarr answered 500 to GET ${BASE}/api/libraries`,
+    )
   })
 })
 
@@ -479,7 +474,6 @@ describe('listUsers', () => {
 
 describe('the wire', () => {
   it('sends the API key and JSON content type on every call', async () => {
-    // not a Python test: _headers() rode on every request
     const http = fakeHttp()
     on({ http, method: 'GET', path: '/api/libraries', json: { libraries: [] } })
     on({ http, method: 'DELETE', path: '/api/invitations/4', json: {} })

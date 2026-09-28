@@ -27,9 +27,8 @@ const SHARED_M2 = `<MediaContainer machineIdentifier="m-2">
 type Answer = Readonly<{ body?: string; status?: number }>
 
 /**
- * A plex.tv that answers only the urls it is given, the `responses` mock the
- * Python suite registered. Every call is recorded; an unregistered url fails
- * the way `responses` refused one, as a connection error.
+ * A plex.tv that answers only the urls it is given. Every call is recorded;
+ * an unregistered url fails as a connection error.
  */
 const fakePlexTv = (routes: Readonly<Record<string, Answer>>) => {
   const calls: { url: string; headers: Readonly<Record<string, string>> }[] = []
@@ -156,8 +155,7 @@ describe('plex.tv client', () => {
   })
 
   it('raises PlexUnavailable for an error status and a dead connection', async () => {
-    // The admin route answers 502 on exactly this, where Python caught
-    // requests.RequestException.
+    // The admin route answers 502 on exactly this.
     const failing = fakePlexTv({ 'http://plex.test/api/servers': { status: 503 } })
     await expect(client(failing.fetch).sharedAccessAll()).rejects.toBeInstanceOf(PlexUnavailable)
     const dead = fakePlexTv({})

@@ -12,12 +12,10 @@ const log = new Logger('bridge.snapshot')
  * actions that change upstream state. A failed refresh logs and keeps serving
  * the previous value.
  *
- * The Python ran the background refresh on a thread and guarded the value and
- * the in-flight flag with a lock. Node runs this code on one thread, so no
- * read or write here can interleave with another: a single in-flight promise
- * is both the flag and the handle settled() awaits.
- *
- * As in Python, a fetch answering null or undefined counts as nothing cached.
+ * Node runs this code on one thread, so no read or write here can interleave
+ * with another: a single in-flight promise is both the flag and the handle
+ * settled() awaits. A fetch answering null or undefined counts as nothing
+ * cached.
  */
 export class UpstreamSnapshot<T> {
   private readonly fetch: () => Promise<T>

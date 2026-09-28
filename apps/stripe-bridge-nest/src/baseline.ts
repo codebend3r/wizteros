@@ -45,10 +45,6 @@ export type BaselineAudit = Readonly<{
   ok: boolean
 }>
 
-/** The stack of a thrown value, for the second argument of Logger.error. */
-/** Python's repr() of a list of ints, as the rotation log line printed server ids. */
-const intList = (items: readonly number[]): string => `[${items.join(', ')}]`
-
 /**
  * Parse a Wizarr/store timestamp into a UTC instant, or null.
  *
@@ -65,7 +61,7 @@ export const parseStamp = (value: string | null | undefined): Date | null => {
   }
 }
 
-/** The invitation list keyed by code; a repeated code keeps the last, as a dict did. */
+/** The invitation list keyed by code; a repeated code keeps the last. */
 const byCodeOf = (
   invitations: readonly WizarrInvitation[],
 ): ReadonlyMap<string | null, WizarrInvitation> =>
@@ -119,7 +115,7 @@ export const mintBaselineInvite = async ({
   })
   log.log(
     `baseline: minted ${tier} invite ${invite.code} (${access.library_ids.length} libraries, ` +
-      `servers ${intList(access.server_ids)}, expires ${expiresAt})`,
+      `servers ${access.server_ids.join(', ')}, expires ${expiresAt})`,
   )
   return invite
 }
@@ -272,7 +268,7 @@ export const auditBaselineInvites = async ({
   const wrongScope = live
     .filter(({ servers }) => !(servers.length === 1 && servers[0] === SHARE_SERVER))
     .map(({ code, tier, servers }) => ({ code, tier, servers }))
-  // Tiers in the order their first live invite was seen, as setdefault built them.
+  // Tiers in the order their first live invite was seen.
   const liveByTier: Readonly<Record<string, readonly LiveBaseline[]>> = Object.fromEntries(
     [...new Set(live.map(({ tier }) => tier))].map((tier) => [
       tier,

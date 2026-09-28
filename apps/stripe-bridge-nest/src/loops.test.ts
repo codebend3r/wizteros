@@ -109,7 +109,7 @@ describe('rotateOnce', () => {
     vi.clearAllMocks()
   })
 
-  it('logs what the rotation minted, skipped and reaped, as the Python did', async () => {
+  it('logs what the rotation minted, skipped and reaped', async () => {
     const info = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {})
     vi.mocked(rotateBaselineInvites).mockResolvedValueOnce({
       minted: [{ tier: 'bronze', code: 'a' }],
@@ -117,9 +117,7 @@ describe('rotateOnce', () => {
       reaped: ['old'],
     })
     await rotateOnce(bridge)
-    expect(info).toHaveBeenCalledWith(
-      "baseline rotation: minted 1, skipped ['gold', 'youth'], reaped 1",
-    )
+    expect(info).toHaveBeenCalledWith('baseline rotation: minted 1, skipped gold, youth, reaped 1')
   })
 
   it('logs a failed rotation rather than letting it escape', async () => {

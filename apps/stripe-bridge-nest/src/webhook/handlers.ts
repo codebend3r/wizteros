@@ -29,9 +29,8 @@ import type { Bridge, Settings, TierScope } from '@/types.js'
 // renewal -> extend, dunning -> flag, cancel -> disable.
 //
 // Events arrive as the parsed JSON Stripe signed, so every field is read
-// through the small typed readers below rather than trusted. Python's
-// truthiness is kept exactly: an empty string is as absent as a missing key,
-// which is what `obj.get(...) or ...` meant there.
+// through the small typed readers below rather than trusted. An empty string
+// counts as absent, the same as a missing key.
 
 const log = new Logger('bridge')
 
@@ -41,42 +40,35 @@ export type StripeObject = Row
 /** A handler for one event type, handed the event's `data.object`. */
 export type EventHandler = (args: { bridge: Bridge; obj: StripeObject }) => Promise<void>
 
-/** A field that is a non-empty string, or null: the value Python's `or` would keep. */
+/** A field that is a non-empty string, or null. */
 const truthyText = ({ obj, key }: { obj: StripeObject; key: string }): string | null => {
   const value = obj[key]
   return typeof value === 'string' && value !== '' ? value : null
 }
 
-/** A nested object, or an empty one when absent or falsy: Python's `obj.get(key) or {}`. */
+/** A nested object, or an empty one when absent or not an object. */
 const nested = ({ obj, key }: { obj: StripeObject; key: string }): StripeObject => {
   const value = obj[key]
   return isRow(value) ? value : {}
 }
 
 /**
- * A field Python read as `obj[key]`: a missing key raised KeyError, which left
- * the event unmarked for Stripe to retry. Throws the same way here.
+ * A field the handler cannot act without. Throwing leaves the event unmarked,
+ * so Stripe redelivers it rather than the bridge acting for nobody.
  */
 const requiredText = ({ obj, key }: { obj: StripeObject; key: string }): string => {
-  if (!(key in obj)) {
-    throw new Error(`KeyError: '${key}'`)
-  }
   const value = obj[key]
   if (typeof value !== 'string') {
-    throw new TypeError(`${key} is not a string: ${JSON.stringify(value)}`)
+    throw new TypeError(`the Stripe object carries no ${key}: ${JSON.stringify(value)}`)
   }
   return value
 }
 
-/** What Python's `%s` printed for a value: `None` for null. */
-const shown = (value: unknown): string =>
-  value === null || value === undefined ? 'None' : String(value)
-
-// Python's int(): surrounding whitespace and one sign are fine, anything else
-// raises, which is what a malformed ACCESS_DURATION should do.
+// Surrounding whitespace and one sign are fine; anything else throws, which is
+// what a malformed ACCESS_DURATION should do.
 const INTEGER = /^\s*[+-]?\d+\s*$/
 
-/** ACCESS_DURATION as a whole number of days, as Python's `int(ACCESS_DURATION)`. */
+/** ACCESS_DURATION as a whole number of days. */
 export const accessDays = (settings: Settings): number => {
   if (!INTEGER.test(settings.accessDuration)) {
     throw new Error(`ACCESS_DURATION is not an integer: ${JSON.stringify(settings.accessDuration)}`)
@@ -84,15 +76,15 @@ export const accessDays = (settings: Settings): number => {
   return Number.parseInt(settings.accessDuration, 10)
 }
 
-/** `at` moved forward by a number of whole days: `at + timedelta(days=days)`. */
+/** `at` moved forward by a number of whole days. */
 export const plusDays = ({ at, days }: { at: Date; days: number }): Date =>
   new Date(at.getTime() + days * 86_400_000)
 
 /**
  * Email on the Stripe customer record, or null if they have none on file.
  *
- * A missing customer id throws, as `stripe.Customer.retrieve(None)` did, so
- * the event is left unmarked rather than acted on with no one to act for.
+ * A missing customer id throws, so the event is left unmarked rather than
+ * acted on with no one to act for.
  */
 export const customerEmail = async ({
   bridge,
@@ -102,9 +94,7 @@ export const customerEmail = async ({
   customerId: string | null
 }): Promise<string | null> => {
   if (!customerId) {
-    throw new Error(
-      'Could not determine which URL to request: Customer instance has invalid ID: None',
-    )
+    throw new Error('the event names no customer to look an email up for')
   }
   return bridge.stripe.customerEmail(customerId)
 }
@@ -207,7 +197,16 @@ export const signupAlert = async ({
   session: StripeObject
   code: string
 }): Promise<void> =>
-  bridge.mailer.sendAlert(signup({ email, tier, session, inviteUrl: inviteUrl({ bridge, code }) }))
+  bridge.mailer.sendAlert(
+    signup({
+      email,
+      tier,
+      session,
+      sessionId: truthyText({ obj: session, key: 'id' }),
+      customerId: truthyText({ obj: session, key: 'customer' }),
+      inviteUrl: inviteUrl({ bridge, code }),
+    }),
+  )
 
 /** Tell the admin about one declined attempt; each is a day closer to a cancel. */
 export const paymentFailedAlert = async ({
@@ -314,10 +313,10 @@ const blockBannedCheckout = async ({
   bridge: Bridge
   email: string
   tier: string
-  sessionId: unknown
-  customerId: unknown
+  sessionId: string | null
+  customerId: string | null
 }): Promise<void> => {
-  log.error(`checkout ${shown(sessionId)} by banned member ${email}; no invite issued`)
+  log.error(`checkout ${sessionId ?? 'with no id'} by banned member ${email}; no invite issued`)
   recordEvent({
     path: bridge.dbPath,
     email,
@@ -375,11 +374,11 @@ const onCheckoutCompleted: EventHandler = async ({ bridge, obj }) => {
     truthyText({ obj: nested({ obj, key: 'customer_details' }), key: 'email' }) ??
     truthyText({ obj, key: 'customer_email' })
   const customerId = truthyText({ obj, key: 'customer' })
+  const sessionId = truthyText({ obj, key: 'id' })
   if (!email) {
-    log.warn(`no email on session ${shown(obj.id)}`)
+    log.warn(`no email on session ${sessionId ?? 'with no id'}`)
     return
   }
-  const sessionId = truthyText({ obj, key: 'id' })
   const tier = normalizeTier(nested({ obj, key: 'metadata' }).tier)
   const tag = getMemberTag({ path: bridge.dbPath, email })
   // A banned address can still reach a Payment Link. Nothing is issued
@@ -390,12 +389,16 @@ const onCheckoutCompleted: EventHandler = async ({ bridge, obj }) => {
       bridge,
       email,
       tier,
-      sessionId: obj.id,
-      customerId: obj.customer,
+      sessionId,
+      customerId,
     })
     return
   }
-  const access = await resolveTierScope({ bridge, tier, context: `checkout ${shown(obj.id)}` })
+  const access = await resolveTierScope({
+    bridge,
+    tier,
+    context: `checkout ${sessionId ?? 'with no id'}`,
+  })
   // Everything below the invite can throw (a slow Wizarr write, SMTP), and
   // a throw leaves the event unmarked so Stripe retries the whole handler.
   // The session -> invite binding is what stops that retry from minting a
@@ -405,7 +408,7 @@ const onCheckoutCompleted: EventHandler = async ({ bridge, obj }) => {
     ? issued.invite_code
     : (await mint({ wizarr: bridge.wizarr, settings: bridge.settings, tier, scope: access })).code
   if (issued) {
-    log.log(`checkout ${shown(sessionId)} already has invite ${code}; reusing it`)
+    log.log(`checkout ${sessionId ?? 'with no id'} already has invite ${code}; reusing it`)
   } else if (sessionId) {
     recordSessionInvite({ path: bridge.dbPath, sessionId, inviteCode: code })
   }
@@ -452,7 +455,7 @@ const onInvoicePaid: EventHandler = async ({ bridge, obj }) => {
     setPaymentState({ path: bridge.dbPath, email, state: null })
   }
   if (obj.billing_reason === 'subscription_create') {
-    log.log(`skipping first (signup) invoice for ${shown(obj.customer)}`)
+    log.log(`skipping first (signup) invoice for ${customerId}`)
     return
   }
   const tag = email ? getMemberTag({ path: bridge.dbPath, email }) : null
@@ -490,7 +493,7 @@ const onInvoicePaid: EventHandler = async ({ bridge, obj }) => {
   const expires = accessExpiryIso(bridge.settings)
   await eachInOrder({ items: ids, run: (userId) => bridge.wizarr.setExpiry({ userId, expires }) })
   if (ids.length > 0) {
-    log.log(`renewed ${ids.length} record(s) for ${shown(email)} (expires ${expires})`)
+    log.log(`renewed ${ids.length} record(s) for ${email ?? customerId} (expires ${expires})`)
     if (email) {
       recordEvent({
         path: bridge.dbPath,
@@ -498,10 +501,6 @@ const onInvoicePaid: EventHandler = async ({ bridge, obj }) => {
         action: 'Payment received',
         detail: `access extended to ${expires.slice(0, 10)}`,
       })
-    } else {
-      // Python handed None to record_event, whose own guard logged the
-      // failed write and carried on; the same line, without the write.
-      log.error('event log write failed for None / Payment received')
     }
   } else if (email) {
     // Paid, but nothing to extend. Never leave this as a log line: the
@@ -509,7 +508,7 @@ const onInvoicePaid: EventHandler = async ({ bridge, obj }) => {
     const row = customerRow({ path: bridge.dbPath, email })
     await restoreAccess({ bridge, email, customerId, tier: row ? row.tier : null })
   } else {
-    log.warn(`renewal: no wizarr user for ${customerId} / ${shown(email)}`)
+    log.warn(`renewal: no wizarr user for ${customerId}, which has no email`)
   }
 }
 
@@ -523,11 +522,13 @@ const onPaymentFailed: EventHandler = async ({ bridge, obj }) => {
   const email =
     truthyText({ obj, key: 'customer_email' }) ?? (await customerEmail({ bridge, customerId }))
   if (!email) {
-    log.warn(`payment failed for ${shown(obj.customer)} with no resolvable email`)
+    log.warn(`payment failed for ${customerId ?? 'no customer'} with no resolvable email`)
     return
   }
   setPaymentState({ path: bridge.dbPath, email, state: 'past_due' })
-  log.warn(`payment failed for ${email} (invoice ${shown(obj.id)})`)
+  log.warn(
+    `payment failed for ${email} (invoice ${truthyText({ obj, key: 'id' }) ?? 'with no id'})`,
+  )
   recordEvent({
     path: bridge.dbPath,
     email,
@@ -545,7 +546,7 @@ const onSubscriptionUpdated: EventHandler = async ({ bridge, obj }) => {
   const email =
     (mapping?.email ?? null) || (customerId ? await customerEmail({ bridge, customerId }) : null)
   syncPaymentState({ bridge, email, status })
-  log.log(`subscription for ${shown(email)} is ${status}`)
+  log.log(`subscription for ${email ?? customerId ?? 'no customer'} is ${status}`)
 }
 
 /** Disable the member's records, unless somebody still pays for them. */
@@ -587,7 +588,7 @@ const onSubscriptionDeleted: EventHandler = async ({ bridge, obj }) => {
   const paying =
     sibling || (email ? stillSubscribedElsewhere({ dbPath: bridge.dbPath, email }) : null)
   if (paying) {
-    log.log(`cancel: ${shown(email)} still pays under ${paying}; access left alone`)
+    log.log(`cancel: ${email ?? customerId} still pays under ${paying}; access left alone`)
     if (email) {
       recordEvent({
         path: bridge.dbPath,
@@ -606,9 +607,9 @@ const onSubscriptionDeleted: EventHandler = async ({ bridge, obj }) => {
   })
   await eachInOrder({ items: ids, run: (userId) => bridge.wizarr.disableUser(userId) })
   if (ids.length > 0) {
-    log.log(`disabled ${ids.length} record(s) for ${shown(email)}`)
+    log.log(`disabled ${ids.length} record(s) for ${email ?? customerId}`)
   } else {
-    log.log(`cancel: no wizarr user for ${customerId} / ${shown(email)}`)
+    log.log(`cancel: no wizarr user for ${customerId} / ${email ?? 'no email'}`)
   }
   if (email) {
     recordEvent({
@@ -631,13 +632,10 @@ export const HANDLERS: ReadonlyMap<string, EventHandler> = new Map([
   ['customer.subscription.deleted', onSubscriptionDeleted],
 ])
 
-/** `value[key]` as Python's subscript read it: a missing key, or a non-object, throws. */
-const subscript = ({ value, key }: { value: unknown; key: string }): unknown => {
-  if (!isRow(value)) {
-    throw new TypeError(`cannot read '${key}' of ${JSON.stringify(value)}`)
-  }
-  if (!(key in value)) {
-    throw new Error(`KeyError: '${key}'`)
+/** A key the event envelope must carry; a missing one fails the delivery for a retry. */
+const envelopeField = ({ value, key }: { value: unknown; key: string }): unknown => {
+  if (!isRow(value) || !(key in value)) {
+    throw new TypeError(`the Stripe event carries no ${key}`)
   }
   return value[key]
 }
@@ -664,9 +662,9 @@ export const handleEvent = async ({
     return
   }
 
-  const type = subscript({ value: event, key: 'type' })
-  const obj = subscript({ value: subscript({ value: event, key: 'data' }), key: 'object' })
-  log.log(`stripe event: ${shown(type)}`)
+  const type = envelopeField({ value: event, key: 'type' })
+  const obj = envelopeField({ value: envelopeField({ value: event, key: 'data' }), key: 'object' })
+  log.log(`stripe event: ${String(type)}`)
 
   const handler = typeof type === 'string' ? HANDLERS.get(type) : undefined
   if (handler) {

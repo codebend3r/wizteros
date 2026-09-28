@@ -20,9 +20,8 @@ export type PlexFetch = (
 
 /**
  * plex.tv could not be asked or would not answer: a network error, a timeout,
- * or an error status. It stands where the Python caught
- * `requests.RequestException`, so the admin route that reads shares answers
- * 502 on exactly these and nothing else.
+ * or an error status. The admin route that reads shares answers 502 on
+ * exactly these and nothing else.
  */
 export class PlexUnavailable extends Error {
   override readonly name = 'PlexUnavailable'
@@ -38,10 +37,10 @@ type XmlElement = Readonly<{
   children: readonly XmlElement[]
 }>
 
-// preserveOrder keeps siblings in document order, which ElementTree's iter()
-// walks in; the default grouping by tag name would reorder mixed siblings.
-// htmlEntities decodes numeric character references (&#39;), which
-// ElementTree does and fast-xml-parser otherwise leaves as text.
+// preserveOrder keeps siblings in document order, which `iter` walks in; the
+// default grouping by tag name would reorder mixed siblings. htmlEntities
+// decodes numeric character references (&#39;), which fast-xml-parser
+// otherwise leaves as text.
 const parser = new XMLParser({
   preserveOrder: true,
   ignoreAttributes: false,
@@ -86,8 +85,8 @@ const elementsOf = (nodes: unknown): readonly XmlElement[] =>
     : []
 
 /**
- * Parse a plex.tv document to its root element. Malformed XML throws, as
- * ElementTree.fromstring did; fast-xml-parser alone would parse it leniently.
+ * Parse a plex.tv document to its root element. Malformed XML throws;
+ * fast-xml-parser alone would parse it leniently.
  */
 const parseXml = (text: string): XmlElement => {
   const verdict = XMLValidator.validate(text)
@@ -102,15 +101,15 @@ const parseXml = (text: string): XmlElement => {
 }
 
 /**
- * Every element tagged `tag` at or below `element`, depth-first in document
- * order: ElementTree's `Element.iter(tag)`, which includes the element itself.
+ * Every element tagged `tag` at or below `element`, the element itself
+ * included, depth-first in document order.
  */
 const iter = ({ element, tag }: { element: XmlElement; tag: string }): readonly XmlElement[] => [
   ...(element.tag === tag ? [element] : []),
   ...element.children.flatMap((child) => iter({ element: child, tag })),
 ]
 
-/** An attribute's value, or null when absent: ElementTree's `Element.get`. */
+/** An attribute's value, or null when absent. */
 const attr = ({ element, name }: { element: XmlElement; name: string }): string | null =>
   element.attributes[name] ?? null
 
@@ -118,9 +117,9 @@ const codePoints = (text: string): readonly number[] =>
   Array.from(text, (character) => character.codePointAt(0) ?? 0)
 
 /**
- * Order two strings by code point, as Python's sorted() does. JavaScript's
- * default sort compares UTF-16 code units, which puts astral characters
- * before U+E000..U+FFFF.
+ * Order two strings by code point, the order the portal has always been
+ * served. JavaScript's default sort compares UTF-16 code units, which puts
+ * astral characters before U+E000..U+FFFF.
  */
 const byCodePoint = (a: string, b: string): number => {
   const left = codePoints(a)
@@ -133,17 +132,12 @@ const byCodePoint = (a: string, b: string): number => {
   return other === undefined ? 1 : (left[index] ?? 0) - other
 }
 
-// requests' HTTPError text, so the logged warning reads the same.
-const httpErrorText = ({ response, url }: { response: Response; url: string }): string =>
-  `${response.status} ${response.status < 500 ? 'Client' : 'Server'} Error: ${response.statusText} for url: ${url}`
-
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
 /**
- * A plex.tv client for the owner `token`. The Python read PLEX_TOKEN and
- * PLEX_TV_BASE at import; here both are handed in, with `fetch` so a test can
- * answer with XML instead of the network.
+ * A plex.tv client for the owner `token`, with `fetch` injectable so a test
+ * can answer with XML instead of the network.
  */
 export const plexApi = ({
   token,
@@ -159,8 +153,8 @@ export const plexApi = ({
 } => {
   /**
    * Fetch a plex.tv XML document with the owner token. Throws PlexUnavailable
-   * on a network failure, a timeout, or a 4xx/5xx (requests'
-   * raise_for_status), and a plain Error on malformed XML.
+   * on a network failure, a timeout, or a 4xx/5xx, and a plain Error on
+   * malformed XML.
    */
   const getXml = async (path: string): Promise<XmlElement> => {
     const url = `${base}${path}`
@@ -171,7 +165,7 @@ export const plexApi = ({
           signal: AbortSignal.timeout(TIMEOUT * 1000),
         })
         if (response.status >= 400) {
-          throw new PlexUnavailable(httpErrorText({ response, url }))
+          throw new PlexUnavailable(`plex.tv answered ${response.status} for ${url}`)
         }
         return await response.text()
       } catch (error) {
@@ -200,8 +194,8 @@ export const plexApi = ({
    * plexapi resolves an invite's library names against at redemption, so
    * this is the view a stale Wizarr cache has to be checked against.
    *
-   * A server with no name is keyed "null", where Python keyed it None and
-   * the JSON wire then spelled it the same way.
+   * A server with no name is keyed "null", the key the portal has always
+   * been served for one.
    */
   const liveSections = async (): Promise<LiveSections> => {
     const servers = await ownedServers()
@@ -280,9 +274,9 @@ export const plexApi = ({
         return [{ email, server: name, share }]
       }),
     )
-    // Grouped the way setdefault() built it: emails and servers keep the
-    // position they were first seen at, and a repeat takes the later value,
-    // which Object.fromEntries does for duplicate keys.
+    // Emails and servers keep the position they were first seen at, and a
+    // repeat takes the later value, which Object.fromEntries does for
+    // duplicate keys.
     const emails = [...new Set(grants.map((grant) => grant.email))]
     return Object.fromEntries(
       emails.map((email) => [

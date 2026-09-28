@@ -1,9 +1,7 @@
-// The admin routes, ported from stripe-bridge/tests/test_admin.py. The Python
-// tests called the route functions directly with a MagicMock client; these
-// drive the real routes through `inject` over a fake bridge, so every body is
-// also read through the portal's own guards (below) and the wire contract is
-// checked on every 200. The session gate is bypassed except in the gate tests,
-// which verify real ES256 tokens, as the Python's dependency override did.
+// The admin routes, driven through `inject` over a fake bridge, so every body
+// is also read through the portal's own guards (below) and the wire contract
+// is checked on every 200. The session gate is bypassed except in the gate
+// tests, which verify real ES256 tokens.
 
 import type { NestFastifyApplication } from '@nestjs/platform-fastify'
 import { type CryptoKey, createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose'
@@ -312,7 +310,7 @@ type Harness = Readonly<{
 const running: Harness[] = []
 
 /**
- * The admin routes over a fresh store and a fake bridge: the Python fixture.
+ * The admin routes over a fresh store and a fake bridge.
  * Wizarr lists USERS and LIBRARIES and no redeemed invites (so no Stripe/Plex
  * email linkage); plex.tv has no token, since the members list must be
  * reachable without one and tests that exercise the live union opt in; and
@@ -379,7 +377,7 @@ const getEvents = async ({ h, email }: { h: Harness; email?: string }): Promise<
     is: isMemberEventArray,
   })
 
-/** The members keyed by lowercased email, as the Python tests' `by_email`. */
+/** The members keyed by lowercased email. */
 const byEmail = (members: readonly MemberPayload[]): ReadonlyMap<string, MemberPayload> =>
   new Map(members.map((m) => [m.email.toLowerCase(), m]))
 
@@ -802,7 +800,7 @@ describe('GET /admin/members', () => {
 
   it('answers every field of a member, null rather than missing', async () => {
     // The portal tolerates some fields missing for an older bridge; this one
-    // always sends every key, as the Python did.
+    // always sends every key.
     const h = await harness()
     const [first] = await listMembers(h)
     expect(Object.keys(first ?? {}).toSorted()).toEqual(
@@ -1341,6 +1339,32 @@ describe('POST /admin/reset-expiry', () => {
     expect(events[0]?.detail).toBe('to 2026-08-01T00:01:00+00:00')
   })
 
+  it.each([
+    ['2026-08-01T00:01:00.250Z', '2026-08-01T00:01:00.250000+00:00'],
+    ['2026-08-01T05:31:00+05:30', '2026-08-01T00:01:00+00:00'],
+    ['2026-08-01T00:01:00', '2026-08-01T00:01:00+00:00'],
+  ])('writes expires_at %j as %j', async (expiresAt, expected) => {
+    const h = await harness()
+    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([9])
+    const out = await resetExpiry({ h, body: { email: 'a@x.com', expires_at: expiresAt } })
+    expect(out).toEqual({ updated: 1, expires: expected })
+  })
+
+  it.each(['2026-02-30T00:00:00Z', '2026-08-01', '2026-08-01T00:01Z'])(
+    'rejects expires_at %j',
+    async (expiresAt) => {
+      const h = await harness()
+      h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([9])
+      const answer = await post({
+        h,
+        url: '/admin/reset-expiry',
+        payload: { email: 'a@x.com', expires_at: expiresAt },
+      })
+      expect(answer.statusCode).toBe(400)
+      expect(h.bridge.wizarr.setExpiry).not.toHaveBeenCalled()
+    },
+  )
+
   it('rejects a malformed expires_at', async () => {
     const h = await harness()
     h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([9])
@@ -1430,7 +1454,7 @@ describe('POST /admin/reset-tier', () => {
       payload: { email: 'a@x.com', tier: 'platinum' },
     })
     expect(answer.statusCode).toBe(400)
-    expect(answer.json()).toEqual({ detail: "unknown tier 'platinum'" })
+    expect(answer.json()).toEqual({ detail: 'unknown tier "platinum"' })
     expect(allCustomerTiers({ path: h.dbp })).toEqual(new Map())
   })
 })
@@ -1778,7 +1802,7 @@ describe('tags and downloads', () => {
       payload: { email: 'a@x.com', tag: 'whale' },
     })
     expect(answer.statusCode).toBe(400)
-    expect(answer.json()).toEqual({ detail: "unknown tag 'whale'" })
+    expect(answer.json()).toEqual({ detail: 'unknown tag "whale"' })
   })
 
   it('overrides the tier default in member payloads with the downloads toggle', async () => {
@@ -1885,27 +1909,17 @@ describe('POST /admin/ban', () => {
 
 // --- request bodies ---------------------------------------------------------------------------------------------------
 //
-// Not in the Python suite: pydantic's lax coercion, pinned so the port refuses
-// and accepts what FastAPI did.
+// Bodies are typed the way the portal sends them; anything else is a 422.
 
-describe('request bodies, as pydantic read them', () => {
-  it.each([
-    [15, 15],
-    [15.0, 15],
-    ['15', 15],
-    [' 15 ', 15],
-    ['1_5', 15],
-    ['15.00', 15],
-    ['+15', 15],
-    [true, 1],
-  ])('reads days %j as %j', async (days, expected) => {
+describe('request bodies', () => {
+  it.each([15, 15.0, -3])('reads days %j', async (days) => {
     const h = await harness()
     h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([9])
     await resetExpiry({ h, body: { email: 'a@x.com', days } })
-    expect((await getEvents({ h, email: 'a@x.com' }))[0]?.detail).toBe(`${expected} days`)
+    expect((await getEvents({ h, email: 'a@x.com' }))[0]?.detail).toBe(`${days} days`)
   })
 
-  it.each([1.5, '1.5', '1e3', '', 'abc', '_1', [], {}])(
+  it.each([1.5, '15', ' 15 ', '1_5', '+15', true, '', 'abc', [], {}])(
     'refuses days %j with a 422',
     async (days) => {
       const h = await harness()
@@ -1920,23 +1934,12 @@ describe('request bodies, as pydantic read them', () => {
     },
   )
 
-  it.each([
-    [true, true],
-    [1, true],
-    ['yes', true],
-    ['ON', true],
-    ['t', true],
-    [false, false],
-    [0, false],
-    ['No', false],
-    ['off', false],
-    ['f', false],
-  ])('reads allow %j as %j', async (allow, expected) => {
+  it.each([true, false])('reads allow %j', async (allow) => {
     const h = await harness()
-    expect((await setDownloads({ h, body: { email: 'a@x.com', allow } })).downloads).toBe(expected)
+    expect((await setDownloads({ h, body: { email: 'a@x.com', allow } })).downloads).toBe(allow)
   })
 
-  it.each([2, 0.5, '', ' true', 'maybe', null])('refuses allow %j with a 422', async (allow) => {
+  it.each([1, 0, 'yes', 'true', '', null])('refuses allow %j with a 422', async (allow) => {
     const h = await harness()
     expect(
       (await post({ h, url: '/admin/set-downloads', payload: { email: 'a@x.com', allow } }))

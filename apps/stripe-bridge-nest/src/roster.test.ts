@@ -1,7 +1,6 @@
-// The roster's pure functions on their own. The Python suite only reached
-// roster.py through the admin routes (see admin/adminController.test.ts);
-// these pin the dict-ordering and truthiness details the port had to carry
-// over by hand, which a route test would only catch by accident.
+// The roster's pure functions on their own. The admin route tests reach them
+// too (see admin/adminController.test.ts); these pin the ordering and
+// empty-value details a route test would only catch by accident.
 
 import { describe, expect, it } from 'vitest'
 import {
