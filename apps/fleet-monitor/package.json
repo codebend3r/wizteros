@@ -1,12 +1,48 @@
 {
   "name": "fleet-monitor",
   "private": true,
+  "type": "module",
   "scripts": {
-    "lint:py": "PY_SETUP=setup:py:monitor bash ../../scripts/py-tool.sh apps/fleet-monitor ruff",
-    "lint:py:fix": "PY_SETUP=setup:py:monitor bash ../../scripts/py-tool.sh apps/fleet-monitor ruff --fix",
-    "test": "PY_SETUP=setup:py:monitor bash ../../scripts/py-tool.sh apps/fleet-monitor pytest"
+    "build": "nest build",
+    "start": "node dist/main.js",
+    "typecheck": "tsgo --noEmit",
+    "lint:ts": "oxlint",
+    "lint:ts:fix": "oxlint --fix",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@nestjs/common": "12.1.0",
+    "@nestjs/core": "12.1.0",
+    "@nestjs/platform-fastify": "12.1.0",
+    "@wizteros/server-common": "workspace:*",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "12.0.7",
+    "@nestjs/testing": "12.1.0",
+    "@types/node": "24.19.0",
+    "@typescript/native-preview": "7.0.0-dev.20260707.2",
+    "jose": "6.2.12",
+    "oxfmt": "0.68.0",
+    "oxlint": "1.83.0",
+    "typescript": "6.0.3",
+    "vitest": "5.0.2"
   },
   "nx": {
-    "includedScripts": ["lint:py", "lint:py:fix", "test"]
+    "includedScripts": [
+      "build",
+      "typecheck",
+      "lint:ts",
+      "lint:ts:fix",
+      "format",
+      "format:check",
+      "test",
+      "test:watch"
+    ]
   }
 }

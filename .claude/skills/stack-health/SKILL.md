@@ -57,7 +57,7 @@ Useful overrides, all `WZ_*` env vars matching `deploy-nas.sh`: `WZ_NAS_HOST`,
 | 3   | Westeroz `compose ps`, wizarr + tautulli `running`, Wizarr answers on `:5690` | `compose ps` in `/volume1/docker/westeroz`, `docker inspect`, curl |
 | 4   | Funnel reachable, `POST <base>/stripe/webhook` returns exactly `400`          | curl to `PUBLIC_INVITE_BASE`                                       |
 | 5   | `.deployed-sha` vs `origin/main`, including divergence                        | `cat`, `git fetch`, `git rev-list`, `git merge-base`               |
-| 6   | Recent bridge logs: tier-scope alarm and Python tracebacks                    | `docker logs --tail 200`                                           |
+| 6   | Recent bridge logs: tier-scope alarm and ERROR lines                          | `docker logs --tail 200`                                           |
 | 7   | `/volume1` disk usage                                                         | `df -Pk`                                                           |
 | 8   | Key names in `.env.example` vs the NAS `.env`                                 | `cat`, key names only                                              |
 

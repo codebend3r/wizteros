@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bump the workspace root, apps/admin-portal, and apps/stripe-bridge-nest versions in
+# Bump the workspace root, apps/admin-portal, and apps/stripe-bridge versions in
 # lockstep, commit as `WZ: Bump version to X.Y.Z`, and tag `vX.Y.Z`. npm skips its
 # own git commit/tag for the app because .git lives at the repo root, so this
 # script owns the whole release flow. Used by `bun run release:{patch,minor,major}`.
@@ -7,11 +7,11 @@
 # Three version markers move together:
 #   package.json                         workspace root, the source of truth
 #   apps/admin-portal/package.json       the SPA
-#   apps/stripe-bridge-nest/package.json the only marker that reaches the container
+#   apps/stripe-bridge/package.json      the only marker that reaches the container
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-BRIDGE_PACKAGE="apps/stripe-bridge-nest/package.json"
+BRIDGE_PACKAGE="apps/stripe-bridge/package.json"
 
 LEVEL="${1:?usage: release.sh patch|minor|major}"
 case "$LEVEL" in
@@ -50,14 +50,14 @@ if [ "$ROOT_BEFORE" != "$WEB_BEFORE" ] || [ "$ROOT_BEFORE" != "$BRIDGE_BEFORE" ]
     echo "version markers disagree; fix them to match before releasing:"
     echo "  package.json                 $ROOT_BEFORE"
     echo "  apps/admin-portal            $WEB_BEFORE"
-    echo "  apps/stripe-bridge-nest      $BRIDGE_BEFORE"
+    echo "  apps/stripe-bridge           $BRIDGE_BEFORE"
   } >&2
   exit 1
 fi
 
 VERSION="$(npm version "$LEVEL" --no-git-tag-version | tr -d v)"
 npm --prefix apps/admin-portal version "$VERSION" --no-git-tag-version >/dev/null
-npm --prefix apps/stripe-bridge-nest version "$VERSION" --no-git-tag-version >/dev/null
+npm --prefix apps/stripe-bridge version "$VERSION" --no-git-tag-version >/dev/null
 
 # Postflight: never tag a release whose markers did not all move.
 ROOT_AFTER="$(read_json_version package.json)"
@@ -68,7 +68,7 @@ if [ "$ROOT_AFTER" != "$VERSION" ] || [ "$WEB_AFTER" != "$VERSION" ] || [ "$BRID
     echo "bump did not apply cleanly to every marker; nothing committed:"
     echo "  package.json                 $ROOT_AFTER"
     echo "  apps/admin-portal            $WEB_AFTER"
-    echo "  apps/stripe-bridge-nest      $BRIDGE_AFTER"
+    echo "  apps/stripe-bridge           $BRIDGE_AFTER"
     echo "expected $VERSION everywhere. Restore with: git checkout -- ."
   } >&2
   exit 1

@@ -11,7 +11,7 @@ The invitation set has two populations that must never be confused.
 
 **Baseline invites** are the four multi-use links — one per tier — handed to
 prospective members. The bridge mints them and rotates them daily at 03:00
-(`apps/stripe-bridge-nest/src/baseline.ts`, driven by the rotation in `loops.ts`). They are the only invites
+(`apps/stripe-bridge/src/baseline.ts`, driven by the rotation in `loops.ts`). They are the only invites
 this skill judges.
 
 **Member invites** are minted per checkout by the webhook handler, single-use, tied
@@ -118,7 +118,7 @@ usually across all four at once.
   container came up — so a bridge that keeps restarting never reaches 03:00.
 - **The deployed bridge predates the rotation.** The audit says the
   `baseline_invites` table is absent. `GET /version` against the NAS, compare with
-  `version` in `apps/stripe-bridge-nest/package.json`, and deploy.
+  `version` in `apps/stripe-bridge/package.json`, and deploy.
 
 **Remedy.** `bun run deploy:nas` (or the `deploy-nas` skill), then confirm with
 `GET /version`. Netlify does not carry the bridge; the NAS only updates when told.

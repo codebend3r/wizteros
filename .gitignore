@@ -16,12 +16,6 @@ dist/
 .nx/cache
 .nx/workspace-data
 
-# python
-__pycache__/
-*.pyc
-*.pyo
-.venv/
-venv/
 *.db
 
 # editor / OS

@@ -36,7 +36,7 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v7
       - name: 🐳 Build image
-        run: docker build -f apps/stripe-bridge-nest/Dockerfile -t stripe-bridge:sanity .
+        run: docker build -f apps/stripe-bridge/Dockerfile -t stripe-bridge:sanity .
       - name: 🚦 Smoke test the server
         run: |
           docker run -d --name bridge-sanity -p 8000:8000 \
@@ -84,14 +84,14 @@ jobs:
         run: |
           root=$(node -p "require('./package.json').version")
           portal=$(node -p "require('./apps/admin-portal/package.json').version")
-          bridge=$(node -p "require('./apps/stripe-bridge-nest/package.json').version")
-          echo "📦 root=$root  🌐 admin-portal=$portal  🌉 stripe-bridge-nest=$bridge"
+          bridge=$(node -p "require('./apps/stripe-bridge/package.json').version")
+          echo "📦 root=$root  🌐 admin-portal=$portal  🌉 stripe-bridge=$bridge"
           if [ "$root" != "$portal" ]; then
             echo "::error::💥 Version drift — root is $root but apps/admin-portal/ is $portal"
             exit 1
           fi
           if [ "$root" != "$bridge" ]; then
-            echo "::error::💥 Version drift — root is $root but apps/stripe-bridge-nest/ is $bridge"
+            echo "::error::💥 Version drift — root is $root but apps/stripe-bridge/ is $bridge"
             exit 1
           fi
           echo "✅ All three markers agree on v$root"

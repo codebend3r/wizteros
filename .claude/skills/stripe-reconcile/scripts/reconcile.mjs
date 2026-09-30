@@ -171,9 +171,10 @@ const wz = (path) =>
   fetch(`${WIZARR}${path}`, {
     headers: { 'X-API-Key': WIZARR_API_KEY, 'Content-Type': 'application/json' },
     // /api/users reconciles with every Plex server per call and routinely takes
-    // ~15s (see WizarrClient._users and admin.members_snapshot). The bridge caps
-    // it at 45s on the request path; double that here, because this sweep is an
-    // unattended read and a slow answer beats a spurious "source failed".
+    // ~15s (see listUsers in apps/stripe-bridge/src/clients/wizarr.ts and the
+    // admin members snapshot built on it). The bridge caps it at 45s on the
+    // request path; double that here, because this sweep is an unattended read
+    // and a slow answer beats a spurious "source failed".
     signal: AbortSignal.timeout(90_000),
   })
 
@@ -424,7 +425,7 @@ async function main() {
   }
 
   // Stripe email -> Plex username, for members whose Plex account uses another
-  // address. Mirrors WizarrClient.find_user_ids_by_invite. Wizarr serializes
+  // address. Mirrors findUserIdsByInvite in the bridge's Wizarr client. Wizarr serializes
   // used_by as a Python repr like "<User 281>", not a username, so the repr id
   // resolves through the user list first; only the exact repr shape is read as
   // an id (a username that merely contains digits stays a username).

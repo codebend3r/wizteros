@@ -10,13 +10,13 @@ description: Use when the wizteros live end-to-end suites are in play, either ru
 Two Node scripts drive **synthetic, locally signed Stripe webhooks** through a **locally
 running bridge container** against the **live Wizarr instance**:
 
-| Script                                           | Nx target (root alias)                                         | Proves                                                  |
-| ------------------------------------------------ | -------------------------------------------------------------- | ------------------------------------------------------- |
-| `apps/stripe-bridge-nest/scripts/e2e-retest.mjs` | `stripe-bridge-nest:test:e2e` (`bun run test:e2e`)             | The paid-access flow time-boxes a real member's records |
-| `apps/stripe-bridge-nest/scripts/e2e-tiers.mjs`  | `stripe-bridge-nest:test:e2e:tiers` (`bun run test:e2e:tiers`) | Each tier's signup produces a correctly scoped invite   |
+| Script                                      | Nx target (root alias)                                    | Proves                                                  |
+| ------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------- |
+| `apps/stripe-bridge/scripts/e2e-retest.mjs` | `stripe-bridge:test:e2e` (`bun run test:e2e`)             | The paid-access flow time-boxes a real member's records |
+| `apps/stripe-bridge/scripts/e2e-tiers.mjs`  | `stripe-bridge:test:e2e:tiers` (`bun run test:e2e:tiers`) | Each tier's signup produces a correctly scoped invite   |
 
-Both targets are **inferred** from the `scripts` in `apps/stripe-bridge-nest/package.json`
-(whitelisted by its `nx.includedScripts`), not declared in `apps/stripe-bridge-nest/project.json`,
+Both targets are **inferred** from the `scripts` in `apps/stripe-bridge/package.json`
+(whitelisted by its `nx.includedScripts`), not declared in `apps/stripe-bridge/project.json`,
 which holds only the Docker targets (`docker-build`, `serve`, `stop`, `logs`).
 Reading `project.json` alone makes these look missing; they are not.
 
@@ -32,8 +32,8 @@ on the production instance at `WIZARR_BASE_URL`, on the same records live member
 Treat these as production-touching, not as tests.
 
 The container is `stripe-bridge-e2e` on port 8000, started from the repo-root `.env` with
-`apps/stripe-bridge-nest/data` bind-mounted at `/data`. That bind mount is why the bridge SQLite used
-by an e2e run is a **local** file (`apps/stripe-bridge-nest/data/bridge.db`, via `MAP_DB_PATH`'s
+`apps/stripe-bridge/data` bind-mounted at `/data`. That bind mount is why the bridge SQLite used
+by an e2e run is a **local** file (`apps/stripe-bridge/data/bridge.db`, via `MAP_DB_PATH`'s
 `/data/bridge.db` default), not the NAS one. The `serve` target pins `cwd: {workspaceRoot}`, so
 the mount and the `--env-file .env` are always the repo's own, whichever directory you launch
 from.
@@ -41,7 +41,7 @@ from.
 ## What `test:e2e` actually does
 
 `node --env-file=../../.env scripts/e2e-retest.mjs [email]`, run by Nx with the cwd set to
-`apps/stripe-bridge-nest`, so `../../.env` resolves to the repo-root file. Default member
+`apps/stripe-bridge`, so `../../.env` resolves to the repo-root file. Default member
 `codebenderinc@gmail.com`, overridable as `process.argv[2]`, though the `bun run test:e2e` alias
 cannot pass that argument (see Procedure).
 
@@ -133,7 +133,7 @@ friendship until they redeem an invite. The script never re-enables at the end a
 asserts enabled state, so a green run can leave a member disabled.
 
 **It creates a real invite and can send a real email.** The session id `cs_e2e` is fixed, so the
-first run against a fresh local `apps/stripe-bridge-nest/data/bridge.db` creates a bronze invite for
+first run against a fresh local `apps/stripe-bridge/data/bridge.db` creates a bronze invite for
 that member and mails the link, then records the binding. Later runs reuse the bound code and send
 nothing. **That first invite is never deleted by the script.** It stays redeemable in live
 Wizarr until `INVITE_EXPIRES_DAYS` passes.
@@ -189,7 +189,7 @@ curl -s -X PUT -H "X-API-Key: $WIZARR_API_KEY" -H 'Content-Type: application/jso
 
 The local bridge DB also keeps rows from every run (`customer_map` marked subscribed,
 `session_invites` for `cs_e2e`, `processed_events`). It is local state, not the NAS database, so
-it is safe to leave. Deleting `apps/stripe-bridge-nest/data/bridge.db` resets it, at the cost of the
+it is safe to leave. Deleting `apps/stripe-bridge/data/bridge.db` resets it, at the cost of the
 next retest minting and mailing a fresh `cs_e2e` invite.
 
 ## Prerequisites
@@ -211,8 +211,8 @@ next retest minting and mailing a fresh `cs_e2e` invite.
     its own `SHARE_SERVER` and ignores the env).
 - **Docker running** and port 8000 free. Every `bun run ...` alias works from any directory in the
   repo: the Docker targets pin `cwd: {workspaceRoot}` (`bridge:up` bind-mounts
-  `$PWD/apps/stripe-bridge-nest/data`) and the inferred script targets always run from
-  `apps/stripe-bridge-nest`, which is what makes `--env-file=../../.env` land on the root `.env`. Only
+  `$PWD/apps/stripe-bridge/data`) and the inferred script targets always run from
+  `apps/stripe-bridge`, which is what makes `--env-file=../../.env` land on the root `.env`. Only
   the hand-rolled `node --env-file=.env apps/...` form below is cwd-sensitive, and has to be run
   from the repo root.
 - **LAN access to the live Wizarr**, from the host _and_ from inside the container. The
@@ -234,23 +234,23 @@ bun run bridge:down       # ALWAYS, pass or fail
   after a `retest` while the container is still up, or do
   `bun run bridge:build && bun run bridge:up && bun run test:e2e:tiers`.
 - **Different member: the root alias cannot carry the email.** `bun run test:e2e someone@example.com`
-  runs `nx run-many -t test:e2e -p stripe-bridge-nest someone@example.com`, and `run-many` **silently
+  runs `nx run-many -t test:e2e -p stripe-bridge someone@example.com`, and `run-many` **silently
   drops** the positional: the script gets no `argv[2]` and retests `codebenderinc@gmail.com`
   instead of the address you typed. Use one of the two forms that do pass it, with the bridge
   already up:
 
   ```bash
   # from the repo root
-  node --env-file=.env apps/stripe-bridge-nest/scripts/e2e-retest.mjs someone@example.com
+  node --env-file=.env apps/stripe-bridge/scripts/e2e-retest.mjs someone@example.com
   # or through Nx (the second colon parses fine here; args after -- are forwarded)
-  bunx nx run stripe-bridge-nest:test:e2e -- someone@example.com
+  bunx nx run stripe-bridge:test:e2e -- someone@example.com
   ```
 
   Confirm the header line it prints (`E2E retest: someone@example.com`) names the member you
   meant before it gets past the bridge wait.
 
 - `bridge:up` always `docker rm -f`s the old container first, so it is safe to re-run, but it
-  runs whatever image `stripe-bridge-nest` currently points at. After editing bridge code, rebuild.
+  runs whatever image `stripe-bridge` currently points at. After editing bridge code, rebuild.
 - When something fails, read the bridge side: `bun run bridge:logs` is `docker logs -f` and
   **blocks forever**, so in a non-interactive session use
   `docker logs --tail 100 stripe-bridge-e2e`.
@@ -264,17 +264,17 @@ bun run bridge:down       # ALWAYS, pass or fail
 | exit `2`, "Missing WIZARR_BASE_URL / ..."                       | The `.env` exists but is incomplete, so the run never started                                             | Those three keys in the repo-root `.env`                                                                                                                                                                                                                                                              |
 | "bridge not reachable at http://localhost:8000" (after ~20s)    | The container is not serving; retest only, tiers has no such wait                                         | `docker logs --tail 100 stripe-bridge-e2e`. Usually the boot refusing a missing env var (`missing required environment: ...`), or port 8000 already taken                                                                                                                                             |
 | `ERROR: fetch failed` in tiers                                  | Same cause, no friendly message: the container is down, or `WIZARR_BASE_URL` is unreachable from the host | `docker ps --filter name=stripe-bridge-e2e`, then the logs; then LAN access to Wizarr                                                                                                                                                                                                                 |
-| `GET /api/libraries -> N` in tiers                              | Wizarr cannot list libraries, so no tier can be scoped or verified                                        | `WIZARR_API_KEY`, then `WizarrClient.list_libraries` against the live API                                                                                                                                                                                                                             |
+| `GET /api/libraries -> N` in tiers                              | Wizarr cannot list libraries, so no tier can be scoped or verified                                        | `WIZARR_API_KEY`, then `listLibraries` in the bridge's Wizarr client against the live API                                                                                                                                                                                                             |
 | `GET /api/users -> 401/403`                                     | Wizarr rejects the key; nobody's access changed                                                           | `WIZARR_API_KEY` in `.env`, rotated by a Wizarr upgrade or reinstall                                                                                                                                                                                                                                  |
-| `GET /api/users -> 404`, or a read returns an unexpected shape  | Wizarr's API surface moved under us                                                                       | `stripe_bridge/wizarr.py`, then the scripts' direct `fetch` calls                                                                                                                                                                                                                                     |
+| `GET /api/users -> 404`, or a read returns an unexpected shape  | Wizarr's API surface moved under us                                                                       | `apps/stripe-bridge/src/clients/wizarr.ts`, then the scripts' direct `fetch` calls                                                                                                                                                                                                                    |
 | "no Wizarr records for `<email>`"                               | That member has no records at all: deleted, or their Plex email differs                                   | Confirm the member in Wizarr; pass the right email                                                                                                                                                                                                                                                    |
-| `reset id=N -> 400`                                             | The unlimited-expiry write was rejected                                                                   | `WizarrClient.set_expiry`. Wizarr validates `expires` as a date-time, so clearing must omit the key. A schema change here breaks reset first                                                                                                                                                          |
+| `reset id=N -> 400`                                             | The unlimited-expiry write was rejected                                                                   | `setExpiry` in the bridge's Wizarr client. Wizarr validates `expires` as a date-time, so clearing must omit the key. A schema change here breaks reset first                                                                                                                                          |
 | `POST checkout.session.completed -> 400: invalid signature`     | The bridge would reject the real Stripe webhook too                                                       | `STRIPE_WEBHOOK_SECRET` mismatch between the script's `.env` and the container's env, usually a container started before the `.env` edit. `bridge:up` again                                                                                                                                           |
 | `POST ... -> 500` on retest                                     | The checkout or renewal handler raised, so a real payment would retry forever                             | Logs first. Candidates: no libraries resolved for the tier (`tiers.resolve_tier_access`), a slow Wizarr write (`USER_WRITE_TIMEOUT`), SMTP failure in `mailer.send_invite_email`                                                                                                                      |
 | `FAIL: N/M record(s) not set to ~now+35d`, `expires=null`       | Paid access was not time-boxed: the member would keep unlimited access, or lose the paid window           | `access_expiry_iso` and the `invoice.paid` branch in `stripe_wizarr_bridge.py`. Check whether the member is tagged `vip` in the local bridge DB: both handlers short-circuit for VIPs and leave expiry alone, which fails this assertion by design                                                    |
 | `FAIL`, expiry present but outside the 2 day window             | The window length drifted                                                                                 | `ACCESS_DURATION` in `.env` versus the container's env, then `access_expiry_iso`                                                                                                                                                                                                                      |
 | `POST checkout(<tier>) -> 500` in tiers                         | That tier cannot issue an invite at all; real checkouts for it raise and Stripe retries forever           | `tiers.py` against the live library names. This is the exact failure the tier scope alarm exists for. Also possible: the SMTP relay refused the `@invalid.test` recipient                                                                                                                             |
-| "`<tier>`: bridge created no invite"                            | The webhook was accepted but no invite reached Wizarr                                                     | `WizarrClient.create_invite` and the `/api/invitations` response shape                                                                                                                                                                                                                                |
+| "`<tier>`: bridge created no invite"                            | The webhook was accepted but no invite reached Wizarr                                                     | `createInvite` in the bridge's Wizarr client and the `/api/invitations` response shape                                                                                                                                                                                                                |
 | "servers X != Meleys"                                           | The invite was scoped to the wrong server, so a redeemer gets a retired server's copy or nothing          | `tiers.SHARE_SERVER`, `_is_on_share_server`, and `resolve_tier_access["server_ids"]`                                                                                                                                                                                                                  |
 | "missing: ..." / "unexpected: ..."                              | The tier rules and the real server disagree about library names                                           | Compare `tiers.py` with the live list. If a Plex library was renamed, `bun run refresh:libraries` and fix `tiers.py` to match the new names, never the reverse. If `tiers.py` rules were changed deliberately, the script's independent mirror (`expectedNames`) is now stale and needs the same edit |
 | "bronze granted a 4K library" / "granted a private 9X. library" | A scoping leak: paying members see libraries their tier does not include                                  | `tiers._is_4k`, `_is_private`, `_shareable_libraries`. Highest severity on this list; stop and fix before anything ships                                                                                                                                                                              |

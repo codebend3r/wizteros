@@ -5,7 +5,7 @@
 !package.json
 !bun.lock
 !libs/server-common
-!apps/fleet-monitor-nest
+!apps/fleet-monitor
 **/node_modules
 **/dist
 **/*.test.ts

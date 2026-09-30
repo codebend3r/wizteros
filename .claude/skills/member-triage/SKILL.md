@@ -11,7 +11,7 @@ The support runbook for one person. Gather what Stripe, Wizarr, the bridge store
 the bridge logs each say about a single email, then map the symptom to one cause and one
 remedy.
 
-`apps/stripe-bridge/stripe_bridge/admin.py` already has every verb (reissue-invite,
+`apps/stripe-bridge/src/admin/adminController.ts` already has every verb (reissue-invite,
 reset-expiry, reset-tier, set-tag, set-downloads, cancel-subscription). This skill is the
 judgment layer that decides which one applies, and whether any of them should be pressed
 at all.
@@ -142,8 +142,8 @@ Wizarr invitations showing that code as `status=pending`.
 - **Link expired** (`status=expired`, or `invited_at` older than the link window). Only
   then issue a fresh one from `/user`, **Invite**.
 
-SMTP itself: `apps/stripe-bridge/stripe_bridge/mailer.py` reads `SMTP_HOST`, `SMTP_USER`,
-and `SMTP_PASS` as required env at import (`SMTP_PORT` defaults to 587) and does STARTTLS
+SMTP itself: the bridge refuses to boot without `SMTP_HOST`, `SMTP_USER`,
+and `SMTP_PASS` (`REQUIRED_ENV` in `apps/stripe-bridge/src/config.ts`) (`SMTP_PORT` defaults to 587) and does STARTTLS
 plus login on every send. A missing one stops the container booting at all, so a running
 bridge with failing mail means bad credentials, a blocked port, or the provider rejecting
 the from address. Fix `.env` on the NAS and rebuild (deploy-nas skill).
@@ -197,7 +197,7 @@ defaulting to bronze` and the member silently lands on bronze. Legacy `kids` map
 **(b) The library set is wrong for the tier.** This is the tier-scope alarm pattern and
 it is never a per-member problem. The dossier's alarm pass shows `tier scope check:
 <tier> -> ...` or `youth allowlist mismatch on Meleys; missing [...]`.
-`apps/stripe-bridge/stripe_bridge/tiers.py` matches Plex library **names**: youth is a
+`apps/stripe-bridge/src/tiers.ts` matches Plex library **names**: youth is a
 three-name allowlist, bronze is everything without "4k" in the name, silver and gold take
 everything, only libraries Wizarr reports as `enabled` count, and every tier is filtered
 to `SHARE_SERVER` (Meleys) with `9X.` libraries stripped last and independently.

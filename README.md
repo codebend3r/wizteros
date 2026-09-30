@@ -28,10 +28,13 @@ wizteros/
 │   ├── admin-portal/           Vite + React SPA, deploys to Netlify
 │   │   ├── public/
 │   │   └── src/                components/ pages/ lib/ stores/ styles/ test/
-│   ├── stripe-bridge/          the Python bridge, kept only as the reference its port's parity check diffs against
-│   └── stripe-bridge-nest/     NestJS port of the bridge, runs in Docker on the NAS
+│   ├── fleet-monitor/          NestJS API and collector for the NAS fleet, runs in Docker on the NAS
+│   │   └── src/                runtime code, with each module's *.test.ts beside it
+│   └── stripe-bridge/          NestJS service, runs in Docker on the NAS
 │       ├── src/                runtime code, with each module's *.test.ts beside it
-│       └── scripts/            e2e, parity, and library snapshot entrypoints
+│       └── scripts/            e2e and library snapshot entrypoints
+├── libs/
+│   └── server-common/          the admin guard, SQLite and env helpers both servers share
 ├── docs/                       specs, plans, and PRDs for both apps
 ├── scripts/                    release, backfill, and deploy entrypoints
 ├── .claude/agents/             repo-scoped Claude Code subagents
@@ -42,11 +45,11 @@ wizteros/
 └── package.json                bun workspaces plus aliases that delegate to Nx
 ```
 
-| Path                           | What lives there                                                                                                                                      |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/admin-portal/src/`       | Public landing page and the password-gated admin pages. The `@/*` import alias maps here                                                              |
-| `apps/stripe-bridge-nest/src/` | Bridge runtime: `webhook/` (the Stripe handlers), `admin/` (the admin API), `loops.ts`, `store.ts`, `tiers.ts`, and the service clients in `clients/` |
-| `apps/*/` roots                | Per-app config: `vite.config.ts`, `tsconfig.json`, `bunfig.toml`, `pytest.ini`, `ruff.toml`, `Dockerfile`, lint and format configs                    |
+| Path                      | What lives there                                                                                                                                      |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/admin-portal/src/`  | Public landing page and the password-gated admin pages. The `@/*` import alias maps here                                                              |
+| `apps/stripe-bridge/src/` | Bridge runtime: `webhook/` (the Stripe handlers), `admin/` (the admin API), `loops.ts`, `store.ts`, `tiers.ts`, and the service clients in `clients/` |
+| `apps/*/` roots           | Per-app config: `vite.config.ts`, `tsconfig.json`, `bunfig.toml`, `nest-cli.json`, `Dockerfile`, lint and format configs                              |
 
 Two things that are easy to get wrong:
 
@@ -61,12 +64,13 @@ Two things that are easy to get wrong:
 | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
 | [Wizarr](https://github.com/wizarrrr/wizarr)     | Invite-based user onboarding                                                                                |
 | [Tautulli](https://github.com/Tautulli/Tautulli) | Usage monitoring and analytics                                                                              |
-| `apps/stripe-bridge-nest/`                       | NestJS on Node 24: turns Stripe webhooks into Wizarr API calls and serves the admin API. Tested with Vitest |
+| `apps/stripe-bridge/`                            | NestJS on Node 24: turns Stripe webhooks into Wizarr API calls and serves the admin API. Tested with Vitest |
+| `apps/fleet-monitor/`                            | NestJS on Node 24: probes the NAS fleet over ssh and serves the portal's Fleet and Plays pages. Vitest      |
 | `apps/admin-portal/`                             | Vite + React 19 SPA (TypeScript, SCSS modules, zustand, TanStack Query). Tested with bun test               |
 
 **Tooling**
 
-[Nx](https://nx.dev) as the task runner over bun workspaces, [oxlint](https://oxc.rs) for TS/JS, [stylelint](https://stylelint.io) for SCSS, [ruff](https://docs.astral.sh/ruff/) for Python, [oxfmt](https://oxc.rs) for formatting, [tsgo](https://www.npmjs.com/package/@typescript/native-preview) for type checking, husky for git hooks, [lint-staged](https://github.com/lint-staged/lint-staged) for the staged-file pass.
+[Nx](https://nx.dev) as the task runner over bun workspaces, [oxlint](https://oxc.rs) for TS/JS, [stylelint](https://stylelint.io) for SCSS, [oxfmt](https://oxc.rs) for formatting, [tsgo](https://www.npmjs.com/package/@typescript/native-preview) for type checking, husky for git hooks, [lint-staged](https://github.com/lint-staged/lint-staged) for the staged-file pass.
 
 **Hosting**
 
@@ -83,7 +87,7 @@ cp .env.example .env   # fill in real values; .env.example is the source of trut
 docker compose up -d --build
 ```
 
-> **Wizarr and Tautulli are not in this compose file.** It builds and runs `stripe-bridge` only, on port `8000`. Wizarr and Tautulli run as a separate stack (on the NAS, the `westeroz` compose project), and the bridge reaches Wizarr over its host-published port rather than container DNS.
+> **Wizarr and Tautulli are not in this compose file.** It builds and runs `stripe-bridge` on port `8000`, plus the fleet monitor's API and collector. Wizarr and Tautulli run as a separate stack (on the NAS, the `westeroz` compose project), and the bridge reaches Wizarr over its host-published port rather than container DNS.
 
 So bring up Wizarr first, then point the bridge at it:
 
@@ -98,8 +102,7 @@ Once it is up: the webhook endpoint is `http://<host>:8000/stripe/webhook`, and 
 
 ```bash
 bun install        # whole workspace in one shot, also installs the husky git hooks
-bun run setup:py   # local venv for the bridge test suite
-bun run verify     # lint, format check, typecheck and tests across both apps
+bun run verify     # lint, format check, typecheck, tests and build across every project
 ```
 
 | Task                         | Command                                           |
@@ -114,9 +117,9 @@ bun run verify     # lint, format check, typecheck and tests across both apps
 
 Hooks run automatically. Pre-commit first runs `bun run lint:staged`, which fixes
 only the files in the commit (`oxlint --fix` and `oxfmt` on TS/TSX, `stylelint
---fix` and `oxfmt` on SCSS, `ruff check --fix` on Python) and re-stages the
+--fix` and `oxfmt` on SCSS) and re-stages the
 result, then `bun run system-check` (lint, SCSS lint, format check, typecheck,
-and tests for `admin-portal`). Pre-push runs `bun run verify` across both apps.
+and tests for `admin-portal`). Pre-push runs `bun run verify` across every project.
 CI runs the same `bun run verify` on every push.
 
 `system-check` reads the Nx cache, so a rerun with nothing changed reports a hit
@@ -140,10 +143,10 @@ just that pass: `bun run lint:root`, `bun run lint:root:fix`,
 
 ## Nx
 
-Both apps are Nx projects, so tasks run through one graph with caching. Run tasks through Nx rather than by cd-ing into an app.
+Every app and the lib are Nx projects, so tasks run through one graph with caching. Run tasks through Nx rather than by cd-ing into an app.
 
 ```bash
-bunx nx show projects                  # admin-portal, stripe-bridge, wizteros (root)
+bunx nx show projects                  # admin-portal, stripe-bridge, fleet-monitor, @wizteros/server-common
 bunx nx run admin-portal:test          # one target on one project
 bunx nx run-many -t test               # that target everywhere it exists
 bunx nx graph                          # project graph in the browser
@@ -151,10 +154,11 @@ bunx nx graph                          # project graph in the browser
 
 Where targets come from:
 
-| Project         | Source                                                                                                                                                                              |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `admin-portal`  | Inferred from its `package.json` scripts, whitelisted by `nx.includedScripts`                                                                                                       |
-| `stripe-bridge` | Both: `package.json` scripts (`lint:py`, `test`, e2e) via `nx.includedScripts`, plus `project.json` for the Docker targets (`docker-build`, `serve`, `stop`, `logs`, `test-docker`) |
+| Project         | Source                                                                                                                                                                                     |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `admin-portal`  | Inferred from its `package.json` scripts, whitelisted by `nx.includedScripts`                                                                                                              |
+| `stripe-bridge` | Both: `package.json` scripts (`build`, `typecheck`, `lint:ts`, `test`, e2e) via `nx.includedScripts`, plus `project.json` for the Docker targets (`docker-build`, `serve`, `stop`, `logs`) |
+| `fleet-monitor` | Both: the same `package.json` scripts (without e2e), plus `project.json` for `docker-build`                                                                                                |
 
 Use `bunx nx show project <name>` to see a project's real target list rather than guessing from one file.
 
@@ -162,7 +166,7 @@ Caching is declared in `nx.json` under `targetDefaults`. Anything that touches D
 
 ## Releases
 
-Three version markers move in lockstep: root `package.json`, `apps/admin-portal/package.json`, and `apps/stripe-bridge-nest/package.json`. The bridge one is the only marker that reaches the container, and it is what `GET /version` reports.
+Three version markers move in lockstep: root `package.json`, `apps/admin-portal/package.json`, and `apps/stripe-bridge/package.json`. The bridge one is the only marker that reaches the container, and it is what `GET /version` reports.
 
 ```bash
 bun run release:patch      # bump all three, commit, and tag

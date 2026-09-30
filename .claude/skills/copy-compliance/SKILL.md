@@ -60,8 +60,8 @@ right after paying. No content nouns, no titles, no catalog language, at all.
 | What the contribution funds                                             | `apps/admin-portal/src/components/Support/Support.tsx` |
 | Member links and the disclaimer                                         | `apps/admin-portal/src/components/Footer/Footer.tsx`   |
 | Document title (search results, browser tab)                            | `apps/admin-portal/index.html`                         |
-| Invite email, HTML body                                                 | `apps/stripe-bridge-nest/src/clients/emailTemplate.ts` |
-| Invite email, subject and plain-text body                               | `apps/stripe-bridge-nest/src/clients/mailer.ts`        |
+| Invite email, HTML body                                                 | `apps/stripe-bridge/src/clients/emailTemplate.ts`      |
+| Invite email, subject and plain-text body                               | `apps/stripe-bridge/src/clients/mailer.ts`             |
 
 `App.tsx` and `Support.tsx` are surfaces without copy of their own: both render text
 passed down from `site.config.ts`, so the extractor correctly reports no rows for them.
@@ -165,9 +165,9 @@ Three traps specific to `site.config.ts`, all of them silent:
   index-aligned on purpose (the comment at `site.config.ts:64-65` says so). Removing a
   row from one list breaks the visual alignment of all four cards.
 - **Tests hard-code the labels.** `apps/admin-portal/src/site.config.test.ts` asserts both
-  label lists verbatim; `apps/stripe-bridge-nest/src/clients/emailTemplate.test.ts:20`
+  label lists verbatim; `apps/stripe-bridge/src/clients/emailTemplate.test.ts:20`
   asserts `"server costs"` is in the invite HTML;
-  `apps/stripe-bridge-nest/src/clients/mailer.test.ts:116` asserts the invite subject.
+  `apps/stripe-bridge/src/clients/mailer.test.ts:116` asserts the invite subject.
   Tests are exempt from the framing rule but they are not exempt from being updated.
 
 ## Current findings

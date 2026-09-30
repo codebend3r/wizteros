@@ -162,7 +162,7 @@ Four disagreements with `/manage` are known and expected. Do not stop for any of
    invisible here: not a lead, not excluded, not triage, not self-filtered. A person on
    `/manage` who is absent from this report entirely is most likely this.
 4. **Duplicate-email merges.** `mergeStoreRows` here is deterministic and ORs `subscribed`
-   across every row for one email; the bridge's Python `store.all_customer_rows` is
+   across every row for one email; the bridge's `allCustomerRows` (`apps/stripe-bridge/src/store.ts`) is
    last-row-wins with no merge. So `/manage` can show `Declined Invite` where this tool
    computes `active`. The OR direction is the safe one: it is the difference between
    leaving a paying member alone and pitching them.

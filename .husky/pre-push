@@ -1,4 +1,4 @@
 # Full gate: the same checks across every Nx project, so admin-portal's lint,
-# SCSS lint, format check, typecheck and tests plus the stripe-bridge pytest
-# suite. Bridge tests need the venv: bun run setup:py.
+# SCSS lint, format check, typecheck and tests, plus the lint, typecheck, tests
+# and build of both servers and the lib they share.
 bun run verify
