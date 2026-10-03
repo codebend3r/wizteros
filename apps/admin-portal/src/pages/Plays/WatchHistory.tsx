@@ -1,6 +1,7 @@
 import type { UseQueryResult } from '@tanstack/react-query'
-import { windowProse, type PlayHistory } from '@/lib/playsApi'
+import { windowProse, type PlayHistory, type PlayKind } from '@/lib/playsApi'
 import { errorMessage } from '@/components/AsyncSection/AsyncSection'
+import { seriesClass } from '@/pages/Fleet/seriesPalette'
 import { PagedTable } from '@/pages/Plays/Pager'
 import { KIND_LABEL } from '@/pages/Plays/playsCopy'
 import {
@@ -9,6 +10,7 @@ import {
   pageCountOf,
   playSubject,
   qualityLabel,
+  serverName,
 } from '@/pages/Plays/playsFormat'
 import sectionStyles from '@/components/AsyncSection/AsyncSection.module.scss'
 import tableStyles from '@/pages/Plays/DataTable.module.scss'
@@ -18,12 +20,21 @@ type WatchHistoryProps = {
   /** Read beside the overview rather than inside it, so the two load
       together and a page turn repaints this table alone. */
   readonly query: UseQueryResult<PlayHistory>
+  /** Every Plex host in config order, the order the chart colours them by,
+      so a server's pill here wears the colour of its bars above. */
+  readonly hosts: readonly string[]
   readonly days: number
   /** The page being read, 1 based, from the url like every other table's. */
   readonly page: number
   readonly onPageChange: (page: number) => void
   readonly onSelectViewer: (accountId: number) => void
   readonly onSelectTitle: (key: string) => void
+}
+
+const KIND_CLASS: Readonly<Record<PlayKind, string>> = {
+  movie: styles.movie,
+  episode: styles.episode,
+  track: styles.track,
 }
 
 /** Every completed play in the window, newest first, a page at a time: who
@@ -35,6 +46,7 @@ type WatchHistoryProps = {
  */
 export const WatchHistory = ({
   query,
+  hosts,
   days,
   page,
   onPageChange,
@@ -100,7 +112,7 @@ export const WatchHistory = ({
                       </td>
                       <td className={tableStyles.primary}>
                         <button
-                          className={tableStyles.rowButton}
+                          className={styles.titleButton}
                           type="button"
                           onClick={() => onSelectTitle(row.group_key)}
                           aria-label={`${primary}, view play history`}
@@ -111,9 +123,20 @@ export const WatchHistory = ({
                           <span className={tableStyles.secondary}>{secondary}</span>
                         )}
                       </td>
-                      <td>{KIND_LABEL[row.kind]}</td>
+                      <td>
+                        <span className={`${styles.pill} ${styles.kind} ${KIND_CLASS[row.kind]}`}>
+                          {KIND_LABEL[row.kind]}
+                        </span>
+                      </td>
                       <td>{row.kind === 'track' ? '--' : qualityLabel(row.quality)}</td>
-                      <td>{row.host}</td>
+                      <td>
+                        <span
+                          className={`${styles.pill} ${styles.server} ${seriesClass(hosts.indexOf(row.host))}`}
+                        >
+                          <span className={styles.dot} aria-hidden="true" />
+                          {serverName(row.host)}
+                        </span>
+                      </td>
                       <td>{row.device ?? '--'}</td>
                       <td>{row.library ?? '--'}</td>
                     </tr>

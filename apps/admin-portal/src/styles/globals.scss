@@ -31,6 +31,13 @@
   --color-series-4: #c98500;
   --color-series-5: #d55181;
 
+  /* Play types on the plays tables, always beside the type's name. Hues the
+     series palette leaves alone, so a type never reads as a server. Each
+     clears 4.5:1 as text on its own 16% tint over --color-surface (movie 5.1,
+     TV 5.3); audio takes --color-silver (4.8). */
+  --color-kind-movie: #d6c8ff;
+  --color-kind-tv: #8ee1ee;
+
   // Hairline spacing, for stacking a label, its figure, and its qualifier
   // into one readable unit. Anything larger reads as three separate lines.
   --space-0: 0.25rem;

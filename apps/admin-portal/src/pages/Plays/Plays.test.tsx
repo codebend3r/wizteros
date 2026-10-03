@@ -468,7 +468,10 @@ test('Plays lists every play under the chart, newest first, with who finished it
     within(history).getByRole('button', { name: 'Better Call Saul, view play history' }),
   ).toBeInTheDocument()
   expect(within(history).getByText('S4 E1 Smoke')).toBeInTheDocument()
-  expect(within(history).getByText('syrax')).toBeInTheDocument()
+  expect(within(history).getByText('Syrax')).toHaveClass('pill', 'server', 'series4')
+  expect(within(history).getByText('Meleys')).toHaveClass('series1')
+  expect(within(history).getByText('TV')).toHaveClass('pill', 'kind', 'episode')
+  expect(within(history).getByText('Movie')).toHaveClass('kind', 'movie')
   const chart = screen.getByRole('img', { name: /Completed plays per month by server/ })
   const byType = screen.getByRole('region', { name: 'By type' })
   expect(chart.compareDocumentPosition(history) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()

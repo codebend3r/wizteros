@@ -103,6 +103,7 @@ export const OverviewPanel = ({
 
           <WatchHistory
             query={history}
+            hosts={data.by_host.map((row) => row.host)}
             days={filters.days}
             page={page}
             onPageChange={onPageChange}

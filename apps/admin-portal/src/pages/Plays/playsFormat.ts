@@ -97,6 +97,10 @@ export const listHosts = (hosts: readonly string[]): string =>
 export const pageCountOf = ({ total, pageSize }: { total: number; pageSize: number }): number =>
   Math.max(1, Math.ceil(total / pageSize))
 
+/** A server's config name as the proper noun it is: "meleys" reads "Meleys". */
+export const serverName = (host: string): string =>
+  `${host.charAt(0).toUpperCase()}${host.slice(1)}`
+
 /** The row's subject and what scopes it: the show over the episode, the
     artist and album over the track, the year beside a film. */
 export const playSubject = (row: ViewerHistoryRow): { primary: string; secondary: string } => {
