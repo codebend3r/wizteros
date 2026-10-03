@@ -63,7 +63,14 @@ export type {
   NeverPlayedSummary,
   NeverQualityCount,
 } from '@/plays/neverPlayed.js'
-export { overview, titleHistory, topTitles, userHistory, users } from '@/plays/views.js'
+export {
+  overview,
+  playHistory,
+  titleHistory,
+  topTitles,
+  userHistory,
+  users,
+} from '@/plays/views.js'
 export type {
   Bucket,
   HistoryPage,
@@ -72,6 +79,8 @@ export type {
   KindCount,
   Metric,
   Overview,
+  PlayHistoryPage,
+  PlayHistoryRow,
   QualityCount,
   Rewatcher,
   Timeline,
