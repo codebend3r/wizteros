@@ -1,20 +1,14 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import {
-  fetchViewerHistory,
-  windowProse,
-  type PlaysFilters,
-  type ViewerHistoryRow,
-} from '@/lib/playsApi'
+import { fetchViewerHistory, windowProse, type PlaysFilters } from '@/lib/playsApi'
 import { AsyncSection } from '@/components/AsyncSection/AsyncSection'
 import { PagedTable } from '@/pages/Plays/Pager'
 import { KIND_LABEL } from '@/pages/Plays/playsCopy'
 import {
-  episodeLabel,
   formatCount,
   formatDateTime,
   pageCountOf,
+  playSubject,
   qualityLabel,
-  titleWithYear,
 } from '@/pages/Plays/playsFormat'
 import { PAGE_SIZE, REFETCH_MS, viewerKey } from '@/pages/Plays/playsQueries'
 import styles from '@/pages/Plays/DataTable.module.scss'
@@ -28,27 +22,6 @@ type ViewerHistoryProps = {
   readonly onPageChange: (page: number) => void
   readonly onBack: () => void
   readonly onSelectTitle: (key: string) => void
-}
-
-/** The row's subject and what scopes it: the show over the episode, the
-    artist and album over the track, the year beside a film. */
-const subject = (row: ViewerHistoryRow): { primary: string; secondary: string } => {
-  if (row.kind === 'episode') {
-    const code = episodeLabel({ parentIndex: row.parent_index, index: row.index })
-    return {
-      primary: row.grandparent_title ?? row.title,
-      secondary: [code, row.title].filter((part) => part.length > 0).join(' '),
-    }
-  }
-  if (row.kind === 'track') {
-    return {
-      primary: row.title,
-      secondary: [row.grandparent_title, row.parent_title]
-        .flatMap((part) => (part === null ? [] : [part]))
-        .join(', '),
-    }
-  }
-  return { primary: titleWithYear({ title: row.title, year: row.year }), secondary: '' }
 }
 
 /** One viewer's completed plays, newest first, a page at a time. */
@@ -107,7 +80,7 @@ export const ViewerHistory = ({
                   </thead>
                   <tbody>
                     {data.rows.map((row) => {
-                      const { primary, secondary } = subject(row)
+                      const { primary, secondary } = playSubject(row)
                       return (
                         // the ledger records one completion per item per
                         // second per server, so this names a row uniquely

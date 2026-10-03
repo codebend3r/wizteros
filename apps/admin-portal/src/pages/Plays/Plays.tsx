@@ -128,6 +128,8 @@ const PlaysInner = () => {
       return (
         <OverviewPanel
           filters={filters}
+          page={page}
+          onPageChange={setPage}
           onSelectViewer={openViewer}
           onSelectTitle={openTitle}
           onShowRanking={() => setTab('top')}

@@ -1,0 +1,15 @@
+// The table itself is DataTable's, so it reads as every other table on the
+// page; this only stacks the heading, the pagers and the table.
+.history {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+}
+
+// Set at the weight of the breakdown and list titles below it: it is one
+// part of the overview, not a section of its own.
+.title {
+  font-family: var(--font-display);
+  font-size: var(--font-size-md);
+  font-weight: 700;
+}

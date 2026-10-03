@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, expect, test, vi } from '@/test/vi'
 import type {
   NeverPlayed,
+  PlayHistory,
   PlaySync,
   PlaySyncServer,
   PlayUsers,
@@ -153,6 +154,50 @@ const HISTORY: ViewerHistory = {
 
 const TOP: TopTitles = { metric: 'plays', titles: [heat] }
 
+const WATCH_HISTORY: PlayHistory = {
+  total: 2,
+  page: 1,
+  page_size: 25,
+  rows: [
+    {
+      viewed_at: '2026-09-17T20:11:00+00:00',
+      host: 'meleys',
+      kind: 'movie',
+      account_id: 1,
+      viewer: 'cj',
+      group_key: 'movie:heat:1995',
+      title: 'Heat',
+      parent_title: null,
+      grandparent_title: null,
+      index: null,
+      parent_index: null,
+      year: 1995,
+      quality: '4k',
+      device: 'Apple TV',
+      library: '01. 4K Movies',
+      duration_ms: 10_000_000,
+    },
+    {
+      viewed_at: '2026-09-16T21:00:00+00:00',
+      host: 'syrax',
+      kind: 'episode',
+      account_id: 42,
+      viewer: 'Ann',
+      group_key: 'show:better call saul',
+      title: 'Smoke',
+      parent_title: 'Season 4',
+      grandparent_title: 'Better Call Saul',
+      index: 1,
+      parent_index: 4,
+      year: 2018,
+      quality: '1080p',
+      device: null,
+      library: 'Shows',
+      duration_ms: 2_800_000,
+    },
+  ],
+}
+
 const TITLE: TitleHistory = {
   key: 'movie:heat:1995',
   kind: 'movie',
@@ -256,6 +301,7 @@ type Payloads = {
   readonly overview?: unknown
   readonly users?: unknown
   readonly history?: unknown
+  readonly watchHistory?: unknown
   /** Answered per request, because the same route serves both rankings and
       the fetcher refuses a payload ranked by the other metric. */
   readonly top?: (url: string) => unknown
@@ -281,6 +327,9 @@ const stubPlaysFetch = (payloads: Payloads = {}) =>
     vi.fn(async (url: string) => {
       if (url.startsWith('/plays/sync')) return jsonResponse(payloads.sync ?? SYNC)
       if (url.startsWith('/plays/overview')) return jsonResponse(payloads.overview ?? OVERVIEW)
+      if (url.startsWith('/plays/history')) {
+        return jsonResponse(payloads.watchHistory ?? WATCH_HISTORY)
+      }
       if (/^\/plays\/users\/\d+\/history/.test(url)) {
         return jsonResponse(payloads.history ?? HISTORY)
       }
@@ -398,8 +447,86 @@ test('Plays renders the overview tiles, the timeline and the breakdowns once the
   expect(screen.getByRole('region', { name: 'By quality' })).toBeInTheDocument()
   expect(screen.getByRole('region', { name: 'By server' })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'cj' })).toBeInTheDocument()
-  expect(screen.getByText('Heat (1995)')).toBeInTheDocument()
+  expect(
+    within(screen.getByRole('region', { name: 'Most played' })).getByText('Heat (1995)'),
+  ).toBeInTheDocument()
   expect(screen.queryByRole('alert')).toBeNull()
+})
+
+test('Plays lists every play under the chart, newest first, with who finished it', async () => {
+  stubPlaysFetch({ watchHistory: { ...WATCH_HISTORY, total: 60 } })
+  renderPlays()
+
+  const history = await screen.findByRole('region', { name: 'Watch history' })
+  await waitFor(() =>
+    expect(calledPaths()).toContain('/plays/history?days=365&page=1&page_size=25'),
+  )
+  expect(await within(history).findByText('Apple TV')).toBeInTheDocument()
+  expect(within(history).getAllByText('60 completed plays over the last year')).toHaveLength(1)
+  expect(within(history).getByRole('button', { name: 'cj, view history' })).toBeInTheDocument()
+  expect(
+    within(history).getByRole('button', { name: 'Better Call Saul, view play history' }),
+  ).toBeInTheDocument()
+  expect(within(history).getByText('S4 E1 Smoke')).toBeInTheDocument()
+  expect(within(history).getByText('syrax')).toBeInTheDocument()
+  const chart = screen.getByRole('img', { name: /Completed plays per month by server/ })
+  const byType = screen.getByRole('region', { name: 'By type' })
+  expect(chart.compareDocumentPosition(history) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  expect(history.compareDocumentPosition(byType) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+  const next = within(history).getAllByRole('button', { name: 'Next' })[0]
+  if (next === undefined) throw new Error('no pager on the watch history')
+  fireEvent.click(next)
+  await waitFor(() => expect(search()).toBe('?page=2'))
+  await waitFor(() =>
+    expect(calledPaths()).toContain('/plays/history?days=365&page=2&page_size=25'),
+  )
+  expect(calledPaths().filter((path) => path.startsWith('/plays/overview'))).toHaveLength(1)
+})
+
+test('Plays opens a viewer or a title from a watch history row', async () => {
+  stubPlaysFetch()
+  renderPlays()
+
+  const history = await screen.findByRole('region', { name: 'Watch history' })
+  fireEvent.click(
+    await within(history).findByRole('button', { name: 'Heat (1995), view play history' }),
+  )
+  expect(search()).toBe('?title=movie%3Aheat%3A1995')
+  expect(await screen.findByRole('heading', { name: 'Title history' })).toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Back to overview' }))
+  fireEvent.click(
+    await within(await screen.findByRole('region', { name: 'Watch history' })).findByRole(
+      'button',
+      { name: 'Ann, view history' },
+    ),
+  )
+  expect(search()).toBe('?view=viewers&user=42')
+  expect(await screen.findByRole('heading', { name: 'Viewer history' })).toBeInTheDocument()
+})
+
+test('Plays keeps the overview standing when the watch history cannot be read', async () => {
+  stubPlaysFetch({ watchHistory: { rows: 'nope' } })
+  renderPlays()
+
+  const history = await screen.findByRole('region', { name: 'Watch history' })
+  expect(await within(history).findByRole('alert')).toHaveTextContent(
+    'Unexpected play history response from the fleet monitor No watch history is available.',
+  )
+  expect(screen.getByText('8,341')).toBeInTheDocument()
+  expect(screen.getByRole('region', { name: 'By server' })).toBeInTheDocument()
+})
+
+test('Plays says so when nothing was completed in the window', async () => {
+  stubPlaysFetch({ watchHistory: { ...WATCH_HISTORY, total: 0, rows: [] } })
+  renderPlays()
+
+  const history = await screen.findByRole('region', { name: 'Watch history' })
+  expect(
+    await within(history).findByText('Nothing completed over the last year.'),
+  ).toBeInTheDocument()
+  expect(within(history).queryByRole('table')).toBeNull()
 })
 
 test('Plays names a server whose last pass failed, with the reason', async () => {

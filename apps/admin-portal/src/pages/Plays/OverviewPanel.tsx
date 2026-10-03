@@ -1,26 +1,42 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { fetchPlaysOverview, windowProse, type PlaysFilters } from '@/lib/playsApi'
+import {
+  fetchPlayHistory,
+  fetchPlaysOverview,
+  windowProse,
+  type PlaysFilters,
+} from '@/lib/playsApi'
 import { seriesClass } from '@/pages/Fleet/seriesPalette'
 import { AsyncSection } from '@/components/AsyncSection/AsyncSection'
 import { BreakdownList } from '@/pages/Plays/BreakdownList'
 import { KIND_PLURAL, QUALITY_LABEL, TAB_COPY } from '@/pages/Plays/playsCopy'
 import { formatCount, formatHours, titleWithYear } from '@/pages/Plays/playsFormat'
-import { overviewKey, REFETCH_MS } from '@/pages/Plays/playsQueries'
+import {
+  overviewKey,
+  REFETCH_MS,
+  WATCH_PAGE_SIZE,
+  watchHistoryKey,
+} from '@/pages/Plays/playsQueries'
 import { PlaysTimeline } from '@/pages/Plays/PlaysTimeline'
 import { StatTiles } from '@/pages/Plays/StatTiles'
+import { WatchHistory } from '@/pages/Plays/WatchHistory'
 import styles from '@/pages/Plays/OverviewPanel.module.scss'
 
 type OverviewPanelProps = {
   readonly filters: PlaysFilters
+  /** The watch history's page, 1 based: the one table this view pages. */
+  readonly page: number
+  readonly onPageChange: (page: number) => void
   readonly onSelectViewer: (accountId: number) => void
   readonly onSelectTitle: (key: string) => void
   readonly onShowRanking: () => void
 }
 
-/** The summary view: the totals, the timeline, the three breakdowns, and a
-    short list each of who and what led the window. */
+/** The summary view: the totals, the timeline with every play under it, the
+    three breakdowns, and a short list each of who and what led the window. */
 export const OverviewPanel = ({
   filters,
+  page,
+  onPageChange,
   onSelectViewer,
   onSelectTitle,
   onShowRanking,
@@ -31,6 +47,12 @@ export const OverviewPanel = ({
     refetchInterval: REFETCH_MS,
     // a filter press repaints from the last answer while the new one loads,
     // rather than emptying every tile and chart for a moment
+    placeholderData: keepPreviousData,
+  })
+  const history = useQuery({
+    queryKey: watchHistoryKey({ filters, page }),
+    queryFn: () => fetchPlayHistory({ filters, page, pageSize: WATCH_PAGE_SIZE }),
+    refetchInterval: REFETCH_MS,
     placeholderData: keepPreviousData,
   })
   const copy = TAB_COPY.overview
@@ -78,6 +100,15 @@ export const OverviewPanel = ({
           />
 
           <PlaysTimeline timeline={data.timeline} hosts={data.by_host} days={filters.days} />
+
+          <WatchHistory
+            query={history}
+            days={filters.days}
+            page={page}
+            onPageChange={onPageChange}
+            onSelectViewer={onSelectViewer}
+            onSelectTitle={onSelectTitle}
+          />
 
           <div className={styles.breakdowns}>
             <BreakdownList
