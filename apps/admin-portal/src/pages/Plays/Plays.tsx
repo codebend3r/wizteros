@@ -117,6 +117,7 @@ const PlaysInner = () => {
     queryFn: fetchPlaySync,
     refetchInterval: REFETCH_MS,
   })
+  const serverOrder = sync.data?.servers.map((server) => server.host) ?? []
   const hosts =
     sync.data?.servers.map((server) => ({
       host: server.host,
@@ -128,6 +129,8 @@ const PlaysInner = () => {
       return (
         <OverviewPanel
           filters={filters}
+          page={page}
+          onPageChange={setPage}
           onSelectViewer={openViewer}
           onSelectTitle={openTitle}
           onShowRanking={() => setTab('top')}
@@ -136,12 +139,13 @@ const PlaysInner = () => {
     }
     if (active === 'viewers') {
       return viewer === null ? (
-        <ViewersPanel filters={filters} onSelect={openViewer} />
+        <ViewersPanel filters={filters} hosts={serverOrder} onSelect={openViewer} />
       ) : (
         <ViewerHistory
           key={viewer}
           filters={filters}
           accountId={viewer}
+          hosts={serverOrder}
           page={page}
           onPageChange={setPage}
           onBack={closeViewer}
@@ -150,14 +154,29 @@ const PlaysInner = () => {
       )
     }
     if (active === 'top') {
-      return <TopTitlesPanel filters={filters} metric="plays" onSelectTitle={openTitle} />
+      return (
+        <TopTitlesPanel
+          filters={filters}
+          metric="plays"
+          hosts={serverOrder}
+          onSelectTitle={openTitle}
+        />
+      )
     }
     if (active === 'rewatched') {
-      return <TopTitlesPanel filters={filters} metric="rewatches" onSelectTitle={openTitle} />
+      return (
+        <TopTitlesPanel
+          filters={filters}
+          metric="rewatches"
+          hosts={serverOrder}
+          onSelectTitle={openTitle}
+        />
+      )
     }
     return (
       <NeverPlayedPanel
         filters={filters}
+        hosts={serverOrder}
         page={page}
         onPageChange={setPage}
         search={search}
@@ -211,6 +230,7 @@ const PlaysInner = () => {
               key={title}
               filters={filters}
               titleKey={title}
+              hosts={serverOrder}
               page={page}
               onPageChange={setPage}
               onBack={closeTitle}

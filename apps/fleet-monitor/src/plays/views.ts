@@ -1,5 +1,5 @@
 // The aggregates the plays page draws: the overview, the ranked titles, the
-// viewers, and the two paged histories.
+// viewers, and the three paged histories.
 //
 // Each one narrows the ledger through `base` and shapes the rows into the
 // records the API serves.
@@ -132,6 +132,36 @@ export type HistoryPage = Readonly<{
   page: number
   page_size: number
   rows: readonly HistoryRow[]
+}>
+
+/**
+ * One completed play anywhere in the fleet: the viewer's row with who
+ * finished it beside it, since the page around it names nobody.
+ */
+export type PlayHistoryRow = Readonly<{
+  viewed_at: Date
+  host: string
+  kind: Kind
+  account_id: number
+  viewer: string
+  group_key: string
+  title: string
+  parent_title: string | null
+  grandparent_title: string | null
+  index: number | null
+  parent_index: number | null
+  year: number | null
+  quality: Quality | null
+  device: string | null
+  library: string | null
+  duration_ms: number | null
+}>
+
+export type PlayHistoryPage = Readonly<{
+  total: number
+  page: number
+  page_size: number
+  rows: readonly PlayHistoryRow[]
 }>
 
 /**
@@ -534,7 +564,7 @@ export const users = ({
   })
 }
 
-// Every column either history draws, so the two read the same rows and each
+// Every column the histories draw, so all three read the same rows and each
 // keeps the shape it puts on the wire.
 const PAGE_COLUMNS = `
     b.viewed_at, b.host, b.kind, b.account_id, b.group_key, b.item_title AS title,
@@ -616,6 +646,58 @@ export const userHistory = ({
         viewed_at: base.utc(column.number('viewed_at')),
         host: column.text('host'),
         kind: base.kindOf(column.text('kind')),
+        group_key: column.text('group_key'),
+        title: column.text('title'),
+        parent_title: column.textOrNull('parent_title'),
+        grandparent_title: column.textOrNull('grandparent_title'),
+        index: column.numberOrNull('item_index'),
+        parent_index: column.numberOrNull('parent_index'),
+        year: column.numberOrNull('year'),
+        quality: base.qualityLabel(column.textOrNull('quality')),
+        device: column.textOrNull('device'),
+        library: column.textOrNull('library'),
+        duration_ms: column.numberOrNull('duration_ms'),
+      }
+    }),
+  }
+}
+
+/** Every completed play under the filters, newest first, one page at a time. */
+export const playHistory = ({
+  connection,
+  filters,
+  page,
+  pageSize,
+}: {
+  connection: Connection
+  filters: base.Filters
+  page: number
+  pageSize: number
+}): PlayHistoryPage => {
+  const [total, rows] = base.baseTable({
+    connection,
+    filters,
+    work: (table) => {
+      const counted = aggregateRow(
+        connection.prepare(`SELECT COUNT(*) AS total FROM ${table}`).get(),
+      )
+      return [counted.number('total'), pageOfPlays({ connection, table, page, pageSize })] as const
+    },
+  })
+  const [names] = base.identities(connection)
+  return {
+    total,
+    page,
+    page_size: pageSize,
+    rows: rows.map((row): PlayHistoryRow => {
+      const column = fields(row)
+      const accountId = column.number('account_id')
+      return {
+        viewed_at: base.utc(column.number('viewed_at')),
+        host: column.text('host'),
+        kind: base.kindOf(column.text('kind')),
+        account_id: accountId,
+        viewer: base.name({ names, accountId }),
         group_key: column.text('group_key'),
         title: column.text('title'),
         parent_title: column.textOrNull('parent_title'),

@@ -1,5 +1,5 @@
 import { formatAge } from '@/lib/fleetApi'
-import type { TimelineBucket } from '@/lib/playsApi'
+import type { TimelineBucket, ViewerHistoryRow } from '@/lib/playsApi'
 
 /** A count with thousands separators, the way every figure on the page reads. */
 export const formatCount = (value: number): string => value.toLocaleString()
@@ -88,11 +88,33 @@ export const bucketLabel = ({
 export const titleWithYear = ({ title, year }: { title: string; year: number | null }): string =>
   year === null ? title : `${title} (${year})`
 
-export const listHosts = (hosts: readonly string[]): string =>
-  hosts.length === 0 ? '--' : hosts.join(', ')
-
 /** How many pages a total splits into at one page size. Never below one: a
     list with nothing in it is still on page one of one, and "page 1 of 0"
     reads as a broken pager rather than as an empty list. */
 export const pageCountOf = ({ total, pageSize }: { total: number; pageSize: number }): number =>
   Math.max(1, Math.ceil(total / pageSize))
+
+/** A server's config name as the proper noun it is: "meleys" reads "Meleys". */
+export const serverName = (host: string): string =>
+  `${host.charAt(0).toUpperCase()}${host.slice(1)}`
+
+/** The row's subject and what scopes it: the show over the episode, the
+    artist and album over the track, the year beside a film. */
+export const playSubject = (row: ViewerHistoryRow): { primary: string; secondary: string } => {
+  if (row.kind === 'episode') {
+    const code = episodeLabel({ parentIndex: row.parent_index, index: row.index })
+    return {
+      primary: row.grandparent_title ?? row.title,
+      secondary: [code, row.title].filter((part) => part.length > 0).join(' '),
+    }
+  }
+  if (row.kind === 'track') {
+    return {
+      primary: row.title,
+      secondary: [row.grandparent_title, row.parent_title]
+        .flatMap((part) => (part === null ? [] : [part]))
+        .join(', '),
+    }
+  }
+  return { primary: titleWithYear({ title: row.title, year: row.year }), secondary: '' }
+}

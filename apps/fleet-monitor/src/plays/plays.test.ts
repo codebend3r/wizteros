@@ -967,6 +967,47 @@ describe('plays', () => {
     })
   })
 
+  describe('play history', () => {
+    it('lists every viewer on every host, newest first, each named', () => {
+      const page = plays.playHistory({
+        connection: seed(db),
+        filters: everything,
+        page: 1,
+        pageSize: 3,
+      })
+
+      expect([page.total, page.page, page.page_size]).toEqual([11, 1, 3])
+      expect(page.rows.map((row) => [row.viewer, row.account_id, row.title])).toEqual([
+        ['cj', 1, 'Heat'],
+        ['danny', 7, 'Heat'],
+        ['danny', 7, 'Paddington 2'],
+      ])
+      const heat = page.rows[0]
+      expect([heat.group_key, heat.device, heat.library]).toEqual([
+        'movie:heat:1995',
+        'Chrome',
+        '04. Movies',
+      ])
+    })
+
+    it('pages to the far end and honours the filters', () => {
+      seed(db)
+      const last = plays.playHistory({ connection: db, filters: everything, page: 4, pageSize: 3 })
+      const syrax = plays.playHistory({
+        connection: db,
+        filters: plays.filters({ host: 'syrax' }),
+        page: 1,
+        pageSize: 50,
+      })
+
+      expect(last.rows.map((row) => [row.viewer, row.host])).toEqual([
+        ['cj', 'meleys'],
+        ['freenow', 'syrax'],
+      ])
+      expect([syrax.total, syrax.rows[0].library]).toEqual([1, 'Films'])
+    })
+  })
+
   describe('title history', () => {
     it('gathers one title across hosts with who finished it', () => {
       seed(db)

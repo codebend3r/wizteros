@@ -20,6 +20,7 @@ import {
 } from '@/pages/Plays/playsFormat'
 import { PAGE_SIZE, REFETCH_MS, titleHistoryKey } from '@/pages/Plays/playsQueries'
 import { StatTiles, type StatTile } from '@/pages/Plays/StatTiles'
+import { ServerTag } from '@/pages/Plays/Tags'
 import styles from '@/pages/Plays/DataTable.module.scss'
 
 type TitleHistoryProps = {
@@ -27,6 +28,9 @@ type TitleHistoryProps = {
   /** The group key the monitor hands out with every ranked title and every
       viewer's row: a film, a show, an album, or a single unnamed item. */
   readonly titleKey: string
+  /** Every Plex host in config order, the order the chart colours them by,
+      so a server's pill here wears the colour of its bars on the overview. */
+  readonly hosts: readonly string[]
   /** The page being read, 1 based. It lives in the url beside the title, so
       a refresh comes back to the same page of the same history. */
   readonly page: number
@@ -107,6 +111,7 @@ const tiles = ({ data, prose }: { data: TitleHistoryPage; prose: string }): read
 export const TitleHistory = ({
   filters,
   titleKey,
+  hosts,
   page,
   onPageChange,
   onBack,
@@ -183,9 +188,13 @@ export const TitleHistory = ({
                             {row.viewer}
                           </button>
                         </td>
-                        <td>{item(row)}</td>
+                        <td>
+                          <span className={styles.titleText}>{item(row)}</span>
+                        </td>
                         <td>{row.kind === 'track' ? '--' : qualityLabel(row.quality)}</td>
-                        <td>{row.host}</td>
+                        <td>
+                          <ServerTag host={row.host} hosts={hosts} />
+                        </td>
                         <td>{row.device ?? '--'}</td>
                         <td>{row.library ?? '--'}</td>
                       </tr>

@@ -229,6 +229,21 @@ export type ViewerHistory = {
   readonly rows: readonly ViewerHistoryRow[]
 }
 
+/** One completed play anywhere in the fleet: a viewer's row with who
+    finished it beside it, since nothing around the table names anyone. */
+export type PlayHistoryRow = ViewerHistoryRow & {
+  readonly account_id: number
+  readonly viewer: string
+}
+
+/** Every completed play under the filters, newest first, a page at a time. */
+export type PlayHistory = {
+  readonly total: number
+  readonly page: number
+  readonly page_size: number
+  readonly rows: readonly PlayHistoryRow[]
+}
+
 export type TopTitles = {
   readonly metric: TopMetric
   readonly titles: readonly TopTitle[]
@@ -460,6 +475,20 @@ const isViewerHistory = (value: unknown): value is ViewerHistory =>
   Array.isArray(value.rows) &&
   value.rows.every(isViewerHistoryRow)
 
+const isPlayHistoryRow = (value: unknown): value is PlayHistoryRow =>
+  isRecord(value) &&
+  typeof value.account_id === 'number' &&
+  typeof value.viewer === 'string' &&
+  isViewerHistoryRow(value)
+
+const isPlayHistory = (value: unknown): value is PlayHistory =>
+  isRecord(value) &&
+  typeof value.total === 'number' &&
+  typeof value.page === 'number' &&
+  typeof value.page_size === 'number' &&
+  Array.isArray(value.rows) &&
+  value.rows.every(isPlayHistoryRow)
+
 const isTopTitles = (value: unknown): value is TopTitles =>
   isRecord(value) &&
   isTopMetric(value.metric) &&
@@ -606,6 +635,21 @@ export const fetchPlayUsers = ({ filters }: { filters: PlaysFilters }): Promise<
     path: `/plays/users?${playsQuery(filters)}`,
     is: isPlayUsers,
     what: 'viewers response',
+  })
+
+export const fetchPlayHistory = ({
+  filters,
+  page,
+  pageSize,
+}: {
+  filters: PlaysFilters
+  page: number
+  pageSize: number
+}): Promise<PlayHistory> =>
+  readMonitor({
+    path: `/plays/history?${playsQuery({ ...filters, extra: { page, page_size: pageSize } })}`,
+    is: isPlayHistory,
+    what: 'play history response',
   })
 
 export const fetchViewerHistory = async ({

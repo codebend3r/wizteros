@@ -4,7 +4,7 @@ import { fetchNeverPlayed, rangeProse, type PlaysFilters } from '@/lib/playsApi'
 import { AsyncSection } from '@/components/AsyncSection/AsyncSection'
 import { BreakdownList } from '@/pages/Plays/BreakdownList'
 import { PagedTable } from '@/pages/Plays/Pager'
-import { NEVER_KIND_LABEL, neverPlayedMeaning, TAB_COPY } from '@/pages/Plays/playsCopy'
+import { neverPlayedMeaning, TAB_COPY } from '@/pages/Plays/playsCopy'
 import {
   formatCount,
   formatDate,
@@ -14,11 +14,15 @@ import {
 } from '@/pages/Plays/playsFormat'
 import { neverKey, PAGE_SIZE, REFETCH_MS } from '@/pages/Plays/playsQueries'
 import { StatTiles } from '@/pages/Plays/StatTiles'
+import { KindTag, ServerTag } from '@/pages/Plays/Tags'
 import tableStyles from '@/pages/Plays/DataTable.module.scss'
 import styles from '@/pages/Plays/NeverPlayedPanel.module.scss'
 
 type NeverPlayedPanelProps = {
   readonly filters: PlaysFilters
+  /** Every Plex host in config order, the order the chart colours them by,
+      so a server's pill here wears the colour of its bars on the overview. */
+  readonly hosts: readonly string[]
   /** The page being read, 1 based, and the term it is filtered by: both live
       in the url, so a refresh lands on the page and search that were open. */
   readonly page: number
@@ -31,6 +35,7 @@ type NeverPlayedPanelProps = {
     item, TV by show, audio by album, newest additions first. */
 export const NeverPlayedPanel = ({
   filters,
+  hosts,
   page,
   onPageChange,
   search: q,
@@ -147,15 +152,21 @@ export const NeverPlayedPanel = ({
                       {data.rows.map((row) => (
                         <tr key={row.key}>
                           <td className={tableStyles.primary}>
-                            {titleWithYear({ title: row.title, year: row.year })}
+                            <span className={tableStyles.titleText}>
+                              {titleWithYear({ title: row.title, year: row.year })}
+                            </span>
                             {row.context !== null && (
                               <span className={tableStyles.secondary}>{row.context}</span>
                             )}
                           </td>
-                          <td>{NEVER_KIND_LABEL[row.kind]}</td>
+                          <td>
+                            <KindTag kind={row.kind} />
+                          </td>
                           <td>{row.kind === 'movie' ? qualityLabel(row.quality) : '--'}</td>
                           <td>{row.library ?? '--'}</td>
-                          <td>{row.host}</td>
+                          <td>
+                            <ServerTag host={row.host} hosts={hosts} />
+                          </td>
                           {/* an item with no date was not "never" added, it
                             is one the server did not date */}
                           <td className={tableStyles.nowrap}>

@@ -247,6 +247,28 @@ export class PlaysController {
   }
 
   /**
+   * Every completed play under the filters, newest first, a page at a time,
+   * each named by who finished it.
+   */
+  @Get('history')
+  history(
+    @Query({ schema: PagedQuery }) params: z.infer<typeof PagedQuery>,
+  ): plays.PlayHistoryPage {
+    const query = playQuery(params)
+    return session({
+      path: dbPath(),
+      mode: 'read',
+      work: (connection) =>
+        plays.playHistory({
+          connection,
+          filters: query.filters,
+          page: params.page,
+          pageSize: params.page_size,
+        }),
+    })
+  }
+
+  /**
    * One viewer's plays, newest first, a page at a time. A viewer nobody has
    * named is still answered for, under their account id.
    */

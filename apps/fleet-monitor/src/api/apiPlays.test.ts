@@ -11,6 +11,7 @@ import { removeTempDirs, tempDbPath } from '@/test/support.js'
 import {
   bodyOf,
   isNeverPlayed,
+  isPlayHistory,
   isPlaySync,
   isPlaysOverview,
   isPlayUsers,
@@ -184,6 +185,9 @@ describe('the play history API', () => {
   const overview = async (query = '') =>
     bodyOf({ answer: await get(`/plays/overview${query}`), is: isPlaysOverview })
 
+  const history = async (query = '') =>
+    bodyOf({ answer: await get(`/plays/history${query}`), is: isPlayHistory })
+
   const viewerHistory = async (url: string) =>
     bodyOf({ answer: await get(url), is: isViewerHistory })
 
@@ -315,6 +319,45 @@ describe('the play history API', () => {
     })
     expect((await get('/plays/users/1/history?page_size=0')).statusCode).toBe(422)
     expect((await get('/plays/users/1/history?page=0')).statusCode).toBe(422)
+  })
+
+  it('pages every play in the fleet, newest first, with who finished it', async () => {
+    seed(db)
+
+    const first = await history()
+    expect([first.total, first.page, first.page_size]).toEqual([3, 1, 50])
+    expect(
+      first.rows.map((row) => [row.viewer, row.account_id, row.title, row.viewed_at.slice(0, 10)]),
+    ).toEqual([
+      ['cj', 1, 'Heat', '2026-09-17'],
+      ['cj', 1, 'Heat', '2026-09-16'],
+      ['Ann', 42, 'Heat', '2026-09-15'],
+    ])
+    expect([first.rows[0].group_key, first.rows[0].quality, first.rows[0].host]).toEqual([
+      'movie:heat:1995',
+      '4k',
+      'meleys',
+    ])
+
+    const second = await history('?page=2&page_size=2')
+    expect([second.total, second.page, second.page_size]).toEqual([3, 2, 2])
+    expect(second.rows.map((row) => row.viewer)).toEqual(['Ann'])
+
+    const allTime = await history('?days=0')
+    expect(allTime.total).toBe(4)
+    const episode = allTime.rows[3]
+    expect([
+      episode.kind,
+      episode.title,
+      episode.grandparent_title,
+      episode.parent_index,
+      episode.index,
+    ]).toEqual(['episode', 'Smoke', 'Better Call Saul', 4, 1])
+
+    expect((await history('?kind=episode')).total).toBe(0)
+    expect((await get('/plays/history?page=0')).statusCode).toBe(422)
+    expect((await get('/plays/history?page_size=201')).statusCode).toBe(422)
+    expect((await get('/plays/history?host=nope')).statusCode).toBe(422)
   })
 
   it('echoes the metric with the top titles and leaves the unrewatched out of rewatches', async () => {
@@ -475,6 +518,7 @@ describe('the play history API', () => {
     // still answers rather than tripping over a missing row
     expect((await overview()).totals.plays).toBe(0)
     expect(bodyOf({ answer: await get('/plays/users'), is: isPlayUsers })).toEqual({ users: [] })
+    expect(await history()).toEqual({ total: 0, page: 1, page_size: 50, rows: [] })
     expect(bodyOf({ answer: await get('/plays/top'), is: isTopTitles })).toEqual({
       metric: 'plays',
       titles: [],

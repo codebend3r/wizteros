@@ -143,9 +143,14 @@ test('draws the growth line and the movements bars from the log, and offers a ta
   // folded behind a <details>, so the queries must not skip hidden content
   const table = screen.getByRole('table', { name: 'Income by month', hidden: true })
   const rows = within(table).getAllByRole('row', { hidden: true }).slice(1)
-  expect(
-    rows.map((row) => within(row).getByRole('rowheader', { hidden: true }).textContent),
-  ).toEqual(['Jun 2026', 'Jul 2026', 'Aug 2026', expect.stringMatching(/\d{4}$/)])
+  const months = rows.map(
+    (row) => within(row).getByRole('rowheader', { hidden: true }).textContent ?? '',
+  )
+  const today = new Date()
+  const throughToday = (today.getFullYear() - 2026) * 12 + today.getMonth() - 5 + 1
+  expect(months.slice(0, 3)).toEqual(['Jun 2026', 'Jul 2026', 'Aug 2026'])
+  expect(months).toHaveLength(throughToday)
+  expect(months.slice(3).every((month) => /\d{4}$/.test(month))).toBe(true)
   // bob is paying with no signup in the log, so he counts from the start;
   // July adds cat's silver on top of ann's gold, and August loses it again
   const income = (row: HTMLElement | undefined): string =>

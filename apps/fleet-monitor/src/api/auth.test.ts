@@ -23,6 +23,7 @@ const GATED = [
   '/fleet/cpu',
   '/incidents',
   '/plays/overview',
+  '/plays/history',
   '/plays/users',
   '/plays/users/1/history',
   '/plays/title?key=movie:heat:1995',

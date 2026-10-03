@@ -8,6 +8,10 @@ export const REFETCH_MS = 300_000
 /** Rows per page on the history and never-played tables. */
 export const PAGE_SIZE = 50
 
+/** Rows per page on the overview's watch history: half a history page, since
+    the table sits mid-overview with the breakdowns still to come below it. */
+export const WATCH_PAGE_SIZE = 25
+
 /** Rows on a ranking. */
 export const TOP_LIMIT = 25
 
@@ -19,6 +23,9 @@ export const TOP_LIMIT = 25
 export const SYNC_KEY = ['plays-sync'] as const
 
 export const overviewKey = (filters: PlaysFilters) => ['plays-overview', filters] as const
+
+export const watchHistoryKey = ({ filters, page }: { filters: PlaysFilters; page: number }) =>
+  ['plays-history', filters, page] as const
 
 export const usersKey = (filters: PlaysFilters) => ['plays-users', filters] as const
 

@@ -264,6 +264,32 @@ export type ViewerHistory = Readonly<{
   rows: readonly ViewerHistoryRow[]
 }>
 
+export type PlayHistoryRow = Readonly<{
+  viewed_at: string
+  host: string
+  kind: PlayKind
+  account_id: number
+  viewer: string
+  group_key: string
+  title: string
+  parent_title: string | null
+  grandparent_title: string | null
+  index: number | null
+  parent_index: number | null
+  year: number | null
+  quality: string | null
+  device: string | null
+  library: string | null
+  duration_ms: number | null
+}>
+
+export type PlayHistory = Readonly<{
+  total: number
+  page: number
+  page_size: number
+  rows: readonly PlayHistoryRow[]
+}>
+
 export type TopTitles = Readonly<{ metric: 'plays' | 'rewatches'; titles: readonly TopTitle[] }>
 
 export type TitleHistoryRow = Readonly<{
@@ -470,6 +496,32 @@ export const isViewerHistory = (value: unknown): value is ViewerHistory =>
   typeof value.page === 'number' &&
   typeof value.page_size === 'number' &&
   isListOf(value.rows, isViewerHistoryRow)
+
+const isPlayHistoryRow = (value: unknown): value is PlayHistoryRow =>
+  isRecord(value) &&
+  typeof value.viewed_at === 'string' &&
+  typeof value.host === 'string' &&
+  isPlayKind(value.kind) &&
+  typeof value.account_id === 'number' &&
+  typeof value.viewer === 'string' &&
+  typeof value.group_key === 'string' &&
+  typeof value.title === 'string' &&
+  isStringOrNull(value.parent_title) &&
+  isStringOrNull(value.grandparent_title) &&
+  isNumberOrNull(value.index) &&
+  isNumberOrNull(value.parent_index) &&
+  isNumberOrNull(value.year) &&
+  isStringOrNull(value.quality) &&
+  isStringOrNull(value.device) &&
+  isStringOrNull(value.library) &&
+  isNumberOrNull(value.duration_ms)
+
+export const isPlayHistory = (value: unknown): value is PlayHistory =>
+  isRecord(value) &&
+  typeof value.total === 'number' &&
+  typeof value.page === 'number' &&
+  typeof value.page_size === 'number' &&
+  isListOf(value.rows, isPlayHistoryRow)
 
 export const isTopTitles = (value: unknown): value is TopTitles =>
   isRecord(value) && isTopMetric(value.metric) && isListOf(value.titles, isTopTitle)
