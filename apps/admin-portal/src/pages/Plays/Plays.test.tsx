@@ -470,7 +470,7 @@ test('Plays lists every play under the chart, newest first, with who finished it
   expect(within(history).getByText('S4 E1 Smoke')).toBeInTheDocument()
   expect(within(history).getByText('Syrax')).toHaveClass('pill', 'server', 'series4')
   expect(within(history).getByText('Meleys')).toHaveClass('series1')
-  expect(within(history).getByText('TV')).toHaveClass('pill', 'kind', 'episode')
+  expect(within(history).getByText('TV')).toHaveClass('pill', 'kind', 'tv')
   expect(within(history).getByText('Movie')).toHaveClass('kind', 'movie')
   const chart = screen.getByRole('img', { name: /Completed plays per month by server/ })
   const byType = screen.getByRole('region', { name: 'By type' })
@@ -570,7 +570,8 @@ test('Plays offers five views and mounts only the selected one', async () => {
 
   await waitFor(() => expect(calledPaths()).toContain('/plays/users?days=365'))
   expect(await screen.findByRole('button', { name: 'cj, view history' })).toBeInTheDocument()
-  expect(screen.getByText('Better Call Saul')).toBeInTheDocument()
+  expect(screen.getByText('Better Call Saul')).toHaveClass('titleText')
+  await waitFor(() => expect(screen.getByText('Caraxes')).toHaveClass('pill', 'server', 'series3'))
   expect(screen.queryByText('8,341')).toBeNull()
   expect(search()).toBe('?view=viewers')
 })
@@ -826,6 +827,9 @@ test('Plays lists what was never played with its counts, and searches it', async
   expect(screen.getByText(/No completed play in the last year/)).toBeInTheDocument()
   expect(screen.getByRole('region', { name: 'Movies by quality' })).toBeInTheDocument()
   expect(screen.getByText('2 titles')).toBeInTheDocument()
+  expect(screen.getByText('Dune (2021)')).toHaveClass('titleText')
+  expect(screen.getByText('Show')).toHaveClass('pill', 'kind', 'tv')
+  await waitFor(() => expect(screen.getByText('Syrax')).toHaveClass('pill', 'server', 'series4'))
   // an undated item was not "never" added: it is one the server did not date
   expect(screen.getByText('unknown')).toBeInTheDocument()
   expect(screen.queryByText('never')).toBeNull()

@@ -2,17 +2,21 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { fetchPlayUsers, windowProse, type PlaysFilters } from '@/lib/playsApi'
 import { AsyncSection } from '@/components/AsyncSection/AsyncSection'
 import { TAB_COPY } from '@/pages/Plays/playsCopy'
-import { formatCount, formatDateTime, listHosts } from '@/pages/Plays/playsFormat'
+import { formatCount, formatDateTime } from '@/pages/Plays/playsFormat'
 import { REFETCH_MS, usersKey } from '@/pages/Plays/playsQueries'
+import { ServerTags } from '@/pages/Plays/Tags'
 import styles from '@/pages/Plays/DataTable.module.scss'
 
 type ViewersPanelProps = {
   readonly filters: PlaysFilters
+  /** Every Plex host in config order, the order the chart colours them by,
+      so a server's pill here wears the colour of its bars on the overview. */
+  readonly hosts: readonly string[]
   readonly onSelect: (accountId: number) => void
 }
 
 /** Every account with a completed play in the window, most active first. */
-export const ViewersPanel = ({ filters, onSelect }: ViewersPanelProps) => {
+export const ViewersPanel = ({ filters, hosts, onSelect }: ViewersPanelProps) => {
   const users = useQuery({
     queryKey: usersKey(filters),
     queryFn: () => fetchPlayUsers({ filters }),
@@ -73,9 +77,17 @@ export const ViewersPanel = ({ filters, onSelect }: ViewersPanelProps) => {
                     <td className={styles.numeric}>{formatCount(user.movies)}</td>
                     <td className={styles.numeric}>{formatCount(user.episodes)}</td>
                     <td className={styles.numeric}>{formatCount(user.tracks)}</td>
-                    <td>{listHosts(user.hosts)}</td>
+                    <td>
+                      <ServerTags servers={user.hosts} hosts={hosts} />
+                    </td>
                     <td className={styles.nowrap}>{formatDateTime(user.last_viewed_at)}</td>
-                    <td>{user.top_title ?? '--'}</td>
+                    <td>
+                      {user.top_title === null ? (
+                        '--'
+                      ) : (
+                        <span className={styles.titleText}>{user.top_title}</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

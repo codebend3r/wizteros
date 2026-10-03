@@ -7,20 +7,18 @@ import {
   type TopTitle,
 } from '@/lib/playsApi'
 import { AsyncSection } from '@/components/AsyncSection/AsyncSection'
-import { KIND_LABEL, TAB_COPY } from '@/pages/Plays/playsCopy'
-import {
-  formatCount,
-  formatDateTime,
-  listHosts,
-  qualityLabel,
-  titleWithYear,
-} from '@/pages/Plays/playsFormat'
+import { TAB_COPY } from '@/pages/Plays/playsCopy'
+import { formatCount, formatDateTime, qualityLabel, titleWithYear } from '@/pages/Plays/playsFormat'
 import { REFETCH_MS, TOP_LIMIT, topKey } from '@/pages/Plays/playsQueries'
+import { KindTag, ServerTags } from '@/pages/Plays/Tags'
 import styles from '@/pages/Plays/DataTable.module.scss'
 
 type TopTitlesPanelProps = {
   readonly filters: PlaysFilters
   readonly metric: TopMetric
+  /** Every Plex host in config order, the order the chart colours them by,
+      so a server's pill here wears the colour of its bars on the overview. */
+  readonly hosts: readonly string[]
   readonly onSelectTitle: (key: string) => void
 }
 
@@ -40,7 +38,7 @@ const context = (title: TopTitle): string => {
 }
 
 /** Titles ranked by completed plays or by rewatches, one table for both. */
-export const TopTitlesPanel = ({ filters, metric, onSelectTitle }: TopTitlesPanelProps) => {
+export const TopTitlesPanel = ({ filters, metric, hosts, onSelectTitle }: TopTitlesPanelProps) => {
   const titles = useQuery({
     queryKey: topKey({ metric, filters }),
     queryFn: () => fetchTopTitles({ filters, metric, limit: TOP_LIMIT }),
@@ -99,7 +97,7 @@ export const TopTitlesPanel = ({ filters, metric, onSelectTitle }: TopTitlesPane
                       <td className={styles.rank}>{index + 1}</td>
                       <td className={styles.primary}>
                         <button
-                          className={styles.rowButton}
+                          className={styles.titleButton}
                           type="button"
                           onClick={() => onSelectTitle(title.key)}
                           aria-label={`${name}, view play history`}
@@ -108,7 +106,9 @@ export const TopTitlesPanel = ({ filters, metric, onSelectTitle }: TopTitlesPane
                         </button>
                         {scope.length > 0 && <span className={styles.secondary}>{scope}</span>}
                       </td>
-                      <td>{KIND_LABEL[title.kind]}</td>
+                      <td>
+                        <KindTag kind={title.kind} />
+                      </td>
                       <td>{title.kind === 'track' ? '--' : qualityLabel(title.quality)}</td>
                       <td className={styles.numeric}>{formatCount(title.plays)}</td>
                       <td className={styles.numeric}>{formatCount(title.viewers)}</td>
@@ -121,7 +121,9 @@ export const TopTitlesPanel = ({ filters, metric, onSelectTitle }: TopTitlesPane
                         )}
                       </td>
                       <td className={styles.nowrap}>{formatDateTime(title.last_viewed_at)}</td>
-                      <td>{listHosts(title.hosts)}</td>
+                      <td>
+                        <ServerTags servers={title.hosts} hosts={hosts} />
+                      </td>
                     </tr>
                   )
                 })}

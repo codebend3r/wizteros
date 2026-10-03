@@ -88,9 +88,6 @@ export const bucketLabel = ({
 export const titleWithYear = ({ title, year }: { title: string; year: number | null }): string =>
   year === null ? title : `${title} (${year})`
 
-export const listHosts = (hosts: readonly string[]): string =>
-  hosts.length === 0 ? '--' : hosts.join(', ')
-
 /** How many pages a total splits into at one page size. Never below one: a
     list with nothing in it is still on page one of one, and "page 1 of 0"
     reads as a broken pager rather than as an empty list. */

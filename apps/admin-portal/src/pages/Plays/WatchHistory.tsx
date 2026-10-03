@@ -1,17 +1,15 @@
 import type { UseQueryResult } from '@tanstack/react-query'
-import { windowProse, type PlayHistory, type PlayKind } from '@/lib/playsApi'
+import { windowProse, type PlayHistory } from '@/lib/playsApi'
 import { errorMessage } from '@/components/AsyncSection/AsyncSection'
-import { seriesClass } from '@/pages/Fleet/seriesPalette'
 import { PagedTable } from '@/pages/Plays/Pager'
-import { KIND_LABEL } from '@/pages/Plays/playsCopy'
 import {
   formatCount,
   formatDateTime,
   pageCountOf,
   playSubject,
   qualityLabel,
-  serverName,
 } from '@/pages/Plays/playsFormat'
+import { KindTag, ServerTag } from '@/pages/Plays/Tags'
 import sectionStyles from '@/components/AsyncSection/AsyncSection.module.scss'
 import tableStyles from '@/pages/Plays/DataTable.module.scss'
 import styles from '@/pages/Plays/WatchHistory.module.scss'
@@ -29,12 +27,6 @@ type WatchHistoryProps = {
   readonly onPageChange: (page: number) => void
   readonly onSelectViewer: (accountId: number) => void
   readonly onSelectTitle: (key: string) => void
-}
-
-const KIND_CLASS: Readonly<Record<PlayKind, string>> = {
-  movie: styles.movie,
-  episode: styles.episode,
-  track: styles.track,
 }
 
 /** Every completed play in the window, newest first, a page at a time: who
@@ -112,7 +104,7 @@ export const WatchHistory = ({
                       </td>
                       <td className={tableStyles.primary}>
                         <button
-                          className={styles.titleButton}
+                          className={tableStyles.titleButton}
                           type="button"
                           onClick={() => onSelectTitle(row.group_key)}
                           aria-label={`${primary}, view play history`}
@@ -124,18 +116,11 @@ export const WatchHistory = ({
                         )}
                       </td>
                       <td>
-                        <span className={`${styles.pill} ${styles.kind} ${KIND_CLASS[row.kind]}`}>
-                          {KIND_LABEL[row.kind]}
-                        </span>
+                        <KindTag kind={row.kind} />
                       </td>
                       <td>{row.kind === 'track' ? '--' : qualityLabel(row.quality)}</td>
                       <td>
-                        <span
-                          className={`${styles.pill} ${styles.server} ${seriesClass(hosts.indexOf(row.host))}`}
-                        >
-                          <span className={styles.dot} aria-hidden="true" />
-                          {serverName(row.host)}
-                        </span>
+                        <ServerTag host={row.host} hosts={hosts} />
                       </td>
                       <td>{row.device ?? '--'}</td>
                       <td>{row.library ?? '--'}</td>

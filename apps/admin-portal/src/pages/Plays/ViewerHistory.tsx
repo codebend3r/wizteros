@@ -2,7 +2,6 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { fetchViewerHistory, windowProse, type PlaysFilters } from '@/lib/playsApi'
 import { AsyncSection } from '@/components/AsyncSection/AsyncSection'
 import { PagedTable } from '@/pages/Plays/Pager'
-import { KIND_LABEL } from '@/pages/Plays/playsCopy'
 import {
   formatCount,
   formatDateTime,
@@ -11,11 +10,15 @@ import {
   qualityLabel,
 } from '@/pages/Plays/playsFormat'
 import { PAGE_SIZE, REFETCH_MS, viewerKey } from '@/pages/Plays/playsQueries'
+import { KindTag, ServerTag } from '@/pages/Plays/Tags'
 import styles from '@/pages/Plays/DataTable.module.scss'
 
 type ViewerHistoryProps = {
   readonly filters: PlaysFilters
   readonly accountId: number
+  /** Every Plex host in config order, the order the chart colours them by,
+      so a server's pill here wears the colour of its bars on the overview. */
+  readonly hosts: readonly string[]
   /** The page being read, 1 based. It lives in the url beside the viewer, so
       a refresh comes back to the same page of the same history. */
   readonly page: number
@@ -28,6 +31,7 @@ type ViewerHistoryProps = {
 export const ViewerHistory = ({
   filters,
   accountId,
+  hosts,
   page,
   onPageChange,
   onBack,
@@ -90,7 +94,7 @@ export const ViewerHistory = ({
                           <td className={styles.nowrap}>{formatDateTime(row.viewed_at)}</td>
                           <td className={styles.primary}>
                             <button
-                              className={styles.rowButton}
+                              className={styles.titleButton}
                               type="button"
                               onClick={() => onSelectTitle(row.group_key)}
                               aria-label={`${primary}, view play history`}
@@ -101,9 +105,13 @@ export const ViewerHistory = ({
                               <span className={styles.secondary}>{secondary}</span>
                             )}
                           </td>
-                          <td>{KIND_LABEL[row.kind]}</td>
+                          <td>
+                            <KindTag kind={row.kind} />
+                          </td>
                           <td>{row.kind === 'track' ? '--' : qualityLabel(row.quality)}</td>
-                          <td>{row.host}</td>
+                          <td>
+                            <ServerTag host={row.host} hosts={hosts} />
+                          </td>
                           <td>{row.device ?? '--'}</td>
                           <td>{row.library ?? '--'}</td>
                         </tr>
