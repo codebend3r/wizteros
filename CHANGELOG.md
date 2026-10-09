@@ -12,6 +12,35 @@ the version recorded in the tree at that commit. That was not always true; the
 history was rewritten on 2026-08-08 to make it so. See
 [The 2026-08-08 history rewrite](#the-2026-08-08-history-rewrite).
 
+## v0.4.0 (2026-10-09)
+
+- Move both servers from Python to NestJS 12 on Node 24 (Fastify, ESM), with
+  one shared lib, `libs/server-common`, for the Supabase admin guard, env
+  parsing, the per-unit-of-work SQLite helper and the row guards. Both keep the
+  FastAPI wire the portal reads (snake_case fields, `{"detail": ...}` errors,
+  Pydantic timestamps) and open the live `bridge.db` and `fleet.db` unchanged,
+  with no data migration
+- Port the stripe bridge: every module behind a `Bridge` of service ports, all
+  321 Python tests ported (413 in total), and 61 of 61 admin GETs matching the
+  Python bridge on a copy of the live `bridge.db`. Webhook deliveries are
+  handled one at a time, since the Node handlers await between Wizarr and
+  Stripe calls. `GET /version` now reads `apps/stripe-bridge/package.json`
+- Port the fleet monitor, API and collector: 549 Vitest tests and 138 of 138
+  routes matching the Python API on a copy of the live `fleet.db`. Compaction
+  runs in a worker thread that is joined on shutdown, and the collector gets a
+  60 second stop grace
+- Remove the Python apps and their toolchain from the repo, Nx, CI and hooks
+- Add a paged watch history table to the plays page, backed by a new
+  `GET /plays/history`, with each row opening its viewer's or title's history
+  and the plays tables restyled around server and type pills
+- Redesign the fleet host cards to one reading per row, with `/fleet`
+  reporting the watched volume's free space and mount
+- Restructure all three apps for code quality without changing behaviour:
+  one sign-out-on-401 handler in place of thirteen guards, the member page
+  split from 1033 lines into five components and a hook, and shared chart,
+  menu and spinner components replacing the copies
+- Replace husky with lefthook for the git hooks, same gates in the same order
+
 ## v0.3.9 (2026-09-19)
 
 - Add a Plex play history page to the admin portal, backed by a new collector
