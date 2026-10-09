@@ -13,8 +13,8 @@
 //   for each of bronze / silver / gold / youth:
 //     POST checkout.session.completed {metadata:{tier}}
 //     -> find the invite the bridge just created
-//     -> assert scope: share server only, expected library names
-//     -> DELETE the invite
+//     -> assert scope: the tier's servers, expected library names
+//     -> DELETE the invite (always, even when the POST or an assertion fails)
 //
 // Uses a synthetic email that matches no Plex account, so the bridge finds no
 // existing records and never disables a real member. Run:
@@ -93,33 +93,40 @@ async function libraries() {
   return (await r.json()).libraries ?? []
 }
 
+// Servers no tier may share from. Gold is the one fleet-wide tier: it takes
+// every other server Wizarr lists libraries for.
+const RETIRED_SERVERS = new Set(
+  (process.env.RETIRED_SERVERS || 'Caraxes')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
+)
+
 // The expected scope per tier, derived from the live library list the same way
-// tiers.py derives it. The share-server filter, the 9X exclusion, and the 4K
-// rule are re-derived independently of the Python so a bug in one is not
-// mirrored by the other; the youth allow-list and its prefix strip
-// deliberately mirror tiers.py, since the titles ARE the contract. Youth
-// matches on the title with the "NN. " ordering prefix stripped: regrouping
-// the Plex libraries renumbers them without changing what they hold.
+// tiers.ts derives it. The server filters, the 9X exclusion, and the 4K rule
+// are re-derived independently of tiers.ts so a bug in one is not mirrored by
+// the other; the youth allow-list and its prefix strip deliberately mirror
+// tiers.ts, since the titles ARE the contract. Youth matches on the title with
+// the "NN. " ordering prefix stripped: regrouping the Plex libraries renumbers
+// them without changing what they hold. An invite names the servers its
+// libraries sit on, so the expected servers fall out of the expected libraries.
 const libraryTitle = (name) => name.replace(/^\d+\.\s*/, '')
 
-function expectedNames({ tier, libs }) {
-  const onShare = libs.filter(
-    (l) => l.enabled && l.server_name === SHARE_SERVER && !/^9\d\./.test(l.name),
+function expectedLibraries({ tier, libs }) {
+  const shareable = libs.filter(
+    (l) =>
+      l.enabled && l.server_name && !RETIRED_SERVERS.has(l.server_name) && !/^9\d\./.test(l.name),
   )
+  if (tier === 'gold') return shareable
+  const onShare = shareable.filter((l) => l.server_name === SHARE_SERVER)
   if (tier === 'youth') {
     const allow = new Set(['Family Movies', '4K Family Movies', 'Kid Shows'])
-    return onShare
-      .filter((l) => allow.has(libraryTitle(l.name)))
-      .map((l) => l.name)
-      .toSorted()
+    return onShare.filter((l) => allow.has(libraryTitle(l.name)))
   }
   if (tier === 'bronze') {
-    return onShare
-      .filter((l) => !l.name.toLowerCase().includes('4k'))
-      .map((l) => l.name)
-      .toSorted()
+    return onShare.filter((l) => !l.name.toLowerCase().includes('4k'))
   }
-  return onShare.map((l) => l.name).toSorted()
+  return onShare
 }
 
 const EXPECT_DOWNLOADS = { bronze: false, silver: false, gold: true, youth: true }
@@ -133,70 +140,98 @@ async function main() {
   const failures = []
   const created = []
 
-  for (const tier of ['bronze', 'silver', 'gold', 'youth']) {
-    const sessionId = `cs_e2e_${tier}_${Date.now()}`
-    await postCheckout({ tier, sessionId })
-
-    const fresh = (await invitations()).filter((i) => !before.has(i.code))
-    const invite = fresh.at(-1)
-    if (!invite) {
-      failures.push(`${tier}: bridge created no invite`)
-      continue
+  try {
+    for (const tier of ['bronze', 'silver', 'gold', 'youth']) {
+      await checkTier({ tier, libs, byId, before, created, failures })
     }
-    before.add(invite.code)
-    created.push(invite)
-
-    // /api/invitations reports specific_libraries: [] even when the scoping is
-    // correct, so treat it as best-effort and always assert the server scope.
-    const servers = (invite.server_names ?? []).toSorted()
-    const gotNames = (invite.specific_libraries ?? [])
-      .map((id) => byId.get(id)?.name)
-      .filter(Boolean)
-      .toSorted()
-    const wantNames = expectedNames({ tier, libs })
-
-    const problems = []
-    if (servers.join(',') !== SHARE_SERVER) {
-      problems.push(`servers ${servers.join(',') || '(none)'} != ${SHARE_SERVER}`)
+  } finally {
+    // Never leave a redeemable invite behind, even when an assertion failed
+    // or the run died partway.
+    for (const invite of created) {
+      const r = await wz(`/api/invitations/${invite.id}`, { method: 'DELETE' }).catch(() => null)
+      if (!(r?.ok ?? false)) {
+        console.error(
+          `  WARN could not delete invite ${invite.code} (${r?.status ?? 'no response'})`,
+        )
+      }
     }
-    // specific_libraries is unreliable over the API; only assert it when the
-    // API actually returned ids, and always assert the count via server scope.
-    if (gotNames.length && gotNames.join('|') !== wantNames.join('|')) {
-      const missing = wantNames.filter((n) => !gotNames.includes(n))
-      const extra = gotNames.filter((n) => !wantNames.includes(n))
-      if (missing.length) problems.push(`missing: ${missing.join(', ')}`)
-      if (extra.length) problems.push(`unexpected: ${extra.join(', ')}`)
-    }
-    if (tier === 'bronze' && gotNames.some((n) => n.toLowerCase().includes('4k'))) {
-      problems.push('bronze granted a 4K library')
-    }
-    if (gotNames.some((n) => /^9\d\./.test(n))) problems.push('granted a private 9X. library')
-
-    const label = `${tier.padEnd(6)} ${invite.code}`
-    if (problems.length) {
-      failures.push(`${tier}: ${problems.join('; ')}`)
-      console.log(`  FAIL ${label}  ${problems.join('; ')}`)
-    } else {
-      console.log(
-        `  ok   ${label}  servers=${servers.join(',')} ` +
-          `libraries=${gotNames.length || `${wantNames.length} (expected)`} ` +
-          `downloads=${EXPECT_DOWNLOADS[tier]}`,
-      )
-    }
+    console.log(`\nCleaned up ${created.length} test invite(s).`)
   }
-
-  // Never leave a redeemable invite behind, even when an assertion failed.
-  for (const invite of created) {
-    const r = await wz(`/api/invitations/${invite.id}`, { method: 'DELETE' })
-    if (!r.ok) console.error(`  WARN could not delete invite ${invite.code} (${r.status})`)
-  }
-  console.log(`\nCleaned up ${created.length} test invite(s).`)
 
   if (failures.length) {
     console.error(`\nFAIL:\n${failures.map((f) => `  - ${f}`).join('\n')}`)
     process.exit(1)
   }
   console.log('\nPASS: every tier signup produced a correctly scoped invite.')
+}
+
+// One tier's signup: post the checkout, find the invite it created, assert its
+// scope. Every invite found goes into `created` for main's cleanup.
+async function checkTier({ tier, libs, byId, before, created, failures }) {
+  const sessionId = `cs_e2e_${tier}_${Date.now()}`
+  // The bridge mints the invite before it mails it, so a checkout that fails
+  // after that (a 500 from SMTP, say) still leaves one behind. Look for it
+  // either way, and record the failure rather than abandoning the run.
+  const postFailure = await postCheckout({ tier, sessionId }).then(
+    () => null,
+    (error) => error.message,
+  )
+
+  const fresh = (await invitations()).filter((i) => !before.has(i.code))
+  const invite = fresh.at(-1)
+  if (invite) {
+    before.add(invite.code)
+    created.push(invite)
+  }
+  if (postFailure) {
+    failures.push(`${tier}: ${postFailure}`)
+    console.log(`  FAIL ${tier.padEnd(6)} ${postFailure}`)
+    return
+  }
+  if (!invite) {
+    failures.push(`${tier}: bridge created no invite`)
+    return
+  }
+
+  // /api/invitations reports specific_libraries: [] even when the scoping is
+  // correct, so treat it as best-effort and always assert the server scope.
+  const servers = (invite.server_names ?? []).toSorted()
+  const gotNames = (invite.specific_libraries ?? [])
+    .map((id) => byId.get(id)?.name)
+    .filter(Boolean)
+    .toSorted()
+  const want = expectedLibraries({ tier, libs })
+  const wantNames = want.map((l) => l.name).toSorted()
+  const wantServers = [...new Set(want.map((l) => l.server_name))].toSorted()
+
+  const problems = []
+  if (servers.join(',') !== wantServers.join(',')) {
+    problems.push(`servers ${servers.join(',') || '(none)'} != ${wantServers.join(',')}`)
+  }
+  // specific_libraries is unreliable over the API; only assert it when the
+  // API actually returned ids, and always assert the count via server scope.
+  if (gotNames.length && gotNames.join('|') !== wantNames.join('|')) {
+    const missing = wantNames.filter((n) => !gotNames.includes(n))
+    const extra = gotNames.filter((n) => !wantNames.includes(n))
+    if (missing.length) problems.push(`missing: ${missing.join(', ')}`)
+    if (extra.length) problems.push(`unexpected: ${extra.join(', ')}`)
+  }
+  if (tier === 'bronze' && gotNames.some((n) => n.toLowerCase().includes('4k'))) {
+    problems.push('bronze granted a 4K library')
+  }
+  if (gotNames.some((n) => /^9\d\./.test(n))) problems.push('granted a private 9X. library')
+
+  const label = `${tier.padEnd(6)} ${invite.code}`
+  if (problems.length) {
+    failures.push(`${tier}: ${problems.join('; ')}`)
+    console.log(`  FAIL ${label}  ${problems.join('; ')}`)
+  } else {
+    console.log(
+      `  ok   ${label}  servers=${servers.join(',')} ` +
+        `libraries=${gotNames.length || `${wantNames.length} (expected)`} ` +
+        `downloads=${EXPECT_DOWNLOADS[tier]}`,
+    )
+  }
 }
 
 main().catch((e) => {

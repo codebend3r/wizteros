@@ -1,13 +1,18 @@
 import { HttpAdapterHost, NestFactory } from '@nestjs/core'
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify'
-import { fastApiValidationPipe, HttpDetailFilter, starletteCors } from '@wizteros/server-common'
+import {
+  fastApiValidationPipe,
+  HttpDetailFilter,
+  starletteCors,
+  starletteMethodNotAllowed,
+} from '@wizteros/server-common'
 import { useFastApiJson } from '@/api/json.js'
 import { AppModule } from '@/appModule.js'
 
 /**
  * Everything that makes an app answer the way the FastAPI one did: CORS, the
- * `{detail}` error body, FastAPI's 422 for a bad query, and Pydantic's
- * timestamps. `createApp` applies it, and the route tests apply it to an app
+ * `{detail}` error body, a 405 for a wrong method on a known path, FastAPI's
+ * 422 for a bad query, and Pydantic's timestamps. `createApp` applies it, and the route tests apply it to an app
  * built over a testing module, so both answer through the same setup.
  */
 export const configureApp = (app: NestFastifyApplication): NestFastifyApplication => {
@@ -30,6 +35,7 @@ export const configureApp = (app: NestFastifyApplication): NestFastifyApplicatio
   // written the way Pydantic wrote it.
   app.useGlobalPipes(fastApiValidationPipe())
   useFastApiJson(app)
+  starletteMethodNotAllowed(app)
   return app
 }
 

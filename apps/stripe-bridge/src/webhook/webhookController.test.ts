@@ -149,6 +149,21 @@ describe('POST /webhook', () => {
   })
 })
 
+describe('GET /webhook', () => {
+  it('answers 405 on both Funnel paths, as FastAPI did', async () => {
+    // The e2e retest waits for this 405 as proof the route is mounted.
+    const responses = await Promise.all(
+      ['/webhook', '/stripe/webhook'].map((url) => app.inject({ method: 'GET', url })),
+    )
+    expect(responses.map((response) => response.statusCode)).toEqual([405, 405])
+    expect(responses.map((response) => response.json())).toEqual([
+      { detail: 'Method Not Allowed' },
+      { detail: 'Method Not Allowed' },
+    ])
+    expect(responses.map((response) => response.headers.allow)).toEqual(['POST', 'POST'])
+  })
+})
+
 describe('serialQueue', () => {
   it('starts each job only after the previous one settles, failed or not', async () => {
     const serially = serialQueue()

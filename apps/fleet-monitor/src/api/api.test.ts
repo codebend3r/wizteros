@@ -208,6 +208,13 @@ describe('the fleet API', () => {
     expect(bodyOf({ answer: await get('/health'), is: isHealth }).stale).toBe(true)
   })
 
+  it('answers a wrong method on a known route with 405, as FastAPI did', async () => {
+    const response = await app.inject({ method: 'POST', url: '/health' })
+    expect(response.statusCode).toBe(405)
+    expect(response.json()).toEqual({ detail: 'Method Not Allowed' })
+    expect(response.headers.allow).toBe('GET, HEAD')
+  })
+
   it('lists every configured host', async () => {
     writeSamplesTo({
       path: db,

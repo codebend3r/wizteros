@@ -5,13 +5,15 @@ import {
   HttpDetailFilter,
   requireEnv,
   starletteCors,
+  starletteMethodNotAllowed,
 } from '@wizteros/server-common'
 import { AppModule } from '@/appModule.js'
 import { adminAllowedOrigins, REQUIRED_ENV } from '@/config.js'
 
 /**
  * Everything the portal relies on in how the app answers: CORS, the `{detail}`
- * error body, and a 422 listing what failed in a bad query or body.
+ * error body, a 405 for a wrong method on a known path, and a 422 listing what
+ * failed in a bad query or body.
  * `createApp` applies it, and the route tests apply it to an app built over a
  * testing module, so both answer through the same setup.
  */
@@ -27,6 +29,7 @@ export const configureApp = (app: NestFastifyApplication): NestFastifyApplicatio
   )
   app.useGlobalFilters(new HttpDetailFilter(app.get(HttpAdapterHost)))
   app.useGlobalPipes(fastApiValidationPipe())
+  starletteMethodNotAllowed(app)
   return app
 }
 
