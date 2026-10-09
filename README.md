@@ -70,7 +70,7 @@ Two things that are easy to get wrong:
 
 **Tooling**
 
-[Nx](https://nx.dev) as the task runner over bun workspaces, [oxlint](https://oxc.rs) for TS/JS, [stylelint](https://stylelint.io) for SCSS, [oxfmt](https://oxc.rs) for formatting, [tsgo](https://www.npmjs.com/package/@typescript/native-preview) for type checking, husky for git hooks, [lint-staged](https://github.com/lint-staged/lint-staged) for the staged-file pass.
+[Nx](https://nx.dev) as the task runner over bun workspaces, [oxlint](https://oxc.rs) for TS/JS, [stylelint](https://stylelint.io) for SCSS, [oxfmt](https://oxc.rs) for formatting, [tsgo](https://www.npmjs.com/package/@typescript/native-preview) for type checking, [lefthook](https://lefthook.dev) for git hooks, [lint-staged](https://github.com/lint-staged/lint-staged) for the staged-file pass.
 
 **Hosting**
 
@@ -101,7 +101,7 @@ Once it is up: the webhook endpoint is `http://<host>:8000/stripe/webhook`, and 
 ## Development
 
 ```bash
-bun install        # whole workspace in one shot, also installs the husky git hooks
+bun install        # whole workspace in one shot, also installs the lefthook git hooks
 bun run verify     # lint, format check, typecheck, tests and build across every project
 ```
 
@@ -115,9 +115,9 @@ bun run verify     # lint, format check, typecheck, tests and build across every
 | Re-run the pre-commit gate   | `bun run system-check:no-cache`                   |
 | Deploy the bridge to the NAS | `bun run deploy:nas`                              |
 
-Hooks run automatically. Pre-commit first runs `bun run lint:staged`, which fixes
-only the files in the commit (`oxlint --fix` and `oxfmt` on TS/TSX, `stylelint
---fix` and `oxfmt` on SCSS) and re-stages the
+Hooks run automatically, from `lefthook.yml` at the root. Pre-commit first runs
+`bun run lint:staged`, which fixes only the files in the commit (`oxlint --fix`
+and `oxfmt` on TS/TSX, `stylelint --fix` and `oxfmt` on SCSS) and re-stages the
 result, then `bun run system-check` (lint, SCSS lint, format check, typecheck,
 and tests for `admin-portal`). Pre-push runs `bun run verify` across every project.
 CI runs the same `bun run verify` on every push.

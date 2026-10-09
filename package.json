@@ -10,7 +10,7 @@
   "type": "module",
   "scripts": {
     "preinstall": "node scripts/only-bun.mjs",
-    "prepare": "husky",
+    "prepare": "lefthook install --reset-hooks-path",
     "dev": "nx run admin-portal:dev",
     "build": "nx run admin-portal:build",
     "preview": "nx run admin-portal:preview",
@@ -51,7 +51,7 @@
     "deploy:nas": "bash scripts/deploy-nas.sh"
   },
   "devDependencies": {
-    "husky": "^9.1.7",
+    "lefthook": "2.1.14",
     "lint-staged": "17.5.1",
     "nx": "^23.2.1",
     "oxfmt": "0.68.0",

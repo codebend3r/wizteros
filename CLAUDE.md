@@ -49,10 +49,10 @@ wizteros/
 ├── .claude/agents/             repo-scoped subagents
 ├── .claude/skills/             repo-scoped skills
 ├── .github/                    CI workflows
-├── .husky/                     pre-commit and pre-push hooks
 ├── docker-compose.yml          builds the bridge and the fleet monitor
 ├── netlify.toml                builds admin-portal, publishes apps/admin-portal/dist
 ├── nx.json                     target defaults, cacheable targets, named inputs
+├── lefthook.yml                pre-commit and pre-push hooks
 ├── .oxlintrc.json              oxlint for everything outside apps/
 ├── .oxfmtrc.json               oxfmt for everything outside apps/
 ├── .lintstagedrc.json          staged-file pass for everything outside apps/
@@ -107,7 +107,7 @@ Bun itself is pinned. `packageManager` in the root `package.json` is the source 
 
 `trustedDependencies` in the root `package.json` is the list of packages whose install scripts Bun runs, and setting it replaces Bun's built-in default list. It names `nx` and `@parcel/watcher`, the two that ran before, and deliberately leaves out `better-sqlite3`. That package ships N-API prebuilds and marks itself `"gypfile": false`, but Bun 1.4 ignores the flag and runs `node-gyp rebuild` because a `binding.gyp` is present. Netlify has no `node-gyp`, so that one script failed every deploy at "Install dependencies". A new dependency that genuinely needs its install script has to be added to the list; `bun pm untrusted` shows any that were skipped.
 
-Gates: pre-commit runs `bun run lint:staged` (lint-staged, autofixing just the staged files) then `bun run system-check` (admin-portal only), pre-push runs `bun run verify` (every project). CI runs the same checks. lint-staged config is per app in `apps/*/.lintstagedrc.json`, and commands there must spell out `node_modules/.bin/<tool>` because bun keeps the bins in the app, not the root.
+Gates live in `lefthook.yml`, installed by the root `prepare` script on `bun install`: pre-commit runs `bun run lint:staged` (lint-staged, autofixing just the staged files) then `bun run system-check` (admin-portal only), pre-push runs `bun run verify` (every project). CI runs the same checks. lint-staged config is per app in `apps/*/.lintstagedrc.json`, and commands there must spell out `node_modules/.bin/<tool>` because bun keeps the bins in the app, not the root. `lefthook`'s own postinstall stays out of `trustedDependencies` on purpose, so `bun pm untrusted` lists it: `prepare` runs `lefthook install --reset-hooks-path` instead, which also unsets a `core.hooksPath` left behind by husky, since a plain `lefthook install` exits 1 when one is set and would fail `bun install` in that clone.
 
 ## Releases and deploy
 

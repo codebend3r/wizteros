@@ -35,3 +35,6 @@ supabase/.temp/
 
 # claude code worktrees
 .claude/worktrees/
+
+# lefthook personal overrides
+lefthook-local.yml
