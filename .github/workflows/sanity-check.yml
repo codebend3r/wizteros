@@ -80,21 +80,14 @@ jobs:
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v7
-      - name: 🧮 Compare root, admin portal and bridge versions
+      - name: 🧮 Compare every package.json version
+        # scripts/version-markers.mjs lists the root and every workspace
+        # package, the same list scripts/release.sh bumps.
         run: |
-          root=$(node -p "require('./package.json').version")
-          portal=$(node -p "require('./apps/admin-portal/package.json').version")
-          bridge=$(node -p "require('./apps/stripe-bridge/package.json').version")
-          echo "📦 root=$root  🌐 admin-portal=$portal  🌉 stripe-bridge=$bridge"
-          if [ "$root" != "$portal" ]; then
-            echo "::error::💥 Version drift — root is $root but apps/admin-portal/ is $portal"
+          if ! node scripts/version-markers.mjs --check; then
+            echo "::error::💥 Version drift — every package.json must read the same version"
             exit 1
           fi
-          if [ "$root" != "$bridge" ]; then
-            echo "::error::💥 Version drift — root is $root but apps/stripe-bridge/ is $bridge"
-            exit 1
-          fi
-          echo "✅ All three markers agree on v$root"
 
   summary:
     name: 🎉 Sanity verdict

@@ -166,14 +166,14 @@ Caching is declared in `nx.json` under `targetDefaults`. Anything that touches D
 
 ## Releases
 
-Three version markers move in lockstep: root `package.json`, `apps/admin-portal/package.json`, and `apps/stripe-bridge/package.json`. The bridge one is the only marker that reaches the container, and it is what `GET /version` reports.
+Every `package.json` in the workspace (the root, each app, and the lib) carries the release version, and they move in lockstep along with `bun.lock`'s workspace entries. `node scripts/version-markers.mjs` lists them and `--check` confirms they agree. The bridge one is the only marker that reaches a container, and it is what `GET /version` reports.
 
 ```bash
-bun run release:patch      # bump all three, commit, and tag
+bun run release:patch      # bump every marker, commit, and tag
 bun run release:backfill   # publish GitHub Releases from CHANGELOG.md
 ```
 
-Never hand-edit a version field: `scripts/release.sh` owns the flow and hard-fails when the three markers disagree. Each release gets a `CHANGELOG.md` section. The SPA redeploys from `main` via Netlify on its own, the NAS does not, so a release touching the bridge needs `bun run deploy:nas` afterwards.
+Never hand-edit a version field: `scripts/release.sh` owns the flow and hard-fails when any marker disagrees. Each release gets a `CHANGELOG.md` section. The SPA redeploys from `main` via Netlify on its own, the NAS does not, so a release touching the bridge needs `bun run deploy:nas` afterwards.
 
 ## Claude skills
 

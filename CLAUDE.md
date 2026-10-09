@@ -111,9 +111,9 @@ Gates live in `lefthook.yml`, installed by the root `prepare` script on `bun ins
 
 ## Releases and deploy
 
-Three version markers move in lockstep: root `package.json`, `apps/admin-portal/package.json`, and `apps/stripe-bridge/package.json`. The bridge marker is the only one that reaches the container, and it is what `GET /version` reports.
+Every `package.json` in the workspace is a version marker, and they all move in lockstep: the root, each app under `apps/`, and each lib under `libs/`, as `scripts/version-markers.mjs` lists them, with `bun.lock`'s workspace entries following. A new app or lib needs a `version` field matching the rest. The bridge marker is the only one that reaches a container, and it is what `GET /version` reports.
 
-- Never hand-edit a version field. `scripts/release.sh` owns the flow and hard-fails when the three disagree. The `version-bumper` skill decides whether a bump is due.
+- Never hand-edit a version field. `scripts/release.sh` owns the flow and hard-fails when any marker disagrees; CI's version-parity job runs the same check. The `version-bumper` skill decides whether a bump is due.
 - Every release gets a `CHANGELOG.md` section.
 - `admin-portal` redeploys from `main` via Netlify on its own. **The NAS does not.** A release touching the bridge needs `bun run deploy:nas` (or the `deploy-nas` skill) afterwards, then confirm with `GET /version`.
 

@@ -2,7 +2,7 @@ import { createRequire } from 'node:module'
 import { Controller, Get } from '@nestjs/common'
 
 // The release this bridge was built from. The app's package.json is the
-// marker scripts/release.sh moves in lockstep with the root and the portal,
+// marker scripts/release.sh moves in lockstep with every other package.json,
 // and it is the only one that reaches the container, so GET /version is the
 // authoritative answer to "what release is the NAS on". The file sits one
 // level above both src/ and dist/, so the same relative path finds it under

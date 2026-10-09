@@ -1,17 +1,16 @@
 #!/usr/bin/env bash
-# Bump the workspace root, apps/admin-portal, and apps/stripe-bridge versions in
-# lockstep, commit as `WZ: Bump version to X.Y.Z`, and tag `vX.Y.Z`. npm skips its
-# own git commit/tag for the app because .git lives at the repo root, so this
-# script owns the whole release flow. Used by `bun run release:{patch,minor,major}`.
+# Bump every version marker in lockstep, commit as `WZ: Bump version to X.Y.Z`,
+# and tag `vX.Y.Z`. npm skips its own git commit/tag for the packages because
+# .git lives at the repo root, so this script owns the whole release flow. Used
+# by `bun run release:{patch,minor,major}`.
 #
-# Three version markers move together:
-#   package.json                         workspace root, the source of truth
-#   apps/admin-portal/package.json       the SPA
-#   apps/stripe-bridge/package.json      the only marker that reaches the container
+# The markers are every package.json in the workspace, as listed by
+# scripts/version-markers.mjs: the root (the source of truth), then each package
+# under apps/ and libs/. apps/stripe-bridge/package.json is the only one that
+# reaches a container, and is what the bridge's GET /version reports. bun.lock
+# records each workspace package's version too, so it moves with them.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-
-BRIDGE_PACKAGE="apps/stripe-bridge/package.json"
 
 LEVEL="${1:?usage: release.sh patch|minor|major}"
 case "$LEVEL" in
@@ -36,45 +35,43 @@ if [ "$BRANCH" != "main" ] && [ "${RELEASE_ALLOW_BRANCH:-}" != "1" ]; then
   exit 1
 fi
 
-read_json_version() { node -p "require('./$1').version"; }
+MARKERS="$(node scripts/version-markers.mjs)"
 
-# Preflight: all three markers must already agree. Drift here is what produced
-# the 1.0.x phantom, where the root sat two majors ahead of the app for four
+# Preflight: every marker must already agree. Drift here is what produced the
+# 1.0.x phantom, where the root sat two majors ahead of the app for four
 # consecutive tags before anyone noticed. See CHANGELOG.md.
-ROOT_BEFORE="$(read_json_version package.json)"
-WEB_BEFORE="$(read_json_version apps/admin-portal/package.json)"
-BRIDGE_BEFORE="$(read_json_version "$BRIDGE_PACKAGE")"
-
-if [ "$ROOT_BEFORE" != "$WEB_BEFORE" ] || [ "$ROOT_BEFORE" != "$BRIDGE_BEFORE" ]; then
-  {
-    echo "version markers disagree; fix them to match before releasing:"
-    echo "  package.json                 $ROOT_BEFORE"
-    echo "  apps/admin-portal            $WEB_BEFORE"
-    echo "  apps/stripe-bridge           $BRIDGE_BEFORE"
-  } >&2
+if ! node scripts/version-markers.mjs --check >/dev/null; then
+  echo "fix the version markers to match before releasing" >&2
   exit 1
 fi
 
 VERSION="$(npm version "$LEVEL" --no-git-tag-version | tr -d v)"
-npm --prefix apps/admin-portal version "$VERSION" --no-git-tag-version >/dev/null
-npm --prefix apps/stripe-bridge version "$VERSION" --no-git-tag-version >/dev/null
+echo "$MARKERS" | tail -n +2 | while read -r marker; do
+  npm --prefix "$(dirname "$marker")" version "$VERSION" --no-git-tag-version >/dev/null
+done
 
-# Postflight: never tag a release whose markers did not all move.
-ROOT_AFTER="$(read_json_version package.json)"
-WEB_AFTER="$(read_json_version apps/admin-portal/package.json)"
-BRIDGE_AFTER="$(read_json_version "$BRIDGE_PACKAGE")"
-if [ "$ROOT_AFTER" != "$VERSION" ] || [ "$WEB_AFTER" != "$VERSION" ] || [ "$BRIDGE_AFTER" != "$VERSION" ]; then
+# bun.lock carries each workspace package's version; refresh only those. Any
+# other line moving means the lockfile had drifted from the manifests, which is
+# not a release's business to fix.
+bun install --lockfile-only >/dev/null
+STRAY_LOCK_LINES="$(git diff -U0 bun.lock | grep -E '^[+-] ' | grep -vE '^[+-] +"version": "' || true)"
+if [ -n "$STRAY_LOCK_LINES" ]; then
   {
-    echo "bump did not apply cleanly to every marker; nothing committed:"
-    echo "  package.json                 $ROOT_AFTER"
-    echo "  apps/admin-portal            $WEB_AFTER"
-    echo "  apps/stripe-bridge           $BRIDGE_AFTER"
-    echo "expected $VERSION everywhere. Restore with: git checkout -- ."
+    echo "bun.lock changed beyond workspace versions; nothing committed:"
+    echo "$STRAY_LOCK_LINES"
+    echo "Restore with: git checkout -- ."
   } >&2
   exit 1
 fi
 
-git add package.json apps/admin-portal/package.json "$BRIDGE_PACKAGE"
+# Postflight: never tag a release whose markers did not all move.
+if ! node scripts/version-markers.mjs --check "$VERSION" >/dev/null; then
+  echo "bump did not apply cleanly to every marker; nothing committed. Restore with: git checkout -- ." >&2
+  exit 1
+fi
+
+# shellcheck disable=SC2086 # one manifest path per line, none with spaces
+git add $MARKERS bun.lock
 git commit -m "WZ: Bump version to $VERSION"
 # Annotated, never lightweight. The whole series is annotated as of the
 # 2026-08-08 history rewrite; a lightweight tag would carry no tagger or
@@ -83,4 +80,5 @@ git tag -a "v$VERSION" -m "v$VERSION"
 
 echo "tagged v$VERSION (annotated)"
 echo "next: add the v$VERSION section to CHANGELOG.md, amend it into the bump commit,"
+echo "      move the tag onto the amended commit: git tag -fa v$VERSION -m v$VERSION"
 echo "      then publish with: git push origin main v$VERSION"

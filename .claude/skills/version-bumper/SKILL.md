@@ -11,20 +11,38 @@ Reads `origin/main`, decides whether the unreleased commits warrant a version bu
 recommends a level (patch, minor, or major), and stops for a plain yes or no. On yes it
 runs the repo's existing release flow.
 
-`scripts/release.sh` owns the mechanics (lockstep bump of the three version markers, the
+`scripts/release.sh` owns the mechanics (lockstep bump of every version marker, the
 `WZ: Bump version to X.Y.Z` commit, the annotated `vX.Y.Z` tag). This skill owns the
 judgment and never hand-edits a version field.
 
-The three markers, which must always agree:
+The markers are every `package.json` in the workspace, and they must always agree.
+`scripts/version-markers.mjs` is the one list: the root, then each package the root's
+`workspaces` globs (`apps/*`, `libs/*`) match. A new app or lib joins the release without
+an edit to the script, so never hard-code the list here or anywhere else.
+
+```bash
+node scripts/version-markers.mjs                  # each manifest path, root first
+node scripts/version-markers.mjs --check          # do they all agree?
+node scripts/version-markers.mjs --check X.Y.Z    # do they all read X.Y.Z?
+```
+
+Today that is five:
 
 | Marker                            | Why                                             |
 | --------------------------------- | ----------------------------------------------- |
 | `package.json`                    | Workspace root, the source of truth             |
 | `apps/admin-portal/package.json`  | The SPA                                         |
+| `apps/fleet-monitor/package.json` | The fleet monitor and its collector             |
 | `apps/stripe-bridge/package.json` | The only marker that reaches the bridge's image |
+| `libs/server-common/package.json` | The lib both servers share                      |
 
-`release.sh` hard-fails when they disagree, both before and after the bump, so a
-mismatch is a stop-and-report, never something to patch by hand.
+`bun.lock` records each workspace package's version too, and `release.sh` refreshes it
+with `bun install --lockfile-only` in the same commit, refusing if anything other than
+those `"version"` lines moves.
+
+`release.sh` hard-fails when the markers disagree, both before and after the bump, and so
+does CI's version-parity job. A mismatch, or a workspace package with no `version` field
+at all, is a stop-and-report, never something to patch by hand.
 
 The bridge exposes its version at `GET /version` (and `/stripe/version` behind Funnel),
 unauthenticated. That is the way to check which release the NAS is actually running.
@@ -51,8 +69,9 @@ mode is one forgotten `git push` away at any time. The bump commit is the truth.
 
 Cross-checks before judging anything:
 
-- All three version markers on `origin/main` must read the baseline version (they move in
-  lockstep). Disagreement means a broken release; stop and report it instead of
+- Every version marker on `origin/main` must read the baseline version (they move in
+  lockstep): `git show origin/main:<path>` for each path `version-markers.mjs` lists,
+  or `node scripts/version-markers.mjs --check <baseline>` on an up-to-date main. Disagreement means a broken release; stop and report it instead of
   recommending. This is the check that the 1.0.x phantom went without: the root sat two
   majors ahead of the app for four consecutive tags before anyone noticed. That history
   was corrected by the 2026-08-08 rewrite; see `CHANGELOG.md`.
@@ -138,20 +157,24 @@ the global autonomy rules forbid.
 1. Working tree must be clean (`release.sh` hard-fails otherwise). Report a dirty tree;
    never stash it away silently.
 2. `git switch main && git pull --ff-only origin main`.
-3. `bash scripts/release.sh <level>` from the repo root. It bumps all three markers,
-   commits, and creates an annotated tag. It refuses to run off main (override with
+3. `bash scripts/release.sh <level>` from the repo root. It bumps every marker
+   `version-markers.mjs` lists and the workspace versions in `bun.lock`, commits, and
+   creates an annotated tag. It refuses to run off main (override with
    `RELEASE_ALLOW_BRANCH=1`) and refuses when the markers disagree.
 4. Add the `## vX.Y.Z (YYYY-MM-DD)` section to `CHANGELOG.md`, written from the shipped
    pile, then `git add CHANGELOG.md && git commit --amend --no-edit` so the changelog
-   travels in the bump commit rather than trailing it.
+   travels in the bump commit rather than trailing it. The amend leaves the tag on the
+   pre-amend commit, so move it: `git tag -fa vX.Y.Z -m vX.Y.Z`, then confirm
+   `git rev-parse vX.Y.Z^{}` equals `git rev-parse HEAD`.
 5. `git push origin main vX.Y.Z` (branch and tag in one push; a tag that stays local is
    what the `v0.1.5` lag looked like). If the recommendation included a tag backfill for
    an earlier version, create and push that tag here too; it is part of the consented
    plan, not a separate favor to ask about later.
 6. `bash scripts/backfill-releases.sh --apply` to publish the GitHub Release from the
    changelog section. It skips versions that already have one, so it is safe to re-run.
-7. Verify: `git ls-remote --tags origin` shows the new tag, all three markers read the new
-   version, and `gh release view vX.Y.Z` returns the notes.
+7. Verify: `git ls-remote --tags origin` shows the new tag on the bump commit,
+   `node scripts/version-markers.mjs --check X.Y.Z` passes, `bun.lock`'s workspace entries
+   read the new version, and `gh release view vX.Y.Z` returns the notes.
 8. If the released range touched either server or the lib, point at the deploy-nas skill as
    the follow-up, and confirm the deploy with `curl -s <bridge>/version` once it is done.
    `apps/admin-portal/` needs nothing; Netlify redeploys from main on its own.
@@ -171,10 +194,14 @@ the global autonomy rules forbid.
 - Recommending a bump for a docs/CI-only pile: nothing shipped, nothing to version.
 - Counting an Nx retarget (`nx.json`, `project.json`, root script aliases) as shipped
   surface: it changes how the repo builds, not what production runs.
-- Bumping only the root and portal `package.json` files: the bridge's
-  `apps/stripe-bridge/package.json` is the third marker and the only one the running
-  container can report. `release.sh` blocks this, so hitting
-  it means someone edited a version by hand.
+- Bumping only some of the `package.json` files: every workspace package is a marker,
+  and the bridge's is the only one the running container can report. `release.sh` and
+  CI both block this, so hitting it means someone edited a version by hand.
+- A new app or lib whose `package.json` has no `version`: the preflight fails on it. Give
+  it the current release version in the commit that adds the package, so the next
+  release moves it with the rest.
+- Hard-coding the marker list (in a script, a skill, CI, or a doc's table treated as the
+  source): it goes stale the moment a package is added. `version-markers.mjs` is the list.
 - Tagging a release without a `CHANGELOG.md` section: the tag then says nothing about what
   shipped, which is the state every tag was in before 2026-08-08.
 - Creating a lightweight tag by hand (`git tag vX.Y.Z`): every tag in the series is
