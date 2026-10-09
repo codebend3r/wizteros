@@ -12,6 +12,17 @@ the version recorded in the tree at that commit. That was not always true; the
 history was rewritten on 2026-08-08 to make it so. See
 [The 2026-08-08 history rewrite](#the-2026-08-08-history-rewrite).
 
+## v0.4.1 (2026-10-09)
+
+- Answer a wrong method on a known route with 405, `{"detail": "Method Not
+Allowed"}` and an `Allow` header in both servers, as the FastAPI services
+  did, where the NestJS port had fallen through to 404. Lives in
+  `libs/server-common` as `starletteMethodNotAllowed`
+- Version every workspace package in lockstep: `fleet-monitor` and
+  `server-common` now carry the release version, `scripts/version-markers.mjs`
+  lists every marker, and `release.sh` and CI's version-parity job cover all of
+  them plus `bun.lock`'s workspace entries
+
 ## v0.4.0 (2026-10-09)
 
 - Move both servers from Python to NestJS 12 on Node 24 (Fastify, ESM), with
