@@ -32,7 +32,10 @@ BRIDGE_PORT="${WZ_BRIDGE_PORT:-8000}"
 WIZARR_PORT="${WZ_WIZARR_PORT:-5690}"
 SHA_FILE=".deployed-sha"
 VOLUME="${WZ_VOLUME:-/volume1}"
-DISK_WARN="${WZ_DISK_WARN:-85}"
+# Free space, not percent: /volume1 is an 84 TB media volume, where 85% used
+# still leaves 12 TB, and bridge.db is a few hundred KB. What matters is the
+# headroom left before a write fails.
+DISK_MIN_FREE_GB="${WZ_DISK_MIN_FREE_GB:-1024}"
 LOG_LINES="${WZ_LOG_LINES:-200}"
 ENV_FILE="${WZ_ENV_FILE:-$REPO/.env}"
 ENV_EXAMPLE="${WZ_ENV_EXAMPLE:-$REPO/.env.example}"
@@ -380,16 +383,17 @@ if [ "$SSH_OK" = 0 ]; then
 else
   DF_RAW="$($SSH "$NAS_HOST" "df -Pk $VOLUME 2>/dev/null | tail -1" || true)"
   DF_PCT="$(printf '%s\n' "$DF_RAW" | awk '{print $5}' | tr -d '%[:space:]')"
+  DF_FREE_GB="$(printf '%s\n' "$DF_RAW" | awk '{ if ($4 ~ /^[0-9]+$/) print int($4/1048576) }')"
   DF_HUMAN="$(printf '%s\n' "$DF_RAW" | awk '{ if ($2 > 0) printf "%.1fT free of %.1fT", $4/1073741824, $2/1073741824 }')"
 
-  case "$DF_PCT" in
+  case "$DF_FREE_GB" in
     ''|*[!0-9]*) fail "could not read df output for $VOLUME" ;;
     *)
-      note "$VOLUME: ${DF_PCT}% used, ${DF_HUMAN:-size unknown}"
-      if [ "$DF_PCT" -ge "$DISK_WARN" ]; then
-        warn "$VOLUME is ${DF_PCT}% full (warn at ${DISK_WARN}%). A full volume stops the bridge writing bridge.db."
+      note "$VOLUME: ${DF_PCT:-?}% used, ${DF_HUMAN:-size unknown}"
+      if [ "$DF_FREE_GB" -lt "$DISK_MIN_FREE_GB" ]; then
+        warn "$VOLUME has ${DF_FREE_GB}G free (warn under ${DISK_MIN_FREE_GB}G). A full volume stops the bridge writing bridge.db."
       else
-        pass "$VOLUME at ${DF_PCT}%, under the ${DISK_WARN}% mark"
+        pass "$VOLUME has ${DF_FREE_GB}G free, above the ${DISK_MIN_FREE_GB}G mark"
       fi
       ;;
   esac

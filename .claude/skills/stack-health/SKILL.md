@@ -45,7 +45,7 @@ error names the reason: there are no mutating flags to guess at.
 reach us at all. Prefer a full run when the question is "did webhooks stop arriving".
 
 Useful overrides, all `WZ_*` env vars matching `deploy-nas.sh`: `WZ_NAS_HOST`,
-`WZ_NAS_IP`, `WZ_PUBLIC_BASE` (when there is no local `.env`), `WZ_DISK_WARN`,
+`WZ_NAS_IP`, `WZ_PUBLIC_BASE` (when there is no local `.env`), `WZ_DISK_MIN_FREE_GB`,
 `WZ_LOG_LINES`, `WZ_REPO`.
 
 ## The Checks
@@ -58,7 +58,7 @@ Useful overrides, all `WZ_*` env vars matching `deploy-nas.sh`: `WZ_NAS_HOST`,
 | 4   | Funnel reachable, `POST <base>/stripe/webhook` returns exactly `400`          | curl to `PUBLIC_INVITE_BASE`                                       |
 | 5   | `.deployed-sha` vs `origin/main`, including divergence                        | `cat`, `git fetch`, `git rev-list`, `git merge-base`               |
 | 6   | Recent bridge logs: tier-scope alarm and ERROR lines                          | `docker logs --tail 200`                                           |
-| 7   | `/volume1` disk usage                                                         | `df -Pk`                                                           |
+| 7   | `/volume1` free space, warns under 1 TiB                                      | `df -Pk`                                                           |
 | 8   | Key names in `.env.example` vs the NAS `.env`                                 | `cat`, key names only                                              |
 
 Exit `0` when every check passed, `1` when any check failed. **Warnings do not fail the
@@ -103,8 +103,12 @@ Translate to what the member experiences, not to what the container is doing.
   healthy and retries, so this is not the alarm; correlate with check 3.
 - **6 warns** (tracebacks) → read the excerpt before escalating. One bad webhook payload
   is not the same as a broken bridge.
-- **7 warns** → `/volume1` is filling. A full volume stops the bridge writing `bridge.db`,
-  which silently loses the Stripe-to-Wizarr mapping for new members.
+- **7 warns** → `/volume1` is down to its last 1 TiB (`WZ_DISK_MIN_FREE_GB`). A full volume
+  stops the bridge writing `bridge.db`, which silently loses the Stripe-to-Wizarr mapping for
+  new members. The check reads free space rather than percent because this is an 84 TB
+  media volume: 85% used still leaves 12 TB. When `du` comes up well short of `df`, the gap
+  is Btrfs snapshots of the media share still holding deleted or re-encoded files; prune old
+  ones in DSM's Snapshot Replication.
 - **8 fails** (key missing on the NAS) → the bridge is running without config the app
   expects. Correlate with whatever else is failing; a missing `SMTP_*` explains an invite
   that was created but never emailed.
