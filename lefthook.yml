@@ -1,0 +1,29 @@
+# Git hooks, installed into .git/hooks by the root `prepare` script on
+# `bun install`. Personal overrides go in lefthook-local.yml, which is ignored.
+$schema: ./node_modules/lefthook/schema.json
+
+pre-commit:
+  # One job at a time, in order, stopping at the first failure, so the gate
+  # only runs once the staged-file pass has fixed and re-staged the commit.
+  piped: true
+  jobs:
+    # Staged-file pass: oxlint --fix and oxfmt on staged TS and .mjs, stylelint
+    # --fix and oxfmt on staged SCSS, oxfmt on staged JSON, Markdown, YAML and
+    # TOML. Fixes are written back and re-staged, so the gate below sees the
+    # corrected files.
+    - name: lint-staged
+      run: bun run lint:staged
+
+    # Fast gate: oxlint, stylelint on SCSS, oxfmt --check, tsgo and bun test for
+    # admin-portal only, via Nx (cached, so a clean rerun is near-instant).
+    # Fix with: bun run lint:fix, bun run lint:css:fix, bun run format.
+    - name: system-check
+      run: bun run system-check
+
+pre-push:
+  jobs:
+    # Full gate: the same checks across every Nx project, so admin-portal's lint,
+    # SCSS lint, format check, typecheck and tests, plus the lint, typecheck,
+    # tests and build of both servers and the lib they share.
+    - name: verify
+      run: bun run verify
