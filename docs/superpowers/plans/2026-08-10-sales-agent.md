@@ -725,7 +725,7 @@ import { join } from 'node:path'
 
 const REQUIRED = ['STRIPE_API_KEY', 'WIZARR_BASE_URL', 'WIZARR_API_KEY']
 const PAYING = new Set(['active', 'trialing'])
-const NAS_HOST = process.env.WZ_NAS_HOST || 'crivas@192.168.50.2'
+const NAS_HOST = process.env.WZ_NAS_HOST || '$WZ_NAS_HOST'
 const NAS_PATH = process.env.WZ_NAS_PATH || '/volume1/docker/stripe-bridge'
 const SSH_OPTS = '-o BatchMode=yes -o ConnectTimeout=10'
 const WIZARR_TIMEOUT_MS = 60_000

@@ -12,10 +12,10 @@ The repo owns only `stripe-bridge`; see [`nas-deployment.md`](./nas-deployment.m
 
 Only two of the five NASes run docker at all.
 
-| Host      | IP             | Compose project | Directory                  |
-| --------- | -------------- | --------------- | -------------------------- |
-| Meleys    | `192.168.50.2` | `westeroz`      | `/volume1/docker/westeroz` |
-| Vermithor | `192.168.50.3` | `essoz`         | `/volume1/docker/essoz`    |
+| Host      | IP               | Compose project | Directory                  |
+| --------- | ---------------- | --------------- | -------------------------- |
+| Meleys    | `<meleys-ip>`    | `westeroz`      | `/volume1/docker/westeroz` |
+| Vermithor | `<vermithor-ip>` | `essoz`         | `/volume1/docker/essoz`    |
 
 Meleys additionally runs the `stripe-bridge` project from
 `/volume1/docker/stripe-bridge`, which is this repo's deploy target and is never
@@ -72,7 +72,7 @@ flag.
 By hand, the equivalent is:
 
 ```bash
-ssh crivas@192.168.50.2 "cd /volume1/docker/westeroz && \
+ssh "$WZ_NAS_HOST" "cd /volume1/docker/westeroz && \
   sudo -n /usr/local/bin/docker compose pull sonarr radarr sabnzbd && \
   sudo -n /usr/local/bin/docker compose up -d sonarr radarr sabnzbd"
 ```

@@ -26,7 +26,7 @@ domain we don't have.
 ```
 
 > Substitute `<tailnet>` with your tailnet's MagicDNS suffix (shown in the
-> Tailscale admin console, e.g. `tail1234.ts.net`). Full node name appears in
+> Tailscale admin console, e.g. `<tailnet>.ts.net`). Full node name appears in
 > `tailscale status` / `tailscale funnel status`.
 
 ---

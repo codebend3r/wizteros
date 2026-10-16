@@ -117,14 +117,14 @@ No new secrets required beyond what `.env.example` already lists.
 
 The bridge runs **standalone** and talks to the operator's **existing, already
 configured Wizarr** (3 Plex servers) over the LAN. The local
-`/Users/snowball/Docker/docker-compose.yml` is out of scope and untouched.
+`~/Docker/docker-compose.yml` is out of scope and untouched.
 
 ### Phase 1 — build + test locally (no DNS / no Cloudflare)
 
 1. Make the three bridge code changes (invoice.paid extend, cancel=disable,
    SQLite mapping).
 2. Generate a Wizarr API key; fill a local `.env` with
-   `WIZARR_BASE_URL=http://192.168.50.141:5690` and the key.
+   `WIZARR_BASE_URL=http://<wizarr-ip>:5690` and the key.
 3. Run the bridge locally (`docker run` / `uvicorn`) on `:8000`.
 4. Forward Stripe test events to it with the Stripe CLI — **no public URL
    needed**: `stripe listen --forward-to localhost:8000/stripe/webhook`, then
@@ -135,10 +135,10 @@ configured Wizarr** (3 Plex servers) over the LAN. The local
 
 ### Phase 2 — go live (deferred until Phase 1 passes)
 
-1. Migrate `cjrivas.io` DNS to Cloudflare; create a Cloudflare Tunnel exposing
-   `webhook.cjrivas.io → bridge:8000` (and optionally `invite.cjrivas.io`).
+1. Migrate `example.com` DNS to Cloudflare; create a Cloudflare Tunnel exposing
+   `webhook.example.com → bridge:8000` (and optionally `invite.example.com`).
 2. Add a **live-mode** Stripe webhook endpoint at
-   `https://webhook.cjrivas.io/stripe/webhook` for the three events; copy its
+   `https://webhook.example.com/stripe/webhook` for the three events; copy its
    signing secret into the live `.env`.
 3. Recreate the $8/mo product + Payment Link in **live mode** (test-mode
    artifacts do not carry over).

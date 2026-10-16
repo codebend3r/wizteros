@@ -8,7 +8,7 @@ onto paid, time-boxed access** (and onboarding brand-new members).
 
 1. **Revocation/renewal touches only one server.** Wizarr stores one record per
    `(user, server)`. A single member email therefore resolves to N records (the
-   test account `codebenderinc@gmail.com` has 5: ids 147/57/106/155/204, one per
+   test account `<test-member-email>` has 5: ids 147/57/106/155/204, one per
    server). The bridge resolves only the _first_ id and disables/extends only
    that one, so a cancellation leaves the member with access to the other N-1
    servers.
@@ -112,7 +112,7 @@ unchanged.
   time-boxes an existing member (records exist) but is a no-op for a brand-new
   member (no records), new-user invite path unchanged, plus the StripeObject
   regression tests.
-- **End-to-end** on `codebenderinc@gmail.com` (5 records): a repeatable Node command
+- **End-to-end** on `<test-member-email>` (5 records): a repeatable Node command
   (`npm run retest`) resets all records to a clean baseline (enable + unlimited),
   drives signed `checkout.session.completed` + `invoice.paid` webhooks through the
   bridge, and asserts every record is set to `~now + ACCESS_DURATION` (identical

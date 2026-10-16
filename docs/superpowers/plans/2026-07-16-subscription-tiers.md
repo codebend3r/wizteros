@@ -1098,7 +1098,7 @@ Expected: four active links; each `metadata.tier` is exactly one of `bronze`, `s
 Remove the `WIZARR_SERVER_IDS` line from the NAS bridge env (and from the local `.env` to match `.env.example`):
 
 ```bash
-ssh crivas@192.168.50.2 "sed -i '/^WIZARR_SERVER_IDS=/d' /volume1/docker/wizteros/.env"
+ssh "$WZ_NAS_HOST" "sed -i '/^WIZARR_SERVER_IDS=/d' /volume1/docker/wizteros/.env"
 npm run deploy:nas
 ```
 
@@ -1110,7 +1110,7 @@ In the Netlify site settings (Environment variables): delete `VITE_PAYMENT_LINK_
 
 - [ ] **Step 3: Run one test checkout per tier**
 
-For each tier, open its payment link and pay with Stripe's test card `4242 4242 4242 4242` (any future expiry, any CVC), using a fresh email per tier (e.g. `cj.rivas.dev+bronze@gmail.com`, `+silver`, `+gold`, `+kids`).
+For each tier, open its payment link and pay with Stripe's test card `4242 4242 4242 4242` (any future expiry, any CVC), using a fresh email per tier (e.g. `admin+bronze@example.com`, `+silver`, `+gold`, `+kids`).
 
 - [ ] **Step 4: Verify each invite's scope via the Wizarr API**
 

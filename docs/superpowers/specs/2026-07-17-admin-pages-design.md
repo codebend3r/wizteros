@@ -72,7 +72,7 @@ stripe-bridge admin API  ──uses──▶ WizarrClient ──▶ Wizarr /api/
   - `lib/adminApi.ts` — typed fetch wrapper that injects `X-Admin-Password` and
     reads `VITE_ADMIN_API_BASE`.
 - New build-time env: `VITE_ADMIN_API_BASE`
-  (prod `https://meleys.tail5586d4.ts.net/stripe`). Add to `web/.env.example`.
+  (prod `https://<node>.<tailnet>.ts.net/stripe`). Add to `web/.env.example`.
 
 ### Auth model
 

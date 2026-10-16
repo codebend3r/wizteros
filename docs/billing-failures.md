@@ -9,7 +9,7 @@ this document is the record of what that cost and what now covers it.
 
 One member, two Stripe customers, one lost library:
 
-|                | `jimmyvo768@gmail.com`                   | `jimmyvo767@gmail.com`                   |
+|                | `samplemember768@gmail.com`              | `samplemember767@gmail.com`              |
 | -------------- | ---------------------------------------- | ---------------------------------------- |
 | customer       | `cus_Uy7XxcqWmbGh0a`, created 2026-07-28 | `cus_VAtOy3AxCWw4vI`, created 2026-08-31 |
 | subscription   | `past_due`, delinquent                   | `active`                                 |
@@ -31,8 +31,8 @@ What actually happened, in order:
    from anything they held. The row looked healthy while the person could not
    watch anything.
 5. The member did not wait for the retry. They re-subscribed from scratch on
-   2026-08-31, checking out under `jimmyvo767@gmail.com` while their Plex
-   account remained `jimmyvo768@gmail.com`. Two addresses, one person. The
+   2026-08-31, checking out under `samplemember767@gmail.com` while their Plex
+   account remained `samplemember768@gmail.com`. Two addresses, one person. The
    bridge keys on email, so that payment arrived on a row with no records of
    its own, the renewal handler found nothing to extend, logged one WARNING
    line, and returned.
