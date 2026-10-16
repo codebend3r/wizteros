@@ -9,7 +9,7 @@
 // Nothing here opens a session. Every function takes the connection the route
 // already has, so answering for the whole fleet costs one.
 
-import { HOSTS, type Host, SLOW_INTERVAL, VITALS_INTERVAL } from '@/config.js'
+import { fleetHosts, type Host, SLOW_INTERVAL, VITALS_INTERVAL } from '@/config.js'
 import type { Connection } from '@/db.js'
 import { observedRun, uptimePercent } from '@/incidents.js'
 import { type ContainerView, fromSamples } from '@/probes/docker.js'
@@ -358,7 +358,7 @@ export const fleetView = ({
   // read once for the whole fleet: it is a property of the collector, not of
   // any one host
   const observedSince = coverageSince(connection)
-  const hosts = HOSTS.map((host) => hostView({ connection, host, now, observedSince }))
+  const hosts = fleetHosts().map((host) => hostView({ connection, host, now, observedSince }))
   const age = ageSeconds({ now, at: last })
   return {
     collected_at: last,

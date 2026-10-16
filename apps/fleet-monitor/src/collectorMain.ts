@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common'
 import { joinCompactions, runAll } from '@/collector.js'
-import { dbPath, SLOW_INTERVAL, VITALS_INTERVAL } from '@/config.js'
+import { dbPath, fleetHosts, SLOW_INTERVAL, sshUser, VITALS_INTERVAL } from '@/config.js'
 
 // `node dist/collectorMain.js`, the port of `python -m fleet_monitor.collector`:
 // runs the loops against the same database the API reads. Where and how it is
@@ -23,6 +23,10 @@ const stop = (signal: NodeJS.Signals): void => {
 }
 process.once('SIGTERM', stop)
 process.once('SIGINT', stop)
+
+// fail at boot, naming the variable, rather than inside the first round
+fleetHosts()
+sshUser()
 
 const path = dbPath()
 log.log(

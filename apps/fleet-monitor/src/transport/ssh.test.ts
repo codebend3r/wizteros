@@ -13,8 +13,8 @@ afterEach(removeTempDirs)
 describe('buildArgv', () => {
   it('multiplexes and silences warnings', () => {
     const argv = buildArgv({
-      host: '192.168.50.3',
-      user: 'crivas',
+      host: '192.0.2.3',
+      user: 'fleet',
       controlDir: '/tmp/fm',
       timeout: 15,
     })
@@ -28,7 +28,7 @@ describe('buildArgv', () => {
     expect(argv).toContain('-oBatchMode=yes')
     expect(argv).toContain('-oConnectTimeout=15')
     expect(joined).toContain('/tmp/fm/')
-    expect(argv.slice(-2)).toEqual(['crivas@192.168.50.3', 'bash -s'])
+    expect(argv.slice(-2)).toEqual(['fleet@192.0.2.3', 'bash -s'])
   })
 
   it('never prompts', () => {

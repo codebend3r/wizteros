@@ -4,6 +4,7 @@ import {
   parseList,
   trimTrailingSlashes,
 } from '@wizteros/server-common'
+import { isIPv4 } from 'node:net'
 import { CAPTURE_FACTOR } from '@/transport/ssh.js'
 
 /** The port the compose healthcheck and the Funnel's /monitor path both reach. */
@@ -104,57 +105,93 @@ export const host = ({
 // the certificate they present is Plex's *.plex.direct wildcard, which cannot
 // verify against a LAN ip, so plex sync connects to an https url with
 // verification off. The owner token still authorizes every request.
-export const HOSTS: readonly Host[] = Object.freeze([
-  host({
-    name: 'meleys',
-    ip: '192.168.50.2',
-    has_gpu: false,
-    docker_url: 'http://192.168.50.2:2375',
-    plex_url: 'http://192.168.50.2:32400',
-  }),
-  host({
-    name: 'vermithor',
-    ip: '192.168.50.3',
-    has_gpu: true,
-    docker_url: 'http://192.168.50.3:2375',
-    plex_url: 'https://192.168.50.3:32400',
-  }),
-  host({
-    name: 'caraxes',
-    ip: '192.168.50.4',
-    has_gpu: false,
-    docker_url: '',
-    plex_url: 'http://192.168.50.4:32400',
-  }),
-  host({
-    name: 'syrax',
-    ip: '192.168.50.5',
-    has_gpu: false,
-    docker_url: '',
-    plex_url: 'http://192.168.50.5:32400',
-  }),
-  host({
-    name: 'vhagar',
-    ip: '192.168.50.6',
-    has_gpu: true,
-    docker_url: 'http://192.168.50.6:2375',
-    plex_url: 'https://192.168.50.6:32400',
-  }),
-])
+const DOCKER_PORT = 2375
+const PLEX_PORT = 32400
+
+/**
+ * What the fleet is, minus where it lives: the address of each box comes from
+ * FM_HOST_IPS, in this order, so no ip is ever committed.
+ *
+ * `docker` marks a host that exposes Docker over TCP; `plex` is the scheme its
+ * Plex answers on.
+ */
+const FLEET: readonly Readonly<{
+  name: string
+  has_gpu: boolean
+  docker: boolean
+  plex: 'http' | 'https'
+}>[] = [
+  { name: 'meleys', has_gpu: false, docker: true, plex: 'http' },
+  { name: 'vermithor', has_gpu: true, docker: true, plex: 'https' },
+  { name: 'caraxes', has_gpu: false, docker: false, plex: 'http' },
+  { name: 'syrax', has_gpu: false, docker: false, plex: 'http' },
+  { name: 'vhagar', has_gpu: true, docker: true, plex: 'https' },
+]
+
+/**
+ * The fleet's addresses from FM_HOST_IPS, a comma-separated list of IPv4
+ * addresses in the order FLEET names the hosts (meleys, vermithor, caraxes,
+ * syrax, vhagar).
+ *
+ * Throws, naming the variable and the expected order but never echoing a
+ * value, when the list is missing, the wrong length, or holds anything that is
+ * not an IPv4 address. Booting with a half-read fleet would probe the wrong
+ * boxes, so a bad list stops the process instead.
+ */
+export const hostIps = (): readonly string[] => {
+  const ips = parseList(process.env.FM_HOST_IPS)
+  const expected = `FM_HOST_IPS must list ${FLEET.length} comma-separated IPv4 addresses in the order ${FLEET.map(({ name }) => name).join(', ')}`
+  if (ips.length !== FLEET.length) {
+    throw new Error(`${expected}; got ${ips.length}`)
+  }
+  if (!ips.every((ip) => isIPv4(ip))) {
+    throw new Error(`${expected}; at least one entry is not an IPv4 address`)
+  }
+  return ips
+}
+
+/**
+ * The fleet, frozen, in config order. Read when asked rather than at import,
+ * because the addresses live in the environment.
+ */
+export const fleetHosts = (): readonly Host[] => {
+  const ips = hostIps()
+  return Object.freeze(
+    FLEET.map(({ name, has_gpu, docker, plex }, index) =>
+      host({
+        name,
+        ip: ips[index] ?? '',
+        has_gpu,
+        docker_url: docker ? `http://${ips[index] ?? ''}:${DOCKER_PORT}` : '',
+        plex_url: `${plex}://${ips[index] ?? ''}:${PLEX_PORT}`,
+      }),
+    ),
+  )
+}
 
 /**
  * The fleet's Plex hosts in config order, which is the order every by-host
  * list keeps: the portal binds one colour per position, the same binding the
  * fleet page uses.
  */
-export const plexHosts = (hosts: readonly Host[] = HOSTS): readonly Host[] =>
+export const plexHosts = (hosts: readonly Host[] = fleetHosts()): readonly Host[] =>
   hosts.filter((candidate) => !!candidate.plex_url)
 
 /** Where the SQLite file lives. /data is the container's mounted volume. */
 export const dbPath = (): string => process.env.FM_DB_PATH ?? '/data/fleet.db'
 
-/** The unprivileged account that holds the shared key on all five boxes. */
-export const sshUser = (): string => process.env.FM_SSH_USER ?? 'crivas'
+/**
+ * The unprivileged account that holds the shared key on all five boxes.
+ * Throws when FM_SSH_USER is unset, so a missing account fails loudly instead
+ * of probing as a guessed one.
+ */
+export const sshUser = (): string => {
+  const user = (process.env.FM_SSH_USER ?? '').trim()
+  if (!user) {
+    throw new Error('FM_SSH_USER must name the ssh account the collector connects as')
+  }
+  return user
+}
 
 /**
  * The Supabase project and admins behind every gated route, from the
