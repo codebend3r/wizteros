@@ -12,6 +12,14 @@ the version recorded in the tree at that commit. That was not always true; the
 history was rewritten on 2026-08-08 to make it so. See
 [The 2026-08-08 history rewrite](#the-2026-08-08-history-rewrite).
 
+## v0.4.3 (2026-10-16)
+
+- Move the Bun pin to 1.4.3 in `packageManager` and Netlify's `BUN_VERSION`.
+  The NAS images install Bun from that pin, so this release rebuilds them
+- Hash every `VITE_*` variable and the portal's `.env*` files into
+  admin-portal's `build` cache key, so a Netlify env change no longer
+  redeploys a cached bundle with the old values inlined
+
 ## v0.4.2 (2026-10-16)
 
 - Read the fleet's addresses and the collector's ssh account from env
