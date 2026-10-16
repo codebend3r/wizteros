@@ -12,6 +12,21 @@ the version recorded in the tree at that commit. That was not always true; the
 history was rewritten on 2026-08-08 to make it so. See
 [The 2026-08-08 history rewrite](#the-2026-08-08-history-rewrite).
 
+## v0.4.2 (2026-10-16)
+
+- Read the fleet's addresses and the collector's ssh account from env
+  (`FM_HOST_IPS`, `FM_SSH_USER`) instead of the source. The fleet monitor and
+  the collector refuse to boot when either is missing or malformed, naming the
+  variable but never echoing a value
+- Move the portal's admin allowlist and footer contact to
+  `VITE_ADMIN_ALLOWED_EMAILS` and `VITE_CONTACT_EMAIL`; the footer link hides
+  when the contact is unset
+- Scrub LAN addresses, the tailnet name, home paths and member emails from
+  docs, tests and skills, and add the `security-audit` skill with
+  `bun run security:scan` for the tree and the history
+- Deploy note: the NAS `.env` needs `FM_HOST_IPS` and `FM_SSH_USER`, and
+  Netlify needs `VITE_ADMIN_ALLOWED_EMAILS`, or admin login is locked out
+
 ## v0.4.1 (2026-10-09)
 
 - Answer a wrong method on a known route with 405, `{"detail": "Method Not
