@@ -8,7 +8,7 @@ publish = "apps/admin-portal/dist"
 NODE_VERSION = "24"
 # Mirrors `packageManager` in the root package.json; scripts/only-bun.mjs
 # fails the build if the two ever disagree.
-BUN_VERSION = "1.4.2"
+BUN_VERSION = "1.4.3"
 # SMTP_USER and FROM_ADDR both hold the public contact email shown in the
 # footer, not a secret
 SECRETS_SCAN_OMIT_KEYS = "SMTP_USER,FROM_ADDR"
