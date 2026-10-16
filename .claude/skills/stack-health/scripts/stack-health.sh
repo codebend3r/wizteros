@@ -22,8 +22,8 @@ set -euo pipefail
 # root is four levels up. No hardcoded path, works from any clone or worktree.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="${WZ_REPO:-$(cd "$SCRIPT_DIR/../../../.." && pwd)}"
-NAS_HOST="${WZ_NAS_HOST:-crivas@192.168.50.2}"
-NAS_IP="${WZ_NAS_IP:-192.168.50.2}"
+NAS_HOST="${WZ_NAS_HOST:-$("$REPO/scripts/nas-host.sh" meleys)}"
+NAS_IP="${WZ_NAS_IP:-${NAS_HOST#*@}}"
 NAS_PATH="${WZ_NAS_PATH:-/volume1/docker/stripe-bridge}"
 WESTEROZ_PATH="${WZ_WESTEROZ_PATH:-/volume1/docker/westeroz}"
 DOCKER="/usr/local/bin/docker"   # NOPASSWD sudoers rule matches this literal path

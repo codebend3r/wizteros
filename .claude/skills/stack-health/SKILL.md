@@ -52,7 +52,7 @@ Useful overrides, all `WZ_*` env vars matching `deploy-nas.sh`: `WZ_NAS_HOST`,
 
 | #   | Check                                                                         | Reads                                                              |
 | --- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| 1   | NAS reachable over SSH                                                        | `ssh crivas@192.168.50.2 true`                                     |
+| 1   | NAS reachable over SSH                                                        | `ssh "$WZ_NAS_HOST" true`                                          |
 | 2   | Bridge container `running`, `GET :8000/admin/members` returns `401`           | `docker inspect`, curl from this machine                           |
 | 3   | Westeroz `compose ps`, wizarr + tautulli `running`, Wizarr answers on `:5690` | `compose ps` in `/volume1/docker/westeroz`, `docker inspect`, curl |
 | 4   | Funnel reachable, `POST <base>/stripe/webhook` returns exactly `400`          | curl to `PUBLIC_INVITE_BASE`                                       |

@@ -19,7 +19,8 @@
 # removed on exit (including on failure).
 set -euo pipefail
 
-NAS_HOST="${WZ_NAS_HOST:-crivas@192.168.50.2}"
+REPO="${WZ_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)}"
+NAS_HOST="${WZ_NAS_HOST:-$("$REPO/scripts/nas-host.sh" meleys)}"
 BRIDGE_PATH="${WZ_NAS_PATH:-/volume1/docker/stripe-bridge}"
 WESTEROZ_PATH="${WZ_WESTEROZ_PATH:-/volume1/docker/westeroz}"
 BACKUP_ROOT="${WZ_BACKUP_ROOT:-/volume1/docker/backups}"

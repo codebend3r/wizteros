@@ -37,7 +37,7 @@ This is a **production data** operation on a live stack. It only ever reads, but
 
 | Env override           | Default                         |
 | ---------------------- | ------------------------------- |
-| `WZ_NAS_HOST`          | `crivas@192.168.50.2`           |
+| `WZ_NAS_HOST`          | `$WZ_NAS_HOST`                  |
 | `WZ_NAS_PATH`          | `/volume1/docker/stripe-bridge` |
 | `WZ_WESTEROZ_PATH`     | `/volume1/docker/westeroz`      |
 | `WZ_BACKUP_ROOT`       | `/volume1/docker/backups`       |
@@ -126,7 +126,7 @@ Confirm the service names first; the `westeroz` compose file is NAS-side only an
 repo does not define it.
 
 ```bash
-ssh crivas@192.168.50.2 "cd /volume1/docker/westeroz && sudo -n /usr/local/bin/docker compose ps"
+ssh "$WZ_NAS_HOST" "cd /volume1/docker/westeroz && sudo -n /usr/local/bin/docker compose ps"
 ```
 
 Throughout, `BK=/volume1/docker/backups/<TIMESTAMP>`. Read `MANIFEST.txt` in that dir
@@ -136,20 +136,20 @@ first to confirm which archive maps to which path.
 
 ```bash
 # 1. stop the owning container
-ssh crivas@192.168.50.2 "cd /volume1/docker/westeroz && sudo -n /usr/local/bin/docker compose stop wizarr"
+ssh "$WZ_NAS_HOST" "cd /volume1/docker/westeroz && sudo -n /usr/local/bin/docker compose stop wizarr"
 
 # 2. move the live dir aside rather than deleting it; this is your undo
-ssh crivas@192.168.50.2 "cd /volume1/docker/westeroz && mv wizarr-data wizarr-data.pre-restore"
+ssh "$WZ_NAS_HOST" "cd /volume1/docker/westeroz && mv wizarr-data wizarr-data.pre-restore"
 
 # 3. untar into the parent (archives carry the dir name, so this recreates wizarr-data/)
-ssh crivas@192.168.50.2 "tar -xzf \$BK/westeroz--wizarr-data.tar.gz -C /volume1/docker/westeroz"
+ssh "$WZ_NAS_HOST" "tar -xzf \$BK/westeroz--wizarr-data.tar.gz -C /volume1/docker/westeroz"
 
 # 4. check ownership matches PUID/PGID from /volume1/docker/stripe-bridge/.env
-ssh crivas@192.168.50.2 "ls -ln /volume1/docker/westeroz/wizarr-data | head"
+ssh "$WZ_NAS_HOST" "ls -ln /volume1/docker/westeroz/wizarr-data | head"
 
 # 5. start and verify
-ssh crivas@192.168.50.2 "cd /volume1/docker/westeroz && sudo -n /usr/local/bin/docker compose start wizarr"
-ssh crivas@192.168.50.2 "curl -s -o /dev/null -m 5 -w '%{http_code}\n' http://localhost:5690"
+ssh "$WZ_NAS_HOST" "cd /volume1/docker/westeroz && sudo -n /usr/local/bin/docker compose start wizarr"
+ssh "$WZ_NAS_HOST" "curl -s -o /dev/null -m 5 -w '%{http_code}\n' http://localhost:5690"
 ```
 
 Wizarr answering on `:5690` is the check. Then open it and confirm the Plex servers and
@@ -161,7 +161,7 @@ fail in a one-shot SSH. Either fix it from an interactive SSH session, or borrow
 through the rule you already have:
 
 ```bash
-ssh crivas@192.168.50.2 "sudo -n /usr/local/bin/docker run --rm -v /volume1/docker/westeroz:/fix wizteros-stripe-bridge chown -R <PUID>:<PGID> /fix/wizarr-data"
+ssh "$WZ_NAS_HOST" "sudo -n /usr/local/bin/docker run --rm -v /volume1/docker/westeroz:/fix wizteros-stripe-bridge chown -R <PUID>:<PGID> /fix/wizarr-data"
 ```
 
 ### `tautulli-config`
@@ -172,17 +172,17 @@ as the archive, and `http://localhost:8181` as the check.
 ### `stripe-bridge-data`
 
 ```bash
-ssh crivas@192.168.50.2 "cd /volume1/docker/stripe-bridge && sudo -n /usr/local/bin/docker compose stop stripe-bridge"
-ssh crivas@192.168.50.2 "cd /volume1/docker/stripe-bridge && mv stripe-bridge-data stripe-bridge-data.pre-restore"
-ssh crivas@192.168.50.2 "tar -xzf \$BK/stripe-bridge--stripe-bridge-data.tar.gz -C /volume1/docker/stripe-bridge"
+ssh "$WZ_NAS_HOST" "cd /volume1/docker/stripe-bridge && sudo -n /usr/local/bin/docker compose stop stripe-bridge"
+ssh "$WZ_NAS_HOST" "cd /volume1/docker/stripe-bridge && mv stripe-bridge-data stripe-bridge-data.pre-restore"
+ssh "$WZ_NAS_HOST" "tar -xzf \$BK/stripe-bridge--stripe-bridge-data.tar.gz -C /volume1/docker/stripe-bridge"
 
 # THE STEP PEOPLE FORGET: promote the consistent snapshot over the raw live copy,
 # and drop the WAL/SHM sidecars, which belong to the old bridge.db and would
 # corrupt reads against the snapshot.
-ssh crivas@192.168.50.2 "cd /volume1/docker/stripe-bridge/stripe-bridge-data && rm -f bridge.db-wal bridge.db-shm && mv bridge.db.snapshot bridge.db"
+ssh "$WZ_NAS_HOST" "cd /volume1/docker/stripe-bridge/stripe-bridge-data && rm -f bridge.db-wal bridge.db-shm && mv bridge.db.snapshot bridge.db"
 
-ssh crivas@192.168.50.2 "cd /volume1/docker/stripe-bridge && sudo -n /usr/local/bin/docker compose start stripe-bridge"
-ssh crivas@192.168.50.2 "curl -s -o /dev/null -m 5 -w '%{http_code}\n' http://localhost:8000/admin/members"
+ssh "$WZ_NAS_HOST" "cd /volume1/docker/stripe-bridge && sudo -n /usr/local/bin/docker compose start stripe-bridge"
+ssh "$WZ_NAS_HOST" "curl -s -o /dev/null -m 5 -w '%{http_code}\n' http://localhost:8000/admin/members"
 ```
 
 **`401` is the pass, not `200`.** There is no `/health` route; `/admin/members` returning

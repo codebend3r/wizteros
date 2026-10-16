@@ -22,6 +22,7 @@
 // Exit: 0 clean, 1 drift found, 2 misconfigured, or Stripe/Wizarr unreadable.
 // An unreadable store is NOT exit 2; it degrades to a two-way comparison.
 import { execFileSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
@@ -51,7 +52,14 @@ if (!STRIPE_API_KEY || !WIZARR_BASE_URL || !WIZARR_API_KEY) {
 }
 
 const WIZARR = WIZARR_BASE_URL.replace(/\/+$/, '')
-const NAS_HOST = process.env.WZ_NAS_HOST || 'crivas@192.168.50.2'
+/** The NAS ssh target: WZ_NAS_HOST, else what scripts/nas-host.sh builds from the repo's .env. */
+const nasHost = () =>
+  process.env.WZ_NAS_HOST ||
+  execFileSync(
+    fileURLToPath(new URL('../../../../scripts/nas-host.sh', import.meta.url)),
+    ['meleys'],
+    { encoding: 'utf8' },
+  ).trim()
 const NAS_PATH = process.env.WZ_NAS_PATH || '/volume1/docker/stripe-bridge'
 // docker-compose.yml binds ./stripe-bridge-data to /data, so MAP_DB_PATH's
 // basename is the file inside that directory on the NAS.
@@ -284,7 +292,7 @@ const readStore = () => {
       'sh',
       [
         '-c',
-        `set -o pipefail; ssh ${SSH_OPTS} ${NAS_HOST} 'cd ${NAS_DATA_DIR} && tar -cf - .' | tar -xf - -C ${dir}`,
+        `set -o pipefail; ssh ${SSH_OPTS} ${nasHost()} 'cd ${NAS_DATA_DIR} && tar -cf - .' | tar -xf - -C ${dir}`,
       ],
       { stdio: ['ignore', 'ignore', 'pipe'] },
     )
@@ -345,7 +353,7 @@ const readStore = () => {
         // oxlint-disable-next-line unicorn/prefer-array-find
         .filter((l) => l && !l.startsWith('**'))
         .at(-1) ?? 'no error output'
-    return { ok: false, why: `could not copy ${NAS_DATA_DIR} from ${NAS_HOST} (${detail})` }
+    return { ok: false, why: `could not copy ${NAS_DATA_DIR} from ${nasHost()} (${detail})` }
   } finally {
     // Never leave a copy of live member data lying around in /tmp.
     rmSync(dir, { recursive: true, force: true })
@@ -402,7 +410,7 @@ async function main() {
   )
   if (store.ok) {
     console.log(
-      `  · store    ${String(store.rows.size).padStart(4)} customer_map row(s) from ${NAS_HOST}`,
+      `  · store    ${String(store.rows.size).padStart(4)} customer_map row(s) from ${nasHost()}`,
     )
     if (store.missingColumns.length) {
       console.log(`             (older schema: no ${store.missingColumns.join(', ')})`)

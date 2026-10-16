@@ -36,7 +36,7 @@ node --env-file-if-exists=.env .claude/skills/stripe-reconcile/scripts/reconcile
 ```
 
 Run it from the repo root as a single Bash invocation so the user sees the whole
-transcript. Needs the LAN (Wizarr on `192.168.50.2:5690`, the NAS over SSH) and a live
+transcript. Needs the LAN (Wizarr on `<meleys-ip>:5690`, the NAS over SSH) and a live
 `STRIPE_API_KEY`. The Wizarr sweep alone takes ~15s, so expect the run to sit for a while.
 
 Use `--env-file-if-exists`, not `--env-file`. With plain `--env-file` a clone that has no

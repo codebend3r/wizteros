@@ -17,7 +17,8 @@
 // `.env` is gitignored, so whether one exists is a property of the working copy,
 // not of the repo: use it when it is there, otherwise pass whichever file holds
 // the values locally, or export them for the command.
-import { execFile } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
@@ -25,7 +26,14 @@ const execFileAsync = promisify(execFile)
 const { WIZARR_BASE_URL, WIZARR_API_KEY } = process.env
 
 const WIZARR = (WIZARR_BASE_URL ?? '').replace(/\/+$/, '')
-const NAS_HOST = process.env.WZ_NAS_HOST ?? 'crivas@192.168.50.2'
+/** The NAS ssh target: WZ_NAS_HOST, else what scripts/nas-host.sh builds from the repo's .env. */
+const nasHost = () =>
+  process.env.WZ_NAS_HOST ||
+  execFileSync(
+    fileURLToPath(new URL('../../../../scripts/nas-host.sh', import.meta.url)),
+    ['meleys'],
+    { encoding: 'utf8' },
+  ).trim()
 const DOCKER = '/usr/local/bin/docker' // the NOPASSWD sudoers rule matches this literal path
 const SERVICE = 'stripe-bridge'
 const HOUR = 3_600_000
@@ -74,7 +82,7 @@ const ago = (date, now) => {
 const ssh = async (command) => {
   const { stdout } = await execFileAsync(
     'ssh',
-    ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', NAS_HOST, command],
+    ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', nasHost(), command],
     { maxBuffer: 8 * 1024 * 1024 },
   )
   return stdout
@@ -106,7 +114,7 @@ const readStore = async () => {
 const main = async () => {
   const now = new Date()
   say('Invitation audit')
-  say(`  wizarr ${WIZARR}   nas ${NAS_HOST}   ${now.toISOString().slice(0, 16)}Z`)
+  say(`  wizarr ${WIZARR}   nas ${nasHost()}   ${now.toISOString().slice(0, 16)}Z`)
 
   const invitations = await wz('/api/invitations').then((d) => d.invitations ?? [])
 

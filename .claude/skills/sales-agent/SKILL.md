@@ -46,7 +46,7 @@ reports a missing variable, not Node's flag parser.
 
 A live report needs `STRIPE_API_KEY`, `WIZARR_BASE_URL`, and `WIZARR_API_KEY` (the same
 three the bridge runs with), plus SSH key auth to the NAS for the bridge-store read. The
-NAS target defaults to `crivas@192.168.50.2` and `/volume1/docker/stripe-bridge`,
+NAS target defaults to `$WZ_NAS_HOST` and `/volume1/docker/stripe-bridge`,
 overridable with `WZ_NAS_HOST` and `WZ_NAS_PATH`. The store read is a plain SSH redirect,
 `ssh <host> "cat <path>/stripe-bridge-data/bridge.db" > <tmpfile>`, not a tar copy, into a
 `mkdtemp` directory that is removed in a `finally` whether the read succeeds or not.

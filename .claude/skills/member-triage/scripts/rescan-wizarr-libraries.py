@@ -13,8 +13,8 @@ It writes to Wizarr's database: snapshot first with the nas-state-backup skill.
 
 Run from the repo root, as the user gunicorn runs as, with the app on the path:
 
-    scp .claude/skills/member-triage/scripts/rescan-wizarr-libraries.py crivas@192.168.50.2:/tmp/
-    ssh crivas@192.168.50.2 '
+    scp .claude/skills/member-triage/scripts/rescan-wizarr-libraries.py "$WZ_NAS_HOST":/tmp/
+    ssh "$WZ_NAS_HOST" '
       D=/usr/local/bin/docker
       U=$(sudo -n $D exec wizarr awk "/^Uid:/{print \\$2}" /proc/1/status)
       G=$(sudo -n $D exec wizarr awk "/^Gid:/{print \\$2}" /proc/1/status)

@@ -22,13 +22,13 @@ project only.
 
 Constants used throughout:
 
-| Thing               | Value                                                                          |
-| ------------------- | ------------------------------------------------------------------------------ |
-| SSH target          | `crivas@192.168.50.2`                                                          |
-| Compose project dir | `/volume1/docker/westeroz`                                                     |
-| Docker binary       | `sudo -n /usr/local/bin/docker` (literal path, see Hard-Won Details)           |
-| Wizarr URL          | `http://192.168.50.2:5690`                                                     |
-| Bridge URL          | `http://192.168.50.2:8000` (separate project, `/volume1/docker/stripe-bridge`) |
+| Thing               | Value                                                                         |
+| ------------------- | ----------------------------------------------------------------------------- |
+| SSH target          | `$WZ_NAS_HOST`, set with `export WZ_NAS_HOST=$(scripts/nas-host.sh)`          |
+| Compose project dir | `/volume1/docker/westeroz`                                                    |
+| Docker binary       | `sudo -n /usr/local/bin/docker` (literal path, see Hard-Won Details)          |
+| Wizarr URL          | `http://<meleys-ip>:5690`                                                     |
+| Bridge URL          | `http://<meleys-ip>:8000` (separate project, `/volume1/docker/stripe-bridge`) |
 
 Work through the steps in order. Do not reorder, and do not start at step 4 because the
 upgrade "looks routine".
@@ -41,7 +41,7 @@ Read the live service definition before touching anything. The image reference i
 this repo and nobody remembers it correctly.
 
 ```bash
-ssh crivas@192.168.50.2 'cat /volume1/docker/westeroz/docker-compose.yml'
+ssh "$WZ_NAS_HOST" 'cat /volume1/docker/westeroz/docker-compose.yml'
 ```
 
 From the `wizarr:` block, write down:
@@ -61,11 +61,11 @@ Then record the rollback coordinates from the _running container_, which is the 
 place the currently-deployed bytes are identified:
 
 ```bash
-ssh crivas@192.168.50.2 'sudo -n /usr/local/bin/docker inspect --format "{{.Config.Image}}  {{.Image}}" wizarr'
+ssh "$WZ_NAS_HOST" 'sudo -n /usr/local/bin/docker inspect --format "{{.Config.Image}}  {{.Image}}" wizarr'
 ```
 
 ```bash
-ssh crivas@192.168.50.2 'sudo -n /usr/local/bin/docker image inspect --format "{{json .RepoDigests}}" $(sudo -n /usr/local/bin/docker inspect --format "{{.Image}}" wizarr)'
+ssh "$WZ_NAS_HOST" 'sudo -n /usr/local/bin/docker image inspect --format "{{json .RepoDigests}}" $(sudo -n /usr/local/bin/docker inspect --format "{{.Image}}" wizarr)'
 ```
 
 The first prints the configured reference and the image id. The second prints the
@@ -83,7 +83,7 @@ nothing either. Wizarr uses CalVer (`2026.7.1`), and the only reliable in-image 
 `pyproject.toml`:
 
 ```bash
-ssh crivas@192.168.50.2 'sudo -n /usr/local/bin/docker exec wizarr grep -m1 "^version" /app/pyproject.toml'
+ssh "$WZ_NAS_HOST" 'sudo -n /usr/local/bin/docker exec wizarr grep -m1 "^version" /app/pyproject.toml'
 ```
 
 Two traps here, both of which will hand you a confidently wrong version:
@@ -126,15 +126,15 @@ not be able to tell afterwards whether the upgrade caused it.
 Use the **stack-health** skill. If it is unavailable, the manual probes are:
 
 ```bash
-ssh crivas@192.168.50.2 'sudo -n /usr/local/bin/docker inspect --format "{{.Name}} {{.State.Status}}" wizarr tautulli stripe-bridge'
+ssh "$WZ_NAS_HOST" 'sudo -n /usr/local/bin/docker inspect --format "{{.Name}} {{.State.Status}}" wizarr tautulli stripe-bridge'
 ```
 
 ```bash
-ssh crivas@192.168.50.2 'curl -s -L -o /dev/null -m 10 -w "wizarr %{http_code}\n" http://192.168.50.2:5690/'
+ssh "$WZ_NAS_HOST" 'curl -s -L -o /dev/null -m 10 -w "wizarr %{http_code}\n" http://localhost:5690/'
 ```
 
 ```bash
-ssh crivas@192.168.50.2 'curl -s -o /dev/null -m 10 -w "bridge %{http_code}\n" http://192.168.50.2:8000/admin/members'
+ssh "$WZ_NAS_HOST" 'curl -s -o /dev/null -m 10 -w "bridge %{http_code}\n" http://localhost:8000/admin/members'
 ```
 
 Expected: all three containers `running`, Wizarr answers `200` (following its redirect to
@@ -144,7 +144,7 @@ admin router is the liveness probe, and `200` there would mean auth is _not_ wir
 Also read the tier-scope state before you change anything (step 5 compares against it):
 
 ```bash
-ssh crivas@192.168.50.2 'sudo -n /usr/local/bin/docker logs --since 2h stripe-bridge 2>&1 | grep -i "tier scope check" || echo "no tier scope alarms in the last 2h"'
+ssh "$WZ_NAS_HOST" 'sudo -n /usr/local/bin/docker logs --since 2h stripe-bridge 2>&1 | grep -i "tier scope check" || echo "no tier scope alarms in the last 2h"'
 ```
 
 If the alarm is already firing, **stop**. Fix the drift first. See Red Flags.
@@ -170,13 +170,13 @@ is the one part of the backup needing outbound network, and the part most likely
 Pull it as its own command, so a registry problem surfaces while Wizarr is still up:
 
 ```bash
-ssh crivas@192.168.50.2 'sudo -n /usr/local/bin/docker pull alpine'
+ssh "$WZ_NAS_HOST" 'sudo -n /usr/local/bin/docker pull alpine'
 ```
 
 Then stop, tar, and restart. Note the `;` before the final `start`, not `&&`:
 
 ```bash
-ssh crivas@192.168.50.2 'cd /volume1/docker/westeroz && sudo -n /usr/local/bin/docker compose stop wizarr; sudo -n /usr/local/bin/docker run --rm -v /volume1/docker/westeroz/wizarr-data:/src:ro -v /volume1/docker/westeroz:/out alpine tar -czf /out/wizarr-data-$(date +%Y%m%d-%H%M%S).tar.gz -C /src .; sudo -n /usr/local/bin/docker compose start wizarr'
+ssh "$WZ_NAS_HOST" 'cd /volume1/docker/westeroz && sudo -n /usr/local/bin/docker compose stop wizarr; sudo -n /usr/local/bin/docker run --rm -v /volume1/docker/westeroz/wizarr-data:/src:ro -v /volume1/docker/westeroz:/out alpine tar -czf /out/wizarr-data-$(date +%Y%m%d-%H%M%S).tar.gz -C /src .; sudo -n /usr/local/bin/docker compose start wizarr'
 ```
 
 That separator is load-bearing. Chained with `&&`, a failing `tar` (no `alpine`, full
@@ -184,7 +184,7 @@ volume, bad path) skips the `start` and **leaves Wizarr stopped** while you read
 turning a backup into an outage. With `;` the service always comes back, and you judge the
 archive on its own evidence instead of on the exit code.
 
-`sudo` is needed for the `docker` calls but not for the paths: `crivas` is uid 1026 and
+`sudo` is needed for the `docker` calls but not for the paths: `<ssh-user>` is uid 1026 and
 owns both `/volume1/docker/westeroz` and `wizarr-data`, so the archive lands with no
 ownership fight.
 
@@ -192,7 +192,7 @@ Then prove the archive is real. Existence is not enough, precisely because the `
 the `tar` may have failed:
 
 ```bash
-ssh crivas@192.168.50.2 'ls -lht /volume1/docker/westeroz/wizarr-data-*.tar.gz | head -3; A=$(ls -t /volume1/docker/westeroz/wizarr-data-*.tar.gz | head -1); sudo -n /usr/local/bin/docker run --rm -v /volume1/docker/westeroz:/b:ro alpine sh -c "gzip -t /b/$(basename $A) && echo ARCHIVE_OK"'
+ssh "$WZ_NAS_HOST" 'ls -lht /volume1/docker/westeroz/wizarr-data-*.tar.gz | head -3; A=$(ls -t /volume1/docker/westeroz/wizarr-data-*.tar.gz | head -1); sudo -n /usr/local/bin/docker run --rm -v /volume1/docker/westeroz:/b:ro alpine sh -c "gzip -t /b/$(basename $A) && echo ARCHIVE_OK"'
 ```
 
 Want `ARCHIVE_OK`, a plausible size (not zero, not a few hundred bytes), and a timestamp
@@ -206,11 +206,11 @@ Record the archive path. You will name it in the report, and you will need it in
 Two commands, both naming `wizarr` explicitly.
 
 ```bash
-ssh crivas@192.168.50.2 'cd /volume1/docker/westeroz && sudo -n /usr/local/bin/docker compose pull wizarr'
+ssh "$WZ_NAS_HOST" 'cd /volume1/docker/westeroz && sudo -n /usr/local/bin/docker compose pull wizarr'
 ```
 
 ```bash
-ssh crivas@192.168.50.2 'cd /volume1/docker/westeroz && sudo -n /usr/local/bin/docker compose up -d wizarr'
+ssh "$WZ_NAS_HOST" 'cd /volume1/docker/westeroz && sudo -n /usr/local/bin/docker compose up -d wizarr'
 ```
 
 The service name is load-bearing. `westeroz` holds wizarr, tautulli, and the media
@@ -228,7 +228,7 @@ the first failure.
 **5a. The container is running on the new image.**
 
 ```bash
-ssh crivas@192.168.50.2 'sudo -n /usr/local/bin/docker inspect --format "{{.State.Status}}  {{.Image}}" wizarr'
+ssh "$WZ_NAS_HOST" 'sudo -n /usr/local/bin/docker inspect --format "{{.State.Status}}  {{.Image}}" wizarr'
 ```
 
 `running`, and an image id different from the one recorded in step 1. A container that
@@ -238,7 +238,7 @@ re-run this after a minute and confirm `{{.RestartCount}}` is not climbing.
 **5b. The web UI answers.**
 
 ```bash
-ssh crivas@192.168.50.2 'curl -s -L -o /dev/null -m 15 -w "%{http_code}\n" http://192.168.50.2:5690/'
+ssh "$WZ_NAS_HOST" 'curl -s -L -o /dev/null -m 15 -w "%{http_code}\n" http://localhost:5690/'
 ```
 
 Expect `200`. This proves the process booted and migrations (if any) completed; a Wizarr
@@ -250,7 +250,7 @@ the bridge's `listLibraries()` calls (`GET /api/libraries` with an `X-API-Key` h
 see `apps/stripe-bridge/src/clients/wizarr.ts`), using the key the bridge itself holds:
 
 ```bash
-ssh crivas@192.168.50.2 'KEY=$(sudo -n /usr/local/bin/docker exec stripe-bridge printenv WIZARR_API_KEY); curl -s -o /dev/null -m 20 -w "%{http_code}\n" -H "X-API-Key: $KEY" http://192.168.50.2:5690/api/libraries'
+ssh "$WZ_NAS_HOST" 'KEY=$(sudo -n /usr/local/bin/docker exec stripe-bridge printenv WIZARR_API_KEY); curl -s -o /dev/null -m 20 -w "%{http_code}\n" -H "X-API-Key: $KEY" http://localhost:5690/api/libraries'
 ```
 
 `200` means the key survived. `401` or `403` means the upgrade invalidated it, and every
@@ -270,12 +270,12 @@ scope, and deletes the invite afterwards. It uses an `@invalid.test` email that 
 no Plex account, so no real member is ever touched.
 
 Three things to get right. The run must point at whichever bridge you mean
-(`BRIDGE_URL=http://192.168.50.2:8000` for the NAS one; it defaults to `localhost:8000`).
+(`BRIDGE_URL=http://<meleys-ip>:8000` for the NAS one; it defaults to `localhost:8000`).
 The `STRIPE_WEBHOOK_SECRET` in the environment must be the one that bridge verifies
 against, or every webhook is rejected before it reaches Wizarr. And the script also needs
 `WIZARR_BASE_URL` and `WIZARR_API_KEY` to read the invite back, so it exits immediately if
 either is missing. There is **no `.env` at the repo root** (only `.env.example`), so supply
-those four yourself, pointing `WIZARR_BASE_URL` at `http://192.168.50.2:5690` and reusing
+those four yourself, pointing `WIZARR_BASE_URL` at `http://<meleys-ip>:5690` and reusing
 the key the NAS bridge holds (the 5c one-liner reads it). Running this in step 2 as well
 gives a clean before/after comparison and is worth the extra minute.
 
@@ -287,13 +287,13 @@ own if Wizarr renames or re-heals libraries. The check runs on the bridge's reco
 loop and once at boot, so restart the bridge to force a fresh one:
 
 ```bash
-ssh crivas@192.168.50.2 'cd /volume1/docker/stripe-bridge && sudo -n /usr/local/bin/docker compose restart stripe-bridge'
+ssh "$WZ_NAS_HOST" 'cd /volume1/docker/stripe-bridge && sudo -n /usr/local/bin/docker compose restart stripe-bridge'
 ```
 
 Wait about 25 seconds for the boot check to call Wizarr, then read the result:
 
 ```bash
-ssh crivas@192.168.50.2 'sudo -n /usr/local/bin/docker logs --since 5m stripe-bridge 2>&1 | grep -i "tier scope check" || echo "tier scope check: no alarms"'
+ssh "$WZ_NAS_HOST" 'sudo -n /usr/local/bin/docker logs --since 5m stripe-bridge 2>&1 | grep -i "tier scope check" || echo "tier scope check: no alarms"'
 ```
 
 Restarting the bridge is safe: Stripe retries webhooks, and the SQLite mapping is on a
@@ -313,7 +313,7 @@ or not anything actually moved. Grepping the full history therefore always "find
 migrations, including from boots months ago:
 
 ```bash
-ssh crivas@192.168.50.2 'S=$(sudo -n /usr/local/bin/docker inspect --format "{{.State.StartedAt}}" wizarr); sudo -n /usr/local/bin/docker logs --since "$S" wizarr 2>&1 | grep -iE "running upgrade|alembic.runtime.migration|will assume|batch_alter" | head -30'
+ssh "$WZ_NAS_HOST" 'S=$(sudo -n /usr/local/bin/docker inspect --format "{{.State.StartedAt}}" wizarr); sudo -n /usr/local/bin/docker logs --since "$S" wizarr 2>&1 | grep -iE "running upgrade|alembic.runtime.migration|will assume|batch_alter" | head -30'
 ```
 
 The pattern is narrow on purpose. Do not widen it back to `migrat|schema`: that also
@@ -347,27 +347,27 @@ First confirm the old image is still on the box. If it was pruned, no amount of 
 editing will bring it back by digest without a network pull:
 
 ```bash
-ssh crivas@192.168.50.2 'sudo -n /usr/local/bin/docker image inspect --format "rollback target present: {{.Id}}" ghcr.io/wizarrrr/wizarr@sha256:<recorded-digest>'
+ssh "$WZ_NAS_HOST" 'sudo -n /usr/local/bin/docker image inspect --format "rollback target present: {{.Id}}" ghcr.io/wizarrrr/wizarr@sha256:<recorded-digest>'
 ```
 
 Then back up the compose file:
 
 ```bash
-ssh crivas@192.168.50.2 'cd /volume1/docker/westeroz && cp docker-compose.yml docker-compose.yml.pre-rollback'
+ssh "$WZ_NAS_HOST" 'cd /volume1/docker/westeroz && cp docker-compose.yml docker-compose.yml.pre-rollback'
 ```
 
-Editing the compose file needs **no `sudo`**: it is owned by `crivas` and mode `rwxrwxrwx`,
+Editing the compose file needs **no `sudo`**: it is owned by `<ssh-user>` and mode `rwxrwxrwx`,
 so the "only `docker` under non-interactive `sudo`" constraint does not apply to it. Change
 the single `image:` line in the `wizarr:` block to `ghcr.io/wizarrrr/wizarr@sha256:<digest>`
 (a digest reference replaces the whole `repo:tag`; do not append it to `:latest`), then
 confirm you changed the right line and only that line:
 
 ```bash
-ssh crivas@192.168.50.2 'cd /volume1/docker/westeroz && grep -n "image:" docker-compose.yml'
+ssh "$WZ_NAS_HOST" 'cd /volume1/docker/westeroz && grep -n "image:" docker-compose.yml'
 ```
 
 ```bash
-ssh crivas@192.168.50.2 'cd /volume1/docker/westeroz && sudo -n /usr/local/bin/docker compose up -d wizarr'
+ssh "$WZ_NAS_HOST" 'cd /volume1/docker/westeroz && sudo -n /usr/local/bin/docker compose up -d wizarr'
 ```
 
 Prefer the digest over the previous tag. With a floating tag the old bytes are no longer
@@ -378,7 +378,7 @@ previous tag, use it, and say so in the report.
 aside rather than deleting it, so a bad restore is still recoverable:
 
 ```bash
-ssh crivas@192.168.50.2 'cd /volume1/docker/westeroz && sudo -n /usr/local/bin/docker compose stop wizarr && mv wizarr-data wizarr-data.migrated-$(date +%Y%m%d-%H%M%S)'
+ssh "$WZ_NAS_HOST" 'cd /volume1/docker/westeroz && sudo -n /usr/local/bin/docker compose stop wizarr && mv wizarr-data wizarr-data.migrated-$(date +%Y%m%d-%H%M%S)'
 ```
 
 Restore `wizarr-data` from the step 3 archive. If nas-state-backup took the backup, use its
@@ -386,7 +386,7 @@ restore path rather than improvising. If you used the step 3 fallback tarball, t
 matching restore, unpacking through a container for the same reason the backup did:
 
 ```bash
-ssh crivas@192.168.50.2 'cd /volume1/docker/westeroz && mkdir -p wizarr-data && sudo -n /usr/local/bin/docker run --rm -v /volume1/docker/westeroz/wizarr-data:/dst -v /volume1/docker/westeroz:/b:ro alpine tar -xzf /b/<archive-name>.tar.gz -C /dst'
+ssh "$WZ_NAS_HOST" 'cd /volume1/docker/westeroz && mkdir -p wizarr-data && sudo -n /usr/local/bin/docker run --rm -v /volume1/docker/westeroz/wizarr-data:/dst -v /volume1/docker/westeroz:/b:ro alpine tar -xzf /b/<archive-name>.tar.gz -C /dst'
 ```
 
 Name the archive explicitly. Do not glob it: the newest `wizarr-data-*.tar.gz` may be one
@@ -394,13 +394,13 @@ you took _after_ the bad upgrade. Then confirm the database file is actually bac
 starting anything:
 
 ```bash
-ssh crivas@192.168.50.2 'ls -lh /volume1/docker/westeroz/wizarr-data/'
+ssh "$WZ_NAS_HOST" 'ls -lh /volume1/docker/westeroz/wizarr-data/'
 ```
 
 Re-point the image line as above, then:
 
 ```bash
-ssh crivas@192.168.50.2 'cd /volume1/docker/westeroz && sudo -n /usr/local/bin/docker compose up -d wizarr'
+ssh "$WZ_NAS_HOST" 'cd /volume1/docker/westeroz && sudo -n /usr/local/bin/docker compose up -d wizarr'
 ```
 
 After **any** rollback, re-run step 5 from 5a. The restored `wizarr-data` brings back the
@@ -411,13 +411,13 @@ healed library-name cache, and 5d plus 5e are what prove it actually came back.
 Identical shape, one word changed:
 
 ```bash
-ssh crivas@192.168.50.2 'cd /volume1/docker/westeroz && sudo -n /usr/local/bin/docker compose pull tautulli && sudo -n /usr/local/bin/docker compose up -d tautulli'
+ssh "$WZ_NAS_HOST" 'cd /volume1/docker/westeroz && sudo -n /usr/local/bin/docker compose pull tautulli && sudo -n /usr/local/bin/docker compose up -d tautulli'
 ```
 
 The stakes are far lower. Tautulli owns no invites, the bridge never calls it, and
 nothing in the payment path depends on it, so the worst case is losing analytics history
 rather than losing access control. Still back up `tautulli-config` (step 3 covers it),
-and verify with just: container `running`, and the UI answers on `http://192.168.50.2:8181`.
+and verify with just: container `running`, and the UI answers on `http://<meleys-ip>:8181`.
 Skip steps 5c through 5e entirely.
 
 ## Hard-Won Details (do not "simplify" these away)

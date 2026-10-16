@@ -460,7 +460,7 @@ test('joinMembers yields no match for a shape that is neither a repr nor a usern
 test('joinMembers collapses four store rows for one email into a single member', () => {
   const storeRows = [
     {
-      email: 'codebenderinc@gmail.com',
+      email: 'test.member@example.com',
       tier: 'gold',
       invited_at: '2026-07-25T00:00:00Z',
       subscribed: 0,
@@ -468,7 +468,7 @@ test('joinMembers collapses four store rows for one email into a single member',
       invite_code: null,
     },
     {
-      email: 'codebenderinc@gmail.com',
+      email: 'test.member@example.com',
       tier: 'gold',
       invited_at: '2026-07-25T00:00:00Z',
       subscribed: 0,
@@ -476,7 +476,7 @@ test('joinMembers collapses four store rows for one email into a single member',
       invite_code: null,
     },
     {
-      email: 'codebenderinc@gmail.com',
+      email: 'test.member@example.com',
       tier: 'gold',
       invited_at: '2026-07-25T00:00:00Z',
       subscribed: 0,
@@ -484,7 +484,7 @@ test('joinMembers collapses four store rows for one email into a single member',
       invite_code: null,
     },
     {
-      email: 'codebenderinc@gmail.com',
+      email: 'test.member@example.com',
       tier: 'gold',
       invited_at: '2026-07-25T00:00:00Z',
       subscribed: 0,
