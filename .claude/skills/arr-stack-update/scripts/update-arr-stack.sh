@@ -67,7 +67,7 @@ ssh_target() {
   case "$1" in
     meleys)    printf '%s' "${WZ_MELEYS_SSH:-crivas@192.168.50.2}" ;;
     vermithor) printf '%s' "${WZ_VERMITHOR_SSH:-crivas@192.168.50.3}" ;;
-    vhagar)    printf '%s' "${WZ_VHAGAR_SSH:-crivas@192.168.50.4}" ;;
+    vhagar)    printf '%s' "${WZ_VHAGAR_SSH:-crivas@192.168.50.6}" ;;
     *)         die "unknown host: $1 (docker runs only on meleys, vermithor, and vhagar)" ;;
   esac
 }
