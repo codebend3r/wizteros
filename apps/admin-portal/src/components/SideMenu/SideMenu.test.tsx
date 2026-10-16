@@ -157,7 +157,7 @@ test('hides the sign-out button while signed out', () => {
 test('shows the sign-out button while signed in and signs out on click', async () => {
   openMenu()
   const signOut = vi.fn(async () => {})
-  useAuthStore.setState({ status: 'signed-in', email: 'cj.rivas.dev@gmail.com', signOut })
+  useAuthStore.setState({ status: 'signed-in', email: 'admin@example.com', signOut })
   render(
     <MemoryRouter initialEntries={['/manage']}>
       <SideMenu />

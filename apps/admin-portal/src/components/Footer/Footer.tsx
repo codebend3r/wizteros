@@ -4,7 +4,7 @@ const MEMBER_LINK_LABEL = 'Already contributing? Access your account →'
 const MANAGE_LINK_LABEL = 'Manage or cancel your monthly contribution'
 const DISCLAIMER =
   'A contribution toward hosting and infrastructure costs, not a purchase of content.'
-const CONTACT_EMAIL = 'chester.rivas@gmail.com'
+const CONTACT_EMAIL: string = import.meta.env.VITE_CONTACT_EMAIL ?? ''
 
 type FooterProps = {
   memberUrl: string | null
@@ -30,9 +30,11 @@ export const Footer = ({ memberUrl, billingPortalUrl, tone = 'band' }: FooterPro
     </div>
     <div className={styles.fineprint}>
       <p className={styles.disclaimer}>{DISCLAIMER}</p>
-      <a className={styles.contact} href={`mailto:${CONTACT_EMAIL}`}>
-        {CONTACT_EMAIL}
-      </a>
+      {!!CONTACT_EMAIL && (
+        <a className={styles.contact} href={`mailto:${CONTACT_EMAIL}`}>
+          {CONTACT_EMAIL}
+        </a>
+      )}
     </div>
   </footer>
 )

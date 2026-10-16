@@ -2,9 +2,17 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import styles from '@/components/LoginGate/LoginGate.module.scss'
 import { useAuthStore } from '@/stores/authStore'
 
-// Defense in depth: signups are disabled server-side, so only pre-created
-// accounts can authenticate at all.
-export const ALLOWED_ADMIN_EMAILS: ReadonlyArray<string> = ['cj.rivas.dev@gmail.com']
+/**
+ * The emails this gate lets through, from the comma-separated
+ * VITE_ADMIN_ALLOWED_EMAILS. Defense in depth: signups are disabled
+ * server-side, so only pre-created accounts can authenticate at all, and the
+ * servers enforce their own allowlist. An unset list admits nobody.
+ */
+export const adminAllowedEmails = (): ReadonlyArray<string> =>
+  (import.meta.env.VITE_ADMIN_ALLOWED_EMAILS ?? '')
+    .split(',')
+    .map((entry: string) => entry.trim().toLowerCase())
+    .filter((entry: string) => !!entry)
 
 type LoginGateProps = {
   title: string
@@ -21,7 +29,7 @@ export const LoginGate = ({ title, children }: LoginGateProps) => {
   const [draftPassword, setDraftPassword] = useState('')
   const [error, setError] = useState('')
 
-  const allowed = !!email && ALLOWED_ADMIN_EMAILS.includes(email)
+  const allowed = !!email && adminAllowedEmails().includes(email.toLowerCase())
   const blocked = enabled && status === 'signed-in' && !allowed
 
   useEffect(() => {

@@ -568,8 +568,16 @@ test('flags two subscribers whose addresses are one character apart', () => {
     <MemoryRouter>
       <MembersTable
         members={[
-          makeMember({ member: 'jimmyvo767', email: 'jimmyvo767@gmail.com', subscribed: true }),
-          makeMember({ member: 'jimmyvo768', email: 'jimmyvo768@gmail.com', subscribed: true }),
+          makeMember({
+            member: 'samplemember767',
+            email: 'samplemember767@gmail.com',
+            subscribed: true,
+          }),
+          makeMember({
+            member: 'samplemember768',
+            email: 'samplemember768@gmail.com',
+            subscribed: true,
+          }),
           makeMember({ member: 'other', email: 'other@gmail.com', subscribed: true }),
         ]}
         onSelectTier={() => {}}
@@ -587,14 +595,14 @@ test('offers to link a flagged pair when only one of the two holds access', asyn
       <MembersTable
         members={[
           makeMember({
-            member: 'Jimmy Vo',
-            email: 'jimmyvo768@gmail.com',
+            member: 'Sample Member',
+            email: 'samplemember768@gmail.com',
             subscribed: true,
             servers: ['Meleys', 'Vermithor'],
           }),
           makeMember({
-            member: 'jimmyvo767',
-            email: 'jimmyvo767@gmail.com',
+            member: 'samplemember767',
+            email: 'samplemember767@gmail.com',
             subscribed: true,
             servers: [],
           }),
@@ -610,8 +618,8 @@ test('offers to link a flagged pair when only one of the two holds access', asyn
 
   // The address holding no Wizarr records is the one that pays.
   expect(onLinkAddresses).toHaveBeenCalledWith({
-    stripeEmail: 'jimmyvo767@gmail.com',
-    plexEmail: 'jimmyvo768@gmail.com',
+    stripeEmail: 'samplemember767@gmail.com',
+    plexEmail: 'samplemember768@gmail.com',
   })
 })
 
@@ -620,8 +628,8 @@ test('two flagged members who both hold access stay a hint, with nothing to clic
     <MemoryRouter>
       <MembersTable
         members={[
-          makeMember({ email: 'jimmyvo767@gmail.com', subscribed: true, servers: ['Meleys'] }),
-          makeMember({ email: 'jimmyvo768@gmail.com', subscribed: true, servers: ['Meleys'] }),
+          makeMember({ email: 'samplemember767@gmail.com', subscribed: true, servers: ['Meleys'] }),
+          makeMember({ email: 'samplemember768@gmail.com', subscribed: true, servers: ['Meleys'] }),
         ]}
         onSelectTier={() => {}}
         invitingEmail={null}
@@ -639,12 +647,12 @@ test('an already linked member offers no second link', () => {
       <MembersTable
         members={[
           makeMember({
-            email: 'jimmyvo768@gmail.com',
+            email: 'samplemember768@gmail.com',
             subscribed: true,
             servers: ['Meleys'],
-            stripe_email: 'jimmyvo767@gmail.com',
+            stripe_email: 'samplemember767@gmail.com',
           }),
-          makeMember({ email: 'jimmyvo767@gmail.com', subscribed: true, servers: [] }),
+          makeMember({ email: 'samplemember767@gmail.com', subscribed: true, servers: [] }),
         ]}
         onSelectTier={() => {}}
         invitingEmail={null}
@@ -709,9 +717,9 @@ test('keeps the Stripe address off the list even when it differs from the Plex o
       <MembersTable
         members={[
           makeMember({
-            member: 'jimmyvo768',
-            email: 'jimmyvo768@gmail.com',
-            stripe_email: 'jimmyvo767@gmail.com',
+            member: 'samplemember768',
+            email: 'samplemember768@gmail.com',
+            stripe_email: 'samplemember767@gmail.com',
             subscribed: true,
           }),
         ]}
@@ -720,9 +728,9 @@ test('keeps the Stripe address off the list even when it differs from the Plex o
       />
     </MemoryRouter>,
   )
-  expect(screen.getByText('jimmyvo768@gmail.com')).toBeInTheDocument()
+  expect(screen.getByText('samplemember768@gmail.com')).toBeInTheDocument()
   expect(screen.queryByText(/pays as/)).not.toBeInTheDocument()
-  expect(screen.queryByText(/jimmyvo767@gmail.com/)).not.toBeInTheDocument()
+  expect(screen.queryByText(/samplemember767@gmail.com/)).not.toBeInTheDocument()
 })
 
 test('a member whose addresses match shows only the one address', () => {

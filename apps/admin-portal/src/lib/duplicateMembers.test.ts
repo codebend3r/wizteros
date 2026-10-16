@@ -24,36 +24,36 @@ test('flags two subscribers one typed character apart', () => {
   // The real pair: a declined charge, then a re-subscribe under a re-typed
   // address, leaving two live Stripe customers for one person.
   const members = [
-    makeMember({ email: 'jimmyvo767@gmail.com' }),
-    makeMember({ email: 'jimmyvo768@gmail.com' }),
+    makeMember({ email: 'samplemember767@gmail.com' }),
+    makeMember({ email: 'samplemember768@gmail.com' }),
     makeMember({ email: 'someone@else.com' }),
   ]
   const flagged = findDuplicateEmails({ members })
-  expect(flagged.has('jimmyvo767@gmail.com')).toBe(true)
-  expect(flagged.has('jimmyvo768@gmail.com')).toBe(true)
+  expect(flagged.has('samplemember767@gmail.com')).toBe(true)
+  expect(flagged.has('samplemember768@gmail.com')).toBe(true)
   expect(flagged.has('someone@else.com')).toBe(false)
 })
 
 test('flags the same gmail mailbox written with dots or a plus tag', () => {
   const members = [
-    makeMember({ email: 'jim.vo+plex@gmail.com' }),
-    makeMember({ email: 'jimvo@gmail.com' }),
+    makeMember({ email: 'sample.mem+plex@gmail.com' }),
+    makeMember({ email: 'samplemem@gmail.com' }),
   ]
   expect(findDuplicateEmails({ members }).size).toBe(2)
 })
 
 test('an inserted or deleted character counts as one edit', () => {
   const members = [
-    makeMember({ email: 'jimvo@gmail.com' }),
-    makeMember({ email: 'jimmvo@gmail.com' }),
+    makeMember({ email: 'samplemem@gmail.com' }),
+    makeMember({ email: 'samplememm@gmail.com' }),
   ]
   expect(findDuplicateEmails({ members }).size).toBe(2)
 })
 
 test('two edits apart is not a duplicate', () => {
   const members = [
-    makeMember({ email: 'jimmyvo767@gmail.com' }),
-    makeMember({ email: 'jimmyvo889@gmail.com' }),
+    makeMember({ email: 'samplemember767@gmail.com' }),
+    makeMember({ email: 'samplemember889@gmail.com' }),
   ]
   expect(findDuplicateEmails({ members }).size).toBe(0)
 })
@@ -71,16 +71,16 @@ test('only members with a payment signal are compared', () => {
   // Declined and uninvited rows are mostly addresses that never became
   // anyone; pairing them trains the reader to ignore the badge.
   const members = [
-    makeMember({ email: 'jimmyvo767@gmail.com', subscribed: false }),
-    makeMember({ email: 'jimmyvo768@gmail.com', subscribed: false }),
+    makeMember({ email: 'samplemember767@gmail.com', subscribed: false }),
+    makeMember({ email: 'samplemember768@gmail.com', subscribed: false }),
   ]
   expect(findDuplicateEmails({ members }).size).toBe(0)
 })
 
 test('a VIP counts as a payment signal', () => {
   const members = [
-    makeMember({ email: 'jimmyvo767@gmail.com', subscribed: false, tag: 'vip' }),
-    makeMember({ email: 'jimmyvo768@gmail.com' }),
+    makeMember({ email: 'samplemember767@gmail.com', subscribed: false, tag: 'vip' }),
+    makeMember({ email: 'samplemember768@gmail.com' }),
   ]
   expect(findDuplicateEmails({ members }).size).toBe(2)
 })
@@ -88,8 +88,8 @@ test('a VIP counts as a payment signal', () => {
 test('a member in dunning is still compared', () => {
   // This is exactly the pair worth catching: the failed one and its retry.
   const members = [
-    makeMember({ email: 'jimmyvo767@gmail.com', payment_state: 'past_due' }),
-    makeMember({ email: 'jimmyvo768@gmail.com' }),
+    makeMember({ email: 'samplemember767@gmail.com', payment_state: 'past_due' }),
+    makeMember({ email: 'samplemember768@gmail.com' }),
   ]
   expect(findDuplicateEmails({ members }).size).toBe(2)
 })

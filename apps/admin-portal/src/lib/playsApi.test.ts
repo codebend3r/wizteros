@@ -340,7 +340,7 @@ test('fetchPlaySync accepts the spec shape and refuses a wrong one', async () =>
       {
         host: 'meleys',
         friendly_name: 'Meleys',
-        plex_url: 'http://192.168.50.2:32400',
+        plex_url: 'http://192.0.2.2:32400',
         reachable: true,
         history_synced_at: '2026-09-18T04:00:00+00:00',
         library_synced_at: null,

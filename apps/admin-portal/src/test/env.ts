@@ -18,6 +18,11 @@ const DORMANT_VARS: ReadonlyArray<string> = [
   'VITE_PAYMENT_LINK_SILVER_URL',
   'VITE_PAYMENT_LINK_GOLD_URL',
   'VITE_PAYMENT_LINK_YOUTH_URL',
+  'VITE_CONTACT_EMAIL',
 ]
 
 Object.assign(process.env, Object.fromEntries(DORMANT_VARS.map((name) => [name, ''])))
+
+// The one var that is not dormant: the login gate admits only this address, so
+// the allowlist tests have an admin to sign in as.
+process.env.VITE_ADMIN_ALLOWED_EMAILS = 'admin@example.com'

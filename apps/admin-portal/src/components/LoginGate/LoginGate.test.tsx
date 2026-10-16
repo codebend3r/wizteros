@@ -30,7 +30,7 @@ test('renders children for an allowlisted signed-in email', () => {
   useAuthStore.setState({
     enabled: true,
     status: 'signed-in',
-    email: 'cj.rivas.dev@gmail.com',
+    email: 'admin@example.com',
   })
   render(
     <LoginGate title="Test gate">
@@ -54,7 +54,7 @@ test('surfaces sign-in errors inline', async () => {
     </LoginGate>,
   )
 
-  await userEvent.type(screen.getByLabelText('Email'), 'cj.rivas.dev@gmail.com')
+  await userEvent.type(screen.getByLabelText('Email'), 'admin@example.com')
   await userEvent.type(screen.getByLabelText('Password'), 'wrong-password')
   await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
 
