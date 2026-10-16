@@ -12,7 +12,7 @@
 // frequency is a load proxy and not a utilization percent: none of that is
 // knowable a wire away.
 
-import { HOSTS } from '@/config.js'
+import { fleetHosts } from '@/config.js'
 import { METRICS as CPU_METRICS, busySeries } from '@/cpu.js'
 import type { Connection } from '@/db.js'
 import { metricSeries, metricSeriesPrefix, rateSeries, type Series } from '@/store.js'
@@ -275,7 +275,7 @@ export type MetricHistoryView = Readonly<{
 /**
  * One metric family's history for every configured host.
  *
- * Hosts arrive in HOSTS order, the same order `/fleet` uses. The portal binds
+ * Hosts arrive in fleet order, the same order `/fleet` uses. The portal binds
  * one color per host by array position (on the cards from `/fleet`, on the
  * charts from here), so the responses must never disagree about position.
  *
@@ -311,7 +311,7 @@ export const fleetHistory = ({
     kind: family.kind,
     unit: family.unit,
     window_minutes: minutes,
-    hosts: HOSTS.map((host): MetricHostSeries => ({
+    hosts: fleetHosts().map((host): MetricHostSeries => ({
       name: host.name,
       points: history({
         connection,

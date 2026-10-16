@@ -14,10 +14,10 @@
 - All commits: short subject, optional bullet body. **No `Co-Authored-By` or agent-attribution trailers** (per repo `CLAUDE.md`).
 - **User-facing copy (product names, emails, confirmation text) must use infrastructure/hosting language only — never reference Plex, libraries, or media titles** (Plex + Stripe TOS).
 - The bridge is intentionally small: no ORM, no framework beyond FastAPI, no queue. SQLite via stdlib only.
-- The bridge runs standalone and points at the operator's **existing** Wizarr at `http://192.168.50.141:5690` (3 Plex servers already configured). The local `/Users/snowball/Docker/docker-compose.yml` is out of scope — do not touch it.
+- The bridge runs standalone and points at the operator's **existing** Wizarr at `http://<wizarr-ip>:5690` (3 Plex servers already configured). The local `~/Docker/docker-compose.yml` is out of scope — do not touch it.
 - `ACCESS_DURATION` (default `35`) is the per-cycle grant length in days, reused as the renewal extend increment. `INVITE_EXPIRES_DAYS` (default `7`) is how long the invite link stays valid.
 - Wizarr auth header: `X-API-Key: <key>`.
-- Test email for the end-to-end flow: `codebenderinc@gmail.com` (operator's second inbox).
+- Test email for the end-to-end flow: `<test-member-email>` (operator's second inbox).
 
 ### Verified Wizarr API (against wizarrrr/wizarr `main`)
 
@@ -696,12 +696,12 @@ git commit -m "Pin bridge deps, add pytest config, mount SQLite volume
 
 ### Task 5: Manual end-to-end local test (real checkout → invite → Plex signup)
 
-**Files:** none (verification task). Uses the operator's real second inbox `codebenderinc@gmail.com`.
+**Files:** none (verification task). Uses the operator's real second inbox `<test-member-email>`.
 
 **Preconditions:**
 
 - Wizarr API key generated (Wizarr → Settings → API Keys).
-- A local `.env` created from `.env.example` with real values: `WIZARR_BASE_URL=http://192.168.50.141:5690`, the Wizarr API key, working SMTP creds (Gmail app password or Titan), Stripe **test** secret key. Leave `STRIPE_WEBHOOK_SECRET` blank for now.
+- A local `.env` created from `.env.example` with real values: `WIZARR_BASE_URL=http://<wizarr-ip>:5690`, the Wizarr API key, working SMTP creds (Gmail app password or Titan), Stripe **test** secret key. Leave `STRIPE_WEBHOOK_SECRET` blank for now.
 
 - [ ] **Step 1: Build and run the bridge locally**
 
@@ -726,12 +726,12 @@ Copy the `whsec_...` it prints, put it in `.env` as `STRIPE_WEBHOOK_SECRET`, and
 
 - [ ] **Step 3: Drive a real checkout with the test inbox**
 
-Open the test Payment Link `https://buy.stripe.com/test_bJe6oG2Yte2m7l1f721Nu00`, enter `codebenderinc@gmail.com` as the email, pay with test card `4242 4242 4242 4242` (any future expiry, any CVC).
-Expected: `stripe listen` shows `checkout.session.completed` forwarded → bridge logs `sent invite to codebenderinc@gmail.com`. The first `invoice.paid` (subscription_create) logs `skipping first (signup) invoice`.
+Open the test Payment Link `https://buy.stripe.com/test_bJe6oG2Yte2m7l1f721Nu00`, enter `<test-member-email>` as the email, pay with test card `4242 4242 4242 4242` (any future expiry, any CVC).
+Expected: `stripe listen` shows `checkout.session.completed` forwarded → bridge logs `sent invite to <test-member-email>`. The first `invoice.paid` (subscription_create) logs `skipping first (signup) invoice`.
 
 - [ ] **Step 4: Verify the invite email and complete Plex signup**
 
-Check the `codebenderinc@gmail.com` inbox for the "Your server access link" email, click the link, and complete Wizarr's Plex onboarding.
+Check the `<test-member-email>` inbox for the "Your server access link" email, click the link, and complete Wizarr's Plex onboarding.
 Expected: the account appears under Wizarr → Users with an `expires` ~35 days out.
 
 - [ ] **Step 5: Verify renewal extends access**
@@ -742,12 +742,12 @@ Simulate a renewal charge:
 stripe trigger invoice.paid --add invoice:billing_reason=subscription_cycle
 ```
 
-(If the synthetic customer doesn't match, instead advance the test clock / create a renewal on the real subscription in the dashboard so `customer_email` is `codebenderinc@gmail.com`.)
+(If the synthetic customer doesn't match, instead advance the test clock / create a renewal on the real subscription in the dashboard so `customer_email` is `<test-member-email>`.)
 Expected: bridge logs `extended user <id> (+35 days)`; the user's `expires` in Wizarr moves ~35 days further out.
 
 - [ ] **Step 6: Verify cancellation disables access**
 
-In the Stripe **test** dashboard → Subscriptions → cancel the `codebenderinc@gmail.com` subscription immediately.
+In the Stripe **test** dashboard → Subscriptions → cancel the `<test-member-email>` subscription immediately.
 Expected: `customer.subscription.deleted` forwarded → bridge logs `disabled user <id>`; the user shows as disabled in Wizarr and loses Plex access.
 
 - [ ] **Step 7: Record the result**
@@ -760,9 +760,9 @@ No commit needed. Note pass/fail of Steps 3–6 in the plan checklist. If any st
 
 Do **not** start until Task 5 passes. Tracked here so it isn't lost; expand into its own plan when ready.
 
-- Migrate `cjrivas.io` DNS to Cloudflare; swap nameservers at name.com.
-- Create a Cloudflare Tunnel; add a `cloudflared` service (wherever the bridge will run in production) routing `webhook.cjrivas.io → bridge:8000` (and optionally `invite.cjrivas.io → wizarr:5690`).
-- In the Stripe **live** dashboard: recreate the product + Payment Link, add a webhook endpoint at `https://webhook.cjrivas.io/stripe/webhook` for the three events, copy its signing secret to the live `.env`.
+- Migrate `example.com` DNS to Cloudflare; swap nameservers at name.com.
+- Create a Cloudflare Tunnel; add a `cloudflared` service (wherever the bridge will run in production) routing `webhook.example.com → bridge:8000` (and optionally `invite.example.com → wizarr:5690`).
+- In the Stripe **live** dashboard: recreate the product + Payment Link, add a webhook endpoint at `https://webhook.example.com/stripe/webhook` for the three events, copy its signing secret to the live `.env`.
 - Switch the bridge to Stripe **live** keys. Smoke-test one real $1-ish transaction or a live test with the operator's own card, then invite a small trusted group.
 - Free tier stays manual: generate unlimited-duration Wizarr invites directly in the admin UI for family/VIP.
 
@@ -770,6 +770,6 @@ Do **not** start until Task 5 passes. Tracked here so it isn't lost; expand into
 
 ## Self-Review
 
-- **Spec coverage:** Two-tier model → free tier stays manual (Task 6 note; no code needed). Paid pipeline `checkout/invoice.paid/subscription.deleted` → Task 3. `invoice.paid` extend + skip-first → Task 3. Cancel=disable → Task 3. SQLite identity map → Tasks 1 & 3. Verified Wizarr endpoints → Tasks 2. Config/volume/env → Task 4. Local Stripe-CLI test with `codebenderinc@gmail.com` → Task 5. Go-live → Task 6. All spec sections mapped.
+- **Spec coverage:** Two-tier model → free tier stays manual (Task 6 note; no code needed). Paid pipeline `checkout/invoice.paid/subscription.deleted` → Task 3. `invoice.paid` extend + skip-first → Task 3. Cancel=disable → Task 3. SQLite identity map → Tasks 1 & 3. Verified Wizarr endpoints → Tasks 2. Config/volume/env → Task 4. Local Stripe-CLI test with `<test-member-email>` → Task 5. Go-live → Task 6. All spec sections mapped.
 - **Placeholder scan:** No TBD/TODO; every code step shows full code; the one deferred task (6) is explicitly labeled deferred, not a hidden placeholder.
 - **Type consistency:** `create_invite` returns `{"code","url"}` (Task 2) and is consumed as `invite["code"]`/`invite["url"]` (Task 3). `resolve_user_id`, `handle_event`, `customer_email`, `MAP_DB_PATH` defined in Task 3 and exercised by Task 3 tests. `store` function names match across Tasks 1 & 3. `extend_user(uid, int(ACCESS_DURATION))` matches `extend_user(self, user_id, days)`.

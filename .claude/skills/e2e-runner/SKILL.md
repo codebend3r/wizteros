@@ -42,7 +42,7 @@ from.
 
 `node --env-file=../../.env scripts/e2e-retest.mjs [email]`, run by Nx with the cwd set to
 `apps/stripe-bridge`, so `../../.env` resolves to the repo-root file. Default member
-`codebenderinc@gmail.com`, overridable as `process.argv[2]`, though the `bun run test:e2e` alias
+`<test-member-email>`, overridable as `process.argv[2]`, though the `bun run test:e2e` alias
 cannot pass that argument (see Procedure).
 
 1. Exits `2` unless `WIZARR_BASE_URL`, `WIZARR_API_KEY`, and `STRIPE_WEBHOOK_SECRET` are set.
@@ -161,7 +161,7 @@ snapshot. That is the real reason to always bring it down.
 
 ### Running retest against the default member
 
-`codebenderinc@gmail.com` is the designated test member (the repo owner's own account). Running
+`<test-member-email>` is the designated test member (the repo owner's own account). Running
 against it is fine when the owner is running it on their own machine, is fine with one invite
 email landing in that inbox, and expects the account to end on a fresh 35 day window.
 
@@ -242,7 +242,7 @@ bun run bridge:down       # ALWAYS, pass or fail
   `bun run bridge:build && bun run bridge:up && bun run test:e2e:tiers`.
 - **Different member: the root alias cannot carry the email.** `bun run test:e2e someone@example.com`
   runs `nx run-many -t test:e2e -p stripe-bridge someone@example.com`, and `run-many` **silently
-  drops** the positional: the script gets no `argv[2]` and retests `codebenderinc@gmail.com`
+  drops** the positional: the script gets no `argv[2]` and retests `<test-member-email>`
   instead of the address you typed. Use one of the two forms that do pass it, with the bridge
   already up:
 
@@ -306,7 +306,7 @@ bun run bridge:down       # ALWAYS, pass or fail
 - **Pointing retest at a real member who is not the designated test member.** It resets and
   re-grants 35 days of access, and can disable every record they hold. Confirm the email first.
 - **Assuming `bun run test:e2e <email>` retests that email.** The argument is dropped, so the run
-  silently hits `codebenderinc@gmail.com` instead. Read the printed header, and use the direct
+  silently hits `<test-member-email>` instead. Read the printed header, and use the direct
   `node` form for anyone else.
 - **Leaving `stripe-bridge-e2e` up.** It holds live Stripe, Wizarr, and SMTP credentials on
   port 8000, and its reconcile loop keeps writing to live Wizarr on a timer. `bun run bridge:down`

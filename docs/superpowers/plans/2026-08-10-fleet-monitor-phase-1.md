@@ -26,18 +26,18 @@
 
 ## Fleet reference (measured 2026-08-10)
 
-| Host        | IP           | Cores | RAM     | `/dev/dri` | Docker                     |
-| ----------- | ------------ | ----- | ------- | ---------- | -------------------------- |
-| `vermithor` | 192.168.50.3 | 4     | 15.8 GB | yes        | yes                        |
-| `meleys`    | 192.168.50.2 | 2c/4t | 32.1 GB | no         | yes                        |
-| `syrax`     | 192.168.50.5 | 4     | 32.1 GB | no         | no                         |
-| `vhagar`    | 192.168.50.6 | 4     | 7.8 GB  | yes        | **yes** (added 2026-08-11) |
-| `caraxes`   | 192.168.50.4 | 4     | 1.6 GB  | no         | no (aarch64, unsupported)  |
+| Host        | IP             | Cores | RAM     | `/dev/dri` | Docker                     |
+| ----------- | -------------- | ----- | ------- | ---------- | -------------------------- |
+| `vermithor` | <vermithor-ip> | 4     | 15.8 GB | yes        | yes                        |
+| `meleys`    | <meleys-ip>    | 2c/4t | 32.1 GB | no         | yes                        |
+| `syrax`     | <syrax-ip>     | 4     | 32.1 GB | no         | no                         |
+| `vhagar`    | <vhagar-ip>    | 4     | 7.8 GB  | yes        | **yes** (added 2026-08-11) |
+| `caraxes`   | <caraxes-ip>   | 4     | 1.6 GB  | no         | no (aarch64, unsupported)  |
 
 `vhagar` runs Jellyfin as of 2026-08-11, so it is a third Docker host. `caraxes` is the
 only box where Docker cannot run at all.
 
-SSH user is `crivas` with `~/.ssh/id_ed25519` on all five.
+SSH user is `<ssh-user>` with `~/.ssh/id_ed25519` on all five.
 
 ## File structure
 
@@ -354,9 +354,9 @@ Run:
 
 ```bash
 cd apps/fleet-monitor/tests/fixtures
-ssh -o LogLevel=ERROR crivas@192.168.50.4 'head -6 /proc/stat' > caraxes_proc_stat.txt
-ssh -o LogLevel=ERROR crivas@192.168.50.4 'head -8 /proc/meminfo' > caraxes_proc_meminfo.txt
-ssh -o LogLevel=ERROR crivas@192.168.50.4 'cat /proc/net/dev' > caraxes_proc_net_dev.txt
+ssh -o LogLevel=ERROR <ssh-user>@<caraxes-ip> 'head -6 /proc/stat' > caraxes_proc_stat.txt
+ssh -o LogLevel=ERROR <ssh-user>@<caraxes-ip> 'head -8 /proc/meminfo' > caraxes_proc_meminfo.txt
+ssh -o LogLevel=ERROR <ssh-user>@<caraxes-ip> 'cat /proc/net/dev' > caraxes_proc_net_dev.txt
 ```
 
 If off the LAN, use these verified captures instead.
@@ -1065,7 +1065,7 @@ import subprocess, sys
 sys.path.insert(0, "apps/fleet-monitor")
 from fleet_monitor.probes import script, proc, system
 out = subprocess.run(
-    ["ssh", "-o", "LogLevel=ERROR", "crivas@192.168.50.3", "bash -s"],
+    ["ssh", "-o", "LogLevel=ERROR", "<ssh-user>@<vermithor-ip>", "bash -s"],
     input=script.VITALS_SCRIPT, capture_output=True, text=True,
 ).stdout
 sections = script.split_sections(out)
@@ -1076,7 +1076,7 @@ print("gpu:", system.parse_gpu_freq(sections["gpu"]))
 PY
 ```
 
-Expected: sections `['gpu', 'loadavg', 'meminfo', 'netdev', 'stat', 'uptime']`, a non-zero cpu and net sample count, and a populated GPU tuple since vermithor has a render node. Repeat against `crivas@192.168.50.4` (caraxes) and confirm `gpu: ()` there.
+Expected: sections `['gpu', 'loadavg', 'meminfo', 'netdev', 'stat', 'uptime']`, a non-zero cpu and net sample count, and a populated GPU tuple since vermithor has a render node. Repeat against `<ssh-user>@<caraxes-ip>` (caraxes) and confirm `gpu: ()` there.
 
 - [ ] **Step 6: Run lint and commit**
 
@@ -1108,7 +1108,7 @@ git commit -m "WZ: Batch fleet-monitor host collection into one script per tick
 - Produces:
   - `ssh.SshResult(ok: bool, stdout: str, reason: str)`, a frozen dataclass.
   - `ssh.build_argv(host: str, user: str, control_dir: str, timeout: int) -> tuple[str, ...]`
-  - `async ssh.run(host: str, body: str, *, user: str = "crivas", control_dir: str = "/tmp/fm", timeout: int = 15) -> SshResult`
+  - `async ssh.run(host: str, body: str, *, user: str = "<ssh-user>", control_dir: str = "/tmp/fm", timeout: int = 15) -> SshResult`
   - `ssh.classify(returncode: int, stderr: str) -> str`
 
 - [ ] **Step 1: Write the failing tests**
@@ -1122,7 +1122,7 @@ from fleet_monitor.transport import ssh
 
 
 def test_build_argv_multiplexes_and_silences_warnings():
-    argv = ssh.build_argv(host="192.168.50.3", user="crivas", control_dir="/tmp/fm", timeout=15)
+    argv = ssh.build_argv(host="<vermithor-ip>", user="<ssh-user>", control_dir="/tmp/fm", timeout=15)
     joined = " ".join(argv)
 
     # LogLevel=ERROR is load bearing: current OpenSSH prints a post-quantum
@@ -1133,7 +1133,7 @@ def test_build_argv_multiplexes_and_silences_warnings():
     assert "-oBatchMode=yes" in argv
     assert "-oConnectTimeout=15" in argv
     assert "/tmp/fm/" in joined
-    assert argv[-2:] == ("crivas@192.168.50.3", "bash -s")
+    assert argv[-2:] == ("<ssh-user>@<vermithor-ip>", "bash -s")
 
 
 def test_build_argv_never_prompts():
@@ -1282,7 +1282,7 @@ async def run(
     host: str,
     body: str,
     *,
-    user: str = "crivas",
+    user: str = "<ssh-user>",
     control_dir: str = "/tmp/fm",
     timeout: int = 15,
 ) -> SshResult:
@@ -1316,7 +1316,7 @@ from fleet_monitor.transport import ssh
 async def main():
     for attempt in range(3):
         start = time.monotonic()
-        result = await ssh.run("192.168.50.3", "echo ok", control_dir="/tmp/fm-bench")
+        result = await ssh.run("<vermithor-ip>", "echo ok", control_dir="/tmp/fm-bench")
         print(attempt, result.ok, result.stdout.strip(), f"{time.monotonic() - start:.3f}s")
 
 asyncio.run(main())
@@ -1324,7 +1324,7 @@ PY
 ls /tmp/fm-bench
 ```
 
-Expected: all three print `True ok`. The first is noticeably slower than the second and third, and `/tmp/fm-bench` contains a `crivas@192.168.50.3:22` socket. That gap is the multiplexing working.
+Expected: all three print `True ok`. The first is noticeably slower than the second and third, and `/tmp/fm-bench` contains a `<ssh-user>@<vermithor-ip>:22` socket. That gap is the multiplexing working.
 
 - [ ] **Step 7: Run lint and commit**
 
@@ -2132,8 +2132,8 @@ Verify both, and note that on vhagar `/volume1/docker` is created mode `000` wit
 Synology ACL, so the compose directory needs `chmod 755` before anything can read it:
 
 ```bash
-NAS=/Users/chesterrivas/.claude/skills/synology-nas-ssh/scripts/nas
-for h in meleys:192.168.50.2 vhagar:192.168.50.6; do
+NAS=~/.claude/skills/synology-nas-ssh/scripts/nas
+for h in meleys:<meleys-ip> vhagar:<vhagar-ip>; do
   name="${h%%:*}"; ip="${h##*:}"
   $NAS sudo "$name" 'chmod -R 755 /volume1/docker/fleet-monitor'
   $NAS docker "$name" compose -f /volume1/docker/fleet-monitor/docker-compose.yml up -d
@@ -2156,7 +2156,7 @@ from fleet_monitor.probes import docker
 from fleet_monitor.transport import http
 
 async def main():
-    result = await http.get_json("http://192.168.50.2:2375/containers/json?all=1")
+    result = await http.get_json("http://<meleys-ip>:2375/containers/json?all=1")
     states = docker.parse_containers(json.loads(result.body))
     for s in states:
         print(f"{s.name:20} running={s.running} health={s.health}")
@@ -2165,7 +2165,7 @@ asyncio.run(main())
 PY
 ```
 
-Expected: six containers on meleys (`sonarr`, `sabnzbd`, `radarr`, `stripe-bridge`, `wizarr`, `tautulli`), with `wizarr` and `tautulli` reporting `healthy`. Repeat against `192.168.50.6` and expect `jellyfin` plus the socket proxy.
+Expected: six containers on meleys (`sonarr`, `sabnzbd`, `radarr`, `stripe-bridge`, `wizarr`, `tautulli`), with `wizarr` and `tautulli` reporting `healthy`. Repeat against `<vhagar-ip>` and expect `jellyfin` plus the socket proxy.
 
 - [ ] **Step 8: Run lint and commit**
 
@@ -2612,11 +2612,11 @@ def test_the_three_docker_hosts_are_configured():
 
 def test_ips_match_the_fleet():
     by_name = {h.name: h.ip for h in config.HOSTS}
-    assert by_name["meleys"] == "192.168.50.2"
-    assert by_name["vermithor"] == "192.168.50.3"
-    assert by_name["caraxes"] == "192.168.50.4"
-    assert by_name["syrax"] == "192.168.50.5"
-    assert by_name["vhagar"] == "192.168.50.6"
+    assert by_name["meleys"] == "<meleys-ip>"
+    assert by_name["vermithor"] == "<vermithor-ip>"
+    assert by_name["caraxes"] == "<caraxes-ip>"
+    assert by_name["syrax"] == "<syrax-ip>"
+    assert by_name["vhagar"] == "<vhagar-ip>"
 ```
 
 `apps/fleet-monitor/tests/test_collector.py`:
@@ -2712,11 +2712,11 @@ class Host:
 # The container list under each is discovered per tick, so a new stack member
 # needs no change here; only a host gaining Docker does.
 HOSTS = (
-    Host("meleys", "192.168.50.2", has_gpu=False, docker_url="http://192.168.50.2:2375"),
-    Host("vermithor", "192.168.50.3", has_gpu=True, docker_url="http://192.168.50.3:2375"),
-    Host("caraxes", "192.168.50.4", has_gpu=False, docker_url=""),
-    Host("syrax", "192.168.50.5", has_gpu=False, docker_url=""),
-    Host("vhagar", "192.168.50.6", has_gpu=True, docker_url="http://192.168.50.6:2375"),
+    Host("meleys", "<meleys-ip>", has_gpu=False, docker_url="http://<meleys-ip>:2375"),
+    Host("vermithor", "<vermithor-ip>", has_gpu=True, docker_url="http://<vermithor-ip>:2375"),
+    Host("caraxes", "<caraxes-ip>", has_gpu=False, docker_url=""),
+    Host("syrax", "<syrax-ip>", has_gpu=False, docker_url=""),
+    Host("vhagar", "<vhagar-ip>", has_gpu=True, docker_url="http://<vhagar-ip>:2375"),
 )
 
 
@@ -2725,7 +2725,7 @@ def db_path() -> str:
 
 
 def ssh_user() -> str:
-    return os.environ.get("FM_SSH_USER", "crivas")
+    return os.environ.get("FM_SSH_USER", "<ssh-user>")
 ```
 
 - [ ] **Step 4: Write the collector**
@@ -3194,7 +3194,7 @@ test('formatBytes renders a dash for a missing value', () => {
 test('toHostSummary marks an uncollected host as unknown rather than healthy', () => {
   const summary = toHostSummary({
     name: 'caraxes',
-    ip: '192.168.50.4',
+    ip: '<caraxes-ip>',
     has_gpu: false,
     has_docker: false,
     collected: false,
@@ -3209,7 +3209,7 @@ test('toHostSummary marks an uncollected host as unknown rather than healthy', (
 test('toHostSummary normalizes load against four cores', () => {
   const summary = toHostSummary({
     name: 'meleys',
-    ip: '192.168.50.2',
+    ip: '<meleys-ip>',
     has_gpu: false,
     has_docker: true,
     collected: true,
@@ -3224,7 +3224,7 @@ test('toHostSummary normalizes load against four cores', () => {
 test('toHostSummary flags a host whose disk is over the warn threshold', () => {
   const summary = toHostSummary({
     name: 'vermithor',
-    ip: '192.168.50.3',
+    ip: '<vermithor-ip>',
     has_gpu: true,
     has_docker: true,
     collected: true,
@@ -3349,7 +3349,7 @@ import { HostCard } from '@/pages/Fleet/HostCard'
 
 const summary: HostSummary = {
   name: 'vermithor',
-  ip: '192.168.50.3',
+  ip: '<vermithor-ip>',
   status: 'warn',
   hasGpu: true,
   hasDocker: true,

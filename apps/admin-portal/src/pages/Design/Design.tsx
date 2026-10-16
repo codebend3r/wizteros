@@ -56,7 +56,7 @@ const TYPE_FAMILIES = [
     family: 'Nunito Sans',
     sample: 'Rewrites the recorded tier instantly; no new invite is sent.',
   },
-  { token: '--font-mono', family: 'JetBrains Mono', sample: 'amolsharma@me.com · 4 / 28' },
+  { token: '--font-mono', family: 'JetBrains Mono', sample: 'sample.member@example.com · 4 / 28' },
   { token: '--font-pixel', family: 'Doto', sample: 'TICKER, BADGES AND EYEBROWS' },
   { token: '--font-brand', family: 'Lily Script One', sample: 'Westeroz' },
 ] as const
@@ -91,8 +91,8 @@ type SpecimenRow = {
 
 const SPECIMEN_ROWS: ReadonlyArray<SpecimenRow> = [
   {
-    member: 'amols7',
-    email: 'amolsharma@me.com',
+    member: 'samplemember7',
+    email: 'sample.one@example.com',
     tier: 'bronze',
     emoji: '🟢',
     status: 'Subscribed',
@@ -100,8 +100,8 @@ const SPECIMEN_ROWS: ReadonlyArray<SpecimenRow> = [
     action: 'Re-invite',
   },
   {
-    member: '809lenny',
-    email: '809lenny@gmail.com',
+    member: 'samplemember809',
+    email: 'sample.member@example.com',
     tier: null,
     emoji: '⚪',
     status: 'Uninvited',

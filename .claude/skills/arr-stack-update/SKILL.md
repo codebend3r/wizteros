@@ -33,7 +33,7 @@ from container labels — never hardcode the paths, they have moved before.
 Meleys and Vermithor both run a `sonarr`, a `radarr` and a `sabnzbd`. **Always name the host** — never
 say "the sonarr container".
 
-**Vhagar is wired up but unproven.** Its SSH target (`crivas@192.168.50.4`) is confirmed
+**Vhagar is wired up but unproven.** Its SSH target (`<ssh-user>@<vhagar-ip>`) is confirmed
 reachable, but `sudo` there needs a password and the stored keychain credential is
 rejected, so the stack has never actually been enumerated — the project name, directory,
 and service list above are assumptions, not observations. Fix the sudo first (a NOPASSWD

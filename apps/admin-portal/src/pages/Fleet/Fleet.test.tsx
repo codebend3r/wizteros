@@ -15,7 +15,7 @@ import {
 
 const summary: HostSummary = {
   name: 'vermithor',
-  ip: '192.168.50.3',
+  ip: '192.0.2.3',
   status: 'warn',
   hasGpu: true,
   hasDocker: true,
@@ -36,7 +36,7 @@ const summary: HostSummary = {
 
 const host: FleetHost = {
   name: 'vermithor',
-  ip: '192.168.50.3',
+  ip: '192.0.2.3',
   has_gpu: true,
   has_docker: true,
   collected: true,
@@ -381,7 +381,7 @@ test('Fleet renders one card per host once the payload lands', async () => {
         {
           ...host,
           name: 'caraxes',
-          ip: '192.168.50.4',
+          ip: '192.0.2.4',
           collected: false,
           status: 'unknown',
           cores: null,
@@ -460,7 +460,7 @@ test('Fleet binds each card to the chart colour of the same host position', asyn
     fleet: {
       collected_at: '2026-08-15T00:00:00+00:00',
       stale: false,
-      hosts: [host, { ...host, name: 'caraxes', ip: '192.168.50.4' }],
+      hosts: [host, { ...host, name: 'caraxes', ip: '192.0.2.4' }],
     },
     incidents: { open: [], recent: [] },
     cpu: {

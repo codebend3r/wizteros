@@ -4,8 +4,8 @@ import type { Member } from '@/lib/adminApi'
  * Find members who are probably the same person under two addresses.
  *
  * A member whose card declines does not always wait for Stripe to retry. Some
- * re-subscribe from scratch, and a re-typed address (jimmyvo767 becoming
- * jimmyvo768) opens a second Stripe customer instead of fixing the first. The
+ * re-subscribe from scratch, and a re-typed address (samplemember767 becoming
+ * samplemember768) opens a second Stripe customer instead of fixing the first. The
  * bridge keys everything on email, so the two never meet: the new payment
  * cannot rescue the old member's access, and the old subscription keeps
  * dunning against a card nobody is watching. Both rows then read as healthy
@@ -15,7 +15,7 @@ import type { Member } from '@/lib/adminApi'
  * Two signals, both cheap enough to run over the whole table:
  *
  * - the same mailbox written differently. Gmail ignores dots and anything
- *   after a `+`, so `jim.vo+plex@gmail.com` and `jimvo@gmail.com` deliver to
+ *   after a `+`, so `sample.mem+plex@gmail.com` and `samplemem@gmail.com` deliver to
  *   one inbox and bill as two customers.
  * - a single typed character apart, which is what a re-typed address looks
  *   like: one substitution, insertion, or deletion.

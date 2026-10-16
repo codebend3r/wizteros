@@ -19,6 +19,7 @@ DOCKER_BIN="/usr/local/bin/docker"   # not on the non-interactive PATH; sudoers 
 DOCKER="$DOCKER_BIN"
 SSH="ssh -o BatchMode=yes -o ConnectTimeout=10"
 KEYCHAIN_SERVICE="${WZ_NAS_KEYCHAIN:-synology-nas}"
+REPO="${WZ_REPO:-$(cd "$(dirname "$0")/../../../.." && pwd)}"
 
 # Only these three boxes run docker. Each keeps its media stack in one compose
 # project, discovered at runtime from container labels rather than hardcoded.
@@ -62,13 +63,13 @@ in_list() {
   return 1
 }
 
-# Maps a host alias to its ssh target, overridable for a different LAN.
+# Maps a host alias to its ssh target. scripts/nas-host.sh builds it from the
+# repo's .env (FM_SSH_USER plus the host's slot in FM_HOST_IPS), and
+# WZ_MELEYS_SSH, WZ_VERMITHOR_SSH or WZ_VHAGAR_SSH override it for one host.
 ssh_target() {
   case "$1" in
-    meleys)    printf '%s' "${WZ_MELEYS_SSH:-crivas@192.168.50.2}" ;;
-    vermithor) printf '%s' "${WZ_VERMITHOR_SSH:-crivas@192.168.50.3}" ;;
-    vhagar)    printf '%s' "${WZ_VHAGAR_SSH:-crivas@192.168.50.4}" ;;
-    *)         die "unknown host: $1 (docker runs only on meleys, vermithor, and vhagar)" ;;
+    meleys|vermithor|vhagar) "$REPO/scripts/nas-host.sh" "$1" ;;
+    *) die "unknown host: $1 (docker runs only on meleys, vermithor, and vhagar)" ;;
   esac
 }
 
@@ -102,7 +103,7 @@ host_password() {
     var="WZ_NAS_PASSWORD_${host}"
     pw="$(eval "printf '%s' \"\${$var:-}\"")"
     [ -n "$pw" ] || pw="$(security find-generic-password -s "$KEYCHAIN_SERVICE" -a "$host" -w 2>/dev/null || true)"
-    [ -n "$pw" ] || pw="$(security find-generic-password -s "$KEYCHAIN_SERVICE" -a crivas -w 2>/dev/null || true)"
+    [ -n "$pw" ] || pw="$(security find-generic-password -s "$KEYCHAIN_SERVICE" -a "$(ssh_target "$host" | cut -d@ -f1)" -w 2>/dev/null || true)"
     [ -n "$pw" ] || die "$host needs a sudo password and none is stored. Run: nas setpw $host  (or set WZ_NAS_PASSWORD_${host})"
     HOST_PW="$pw"
   fi

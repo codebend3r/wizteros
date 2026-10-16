@@ -633,7 +633,7 @@ The "No expiry" preset assumes `PUT /api/users/{id}/update-expiry` accepts `{"ex
 
 ```bash
 # Read the id + confirm it's safe to touch, then:
-curl -s -X PUT "http://192.168.50.2:5690/api/users/<TEST_ID>/update-expiry" \
+curl -s -X PUT "http://<meleys-ip>:5690/api/users/<TEST_ID>/update-expiry" \
   -H "X-API-Key: $WIZARR_API_KEY" -H "Content-Type: application/json" \
   -d '{"expires": null}' -w "\nHTTP %{http_code}\n"
 ```
@@ -2145,7 +2145,7 @@ Append to `web/.env.example`:
 ```bash
 # Base URL of the stripe-bridge admin API used by /manage and /reset-user.
 # Behind Tailscale Funnel, which strips the /stripe prefix before the bridge.
-VITE_ADMIN_API_BASE=https://meleys.tail5586d4.ts.net/stripe
+VITE_ADMIN_API_BASE=https://<node>.<tailnet>.ts.net/stripe
 ```
 
 - [ ] **Step 5: Run to verify pass**

@@ -28,13 +28,13 @@
 
 ## Fleet reference (measured 2026-09-18)
 
-| Host        | Plex URL                     | Notes                                |
-| ----------- | ---------------------------- | ------------------------------------ |
-| `meleys`    | `http://192.168.50.2:32400`  | 24 sections, 1,599 plays in the year |
-| `vermithor` | `https://192.168.50.3:32400` | requires https, self-signed          |
-| `caraxes`   | `http://192.168.50.4:32400`  | 6 sections, 4,109 plays in the year  |
-| `syrax`     | `http://192.168.50.5:32400`  | 4 sections, 661 plays in the year    |
-| `vhagar`    | `https://192.168.50.6:32400` | requires https, self-signed          |
+| Host        | Plex URL                       | Notes                                |
+| ----------- | ------------------------------ | ------------------------------------ |
+| `meleys`    | `http://<meleys-ip>:32400`     | 24 sections, 1,599 plays in the year |
+| `vermithor` | `https://<vermithor-ip>:32400` | requires https, self-signed          |
+| `caraxes`   | `http://<caraxes-ip>:32400`    | 6 sections, 4,109 plays in the year  |
+| `syrax`     | `http://<syrax-ip>:32400`      | 4 sections, 661 plays in the year    |
+| `vhagar`    | `https://<vhagar-ip>:32400`    | requires https, self-signed          |
 
 The owner token is `PLEX_TOKEN` in the root `.env`, already passed to every compose service through `env_file`. The monitor reads `FM_PLEX_TOKEN` first and falls back to `PLEX_TOKEN`.
 

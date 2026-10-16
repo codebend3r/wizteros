@@ -150,29 +150,10 @@ expiry were set while the old `subscribed = expires != null` logic is live, the
 lives in `customer_map`; the Wizarr-side representation of the 14-day window is
 the expiry date. There is no separate Wizarr "invited" timestamp to set.
 
-**The 44 emails** (roster minus the 5 VIP emails; auditable — strike any before
-running):
-
-```
-amolsharma@me.com              andrewmasonmac@gmail.com       andrew.a.donald@gmail.com
-oe.andy0102@gmail.com          artirawal2009@gmail.com        ayosalawu@gmail.com
-codebenderinc@gmail.com        chrismanocchio@gmail.com       christopherlukestewart@gmail.com
-cuallijulius@gmail.com         danny.p.79@icloud.com          davejmcg@gmail.com
-harpreetmand@gmail.com         harmancheema07@gmail.com       higorsalesart@gmail.com
-jamal.tobias@gmail.com         jean.abousaab@gmail.com        jeffreceno@hotmail.com
-jimmyvo768@gmail.com           jroberts0985@gmail.com         karensjahn@gmail.com
-kensuong@gmail.com             kkalawi@gmail.com              lauramjbowers@gmail.com
-809lenny@gmail.com             luxman.thevathasan@gmail.com   m.mcphaden@live.ca
-macklewis16@gmail.com          mattbk.cb@gmail.com            stefuraknataliia@gmail.com
-nicklhw@gmail.com              pollux527@hotmail.com          contactprerit@gmail.com
-ramiandari@gmail.com           rita.duchak@icloud.com         rodrigobocaiuva@gmail.com
-rorosha13@gmail.com            ryan.duchak@gmail.com          schopra86@live.com
-canexan@gmail.com              jbloco26@gmail.com             gmacgregor@gmail.com
-Toronto0442@gmail.com          william@wcarroll.com
-```
-
-The 5 excluded VIPs: `cindy.rivas@gmail.com`, `freenow82@gmail.com`,
-`jjanet.alfaro@gmail.com`, `max.rivas.alfaro@gmail.com`, `nammerella@gmail.com`.
+**The 44 emails**: the roster minus the 5 VIP emails. The list is kept out of this
+public repository; it lives in the live `bridge.db` (`member_tags`) and in Wizarr,
+and the backfill script prints it for review before it writes anything, so strike
+any entry at that point.
 
 ## Edge cases
 
@@ -189,7 +170,7 @@ The 5 excluded VIPs: `cindy.rivas@gmail.com`, `freenow82@gmail.com`,
 - **VIP with a customer_map row** (e.g. a VIP who also has a Stripe record):
   `tag === 'vip'` short-circuits `deriveStatus`, so status stays "VIP"
   regardless of the flag; and the backfill guard never touches them.
-- **`codebenderinc@gmail.com`** already has a stale `invited_at`; the backfill
+- **The operator's own test account** already has a stale `invited_at`; the backfill
   refreshes it to now and sets the expiry (it is not `subscribed`). If this is a
   personal test account, strike it from the list before running.
 

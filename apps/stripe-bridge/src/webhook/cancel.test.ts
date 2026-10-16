@@ -33,7 +33,7 @@ describe('customer.subscription.deleted', () => {
   })
 
   it('leaves access alone when another address still pays', async () => {
-    // Jimmy's shape: two customers, one person, and only one of them cancelling.
+    // That shape: two customers, one person, and only one of them cancelling.
     //
     // The dead customer's email IS the address the member's Wizarr records live
     // under, so resolving it finds their real, paid-for access. Disabling that

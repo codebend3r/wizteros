@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { HOSTS } from '@/config.js'
+import { fleetHosts } from '@/config.js'
 import type { Connection } from '@/db.js'
 import type { Sample } from '@/probes/types.js'
 import {
@@ -340,7 +340,7 @@ describe('fleetHistory', () => {
   it('lists hosts in the same order as /fleet, for every kind', () => {
     // one colour per host position, bound on the cards from /fleet and on every
     // chart from these; a kind disagreeing would recolour a whole chart
-    const names = HOSTS.map((host) => host.name)
+    const names = fleetHosts().map((host) => host.name)
     const kinds = ['cpu', 'memory', 'gpu', 'network'] as const
 
     kinds.forEach((kind) => {

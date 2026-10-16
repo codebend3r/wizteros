@@ -38,13 +38,13 @@ with a stable id, that an admin token can page through at will.
 
 Measured against the live servers on 2026-09-18 with the owner token:
 
-| Server      | URL                          | PMS    | Sections | Plays, last 365 days |
-| ----------- | ---------------------------- | ------ | -------- | -------------------- |
-| `meleys`    | `http://192.168.50.2:32400`  | 1.43.4 | 24       | 1,599 (2,272 ever)   |
-| `vermithor` | `https://192.168.50.3:32400` | 1.43.4 |          | not counted (https)  |
-| `caraxes`   | `http://192.168.50.4:32400`  | 1.43.4 | 6        | 4,109                |
-| `syrax`     | `http://192.168.50.5:32400`  | 1.43.4 | 4        | 661                  |
-| `vhagar`    | `https://192.168.50.6:32400` | 1.43.4 |          | not counted (https)  |
+| Server      | URL                            | PMS    | Sections | Plays, last 365 days |
+| ----------- | ------------------------------ | ------ | -------- | -------------------- |
+| `meleys`    | `http://<meleys-ip>:32400`     | 1.43.4 | 24       | 1,599 (2,272 ever)   |
+| `vermithor` | `https://<vermithor-ip>:32400` | 1.43.4 |          | not counted (https)  |
+| `caraxes`   | `http://<caraxes-ip>:32400`    | 1.43.4 | 6        | 4,109                |
+| `syrax`     | `http://<syrax-ip>:32400`      | 1.43.4 | 4        | 661                  |
+| `vhagar`    | `https://<vhagar-ip>:32400`    | 1.43.4 |          | not counted (https)  |
 
 Two servers require secure connections and close a plain-http socket without a response. Their
 certificate is Plex's `*.plex.direct` wildcard, which cannot verify against a LAN IP, so the

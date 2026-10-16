@@ -38,7 +38,7 @@ auth to the NAS and `sudo -n /usr/local/bin/docker` there to read `baseline_invi
 when present, otherwise point `--env-file` at whatever file holds the values.
 
 Exit code is 1 when there are findings, 0 when clean, 2 on a config or connection
-failure. `WZ_NAS_HOST` (default `crivas@192.168.50.2`) points at another NAS.
+failure. `WZ_NAS_HOST` (default `$WZ_NAS_HOST`) points at another NAS.
 
 The bridge-store section is the one that degrades: without it the script cannot tell
 a baseline from a stray, so it says so and nothing below that line is conclusive.

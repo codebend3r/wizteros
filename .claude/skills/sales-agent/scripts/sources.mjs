@@ -1,11 +1,19 @@
 import { execFileSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const REQUIRED = ['STRIPE_API_KEY', 'WIZARR_BASE_URL', 'WIZARR_API_KEY']
 const PAYING = new Set(['active', 'trialing'])
-const NAS_HOST = process.env.WZ_NAS_HOST || 'crivas@192.168.50.2'
+/** The NAS ssh target: WZ_NAS_HOST, else what scripts/nas-host.sh builds from the repo's .env. */
+const nasHost = () =>
+  process.env.WZ_NAS_HOST ||
+  execFileSync(
+    fileURLToPath(new URL('../../../../scripts/nas-host.sh', import.meta.url)),
+    ['meleys'],
+    { encoding: 'utf8' },
+  ).trim()
 const NAS_PATH = process.env.WZ_NAS_PATH || '/volume1/docker/stripe-bridge'
 const SSH_OPTS = '-o BatchMode=yes -o ConnectTimeout=10'
 const WIZARR_TIMEOUT_MS = 60_000
@@ -154,7 +162,7 @@ const readStore = () => {
     const remote = `cat ${shellQuote(`${NAS_PATH}/stripe-bridge-data/bridge.db`)}`
     execFileSync(
       'sh',
-      ['-c', `ssh ${SSH_OPTS} ${shellQuote(NAS_HOST)} ${shellQuote(remote)} > ${shellQuote(db)}`],
+      ['-c', `ssh ${SSH_OPTS} ${shellQuote(nasHost())} ${shellQuote(remote)} > ${shellQuote(db)}`],
       { stdio: ['ignore', 'ignore', 'pipe'] },
     )
     const columns = new Set(

@@ -38,3 +38,14 @@ supabase/.temp/
 
 # lefthook personal overrides
 lefthook-local.yml
+
+# fleet monitor runtime: the collector's private ssh key, its data, and sqlite sidecars
+fleet-monitor-ssh/
+fleet-monitor-data/
+*.db-wal
+*.db-shm
+id_*
+!id_*.pub.example
+
+# private never-publish strings for the security-audit skill
+.security-audit-denylist

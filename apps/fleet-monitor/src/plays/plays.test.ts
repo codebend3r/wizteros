@@ -487,7 +487,7 @@ describe('plays', () => {
 
       const status = plays.syncStatus({
         connection: db,
-        hosts: [plexHost({ name: 'vhagar', plexUrl: 'https://192.168.50.6:32400' })],
+        hosts: [plexHost({ name: 'vhagar', plexUrl: 'https://192.0.2.6:32400' })],
       })
       expect(status[0].reachable).toBe(false)
       expect(status[0].last_error).toBe('refused')
@@ -1697,16 +1697,16 @@ describe('plays', () => {
       const [meleys, syrax, vhagar] = plays.syncStatus({
         connection: db,
         hosts: [
-          plexHost({ name: 'meleys', plexUrl: 'http://192.168.50.2:32400' }),
-          plexHost({ name: 'syrax', plexUrl: 'http://192.168.50.5:32400' }),
-          plexHost({ name: 'vhagar', plexUrl: 'https://192.168.50.6:32400' }),
+          plexHost({ name: 'meleys', plexUrl: 'http://192.0.2.2:32400' }),
+          plexHost({ name: 'syrax', plexUrl: 'http://192.0.2.5:32400' }),
+          plexHost({ name: 'vhagar', plexUrl: 'https://192.0.2.6:32400' }),
         ],
       })
 
       expect(meleys).toEqual({
         host: 'meleys',
         friendly_name: 'Meleys',
-        plex_url: 'http://192.168.50.2:32400',
+        plex_url: 'http://192.0.2.2:32400',
         reachable: true,
         history_synced_at: T0,
         library_synced_at: addSeconds({ at: T0, seconds: -3600 }),
@@ -1727,7 +1727,7 @@ describe('plays', () => {
       expect(vhagar).toEqual({
         host: 'vhagar',
         friendly_name: null,
-        plex_url: 'https://192.168.50.6:32400',
+        plex_url: 'https://192.0.2.6:32400',
         reachable: false,
         history_synced_at: null,
         library_synced_at: null,

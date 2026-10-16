@@ -45,7 +45,7 @@ dossier at all. What degrades is a reachable-but-failing upstream: it prints
 the Wizarr, store, and log sections; being off the LAN leaves you Stripe and Wizarr.
 
 `WZ_LOG_TAIL` (default 2000) widens the log window; `WZ_NAS_HOST` (default
-`crivas@192.168.50.2`) points at another NAS.
+`$WZ_NAS_HOST`) points at another NAS.
 
 ## Reading the dossier
 
@@ -309,7 +309,7 @@ does not carry.
 The bridge plays no part in redemption, so the evidence is in Wizarr's container log:
 
 ```bash
-ssh crivas@192.168.50.2 'sudo -n /usr/local/bin/docker logs --tail 4000 wizarr 2>&1' \
+ssh "$WZ_NAS_HOST" 'sudo -n /usr/local/bin/docker logs --tail 4000 wizarr 2>&1' \
   | grep -i "invitation failed\|Failed to invite"
 ```
 

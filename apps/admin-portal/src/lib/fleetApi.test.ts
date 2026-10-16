@@ -36,7 +36,7 @@ vi.mock('@/lib/supabaseClient', () => ({
 // side that owns those facts, and is tested there.
 const host: FleetHost = {
   name: 'vermithor',
-  ip: '192.168.50.3',
+  ip: '192.0.2.3',
   has_gpu: true,
   has_docker: true,
   collected: true,

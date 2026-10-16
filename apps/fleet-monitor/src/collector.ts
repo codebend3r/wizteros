@@ -2,7 +2,7 @@ import { Logger } from '@nestjs/common'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { Worker } from 'node:worker_threads'
 import {
-  HOSTS,
+  fleetHosts,
   type Host,
   SLOW_INTERVAL,
   SLOW_TIMEOUT,
@@ -395,10 +395,10 @@ export const tick = async ({
   run?: RunSsh
   getJson?: GetJson
 }): Promise<readonly incidents.CheckResult[]> => {
-  const hostJobs = HOSTS.map((host) => collectHost({ host, at, path, run }))
-  const dockerJobs = HOSTS.filter((host) => !!host.docker_url).map((host) =>
-    collectContainers({ host, at, path, getJson }),
-  )
+  const hostJobs = fleetHosts().map((host) => collectHost({ host, at, path, run }))
+  const dockerJobs = fleetHosts()
+    .filter((host) => !!host.docker_url)
+    .map((host) => collectContainers({ host, at, path, getJson }))
   const outcomes = await Promise.allSettled([...hostJobs, ...dockerJobs])
   const completed = logRaised({ label: 'tick', outcomes })
 
@@ -564,7 +564,9 @@ const round = async ({
   logRaised({
     label: 'slow tier',
     outcomes: await unlessAborted({
-      work: Promise.allSettled(HOSTS.map((host) => collectSlow({ host, at: now, path, run }))),
+      work: Promise.allSettled(
+        fleetHosts().map((host) => collectSlow({ host, at: now, path, run })),
+      ),
       signal,
     }),
   })

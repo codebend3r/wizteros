@@ -23,12 +23,19 @@ const {
   ACCESS_DURATION = '35',
 } = process.env
 
-const EMAIL = process.argv[2] || 'codebenderinc@gmail.com'
+const EMAIL = process.argv[2] || process.env.E2E_MEMBER_EMAIL
 const BRIDGE = process.env.BRIDGE_URL || 'http://localhost:8000'
 const WIZARR = (WIZARR_BASE_URL || '').replace(/\/+$/, '')
 const DURATION = parseInt(ACCESS_DURATION, 10)
 const CUSTOMER = `cus_e2e_${Date.now()}` // unique so idempotency never skips a run
 const DAY = 86_400_000
+
+if (!EMAIL) {
+  console.error(
+    'Missing the test member: pass an email as the first argument or set E2E_MEMBER_EMAIL',
+  )
+  process.exit(2)
+}
 
 if (!WIZARR || !WIZARR_API_KEY || !STRIPE_WEBHOOK_SECRET) {
   console.error(

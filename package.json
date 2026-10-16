@@ -23,6 +23,7 @@
     "lint": "bun run lint:root && nx run-many -t lint:ts lint:css",
     "lint:fix": "bun run lint:root:fix && nx run-many -t lint:ts:fix lint:css:fix",
     "lint:root": "oxlint",
+    "security:scan": "node .claude/skills/security-audit/scripts/scan.mjs",
     "lint:root:fix": "oxlint --fix",
     "lint:ts": "nx run-many -t lint:ts",
     "lint:ts:fix": "nx run-many -t lint:ts:fix",

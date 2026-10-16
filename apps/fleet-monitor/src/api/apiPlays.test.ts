@@ -492,7 +492,7 @@ describe('the play history API', () => {
       4,
       3,
     ])
-    expect(meleys.plex_url).toBe('http://192.168.50.2:32400')
+    expect(meleys.plex_url).toBe('http://192.0.2.2:32400')
     expect(meleys.history_synced_at).toMatch(/^2026-09-18T12:00:00/)
     expect(meleys.library_synced_at).toBeNull()
     expect(meleys.history_since).toMatch(/^2025-08-14/)
@@ -502,7 +502,7 @@ describe('the play history API', () => {
     expect(body.servers[4]).toEqual({
       host: 'vhagar',
       friendly_name: null,
-      plex_url: 'https://192.168.50.6:32400',
+      plex_url: 'https://192.0.2.6:32400',
       reachable: false,
       history_synced_at: null,
       library_synced_at: null,

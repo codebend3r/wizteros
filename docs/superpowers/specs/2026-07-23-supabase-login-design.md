@@ -29,7 +29,7 @@ deleted.
   public homepage, shown only when Supabase is configured) links to `/login`,
   a dedicated page that reuses the gate and redirects to `/manage` once
   signed in.
-- **Access:** only `cj.rivas.dev@gmail.com`. Enforced server-side by
+- **Access:** only `admin@example.com`. Enforced server-side by
   disabling public signups (nobody else can get an account) and the bridge's
   email allowlist; a client-side allowlist check backs it up.
 - **Project:** Supabase `Westeroz` (`pxhbzbrwouexjhqnakcu`, ca-central-1).
@@ -37,7 +37,7 @@ deleted.
 ## Supabase project configuration (one-time, via Management API)
 
 1. Disable public signups (`disable_signup: true` in the auth config).
-2. Create the admin user `cj.rivas.dev@gmail.com` with `email_confirm: true`
+2. Create the admin user `admin@example.com` with `email_confirm: true`
    and a generated temporary password (printed to the terminal once, never
    committed).
 3. Record the project URL and publishable (anon) key for the web env vars.

@@ -404,7 +404,7 @@ describe('the stripe address and the plex address', () => {
   })
 
   it('collapses through a linked address a pair no invite can join', async () => {
-    // The Jimmy case: two customers, one person, and an invite never redeemed.
+    // The duplicate-customer case: two customers, one person, and an invite never redeemed.
     //
     // Someone whose card declines and who re-subscribes under a re-typed address
     // already holds access, so the new checkout's invite sits unredeemed forever

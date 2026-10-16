@@ -10,7 +10,8 @@
 #   fleet-monitor-data/  - the monitor's SQLite samples
 #   fleet-monitor-ssh/   - the monitor's ssh key; never leaves the NAS
 #
-# Prereq: mount the share first — Finder > Cmd+K > smb://192.168.50.2 > "docker".
+# Prereq: mount the share first — Finder > Cmd+K > smb://<meleys-ip> > "docker".
+# The address is the first entry of FM_HOST_IPS in .env.
 # Override the destination with:  NAS_MOUNT=/Volumes/docker/stripe-bridge npm run deploy:nas
 set -euo pipefail
 
@@ -18,8 +19,9 @@ DEST="${NAS_MOUNT:-/Volumes/docker/stripe-bridge}"
 MOUNT_ROOT="$(dirname "$DEST")"
 
 if [ ! -d "$MOUNT_ROOT" ]; then
+  NAS_IP="$("$(dirname "$0")/nas-host.sh" meleys 2>/dev/null | cut -d@ -f2 || true)"
   echo "✗ $MOUNT_ROOT is not mounted."
-  echo "  In Finder press Cmd+K, connect to smb://192.168.50.2, and mount the 'docker' share."
+  echo "  In Finder press Cmd+K, connect to smb://${NAS_IP:-<meleys-ip>}, and mount the 'docker' share."
   exit 1
 fi
 

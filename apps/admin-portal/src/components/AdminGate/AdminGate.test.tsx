@@ -27,7 +27,7 @@ test('renders children for an allowlisted signed-in session', () => {
   useAuthStore.setState({
     enabled: true,
     status: 'signed-in',
-    email: 'cj.rivas.dev@gmail.com',
+    email: 'admin@example.com',
   })
   render(
     <AdminGate title="Test gate">

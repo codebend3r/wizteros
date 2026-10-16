@@ -17,7 +17,8 @@
 // `.env` is gitignored, so whether one exists is a property of the working copy,
 // not of the repo: use it when it is there, otherwise pass whichever file holds
 // the three values locally, or export them for the command.
-import { execFile } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
@@ -26,7 +27,14 @@ const { STRIPE_API_KEY, WIZARR_BASE_URL, WIZARR_API_KEY } = process.env
 
 const EMAIL = (process.argv[2] ?? '').trim()
 const WIZARR = (WIZARR_BASE_URL ?? '').replace(/\/+$/, '')
-const NAS_HOST = process.env.WZ_NAS_HOST ?? 'crivas@192.168.50.2'
+/** The NAS ssh target: WZ_NAS_HOST, else what scripts/nas-host.sh builds from the repo's .env. */
+const nasHost = () =>
+  process.env.WZ_NAS_HOST ||
+  execFileSync(
+    fileURLToPath(new URL('../../../../scripts/nas-host.sh', import.meta.url)),
+    ['meleys'],
+    { encoding: 'utf8' },
+  ).trim()
 const DOCKER = '/usr/local/bin/docker' // the NOPASSWD sudoers rule matches this literal path
 const SERVICE = 'stripe-bridge'
 // Parsed to a number before it reaches the remote command line: this is the one
@@ -222,7 +230,7 @@ const wizarrSection = async ({ inviteCode }) => {
 const ssh = async (command) => {
   const { stdout } = await execFileAsync(
     'ssh',
-    ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', NAS_HOST, command],
+    ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', nasHost(), command],
     { maxBuffer: 16 * 1024 * 1024 },
   )
   return stdout
@@ -318,7 +326,7 @@ const run = async (title, fn) => {
 
 const main = async () => {
   say(`Member dossier: ${EMAIL}`)
-  say(`  wizarr ${WIZARR}   nas ${NAS_HOST}   ${new Date().toISOString().slice(0, 16)}Z`)
+  say(`  wizarr ${WIZARR}   nas ${nasHost()}   ${new Date().toISOString().slice(0, 16)}Z`)
 
   // Read the store first (it is fast, and its invite code is what lets the
   // Wizarr section find the member's invitation), then print in reading order.
@@ -331,14 +339,14 @@ const main = async () => {
         (value) => ({ store: value, error: null }),
         (error) => ({ store: null, error: brief(error) }),
       )
-    : { store: null, error: `NAS unreachable over SSH at ${NAS_HOST}` }
+    : { store: null, error: `NAS unreachable over SSH at ${nasHost()}` }
 
   await run('Stripe', stripeSection)
   await run('Wizarr', () => wizarrSection({ inviteCode: store.store?.customers[0]?.invite_code }))
   await run('Bridge store (NAS)', () => storeSection(store))
   await run(`Bridge logs (NAS, last ${LOG_TAIL} lines)`, async () => {
     if (!nasUp) {
-      bullet(`unavailable: NAS unreachable over SSH at ${NAS_HOST}`)
+      bullet(`unavailable: NAS unreachable over SSH at ${nasHost()}`)
       return
     }
     await logsSection()

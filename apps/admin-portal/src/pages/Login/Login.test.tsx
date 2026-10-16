@@ -25,7 +25,7 @@ test('redirects an allowlisted signed-in session to the admin area', () => {
   useAuthStore.setState({
     enabled: true,
     status: 'signed-in',
-    email: 'cj.rivas.dev@gmail.com',
+    email: 'admin@example.com',
   })
   renderAt('/login')
   expect(screen.getByText('manage page')).toBeInTheDocument()

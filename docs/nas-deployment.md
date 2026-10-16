@@ -23,8 +23,8 @@ reach it) is handled separately by Tailscale Funnel — see
   `sabnzbd` and friends. These have since moved onto the NASes themselves —
   see [`arr-stack.md`](./arr-stack.md) for where they run and how they update.
 - **Stays on the 5 NASes as-is:** the Plex servers. Wizarr reaches them over
-  the LAN (`192.168.50.x`) no matter where Wizarr itself runs.
-- **Carried over:** the live Wizarr data at `/Users/snowball/Docker/wizarr-data`
+  the LAN (your LAN range) no matter where Wizarr itself runs.
+- **Carried over:** the live Wizarr data at `~/Docker/wizarr-data`
   (your 3 already-configured Plex servers + admin account + API key). Copying it
   means you do **not** re-add servers or regenerate the API key.
 
@@ -71,17 +71,17 @@ Run these **from the Mac Studio**.
 1. **Stop the old Wizarr first** so its SQLite DB isn't mid-write during the
    copy (brief downtime is fine — no external users yet):
    ```sh
-   docker stop wizarr        # the one from /Users/snowball/Docker
+   docker stop wizarr        # the one from ~/Docker
    ```
 2. **Copy this repo** (excluding git history and local junk) to the NAS:
    ```sh
    rsync -av --exclude '.git' --exclude 'venv' --exclude 'node_modules' \
-     /Users/snowball/Developer/git/wizteros/ \
+     ~/Developer/git/wizteros/ \
      <NAS_USER>@<NAS_IP>:/volume1/docker/stripe-bridge/
    ```
 3. **Copy the live Wizarr data** into the stack's expected location:
    ```sh
-   rsync -av /Users/snowball/Docker/wizarr-data/ \
+   rsync -av ~/Docker/wizarr-data/ \
      <NAS_USER>@<NAS_IP>:/volume1/docker/westeroz/wizarr-data/
    ```
 4. **Fix ownership** so the containers can write (use the uid/gid from Phase 1.4):
@@ -149,7 +149,7 @@ the end-to-end test.
 - After the Tailscale end-to-end test passes, the old Mac-side Wizarr can stay stopped for good. If you
   need to roll back, `docker start wizarr` on the Mac restores the previous setup —
   the NAS copy is independent, so nothing is destroyed.
-- The Mac Studio's `docker compose` at `/Users/snowball/Docker` and the media
+- The Mac Studio's `docker compose` at `~/Docker` and the media
   stack are unaffected throughout.
 
 ---

@@ -181,20 +181,21 @@ Skills under `.claude/skills/` are scoped to this repo. Each one's `SKILL.md` ca
 
 **Repo workflow**
 
-| Skill              | What it does                                                                                                                                          |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `commiter`         | Enforces the `CLAUDE.md` commit and PR conventions, keeping unrelated changes in separate commits                                                     |
-| `pr-creator`       | Creates, drafts, formats, and validates pull requests against those same conventions                                                                  |
-| `version-bumper`   | Decides whether `main` is due for a release, recommends a level, and runs the release flow on approval                                                |
-| `deploy-nas`       | Ships `main` to the Synology NAS: syncs, rebuilds `stripe-bridge`, verifies health, rolls back a bad build                                            |
-| `e2e-runner`       | Runs the live e2e suites safely: what each asserts, what it mutates on the live Wizarr, and how to clean up a dead run                                |
-| `nas-state-backup` | Snapshots live NAS state (bridge DB, `wizarr-data`) before anything can destroy it                                                                    |
-| `wizarr-upgrade`   | Upgrades or rolls back the live Wizarr container, and judges whether a new release is safe to take                                                    |
-| `arr-stack-update` | Moves the media-stack images (sonarr, radarr, sabnzbd, …) on Meleys and Vermithor to latest, recreating only what changed and rolling back what fails |
-| `copy-compliance`  | Audits user-facing copy against the server-cost contribution framing                                                                                  |
-| `sales-agent`      | Finds win-back opportunities among declined and lapsed members, ranks them, and drafts a compliance-checked email to send by hand                     |
-| `invite-audit`     | Audits the invitation set: the four per-tier baseline links, their expiry and scope, and whether the 03:00 rotation is still running                  |
-| `monitor-ci`       | Watches Nx Cloud CI, evaluates failures, and coordinates supported self-healing fixes                                                                 |
+| Skill              | What it does                                                                                                                                                       |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `commiter`         | Enforces the `CLAUDE.md` commit and PR conventions, keeping unrelated changes in separate commits                                                                  |
+| `pr-creator`       | Creates, drafts, formats, and validates pull requests against those same conventions                                                                               |
+| `version-bumper`   | Decides whether `main` is due for a release, recommends a level, and runs the release flow on approval                                                             |
+| `deploy-nas`       | Ships `main` to the Synology NAS: syncs, rebuilds `stripe-bridge`, verifies health, rolls back a bad build                                                         |
+| `e2e-runner`       | Runs the live e2e suites safely: what each asserts, what it mutates on the live Wizarr, and how to clean up a dead run                                             |
+| `nas-state-backup` | Snapshots live NAS state (bridge DB, `wizarr-data`) before anything can destroy it                                                                                 |
+| `wizarr-upgrade`   | Upgrades or rolls back the live Wizarr container, and judges whether a new release is safe to take                                                                 |
+| `arr-stack-update` | Moves the media-stack images (sonarr, radarr, sabnzbd, …) on Meleys and Vermithor to latest, recreating only what changed and rolling back what fails              |
+| `copy-compliance`  | Audits user-facing copy against the server-cost contribution framing                                                                                               |
+| `sales-agent`      | Finds win-back opportunities among declined and lapsed members, ranks them, and drafts a compliance-checked email to send by hand                                  |
+| `invite-audit`     | Audits the invitation set: the four per-tier baseline links, their expiry and scope, and whether the 03:00 rotation is still running                               |
+| `security-audit`   | Scans the public repo, tree and history, for private addresses, tailnet names, real emails, secrets and secret files, then reviews auth, webhooks and dependencies |
+| `monitor-ci`       | Watches Nx Cloud CI, evaluates failures, and coordinates supported self-healing fixes                                                                              |
 
 **Nx**
 

@@ -8,7 +8,7 @@ Status: approved (placement and visibility confirmed in session)
 From a member's `/user` page, jump straight to their Stripe customer record in
 the dashboard (e.g. `https://dashboard.stripe.com/acct_…/customers/cus_…`).
 Driven entirely by data — any member whose checkout produced a real Stripe
-customer id gets the link (Jimmy Vo, canexan@gmail.com, and every future
+customer id gets the link (two members, and every future
 subscriber), with no per-person work.
 
 ## Decisions

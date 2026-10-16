@@ -23,7 +23,7 @@ import { Logger } from '@nestjs/common'
 import {
   dbPath,
   type Host,
-  HOSTS,
+  fleetHosts,
   PLEX_HISTORY_INTERVAL,
   PLEX_LIBRARY_INTERVAL,
   plexExcludedPaths,
@@ -871,7 +871,7 @@ export const initDb = (path: string): void =>
  * pass without a restart.
  *
  * `hosts` is the whole fleet, narrowed to its Plex hosts here, and defaults to
- * the config's; the Python tests patched `config.HOSTS` instead. A host whose
+ * the config's; the Python tests patched `config.fleetHosts` instead. A host whose
  * round rejected is logged by `logRaised` and left out of the answer; an
  * abort is rethrown by it, which is how a shutdown ends the round.
  */
@@ -879,7 +879,7 @@ export const runRound = async ({
   path,
   now,
   inventoryDue,
-  hosts = HOSTS,
+  hosts = fleetHosts(),
   via = transport(),
 }: {
   path: string
@@ -979,7 +979,7 @@ export const runForever = async ({
  */
 export const runOnce = async ({
   path,
-  hosts = HOSTS,
+  hosts = fleetHosts(),
   via = transport(),
 }: {
   path: string

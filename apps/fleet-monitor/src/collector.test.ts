@@ -15,7 +15,7 @@ import {
   samplesFromSections,
   tick,
 } from '@/collector.js'
-import { HOSTS, host, SLOW_TIMEOUT, VITALS_TIMEOUT } from '@/config.js'
+import { fleetHosts, host, SLOW_TIMEOUT, VITALS_TIMEOUT } from '@/config.js'
 import { session } from '@/db.js'
 import { checkResult, history, type CheckResult, observedRun, openIncidents } from '@/incidents.js'
 import { lastHeartbeat, latest, series } from '@/store.js'
@@ -442,7 +442,7 @@ describe('collectSlow', () => {
 describe('collectContainers', () => {
   it('is a no-op without a docker url', async () => {
     const db = freshDb()
-    const caraxes = host({ name: 'caraxes', ip: '192.168.50.4', has_gpu: false, docker_url: '' })
+    const caraxes = host({ name: 'caraxes', ip: '192.0.2.4', has_gpu: false, docker_url: '' })
 
     expect(await collectContainers({ host: caraxes, at: T0, path: db })).toEqual([])
     expect(latestOf({ path: db, target: 'host:caraxes' })).toEqual({})
@@ -681,11 +681,13 @@ describe('tick', () => {
     const all = [...targets(checks)]
 
     expect(new Set(all.filter((target) => target.startsWith('host:')))).toEqual(
-      new Set(HOSTS.map((each) => `host:${each.name}`)),
+      new Set(fleetHosts().map((each) => `host:${each.name}`)),
     )
     expect(new Set(all.filter((target) => target.startsWith('container:')))).toEqual(
       new Set(
-        HOSTS.filter((each) => !!each.docker_url).map((each) => `container:${each.name}/sonarr`),
+        fleetHosts()
+          .filter((each) => !!each.docker_url)
+          .map((each) => `container:${each.name}/sonarr`),
       ),
     )
     expect(lastHeartbeatOf(db)).toEqual(T0)
@@ -702,14 +704,18 @@ describe('tick', () => {
 
     expect(checks.some((check) => check.target.startsWith('container:'))).toBe(false)
     expect(openTargets(db)).toEqual(
-      new Set(HOSTS.filter((each) => !!each.docker_url).map((each) => `docker:${each.name}`)),
+      new Set(
+        fleetHosts()
+          .filter((each) => !!each.docker_url)
+          .map((each) => `docker:${each.name}`),
+      ),
     )
   })
 
   it('survives one wedged host', async () => {
     const db = freshDb()
     const run: RunSsh = async ({ host: ip }) => {
-      if (ip === '192.168.50.4') {
+      if (ip === '192.0.2.4') {
         throw new Error('wedged')
       }
       return sshResult({ ok: true, stdout: stdoutOf(SECTIONS) })

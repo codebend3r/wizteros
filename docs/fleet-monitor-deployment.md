@@ -8,7 +8,7 @@ against a monitor you started by hand on the LAN.
 The portal is served over https from Netlify. A page on https may not fetch a
 plain-http subresource — the browser blocks it as mixed content before the
 request is made — and a public page fetching an RFC1918 address is blocked
-again by Private Network Access. So `VITE_FLEET_BASE=http://192.168.50.3:8010`
+again by Private Network Access. So `VITE_FLEET_BASE=http://<vermithor-ip>:8010`
 fails in production no matter what else is configured, and the page reports a
 monitor that is down while the monitor is fine.
 
@@ -51,7 +51,7 @@ both probe it without a session, and it reports only liveness and staleness.
 
 The collector reaches all five hosts over ssh. It needs its own key, **not** a
 copy of a human's: revoking the monitor should be deleting one
-`authorized_keys` line. As of this writing `crivas` on meleys has no private
+`authorized_keys` line. As of this writing `<ssh-user>` on meleys has no private
 key at all, so this step is required, not a check.
 
 On meleys:
@@ -64,13 +64,13 @@ chmod 700 /volume1/docker/stripe-bridge/fleet-monitor-ssh
 chmod 600 /volume1/docker/stripe-bridge/fleet-monitor-ssh/id_ed25519
 ```
 
-Then append that public key to `~crivas/.ssh/authorized_keys` on **all five**
+Then append that public key to `~<ssh-user>/.ssh/authorized_keys` on **all five**
 hosts — meleys included, since the collector ssh-es to the box it runs on:
 
 ```bash
 cat /volume1/docker/stripe-bridge/fleet-monitor-ssh/id_ed25519.pub
 # paste into ~/.ssh/authorized_keys on
-#   192.168.50.2 meleys   .3 vermithor   .4 caraxes   .5 syrax   .6 vhagar
+#   <meleys-ip> meleys   .3 vermithor   .4 caraxes   .5 syrax   .6 vhagar
 ```
 
 A host missing the key is not an outage: that host reports as never collected,
@@ -85,7 +85,7 @@ overwrites it):
 ```
 FM_SUPABASE_URL=https://<project>.supabase.co
 FM_ADMIN_ALLOWED_EMAILS=you@example.com
-FM_SSH_USER=crivas
+FM_SSH_USER=<ssh-user>
 FM_PLEX_LOOKBACK_DAYS=365
 ```
 
@@ -151,7 +151,7 @@ The full path is required: `tailscale` is not on the login PATH, and sudo's
 too — the NOPASSWD rule covers `/usr/local/bin/docker` only.
 
 ```bash
-ssh -t crivas@192.168.50.2 \
+ssh -t "$WZ_NAS_HOST" \
   'sudo /usr/local/bin/tailscale funnel --bg --set-path /monitor http://127.0.0.1:8010'
 
 /usr/local/bin/tailscale funnel status   # no sudo needed to read it
@@ -166,7 +166,7 @@ one `serve` takes everything down and why one `funnel` brings it all back.
 Netlify → Site configuration → Environment variables:
 
 ```
-VITE_FLEET_BASE = https://meleys.tail5586d4.ts.net/monitor
+VITE_FLEET_BASE = https://<node>.<tailnet>.ts.net/monitor
 ```
 
 `VITE_*` values are compiled into the bundle at build time, so this needs a
@@ -176,11 +176,11 @@ redeploy to take effect — a new build, not just a saved variable.
 
 ```bash
 # ungated, from anywhere
-curl -s https://meleys.tail5586d4.ts.net/monitor/health
+curl -s https://<node>.<tailnet>.ts.net/monitor/health
 
 # gated: 401 without a session is the correct answer, not a failure
 curl -s -o /dev/null -w '%{http_code}\n' \
-  https://meleys.tail5586d4.ts.net/monitor/fleet
+  https://<node>.<tailnet>.ts.net/monitor/fleet
 ```
 
 Then open `/fleet` on the production portal signed in as an allowlisted admin.
@@ -197,7 +197,7 @@ inventory lands, never-played counts nothing. Watch it arrive with:
 ```bash
 sudo docker compose logs -f fleet-collector | grep plex
 curl -s -o /dev/null -w '%{http_code}\n' \
-  https://meleys.tail5586d4.ts.net/monitor/plays/sync   # 401 without a session
+  https://<node>.<tailnet>.ts.net/monitor/plays/sync   # 401 without a session
 ```
 
 ## When the chart is empty

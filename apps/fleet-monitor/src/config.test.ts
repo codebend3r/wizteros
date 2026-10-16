@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   dbPath,
+  fleetHosts,
   host,
-  HOSTS,
+  hostIps,
   MAX_ROUND_SECONDS,
   PLEX_HISTORY_INTERVAL,
   PLEX_LIBRARY_INTERVAL,
@@ -20,6 +21,8 @@ import { CAPTURE_FACTOR } from '@/transport/ssh.js'
 
 const names = (hosts: readonly { name: string }[]): string[] =>
   hosts.map(({ name }) => name).toSorted()
+
+const HOSTS = fleetHosts()
 
 describe('config', () => {
   afterEach(() => {
@@ -45,15 +48,44 @@ describe('config', () => {
     ])
   })
 
-  it('matches the fleet ips', () => {
+  it('reads the fleet ips from FM_HOST_IPS in host order', () => {
     const byName = Object.fromEntries(HOSTS.map(({ name, ip }) => [name, ip]))
     expect(byName).toEqual({
-      meleys: '192.168.50.2',
-      vermithor: '192.168.50.3',
-      caraxes: '192.168.50.4',
-      syrax: '192.168.50.5',
-      vhagar: '192.168.50.6',
+      meleys: '192.0.2.2',
+      vermithor: '192.0.2.3',
+      caraxes: '192.0.2.4',
+      syrax: '192.0.2.5',
+      vhagar: '192.0.2.6',
     })
+  })
+
+  it.each([
+    ['is unset', undefined],
+    ['is empty', ''],
+    ['is one address short', '192.0.2.2,192.0.2.3,192.0.2.4,192.0.2.5'],
+    ['has one address too many', '192.0.2.2,192.0.2.3,192.0.2.4,192.0.2.5,192.0.2.6,192.0.2.7'],
+    ['holds a hostname', '192.0.2.2,192.0.2.3,192.0.2.4,192.0.2.5,nas.example.com'],
+    ['holds an octet over 255', '192.0.2.2,192.0.2.3,192.0.2.4,192.0.2.5,192.0.2.256'],
+  ])('refuses a fleet list that %s', (_label, value) => {
+    vi.stubEnv('FM_HOST_IPS', value)
+    expect(() => hostIps()).toThrow(/FM_HOST_IPS must list 5/)
+    expect(() => fleetHosts()).toThrow(/FM_HOST_IPS/)
+  })
+
+  it('trims whitespace around each address', () => {
+    vi.stubEnv('FM_HOST_IPS', ' 192.0.2.12 , 192.0.2.13,192.0.2.14 ,192.0.2.15,192.0.2.16')
+    expect(fleetHosts().map(({ ip }) => ip)).toEqual([
+      '192.0.2.12',
+      '192.0.2.13',
+      '192.0.2.14',
+      '192.0.2.15',
+      '192.0.2.16',
+    ])
+  })
+
+  it('never echoes the configured addresses in its error', () => {
+    vi.stubEnv('FM_HOST_IPS', '192.0.2.77,not-an-ip')
+    expect(() => hostIps()).toThrow(/^(?!.*192\.0\.2\.77)/)
   })
 
   it('freezes a host', () => {
@@ -70,9 +102,12 @@ describe('config', () => {
     expect(dbPath()).toBe('/tmp/other.db')
   })
 
-  it('defaults the ssh user and honors the environment', () => {
+  it('requires the ssh user and honors the environment', () => {
     vi.stubEnv('FM_SSH_USER', undefined)
-    expect(sshUser()).toBe('crivas')
+    expect(() => sshUser()).toThrow(/FM_SSH_USER/)
+
+    vi.stubEnv('FM_SSH_USER', '   ')
+    expect(() => sshUser()).toThrow(/FM_SSH_USER/)
 
     vi.stubEnv('FM_SSH_USER', 'someone')
     expect(sshUser()).toBe('someone')
@@ -105,11 +140,11 @@ describe('config', () => {
     // (measured 2026-09-18); the other three answer on http
     const byName = Object.fromEntries(HOSTS.map(({ name, plex_url }) => [name, plex_url]))
     expect(byName).toEqual({
-      meleys: 'http://192.168.50.2:32400',
-      vermithor: 'https://192.168.50.3:32400',
-      caraxes: 'http://192.168.50.4:32400',
-      syrax: 'http://192.168.50.5:32400',
-      vhagar: 'https://192.168.50.6:32400',
+      meleys: 'http://192.0.2.2:32400',
+      vermithor: 'https://192.0.2.3:32400',
+      caraxes: 'http://192.0.2.4:32400',
+      syrax: 'http://192.0.2.5:32400',
+      vhagar: 'https://192.0.2.6:32400',
     })
   })
 
