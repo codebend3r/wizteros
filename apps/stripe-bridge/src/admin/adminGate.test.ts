@@ -39,7 +39,7 @@ describe('require_admin', () => {
     const bridge = fakeBridge({ dbPath: tempDbPath() })
     bridge.store.init()
     vi.stubEnv('SUPABASE_URL', SUPABASE_URL)
-    vi.stubEnv('ADMIN_ALLOWED_EMAILS', 'cj.rivas.dev@gmail.com')
+    vi.stubEnv('ADMIN_ALLOWED_EMAILS', 'admin@example.com')
     app = await serve({
       imports: [AdminModule],
       bridge: asBridge(bridge),
@@ -63,13 +63,13 @@ describe('require_admin', () => {
   it('fails closed without config', async () => {
     // JWKS unconfigured -> reject everything, even a genuinely signed admin
     vi.stubEnv('SUPABASE_URL', undefined)
-    const answer = await notes(`Bearer ${await token({ email: 'cj.rivas.dev@gmail.com' })}`)
+    const answer = await notes(`Bearer ${await token({ email: 'admin@example.com' })}`)
     expect(answer.statusCode).toBe(401)
   })
 
   it('accepts an allowlisted supabase session', async () => {
     // mixed case in the claim proves the comparison is case-insensitive
-    const answer = await notes(`Bearer ${await token({ email: 'CJ.Rivas.dev@gmail.com' })}`)
+    const answer = await notes(`Bearer ${await token({ email: 'Admin@Example.com' })}`)
     expect(answer.statusCode).toBe(200)
   })
 
