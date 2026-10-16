@@ -1,0 +1,25 @@
+{
+  "_comment": "Placeholder addresses the scanner accepts: invented test data, not people. Add a domain or an exact address here only when it is fake; a real one belongs in .env or the live store, never in the repo.",
+  "domains": [
+    "x.com",
+    "y.com",
+    "a.com",
+    "email.com",
+    "else.com",
+    "elsewhere.com",
+    "nowhere.com",
+    "otherdomain.com"
+  ],
+  "emails": [
+    "alice@gmail.com",
+    "bob@gmail.com",
+    "carol@gmail.com",
+    "other@gmail.com",
+    "samplemem@gmail.com",
+    "samplememm@gmail.com",
+    "sample.mem+plex@gmail.com",
+    "samplemember767@gmail.com",
+    "samplemember768@gmail.com",
+    "samplemember889@gmail.com"
+  ]
+}
