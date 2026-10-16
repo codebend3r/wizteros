@@ -77,6 +77,17 @@
       "format:check",
       "test",
       "test:watch"
-    ]
+    ],
+    "targets": {
+      "build": {
+        "inputs": [
+          "production",
+          "^production",
+          {
+            "runtime": "cat apps/admin-portal/.env apps/admin-portal/.env.* 2>/dev/null; env | grep '^VITE_' | sort; true"
+          }
+        ]
+      }
+    }
   }
 }
