@@ -766,9 +766,14 @@ test('Fleet moves between chart tabs with the arrow keys, wrapping at the ends',
 
   // keys land on the focused tab, the way they do in a browser: the strip
   // itself is not focusable in this pattern
-  const selected = (): HTMLElement =>
-    screen.getAllByRole('tab').find((tab) => tab.getAttribute('aria-selected') === 'true') ??
-    screen.getAllByRole('tab')[0]!
+  const selected = (): HTMLElement => {
+    const tabs = screen.getAllByRole('tab')
+    const tab = tabs.find((entry) => entry.getAttribute('aria-selected') === 'true') ?? tabs[0]
+    if (!tab) {
+      throw new Error('Expected a chart tab')
+    }
+    return tab
+  }
 
   fireEvent.keyDown(selected(), { key: 'ArrowRight' })
   expect(screen.getByRole('tab', { name: 'Memory' })).toHaveAttribute('aria-selected', 'true')

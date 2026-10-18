@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common'
+import { stackOf } from '@wizteros/server-common'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { Worker } from 'node:worker_threads'
 import {
@@ -76,9 +77,6 @@ const NOT_OBSERVED: ReadonlySet<string> = new Set(['spawn_error'])
 // An abort is the process being torn down: what a stopping loop sees, and the
 // one rejection it returns on rather than raises.
 const isAbort = (error: unknown): boolean => error instanceof Error && error.name === 'AbortError'
-
-const stackOf = (error: unknown): string =>
-  error instanceof Error ? (error.stack ?? String(error)) : String(error)
 
 /**
  * One section's samples, or none if its parser could not read it.

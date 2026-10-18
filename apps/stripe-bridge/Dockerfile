@@ -19,6 +19,7 @@ COPY apps/stripe-bridge/package.json apps/stripe-bridge/
 FROM bun AS build
 RUN bun install --frozen-lockfile --ignore-scripts \
       --filter stripe-bridge --filter @wizteros/server-common
+COPY tsconfig.server.json ./
 COPY libs/server-common/ libs/server-common/
 COPY apps/stripe-bridge/ apps/stripe-bridge/
 RUN cd libs/server-common && bun run build \

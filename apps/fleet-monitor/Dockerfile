@@ -19,6 +19,7 @@ COPY apps/fleet-monitor/package.json apps/fleet-monitor/
 FROM bun AS build
 RUN bun install --frozen-lockfile --ignore-scripts \
       --filter fleet-monitor --filter @wizteros/server-common
+COPY tsconfig.server.json ./
 COPY libs/server-common/ libs/server-common/
 COPY apps/fleet-monitor/ apps/fleet-monitor/
 RUN cd libs/server-common && bun run build \

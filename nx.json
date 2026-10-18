@@ -7,6 +7,8 @@
   },
   "namedInputs": {
     "sharedGlobals": [
+      "{workspaceRoot}/tsconfig.server.json",
+      "{workspaceRoot}/.oxlintrc.server.json",
       "{workspaceRoot}/package.json",
       "{workspaceRoot}/bun.lock",
       "{workspaceRoot}/nx.json",

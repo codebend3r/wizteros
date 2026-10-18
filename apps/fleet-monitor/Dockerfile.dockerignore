@@ -4,6 +4,7 @@
 *
 !package.json
 !bun.lock
+!tsconfig.server.json
 !libs/server-common
 !apps/fleet-monitor
 **/node_modules

@@ -1,10 +1,9 @@
 import { Logger } from '@nestjs/common'
-import { httpError } from '@wizteros/server-common'
+import { httpError, stackOf } from '@wizteros/server-common'
 import type { Upstream } from '@/admin/membersSnapshot.js'
 import { PlexUnavailable } from '@/clients/plex.js'
 import { assembleMembers, memberFromCustomer, withOverrides, withPlexAccess } from '@/roster.js'
 import type { Bridge, Member, PlexShares, WizarrInvitation } from '@/types.js'
-import { stackOf } from '@/errors.js'
 
 // What the admin GET routes answer, over a Bridge. A refusal is thrown as the
 // HTTP error the route answers with, since these exist for the portal's routes

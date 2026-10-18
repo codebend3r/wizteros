@@ -1,6 +1,5 @@
 import { Logger } from '@nestjs/common'
-import { asRow, asRows, fields, isoformat, type Row } from '@wizteros/server-common'
-import { stackOf } from '@/errors.js'
+import { asRow, asRows, fields, isoformat, type Row, stackOf } from '@wizteros/server-common'
 import type { Units } from '@/store/units.js'
 import type { EventRow } from '@/types.js'
 

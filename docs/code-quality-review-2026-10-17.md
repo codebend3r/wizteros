@@ -2,7 +2,7 @@
 
 Reviewed at `a8f31cf` (v0.4.3, `main`) on 2026-10-17. Line numbers are as of that commit and will drift as the stacks land; re-grep before acting on one.
 
-Six reviewers each read one area in full: stripe-bridge, fleet-monitor (plays, plexSync, api), fleet-monitor (collector, probes, core), the portal's `lib/` and `stores/`, the portal's `pages/` and `components/`, and server-common with the tooling and skill scripts. The review was read-only. Nothing in this file has been implemented.
+Six reviewers each read one area in full: stripe-bridge, fleet-monitor (plays, plexSync, api), fleet-monitor (collector, probes, core), the portal's `lib/` and `stores/`, the portal's `pages/` and `components/`, and server-common with the tooling and skill scripts. The review was read-only. Implementation progress is tracked in section 6.
 
 **Verification key.** Items marked ✓ were re-checked against the code by the coordinator. Unmarked items come from a single reviewer's reading and should be confirmed before the PR that fixes them.
 
@@ -170,12 +170,19 @@ main
 
 Update this table as PRs open and merge.
 
-| Stack | State       | PRs |
-| ----- | ----------- | --- |
-| 0     | not started |     |
-| A     | not started |     |
-| B     | not started |     |
-| C     | not started |     |
-| D     | not started |     |
-| E     | not started |     |
-| F     | not started |     |
+Stack 0 implementation notes:
+
+- Shared server configs are hashed by Nx and the TypeScript config is included in both Docker build contexts.
+- The two wire-test record guards retain their array-accepting behaviour until Stack C; all equivalent server record guards use `isRecord`.
+- The portal had two test non-null assertions, contrary to the review's note. Explicit element checks replace them; all projects now enforce the rule in tests.
+- Validation: uncached workspace verification, workflow lint (`actionlint`), version parity, both Docker builds and production import smoke tests. The bridge image contains no `dist/test` directory.
+
+| Stack | State                                                               | PRs |
+| ----- | ------------------------------------------------------------------- | --- |
+| 0     | implemented locally on `stack-zero-guardrails`; local checks passed |     |
+| A     | not started                                                         |     |
+| B     | not started                                                         |     |
+| C     | not started                                                         |     |
+| D     | not started                                                         |     |
+| E     | not started                                                         |     |
+| F     | not started                                                         |     |

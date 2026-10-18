@@ -8,6 +8,9 @@ export {
 export { type CorsOptions, starletteCors } from './cors.js'
 export { detailBody, HttpDetailFilter, httpError } from './httpDetail.js'
 export { starletteMethodNotAllowed } from './methodNotAllowed.js'
+export { stackOf } from './errors.js'
+export { isRecord } from './records.js'
+export { parseInteger } from './numbers.js'
 export { parseEmailAllowlist, parseList, requireEnv, trimTrailingSlashes } from './env.js'
 export {
   openSqlite,

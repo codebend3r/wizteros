@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common'
-import { stackOf } from '@/errors.js'
+import { stackOf } from '@wizteros/server-common'
 
 const log = new Logger('bridge.snapshot')
 

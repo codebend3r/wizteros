@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common'
+import { isRecord as isObject } from '@wizteros/server-common'
 import type {
   CreatedInvite,
   WizarrApi,
@@ -99,9 +100,6 @@ const abortAfter: TimeoutSignal = (seconds) => AbortSignal.timeout(seconds * 100
 // --- narrowing the JSON Wizarr answers with -----------------------------------
 
 type JsonObject = Readonly<Record<string, unknown>>
-
-const isObject = (value: unknown): value is JsonObject =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
 
 const isStringOrNull = (value: unknown): value is string | null =>
   typeof value === 'string' || value === null
