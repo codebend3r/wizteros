@@ -98,20 +98,63 @@ test('reissueInvite posts email + tier and returns the invite link', async () =>
   expect(JSON.parse(init.body)).toEqual({ email: 'a@x.com', tier: 'bronze' })
 })
 
-test('fetchMembers defaults missing libraries, invited_at, and customer_id (pre-deploy bridge)', async () => {
-  const legacyMember = Object.fromEntries(
-    Object.entries(member).filter(
-      ([key]) => key !== 'libraries' && key !== 'invited_at' && key !== 'customer_id',
-    ),
-  )
+test.each([
+  'libraries',
+  'entitled',
+  'invited_at',
+  'tag',
+  'customer_id',
+  'payment_state',
+  'stripe_email',
+])('both member endpoints reject missing %s', async (field) => {
+  const payload = Object.fromEntries(Object.entries(member).filter(([key]) => key !== field))
   vi.stubGlobal(
     'fetch',
-    vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [legacyMember] }),
+    vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => [payload],
+    }),
   )
-  const result = await fetchMembers()
-  // Equivalent to legacyMember + the parser's defaults, but typed as Member so
-  // bun's strict expect<Member[]> accepts it.
-  expect(result).toEqual([{ ...member, libraries: {}, invited_at: null, customer_id: null }])
+  await expect(fetchMembers()).rejects.toThrow(field)
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => payload,
+    }),
+  )
+  await expect(fetchMember({ email: member.email })).rejects.toThrow('Unexpected member response')
+})
+
+test.each([
+  { ...member, payment_state: 'paid' },
+  { ...member, payment_state: false },
+  { ...member, stripe_email: 123 },
+])('rejects invalid payment and payer identity fields', async (payload) => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => [payload],
+    }),
+  )
+  await expect(fetchMembers()).rejects.toThrow('Unexpected members response')
+})
+
+test('accepts a past-due member with a separate payer email', async () => {
+  const payload: Member = { ...member, payment_state: 'past_due', stripe_email: 'payer@x.com' }
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => [payload],
+    }),
+  )
+  await expect(fetchMembers()).resolves.toEqual([payload])
 })
 
 test('fetchMembers rejects a malformed member (missing fields)', async () => {
@@ -139,14 +182,7 @@ test('resetExpiry posts email + days and returns the parsed result', async () =>
   expect(JSON.parse(init.body)).toEqual({ email: 'a@x.com', days: null, expires_at: null })
 })
 
-test('fetchMembers defaults a missing tag (pre-tag bridge) and rejects unknown tags', async () => {
-  const untagged = Object.fromEntries(Object.entries(member).filter(([key]) => key !== 'tag'))
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [untagged] }),
-  )
-  await expect(fetchMembers()).resolves.toEqual([{ ...member, tag: null }])
-
+test('fetchMembers rejects unknown tags', async () => {
   vi.stubGlobal(
     'fetch',
     vi.fn().mockResolvedValue({

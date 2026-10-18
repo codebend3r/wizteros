@@ -18,7 +18,7 @@ type ConfirmInviteModalProps = {
 
 /** The note for re-inviting someone the bridge already knows. */
 export const reissueInviteNote = ({ tier }: { tier: PaidTier }): string =>
-  `A fresh ${TIER_LABELS[tier]}-scoped invite link is generated and any existing server records for this email are disabled — they re-join through the new link.`
+  `A fresh ${TIER_LABELS[tier]}-scoped invite link is generated. Existing access is kept until they redeem it, unless the new tier does not cover a current server — in that case existing records are disabled first.`
 
 export const ConfirmInviteModal = ({
   name,

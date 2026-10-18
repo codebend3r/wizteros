@@ -46,13 +46,16 @@ Run it as a single Bash invocation so the user sees the whole transcript. Defaul
    Exits early ("nothing to do") when the NAS is current, or when the intervening commits
    touched only `apps/admin-portal/`/`docs/`.
 3. **Records a rollback point** — the image ID the running container was built from.
-4. **Syncs code** — rsync over the SMB mount if `/Volumes/docker` is mounted, otherwise
-   tar over SSH. Then verifies a checksum matches before rebuilding.
+4. **Syncs code** — `git archive HEAD | ssh … tar -xf -`: committed files only,
+   regardless of SMB mounts. Ignored local databases, secrets, dependencies and build
+   output never enter the archive. Then verifies a checksum matches before rebuilding.
+   `bun run deploy:nas` runs this same script; there is no second deploy entrypoint.
 5. **Rebuilds** — `sudo -n /usr/local/bin/docker compose up -d --build`.
 6. **Verifies**: container `running`; `GET /admin/members` returns `401`; `GET /version`
    matches the `version` in the synced `apps/stripe-bridge/package.json` (a 401
    proves _a_ bridge is up, the version proves it is _this_ one); boot logs scanned for
-   the tier-scope alarm and `ERROR` lines.
+   the stable `[TIER_SCOPE_ALARM]` marker and `ERROR` lines. A failed Wizarr read
+   leaves tier health unverified; it is not a drift alarm.
 7. **Rolls back** on a failed health check, re-tagging the previous image, and restores
    the old `.deployed-sha`.
 
@@ -61,9 +64,11 @@ Run it as a single Bash invocation so the user sees the whole transcript. Defaul
 - **`sudo` needs the literal path `/usr/local/bin/docker`.** The NOPASSWD sudoers rule
   matches that exact string. Plain `sudo docker …` prompts for a password and fails
   non-interactively, because `docker` isn't on the non-interactive `PATH`.
-- **macOS `rsync` is `openrsync` and fails key auth to this NAS**, even with `-e ssh -i …`.
-  That is why the no-mount path is tar over SSH, not rsync over SSH.
-- **Never sync `.env`, `wizarr-data/`, `tautulli-config/`, `stripe-bridge-data/`.** They are
+- **The source is `git archive HEAD`, never the working tree.** This avoids hand-maintained
+  exclude lists drifting and leaking ignored local state. SSH carries the archive; no
+  mounted share or rsync is involved.
+- **Never sync `.env`, `wizarr-data/`, `tautulli-config/`, `stripe-bridge-data/`,
+  `fleet-monitor-data/` or `fleet-monitor-ssh/`.** They are
   live NAS state. `wizarr-data/` in particular holds Wizarr's healed library-name cache;
   clobbering it re-breaks invite redemption.
 - **One-shot SSH only** — `ssh host 'cd … && …'`, never an interactive two-step. A bare
@@ -96,7 +101,7 @@ whether code was synced (rebuild pending) or nothing changed at all.
 
 ## Red Flags
 
-- Dirty tree or not on `main` → STOP. The NAS gets the working tree, not the last commit.
+- Dirty tree or not on `main` → STOP. The NAS gets only `git archive HEAD`.
 - `HEAD != origin/main` → STOP. Never ship a SHA that isn't on origin.
 - Sync verification fails → STOP before rebuilding; the NAS may hold a partial tree.
 - Health check fails → the script rolls back. Do not re-run with `--skip-verify` to force

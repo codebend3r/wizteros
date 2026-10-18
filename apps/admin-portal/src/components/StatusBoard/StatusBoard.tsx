@@ -4,8 +4,7 @@ import { useBillingStore } from '@/stores/billingStore'
 import { useTierStore } from '@/stores/tierStore'
 import styles from '@/components/StatusBoard/StatusBoard.module.scss'
 
-// The weights are static placeholders until the bridge exposes real telemetry;
-// swap the numbers in one place when it does. The framing stays on
+// An illustrative allocation, not measured spending. The framing stays on
 // infrastructure (hardware, storage, uptime), never on content.
 const LEDGER_SPLIT = [
   { label: 'Server hardware', weight: 26, tone: 'accent' },
@@ -35,22 +34,7 @@ const ledgerRows = ({ tier, cadence }: { tier: Tier; cadence: BillingCadence }) 
   }))
 }
 
-const STATUS_ROWS = [
-  { label: 'Streaming', value: 'Nominal', live: true },
-  { label: '4K transcode headroom', value: 'Nominal', live: true },
-  { label: 'Request queue', value: '48h turnaround', live: false },
-] as const
-
-const UPTIME = {
-  percent: '99.94%',
-  caption: 'one 40-minute maintenance window',
-  // One cell per five-day slice of the 90-day window; slice 6 is the window
-  // the maintenance fell into.
-  cells: Array.from({ length: 18 }, (_, index) => ({
-    slice: `slice-${index}`,
-    state: index === 6 ? 'maintenance' : 'ok',
-  })),
-} as const
+const STATUS_ROWS = ['Server availability', 'Transcode capacity', 'Request queue'] as const
 
 const TONE_CLASS: Record<(typeof LEDGER_SPLIT)[number]['tone'], string> = {
   accent: styles.toneAccent,
@@ -79,10 +63,11 @@ const LedgerCard = ({ tiers }: { tiers: ReadonlyArray<Tier> }) => {
         <span className={styles.cornerNote}>{tier.name}</span>
       </header>
       <div className={styles.cardBody}>
+        <p className={styles.uptimeCaption}>Illustrative allocation, not actual spending.</p>
         <div
           className={styles.splitBar}
           role="img"
-          aria-label="How the monthly contribution splits across the four costs below"
+          aria-label="Illustrative monthly contribution split across the four costs below"
           style={{
             gridTemplateColumns: LEDGER_SPLIT.map(({ weight }) => `${weight}fr`).join(' '),
           }}
@@ -111,41 +96,22 @@ const StatusCard = () => (
   <article className={styles.card}>
     <header className={styles.cardHeader}>
       <h2 className={styles.eyebrow}>Service status</h2>
-      <span className={styles.cornerNote}>refreshed 40s ago</span>
+      <span className={styles.cornerNote}>Not connected</span>
     </header>
     <ul className={styles.statusRows}>
-      {STATUS_ROWS.map(({ label, value, live }) => (
+      {STATUS_ROWS.map((label) => (
         <li key={label} className={styles.statusRow}>
           <span className={styles.statusLabel}>{label}</span>
-          {live ? (
-            <span className={styles.statusLive}>
-              <span className={styles.statusDot} aria-hidden="true" />
-              {value}
-            </span>
-          ) : (
-            <span className={styles.statusValue}>{value}</span>
-          )}
+          <span className={styles.statusValue}>Unverified</span>
         </li>
       ))}
     </ul>
     <div className={styles.uptime}>
       <p className={styles.uptimeHeader}>
-        <span>Uptime, last 90 days</span>
-        <span className={styles.uptimeFigure}>{UPTIME.percent}</span>
+        <span>Uptime</span>
+        <span className={styles.uptimeFigure}>Unavailable</span>
       </p>
-      <div
-        className={styles.uptimeStrip}
-        role="img"
-        aria-label={`Uptime ${UPTIME.percent} over the last 90 days, ${UPTIME.caption}`}
-      >
-        {UPTIME.cells.map(({ slice, state }) => (
-          <span
-            key={slice}
-            className={state === 'maintenance' ? styles.uptimeMaintenance : styles.uptimeOk}
-          />
-        ))}
-      </div>
-      <p className={styles.uptimeCaption}>{UPTIME.caption}</p>
+      <p className={styles.uptimeCaption}>Public telemetry is not connected.</p>
     </div>
   </article>
 )

@@ -6,13 +6,16 @@ import { App } from '@/App'
 test('renders the marquee headline', () => {
   render(<App />)
   expect(
-    screen.getByRole('heading', { name: "Everything you'd stream. Nothing you'd skip." }),
+    screen.getByRole('heading', { name: 'Community powered. Member funded.' }),
   ).toBeInTheDocument()
 })
 
 test('hero CTA scrolls to the pricing section', () => {
   render(<App />)
-  expect(screen.getByRole('link', { name: 'Choose a plan' })).toHaveAttribute('href', '#pricing')
+  expect(screen.getByRole('link', { name: 'Choose a contribution' })).toHaveAttribute(
+    'href',
+    '#pricing',
+  )
 })
 
 test('renders a tab per tier in the switcher', () => {

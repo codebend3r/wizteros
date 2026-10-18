@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { issueInvite, liveScope, TierScopeEmpty } from '@/invites.js'
 import { eachInOrder, mapInOrder } from '@/sequence.js'
 import { isBanned, isMemberTag, type MemberTag } from '@/standing.js'
-import { isTier, normalizeTier, staleRecordIds, type Tier } from '@/tiers.js'
+import { isTier, staleRecordIds, type Tier } from '@/tiers.js'
 import type { Bridge, StripeSubscription } from '@/types.js'
 
 // What each admin POST does once its body is read, over a Bridge. A refusal
@@ -429,6 +429,10 @@ export const reissueInvite = async ({
   email: string
   tier: string
 }): Promise<ReissueResult> => {
+  if (!isTier(requested)) {
+    throw httpError({ status: 400, detail: `unknown tier ${JSON.stringify(requested)}` })
+  }
+  const tier = requested
   const { wizarr, plex, mailer, settings, store } = bridge
   if (!settings.publicInviteBase) {
     throw httpError({ status: 500, detail: 'PUBLIC_INVITE_BASE not configured' })
@@ -436,7 +440,6 @@ export const reissueInvite = async ({
   if (isBanned(store.getMemberTag({ email }))) {
     throw httpError({ status: 409, detail: 'member is banned; clear the tag first' })
   }
-  const tier = normalizeTier(requested)
   // Stale cache rows are dropped the same way the checkout path does it: an
   // invite carrying a name Plex no longer knows is rejected whole.
   const access = await liveScope({ wizarr, plex, tier, context: `reissue for ${email}` }).catch(

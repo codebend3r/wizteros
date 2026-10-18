@@ -51,17 +51,18 @@ block), `comment` (a code comment, always exempt, shown so nothing is dropped si
 These are payment surfaces. A member reads them while deciding to pay, while paying, or
 right after paying. No content nouns, no titles, no catalog language, at all.
 
-| Surface                                                                 | Path                                                   |
-| ----------------------------------------------------------------------- | ------------------------------------------------------ |
-| Landing page composition                                                | `apps/admin-portal/src/App.tsx`                        |
-| Tier cards, tier names, summaries, feature rows, tagline, support items | `apps/admin-portal/src/site.config.ts`                 |
-| Pricing section chrome                                                  | `apps/admin-portal/src/components/Pricing/Pricing.tsx` |
-| Hero                                                                    | `apps/admin-portal/src/components/Hero/Hero.tsx`       |
-| What the contribution funds                                             | `apps/admin-portal/src/components/Support/Support.tsx` |
-| Member links and the disclaimer                                         | `apps/admin-portal/src/components/Footer/Footer.tsx`   |
-| Document title (search results, browser tab)                            | `apps/admin-portal/index.html`                         |
-| Invite email, HTML body                                                 | `apps/stripe-bridge/src/clients/emailTemplate.ts`      |
-| Invite email, subject and plain-text body                               | `apps/stripe-bridge/src/clients/mailer.ts`             |
+| Surface                                                                 | Path                                                           |
+| ----------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Landing page composition                                                | `apps/admin-portal/src/App.tsx`                                |
+| Tier cards, tier names, summaries, feature rows, tagline, support items | `apps/admin-portal/src/site.config.ts`                         |
+| Pricing section chrome                                                  | `apps/admin-portal/src/components/Pricing/Pricing.tsx`         |
+| Hero                                                                    | `apps/admin-portal/src/components/Hero/Hero.tsx`               |
+| Public status and contribution breakdown                                | `apps/admin-portal/src/components/StatusBoard/StatusBoard.tsx` |
+| What the contribution funds                                             | `apps/admin-portal/src/components/Support/Support.tsx`         |
+| Member links and the disclaimer                                         | `apps/admin-portal/src/components/Footer/Footer.tsx`           |
+| Document title (search results, browser tab)                            | `apps/admin-portal/index.html`                                 |
+| Invite email, HTML body                                                 | `apps/stripe-bridge/src/clients/emailTemplate.ts`              |
+| Invite email, subject and plain-text body                               | `apps/stripe-bridge/src/clients/mailer.ts`                     |
 
 `App.tsx` and `Support.tsx` are surfaces without copy of their own: both render text
 passed down from `site.config.ts`, so the extractor correctly reports no rows for them.

@@ -144,21 +144,6 @@ const isTier = (value: unknown): value is Tier =>
 const isMemberTag = (value: unknown): value is MemberTag =>
   value === 'vip' || value === 'hvu' || value === 'banned'
 
-// A bridge deployed before the libraries map, invited_at stamp, tag, or
-// customer_id may still omit them; tolerate that and normalize with toMember
-// so the page degrades to bare server names, a grace clock that never
-// expires, an untagged member, and no Stripe link.
-type MemberPayload = Omit<
-  Member,
-  'libraries' | 'entitled' | 'invited_at' | 'tag' | 'customer_id'
-> & {
-  libraries?: Record<string, string[]>
-  entitled?: Record<string, string[]>
-  invited_at?: string | null
-  tag?: MemberTag | null
-  customer_id?: string | null
-}
-
 // Kept as per-field checks rather than one boolean chain so a rejected payload
 // can say which field failed. One malformed row from the bridge sinks the
 // whole list, and "Unexpected members response" alone gives nothing to go on.
@@ -182,30 +167,32 @@ const MEMBER_FIELD_CHECKS: ReadonlyArray<MemberFieldCheck> = [
   { field: 'servers', valid: (value) => isStringArray(value.servers) },
   {
     field: 'libraries',
-    valid: (value) => value.libraries === undefined || isLibrariesMap(value.libraries),
+    valid: (value) => isLibrariesMap(value.libraries),
   },
   {
     field: 'entitled',
-    valid: (value) => value.entitled === undefined || isLibrariesMap(value.entitled),
+    valid: (value) => isLibrariesMap(value.entitled),
   },
   { field: 'subscribed', valid: (value) => typeof value.subscribed === 'boolean' },
   {
+    field: 'payment_state',
+    valid: (value) => value.payment_state === null || value.payment_state === 'past_due',
+  },
+  {
+    field: 'stripe_email',
+    valid: (value) => value.stripe_email === null || typeof value.stripe_email === 'string',
+  },
+  {
     field: 'invited_at',
-    valid: (value) =>
-      value.invited_at === undefined ||
-      value.invited_at === null ||
-      typeof value.invited_at === 'string',
+    valid: (value) => value.invited_at === null || typeof value.invited_at === 'string',
   },
   {
     field: 'tag',
-    valid: (value) => value.tag === undefined || value.tag === null || isMemberTag(value.tag),
+    valid: (value) => value.tag === null || isMemberTag(value.tag),
   },
   {
     field: 'customer_id',
-    valid: (value) =>
-      value.customer_id === undefined ||
-      value.customer_id === null ||
-      typeof value.customer_id === 'string',
+    valid: (value) => value.customer_id === null || typeof value.customer_id === 'string',
   },
 ]
 
@@ -214,8 +201,7 @@ const invalidMemberFields = (value: unknown): string[] =>
     ? MEMBER_FIELD_CHECKS.filter(({ valid }) => !valid(value)).map(({ field }) => field)
     : ['(not an object)']
 
-const isMemberPayload = (value: unknown): value is MemberPayload =>
-  invalidMemberFields(value).length === 0
+const isMemberPayload = (value: unknown): value is Member => invalidMemberFields(value).length === 0
 
 // Points at the first row the bridge got wrong so a single bad member is
 // identifiable from the admin page without opening devtools.
@@ -236,15 +222,6 @@ const describeMembersMismatch = (data: unknown): string => {
       : `row ${first.index}`
   return `${invalid.length} of ${data.length} rows invalid; first is ${who} (bad fields: ${first.fields.join(', ')})`
 }
-
-const toMember = (payload: MemberPayload): Member => ({
-  ...payload,
-  libraries: payload.libraries ?? {},
-  entitled: payload.entitled ?? {},
-  invited_at: payload.invited_at ?? null,
-  tag: payload.tag ?? null,
-  customer_id: payload.customer_id ?? null,
-})
 
 const isPlexServerAccess = (value: unknown): value is PlexServerAccess =>
   isRecord(value) &&
@@ -272,7 +249,7 @@ const isMemberEvent = (value: unknown): value is MemberEvent =>
 const isMemberEventArray = (value: unknown): value is MemberEvent[] =>
   Array.isArray(value) && value.every(isMemberEvent)
 
-const isMemberPayloadArray = (value: unknown): value is MemberPayload[] =>
+const isMemberPayloadArray = (value: unknown): value is Member[] =>
   Array.isArray(value) && value.every(isMemberPayload)
 
 const isInviteResult = (value: unknown): value is InviteResult =>
@@ -369,7 +346,7 @@ export const fetchMembers = async (): Promise<Member[]> => {
   if (!isMemberPayloadArray(data)) {
     throw new Error(`Unexpected members response: ${describeMembersMismatch(data)}`)
   }
-  return data.map(toMember)
+  return data
 }
 
 /** The member, or null when the bridge has never heard of that address. */
@@ -381,7 +358,7 @@ export const fetchMember = async ({ email }: { email: string }): Promise<Member 
     if (!isMemberPayload(data)) {
       throw new Error('Unexpected member response')
     }
-    return toMember(data)
+    return data
   } catch (cause) {
     if (cause instanceof NotFoundError) {
       return null

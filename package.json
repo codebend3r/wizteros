@@ -53,7 +53,7 @@
     "release:minor": "bash scripts/release.sh minor",
     "release:major": "bash scripts/release.sh major",
     "release:backfill": "bash scripts/backfill-releases.sh",
-    "deploy:nas": "bash scripts/deploy-nas.sh"
+    "deploy:nas": "bash .claude/skills/deploy-nas/scripts/deploy-nas.sh"
   },
   "devDependencies": {
     "lefthook": "2.1.14",

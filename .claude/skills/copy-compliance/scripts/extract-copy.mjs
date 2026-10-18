@@ -67,6 +67,7 @@ const PAYMENT_SURFACES = [
   'apps/admin-portal/src/site.config.ts',
   'apps/admin-portal/src/lib/billing.ts',
   'apps/admin-portal/src/components/Hero/',
+  'apps/admin-portal/src/components/StatusBoard/',
   'apps/admin-portal/src/components/Pricing/',
   // Renders inside Pricing, so its copy sits directly against a price.
   'apps/admin-portal/src/components/BillingToggle/',

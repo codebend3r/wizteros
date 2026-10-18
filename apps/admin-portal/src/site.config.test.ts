@@ -1,6 +1,13 @@
 import { expect, test } from '@/test/vi'
 import { resolveConfig } from '@/site.config'
 
+test('the tagline describes hosting costs, not a catalog or title requests', () => {
+  const { tagline } = resolveConfig({ env: {} })
+  expect(tagline).toContain('contribution')
+  expect(tagline).toContain('hosting, storage, bandwidth and maintenance')
+  expect(tagline).not.toMatch(/movies|shows|library|catalog|commercial/i)
+})
+
 test('defines the four tiers in order with CAD prices', () => {
   const config = resolveConfig({ env: {} })
   expect(config.tiers.map((tier) => tier.id)).toEqual(['bronze', 'silver', 'gold', 'youth'])

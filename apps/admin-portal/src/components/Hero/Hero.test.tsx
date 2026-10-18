@@ -12,12 +12,20 @@ const props = {
 test('renders the headline, brand, and tagline with a link to pricing', () => {
   render(<Hero {...props} />)
   expect(
-    screen.getByRole('heading', { name: "Everything you'd stream. Nothing you'd skip." }),
+    screen.getByRole('heading', { name: 'Community powered. Member funded.' }),
   ).toBeInTheDocument()
   expect(screen.getByText('Westeroz')).toBeInTheDocument()
   expect(screen.getByText('Get access to the media servers.')).toBeInTheDocument()
-  const cta = screen.getByRole('link', { name: 'Choose a plan' })
+  const cta = screen.getByRole('link', { name: 'Choose a contribution' })
   expect(cta).toHaveAttribute('href', '#pricing')
+})
+
+test('keeps the ticker on infrastructure without invented telemetry', () => {
+  const { container } = render(<Hero {...props} />)
+  const labels = [...container.querySelectorAll('.tickerItem')].map((item) => item.textContent)
+  expect(labels).toContain('Server hardware')
+  expect(labels).toContain('Storage & bandwidth')
+  expect(labels.join(' ')).not.toMatch(/movies|shows|albums|99\.94|maintenance.*ago/i)
 })
 
 test('anchors the section nav to the page sections', () => {
