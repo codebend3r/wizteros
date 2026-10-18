@@ -119,8 +119,50 @@ Hooks run automatically, from `lefthook.yml` at the root. Pre-commit first runs
 `bun run lint:staged`, which fixes only the files in the commit (`oxlint --fix`
 and `oxfmt` on TS/TSX, `stylelint --fix` and `oxfmt` on SCSS) and re-stages the
 result, then `bun run system-check` (lint, SCSS lint, format check, typecheck,
-and tests for `admin-portal`). Pre-push runs `bun run verify` across every project.
-CI runs the same `bun run verify` on every push.
+and tests for `admin-portal`). Pre-push runs `bun run verify` across every project,
+including `bun run check:repo` (root lint/format, tooling tests, version parity,
+and the secrets/private-infrastructure scan).
+
+### CI
+
+`.github/workflows/pull-request-checks.yml` runs on PRs and pushes to `main`.
+Independent lanes run concurrently, with `fail-fast: false` so one failure does
+not hide the others:
+
+- **Repository:** root lint/format, Node tooling tests in `scripts/` and
+  `.claude/skills/`, version parity, security scan, actionlint and ShellCheck.
+- **Static:** workspace TS/JS lint, SCSS lint, formatting and typechecks.
+- **Tests:** all affected workspace test suites.
+- **Builds:** production builds, including a non-empty web entrypoint check.
+- **Containers (two parallel jobs):** build and boot both production images,
+  check public/authenticated routes, and confirm the fleet image contains the
+  collector entrypoint and SSH client. No live services or credentials are used.
+
+PR workspace lanes use `nx affected` against the PR base and checked-out merge
+commit; `main` always runs every project. Nx still respects `^build` dependencies,
+with at most three tasks per runner. The existing **🚦 Pull request checks** name
+is the final required-check verdict, and fails unless every lane succeeds.
+`sanity-check.yml` is now the reusable container workflow, not a second web build.
+
+Bun downloads and per-lane Nx results are cached. Node/Bun versions and shared
+runtime/CI configuration are task inputs, preventing stale results after tooling
+changes. Buildx caches Docker layers separately for each image; only `main`
+publishes those layers, while PRs can restore them. New pushes cancel obsolete
+runs. Parallel lanes trade additional runner-minutes for a shorter critical path.
+
+`bun audit --audit-level=high` also reports dependency findings, but is explicitly
+**non-blocking** until the existing high-severity advisories are remediated; a
+failed audit writes a warning and summary rather than silently passing.
+Workflow/ShellCheck and Docker smoke checks require CI tools and are additional
+to local `verify`. To repeat them locally:
+
+```bash
+actionlint
+shellcheck scripts/ci/*.sh
+# Build the matching app image as <app>:sanity first:
+bun run ci:smoke stripe-bridge
+bun run ci:smoke fleet-monitor
+```
 
 `system-check` reads the Nx cache, so a rerun with nothing changed reports a hit
 without executing anything. `bun run system-check:no-cache` runs the identical
