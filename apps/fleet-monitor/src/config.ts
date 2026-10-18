@@ -2,6 +2,7 @@ import {
   type AdminAuthConfig,
   parseEmailAllowlist,
   parseList,
+  parseInteger,
   trimTrailingSlashes,
 } from '@wizteros/server-common'
 import { isIPv4 } from 'node:net'
@@ -224,8 +225,8 @@ export const plexToken = (): string => process.env.FM_PLEX_TOKEN || process.env.
  */
 export const plexLookbackDays = (): number => {
   const raw = (process.env.FM_PLEX_LOOKBACK_DAYS ?? '').trim()
-  const days = /^[+-]?\d+$/.test(raw) ? Number.parseInt(raw, 10) : Number.NaN
-  return Number.isInteger(days) && days > 0 ? days : DEFAULT_PLEX_LOOKBACK_DAYS
+  const days = parseInteger({ value: raw })
+  return days !== null && Number.isInteger(days) && days > 0 ? days : DEFAULT_PLEX_LOOKBACK_DAYS
 }
 
 /**

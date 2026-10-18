@@ -3,7 +3,7 @@ import { createTransport as nodemailerTransport } from 'nodemailer'
 import { renderInviteEmail } from '@/clients/emailTemplate.js'
 import type { SmtpConfig } from '@/config.js'
 import type { Alert, Mailer } from '@/types.js'
-import { stackOf } from '@/errors.js'
+import { stackOf } from '@wizteros/server-common'
 
 // SMTP invite mail, shared by the Stripe webhook flow and the admin API, plus
 // the operator alerts every flow copies to the admins.

@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common'
 import { isLiveStatus, stripeStatusByCustomer } from '@/subscriptionStatus.js'
 import type { Bridge } from '@/types.js'
-import { stackOf } from '@/errors.js'
+import { stackOf } from '@wizteros/server-common'
 
 // Who a Stripe customer is in Wizarr, resolved live. Shared by the webhook
 // handlers and the sweeps.

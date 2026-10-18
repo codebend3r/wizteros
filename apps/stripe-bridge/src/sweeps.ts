@@ -7,7 +7,7 @@ import { holdsStandingGrant } from '@/standing.js'
 import { statusRule, stripeStatusByCustomer } from '@/subscriptionStatus.js'
 import { libraryCacheProblems, tierScopeProblems } from '@/tiers.js'
 import type { Bridge, WizarrUser } from '@/types.js'
-import { stackOf } from '@/errors.js'
+import { stackOf } from '@wizteros/server-common'
 
 // The drift alarms the reconcile loop runs between webhooks.
 //

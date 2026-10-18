@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common'
+import { stackOf } from '@wizteros/server-common'
 import { joinCompactions, runAll } from '@/collector.js'
 import { dbPath, fleetHosts, SLOW_INTERVAL, sshUser, VITALS_INTERVAL } from '@/config.js'
 
@@ -9,9 +10,6 @@ import { dbPath, fleetHosts, SLOW_INTERVAL, sshUser, VITALS_INTERVAL } from '@/c
 // module and no container.
 
 const log = new Logger('fleet.collector')
-
-const stackOf = (error: unknown): string =>
-  error instanceof Error ? (error.stack ?? String(error)) : String(error)
 
 const controller = new AbortController()
 

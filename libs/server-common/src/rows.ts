@@ -2,10 +2,11 @@
 // cast, so every read narrows here. A column holding the wrong type is a
 // schema bug rather than bad input, so it throws instead of guessing.
 
+import { isRecord } from './records.js'
+
 export type Row = Readonly<Record<string, unknown>>
 
-export const isRow = (value: unknown): value is Row =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
+export const isRow = isRecord
 
 /** The rows of an `.all()` result, each narrowed. */
 export const asRows = (values: readonly unknown[]): Row[] => values.filter(isRow)

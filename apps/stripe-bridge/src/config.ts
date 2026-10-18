@@ -2,6 +2,7 @@ import {
   type AdminAuthConfig,
   parseEmailAllowlist,
   parseList,
+  parseInteger,
   trimTrailingSlashes,
 } from '@wizteros/server-common'
 
@@ -36,19 +37,17 @@ export const REQUIRED_ENV: readonly string[] = [
   'SMTP_PASS',
 ]
 
-// Surrounding whitespace and one sign are fine; anything else is a crash at
-// startup, which is what a malformed interval should be.
-const INTEGER = /^\s*[+-]?\d+\s*$/
-
 const intEnv = ({ name, fallback }: { name: string; fallback: number }): number => {
   const raw = process.env[name]
   if (raw === undefined) {
     return fallback
   }
-  if (!INTEGER.test(raw)) {
+  // Malformed intervals fail at startup; surrounding whitespace and a sign are fine.
+  const value = parseInteger({ value: raw })
+  if (value === null) {
     throw new Error(`${name} is not an integer: ${JSON.stringify(raw)}`)
   }
-  return Number.parseInt(raw, 10)
+  return value
 }
 
 export const wizarrBaseUrl = (): string => trimTrailingSlashes(process.env.WIZARR_BASE_URL)

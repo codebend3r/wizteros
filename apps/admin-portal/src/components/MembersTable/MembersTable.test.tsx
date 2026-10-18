@@ -614,7 +614,11 @@ test('offers to link a flagged pair when only one of the two holds access', asyn
     </MemoryRouter>,
   )
 
-  await userEvent.click(screen.getAllByRole('button', { name: /one member/ })[0]!)
+  const [linkButton] = screen.getAllByRole('button', { name: /one member/ })
+  if (!linkButton) {
+    throw new Error('Expected a link-addresses button')
+  }
+  await userEvent.click(linkButton)
 
   // The address holding no Wizarr records is the one that pays.
   expect(onLinkAddresses).toHaveBeenCalledWith({

@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common'
+import { isRecord } from '@wizteros/server-common'
 import { XMLParser, XMLValidator } from 'fast-xml-parser'
 import { mapInOrder } from '@/sequence.js'
 import type { LiveSections, PlexAccess, PlexApi, PlexShare, PlexShares } from '@/types.js'
@@ -52,9 +53,6 @@ const parser = new XMLParser({
   ignorePiTags: true,
   htmlEntities: true,
 })
-
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
 
 /** A node's attributes as strings; preserveOrder files them under ':@'. */
 const attributesOf = (

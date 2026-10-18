@@ -10,6 +10,7 @@
 // empties a tier.
 
 import { describe, expect, it } from 'vitest'
+import { isRecord } from '@wizteros/server-common'
 
 import { fixtureJson } from '@/test/support.js'
 import {
@@ -29,10 +30,6 @@ import type { TierScope, WizarrLibrary } from '@/types.js'
 /** One row of the recorded snapshot: every field Wizarr returns, all present. */
 type SnapshotLibrary = WizarrLibrary &
   Readonly<{ name: string; server_name: string; enabled: boolean }>
-
-/** Whether a value is a plain JSON object. */
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
 
 /** Whether a value is one fully populated Wizarr library row. */
 const isSnapshotLibrary = (value: unknown): value is SnapshotLibrary =>

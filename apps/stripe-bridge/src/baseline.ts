@@ -1,10 +1,9 @@
 import { Logger } from '@nestjs/common'
-import { addDays, isoformat, parseIsoOrNull } from '@wizteros/server-common'
+import { addDays, isoformat, parseIsoOrNull, stackOf } from '@wizteros/server-common'
 import { mint } from '@/invites.js'
 import { mapInOrder } from '@/sequence.js'
 import { resolveTierAccess, type Tier, TIERS, tierScopeProblems, withoutStale } from '@/tiers.js'
 import type { Bridge, CreatedInvite, TierScope, WizarrInvitation } from '@/types.js'
-import { stackOf } from '@/errors.js'
 
 const log = new Logger('bridge.baseline')
 

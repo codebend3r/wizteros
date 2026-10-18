@@ -1,3 +1,4 @@
+import { isRecord as isObject } from '@wizteros/server-common'
 import type { Sample } from '@/probes/types.js'
 
 /** One container as GET /containers/json describes it. */
@@ -6,11 +7,6 @@ export type ContainerState = Readonly<{
   running: boolean
   health: string
 }>
-
-// A decoded JSON object, as opposed to an array or a scalar: the one shape
-// whose fields can be read.
-const isObject = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
 
 const health = (status: string): string => {
   if (status.includes('(healthy)')) {

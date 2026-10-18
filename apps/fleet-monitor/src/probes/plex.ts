@@ -20,6 +20,8 @@
 //   clientIdentifier; `/library/sections` lists key, type, title; `/` carries
 //   friendlyName, machineIdentifier and version.
 
+import { isRecord as isObject, parseInteger } from '@wizteros/server-common'
+
 export type Kind = 'movie' | 'episode' | 'track'
 export type Quality = '4k' | '1080p' | '720p' | 'sd'
 
@@ -163,11 +165,6 @@ const RESOLUTION_LABELS: ReadonlyMap<string, Quality> = new Map([
 
 type JsonObject = Readonly<Record<string, unknown>>
 
-// A decoded JSON object (Python's Mapping), as opposed to an array or a
-// scalar: the one shape whose fields can be read.
-const isObject = (value: unknown): value is JsonObject =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-
 const isKind = (value: unknown): value is Kind => typeof value === 'string' && KINDS.has(value)
 
 const container = (payload: unknown): JsonObject => {
@@ -187,15 +184,7 @@ const rows = ({ payload, key }: { payload: unknown; key: string }): readonly Jso
  * An integer from what Plex sends, which is sometimes a number and sometimes
  * the digits as a string. Booleans are not integers here.
  */
-const integer = (value: unknown): number | null => {
-  if (typeof value === 'number') {
-    return Number.isInteger(value) ? value : null
-  }
-  if (typeof value === 'string' && /^-?[0-9]+$/.test(value.trim())) {
-    return Number.parseInt(value.trim(), 10)
-  }
-  return null
-}
+const integer = (value: unknown): number | null => parseInteger({ value, allowPlus: false })
 
 const text = (value: unknown): string | null =>
   typeof value === 'string' && value !== '' ? value : null
