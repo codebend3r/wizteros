@@ -189,12 +189,12 @@ Stack A implementation notes:
 - Validation: `bun run verify --skip-nx-cache` passed across all four workspace projects, including tooling tests, version parity and the security scan. Copy extractor ran in filtered and `--all` modes; both shell scripts passed `bash -n` and ShellCheck.
 - No release or production deployment performed.
 
-| Stack | State                                               | PRs |
-| ----- | --------------------------------------------------- | --- |
-| 0     | merged                                              | #70 |
-| A     | A1–A4 implemented on `stack-a-live-defects`; one PR |     |
-| B     | not started                                         |     |
-| C     | not started                                         |     |
-| D     | not started                                         |     |
-| E     | not started                                         |     |
-| F     | not started                                         |     |
+| Stack | State                                     | PRs                                                   |
+| ----- | ----------------------------------------- | ----------------------------------------------------- |
+| 0     | merged                                    | [#70](https://github.com/codebend3r/wizteros/pull/70) |
+| A     | open; A1–A4 combined, local checks passed | [#71](https://github.com/codebend3r/wizteros/pull/71) |
+| B     | not started                               |                                                       |
+| C     | not started                               |                                                       |
+| D     | not started                               |                                                       |
+| E     | not started                               |                                                       |
+| F     | not started                               |                                                       |
