@@ -233,6 +233,12 @@ test('readDenylist merges the env value with the gitignored file', () => {
 
 test('scanTree reads what git would publish and nothing it ignores', () => {
   const dir = mkdtempSync(join(tmpdir(), 'audit-tree-'))
+  // Hooks can export GIT_INDEX_FILE/GIT_DIR. A cwd alone does not isolate Git:
+  // fixture staging must never write into the invoking repository's index.
+  const originalEnv = process.env
+  process.env = Object.fromEntries(
+    Object.entries(originalEnv).filter(([key]) => !key.startsWith('GIT_')),
+  )
   try {
     const git = (...args) => execFileSync('git', args, { cwd: dir, stdio: 'pipe' })
     git('init', '-q')
@@ -251,6 +257,7 @@ test('scanTree reads what git would publish and nothing it ignores', () => {
       'sensitive-file:.env',
     ])
   } finally {
+    process.env = originalEnv
     rmSync(dir, { recursive: true, force: true })
   }
 })
