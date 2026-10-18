@@ -2,78 +2,138 @@ name: 🧪 Pull request checks
 
 on:
   pull_request:
+  push:
+    branches: [main]
 
 permissions:
   contents: read
 
-# A newer push to the same branch cancels the in-flight run for that branch;
-# runs on different branches never interfere with each other.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  NX_DAEMON: 'false'
+  NX_NO_CLOUD: 'true'
+
 jobs:
-  pull-request-checks:
-    name: 🚦 Pull request checks
+  repository:
+    name: 🔎 Repository checks
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v7
-
-      # No bun-version input on purpose: setup-bun reads `packageManager` from
-      # the root package.json, so the pin lives in one place.
-      - name: 🥟 Set up Bun
-        uses: oven-sh/setup-bun@v2
-
-      # The NestJS servers run on Node (their images are node:24-slim), and
-      # Vitest and the Nest CLI run under it here too. .node-version is the pin.
-      - name: 🟢 Set up Node
-        uses: actions/setup-node@v7
         with:
-          node-version-file: .node-version
-
-      - name: 📦 Install workspace dependencies
-        run: bun install --frozen-lockfile
-
-      - name: ♻️ Restore Nx cache
-        uses: actions/cache@v4
-        with:
-          path: .nx/cache
-          key: nx-${{ runner.os }}-${{ hashFiles('bun.lock') }}-${{ github.sha }}
-          restore-keys: |
-            nx-${{ runner.os }}-${{ hashFiles('bun.lock') }}-
-            nx-${{ runner.os }}-
-
-      # The checks `bun run verify` bundles locally, split one target per step so
-      # a red run names the failure in the job list instead of burying it. Nx
-      # caches across steps, so the split costs one process per target, not one
-      # rerun. Colon targets go through `run-many`, since `nx run <p>:lint:css`
-      # would read the second colon as a configuration name.
-
-      # Everything outside apps/ is not an Nx project, so its oxlint and oxfmt
-      # pass is a plain script and `run-many` below would never reach it.
+          persist-credentials: false
+      - uses: ./.github/actions/setup-workspace
       - name: 🔍 Lint root (oxlint)
         run: bun run lint:root
-
       - name: 💅 Check root formatting (oxfmt)
         run: bun run format:check:root
+      - name: 🧪 Test repository tooling
+        run: bun run test:tooling
+      - name: 🔢 Check version parity
+        run: bun run check:versions
+      - name: 🔐 Scan for secrets and private infrastructure details
+        run: bun run security:scan
+      - name: 🔎 Lint workflows and embedded shell
+        run: |
+          curl --fail --silent --show-error --location --retry 3 \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
+            --output "$RUNNER_TEMP/actionlint.tar.gz"
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/actionlint.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -color
+          shellcheck scripts/ci/*.sh
+      # Existing high advisories need a separate dependency-remediation change.
+      # Report them visibly without turning this CI-only change permanently red.
+      - name: 🛡️ Report dependency vulnerabilities
+        id: audit
+        continue-on-error: true
+        run: bun audit --audit-level=high
+      - name: ⚠️ Surface dependency findings
+        if: steps.audit.outcome == 'failure'
+        run: |
+          echo "::warning::Dependency audit failed; see the audit step for advisories or registry errors."
+          echo '⚠️ Dependency audit failed (advisories or registry error); this report is not yet a blocking gate.' >> "$GITHUB_STEP_SUMMARY"
 
-      - name: 🔍 Lint TS/JS (oxlint)
-        run: bunx nx run-many -t lint:ts
+  workspace:
+    name: ${{ matrix.lane }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NX_BASE: ${{ github.event.pull_request.base.sha }}
+      NX_HEAD: ${{ github.sha }}
+      EVENT_NAME: ${{ github.event_name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lane: 🔍 Static checks
+            cache: static
+            targets: lint:ts lint:css format:check typecheck
+          - lane: 🧪 Tests
+            cache: tests
+            targets: test
+          - lane: 🏗️ Production builds
+            cache: builds
+            targets: build
+    steps:
+      - name: 📥 Checkout merge result and history
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-workspace
+      # Separate lanes must not race to save different task sets to the same key.
+      - name: ♻️ Restore Nx task cache
+        uses: actions/cache@v5
+        with:
+          path: .nx/cache
+          key: nx-v2-${{ runner.os }}-${{ runner.arch }}-${{ matrix.cache }}-${{ hashFiles('bun.lock', '.node-version') }}-${{ github.sha }}
+          restore-keys: |
+            nx-v2-${{ runner.os }}-${{ runner.arch }}-${{ matrix.cache }}-${{ hashFiles('bun.lock', '.node-version') }}-
+      # Compare the synthetic merge commit, not just the PR head. Full main
+      # runs seed caches and catch anything an affected-project calculation misses.
+      - name: 🚀 Run independent Nx targets concurrently
+        env:
+          TARGETS: ${{ matrix.targets }}
+        run: |
+          read -r -a targets <<< "$TARGETS"
+          if [ "$EVENT_NAME" = pull_request ]; then
+            bunx nx affected -t "${targets[@]}" --parallel=3 --outputStyle=static
+          else
+            bunx nx run-many -t "${targets[@]}" --parallel=3 --outputStyle=static
+          fi
+      - name: 🕵️ Verify web build output when built
+        if: matrix.cache == 'builds'
+        run: |
+          if [ "$EVENT_NAME" = pull_request ]; then
+            projects="$(bunx nx show projects --affected --json)"
+          else
+            projects='["admin-portal"]'
+          fi
+          if printf '%s\n' "$projects" | jq -e 'index("admin-portal") != null' >/dev/null; then
+            test -s apps/admin-portal/dist/index.html
+          fi
 
-      - name: 🎨 Lint SCSS (stylelint)
-        run: bunx nx run-many -t lint:css
+  images:
+    name: 🐳 Container checks
+    uses: ./.github/workflows/sanity-check.yml
 
-      - name: 💅 Check formatting (oxfmt)
-        run: bunx nx run-many -t format:check
-
-      - name: 🧬 Typecheck (tsgo)
-        run: bunx nx run-many -t typecheck
-
-      - name: 🧪 Test (bun + vitest)
-        run: bunx nx run-many -t test
-
-      # `nest build` is where the `@/` alias gets rewritten for Node, so a
-      # server that typechecks can still fail here.
-      - name: 🏗️ Build
-        run: bunx nx run-many -t build
+  # Keep the existing required-check name stable. An always-running verdict
+  # fails closed on failure, cancellation OR an unexpectedly skipped lane.
+  pull-request-checks:
+    name: 🚦 Pull request checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    needs: [repository, workspace, images]
+    if: always()
+    steps:
+      - name: 📝 Check every lane
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          printf '%s\n' "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"' >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' "$RESULTS" | jq -e 'all(.[]; .result == "success")'

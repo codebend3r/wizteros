@@ -6,7 +6,17 @@
     "libsDir": "libs"
   },
   "namedInputs": {
-    "sharedGlobals": [],
+    "sharedGlobals": [
+      "{workspaceRoot}/package.json",
+      "{workspaceRoot}/bun.lock",
+      "{workspaceRoot}/nx.json",
+      "{workspaceRoot}/.node-version",
+      "{workspaceRoot}/scripts/only-bun.mjs",
+      "{workspaceRoot}/.github/actions/**/*",
+      "{workspaceRoot}/.github/workflows/**/*",
+      { "runtime": "node --version" },
+      { "runtime": "bun --version" }
+    ],
     "default": ["{projectRoot}/**/*", "sharedGlobals"],
     "production": [
       "default",
