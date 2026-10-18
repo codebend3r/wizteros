@@ -1,6 +1,7 @@
 // invoice.paid, invoice.payment_failed and customer.subscription.updated: what a renewal extends or restores, and how dunning is flagged.
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { Logger } from '@nestjs/common'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   type WebhookHarness,
   webhookHarness,
@@ -185,6 +186,34 @@ describe('invoice.paid', () => {
 /** An invoice.payment_failed event carrying `invoice`. */
 
 describe('invoice.payment_failed', () => {
+  it('warns and acknowledges an invoice with no customer or email', async () => {
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {})
+    try {
+      const event = paymentFailed({
+        id: 'evt_no_customer',
+        invoice: { id: 'in_missing', customer: null },
+      })
+      await h.handle(event)
+      await h.handle(event)
+      expect(warn).toHaveBeenCalledExactlyOnceWith(
+        'payment failed for no customer with no resolvable email',
+      )
+      expect(h.bridge.store.isEventProcessed({ eventId: 'evt_no_customer' })).toBe(true)
+      expect(h.bridge.stripe.customerEmail).not.toHaveBeenCalled()
+      expect(h.bridge.wizarr.disableUser).not.toHaveBeenCalled()
+      expect(h.bridge.mailer.sendAlert).not.toHaveBeenCalled()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('still retries a real customer lookup failure', async () => {
+    h.bridge.stripe.customerEmail.mockRejectedValue(new Error('Stripe unavailable'))
+    const event = paymentFailed({ id: 'evt_lookup_failed', invoice: { customer: 'cus_1' } })
+    await expect(h.handle(event)).rejects.toThrow('Stripe unavailable')
+    expect(h.bridge.store.isEventProcessed({ eventId: 'evt_lookup_failed' })).toBe(false)
+  })
+
   it('flags dunning without touching access', async () => {
     // Stripe retries a declined charge for weeks. The member keeps the period
     // they paid for, but must stop reading as healthy in the admin UI.

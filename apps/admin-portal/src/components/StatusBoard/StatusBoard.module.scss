@@ -24,11 +24,15 @@
 
 .cardHeader {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: baseline;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--color-border);
+
+  @media (max-width: 48rem) {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 // The pixel-caps header treatment shared with the members table.
@@ -137,7 +141,7 @@
 
 .statusRow {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
@@ -146,42 +150,6 @@
 
 .statusLabel {
   font-size: var(--font-size-sm);
-}
-
-.statusLive {
-  display: inline-grid;
-  grid-auto-flow: column;
-  align-items: center;
-  gap: var(--space-1);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
-  text-transform: uppercase;
-  color: var(--color-state-shared);
-}
-
-.statusDot {
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 50%;
-  background: var(--color-state-shared);
-  animation: pulse 2.4s ease-in-out infinite;
-
-  @media (prefers-reduced-motion: reduce) {
-    animation: none;
-  }
-}
-
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-
-  50% {
-    opacity: 0.35;
-    transform: scale(0.8);
-  }
 }
 
 .statusValue {
@@ -213,28 +181,6 @@
 .uptimeFigure {
   color: var(--color-text);
   border-bottom: 1px dotted var(--color-accent);
-}
-
-.uptimeStrip {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
-  gap: 2px;
-}
-
-.uptimeOk,
-.uptimeMaintenance {
-  display: block;
-  height: 1.375rem;
-  border-radius: 2px;
-}
-
-.uptimeOk {
-  background: var(--color-state-shared);
-}
-
-.uptimeMaintenance {
-  background: var(--color-accent);
 }
 
 .uptimeCaption {

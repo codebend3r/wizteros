@@ -94,6 +94,8 @@ main
 
 ### Stack A: live defects, then release 0.4.4 and `deploy:nas`
 
+A1–A4 are combined into one behaviour-fix PR at the owner's request. Release 0.4.4 and production deployment remain follow-ups after merge.
+
 | PR  | Change                                                                                                                                                                                | Kind |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
 | A1  | Landing copy: Hero ticker, tagline, hardcoded telemetry; plus the re-invite modal copy. Run `copy-compliance`.                                                                        | fix  |
@@ -160,8 +162,8 @@ main
 ## 5. Open decisions
 
 1. **B3:** should a tag on any of a person's addresses apply to all of them? Recommended: yes.
-2. **A3:** unknown tier on reissue answers 400 instead of minting Bronze? Recommended: yes.
-3. **A1:** final landing wording needs approval.
+2. **A3:** resolved in Stack A: unknown tiers on reissue answer 400, matching reset-tier.
+3. **A1:** proposed landing wording in the Stack A PR: “Community powered. Member funded.” Final wording is reviewable there.
 4. **D6:** wire the rollups into history, or delete compaction and keep only pruning?
 5. **F1:** delete Design, or shrink it to render the real components?
 6. **C1:** `zod/mini` in the portal bundle, or a small hand-written combinator? Recommended: zod, since both servers already pin it.
@@ -177,12 +179,22 @@ Stack 0 implementation notes:
 - The portal had two test non-null assertions, contrary to the review's note. Explicit element checks replace them; all projects now enforce the rule in tests.
 - Validation: uncached workspace verification, workflow lint (`actionlint`), version parity, both Docker builds and production import smoke tests. The bridge image contains no `dist/test` directory.
 
-| Stack | State                                                               | PRs |
-| ----- | ------------------------------------------------------------------- | --- |
-| 0     | implemented locally on `stack-zero-guardrails`; local checks passed |     |
-| A     | not started                                                         |     |
-| B     | not started                                                         |     |
-| C     | not started                                                         |     |
-| D     | not started                                                         |     |
-| E     | not started                                                         |     |
-| F     | not started                                                         |     |
+Stack A implementation notes:
+
+- A1: hosting-contribution headline, ticker and tagline; unavailable public telemetry is labelled rather than fabricated, and cost allocations are explicitly illustrative. Re-invite copy describes preserved access and the uncovered-server exception.
+- A2: monitor 401s use the shared auth-error path; both member endpoints require all current fields. Only successful `members` queries opt in to persistence, old blobs are invalidated, and sign-out clears memory and storage while blocking delayed writes.
+- A3: regression tests cover unknown-tier 400s before upstream calls, acknowledgment of failed-payment invoices without a customer/email, and retries for real Stripe lookup failures.
+- A4: one deploy entrypoint ships `git archive HEAD`; fake-SSH tests exercise the real script without touching a NAS, including ignored local data, preserved live state, preflight, dry-run and alarm classification. Deploy, stack-health and member-triage match `[TIER_SCOPE_ALARM]`.
+- Copy-compliance extractor reviewed (including the public StatusBoard). Remaining payment-surface candidates describe server capabilities or the explicit non-purchase disclaimer. Live Stripe Payment Links and Wizarr onboarding were not audited.
+- Validation: `bun run verify --skip-nx-cache` passed across all four workspace projects, including tooling tests, version parity and the security scan. Copy extractor ran in filtered and `--all` modes; both shell scripts passed `bash -n` and ShellCheck.
+- No release or production deployment performed.
+
+| Stack | State                                               | PRs |
+| ----- | --------------------------------------------------- | --- |
+| 0     | merged                                              | #70 |
+| A     | A1–A4 implemented on `stack-a-live-defects`; one PR |     |
+| B     | not started                                         |     |
+| C     | not started                                         |     |
+| D     | not started                                         |     |
+| E     | not started                                         |     |
+| F     | not started                                         |     |

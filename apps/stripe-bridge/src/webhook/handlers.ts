@@ -391,7 +391,8 @@ const onPaymentFailed: EventHandler = async ({ bridge, obj }) => {
   // a member in dunning is visible before their window runs out.
   const customerId = truthyText({ obj, key: 'customer' })
   const email =
-    truthyText({ obj, key: 'customer_email' }) ?? (await customerEmail({ bridge, customerId }))
+    truthyText({ obj, key: 'customer_email' }) ??
+    (customerId ? await customerEmail({ bridge, customerId }) : null)
   if (!email) {
     log.warn(`payment failed for ${customerId ?? 'no customer'} with no resolvable email`)
     return

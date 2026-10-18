@@ -1,3 +1,4 @@
+import { AdminAuthError } from '@/lib/adminApi'
 import { isNumberOrNull, isRecord, isStringOrNull } from '@/lib/guards'
 import { supabase } from '@/lib/supabaseClient'
 
@@ -303,7 +304,7 @@ const requestJson = async (path: string): Promise<unknown> => {
   // session lapsed mid-visit or this build points at a monitor that does not
   // allowlist the account - neither of which "fleet request failed: 401" says.
   if (response.status === 401) {
-    throw new Error('Not signed in, or this account is not allowed to read the fleet.')
+    throw new AdminAuthError('Not signed in, or this account is not allowed to read the fleet.')
   }
   if (!response.ok) throw new Error(`fleet request failed: ${response.status}`)
   const contentType = response.headers?.get('content-type') ?? ''

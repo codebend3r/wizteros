@@ -40,6 +40,14 @@ const getLedgerCard = (): HTMLElement => {
   return card
 }
 
+test('does not present placeholder telemetry or allocations as measured facts', () => {
+  render(<StatusBoard tiers={TIERS} />)
+  expect(screen.getByText('Illustrative allocation, not actual spending.')).toBeInTheDocument()
+  expect(screen.getByText('Public telemetry is not connected.')).toBeInTheDocument()
+  expect(screen.queryByText(/99\.94|refreshed 40s|48h turnaround|Nominal/)).toBeNull()
+  expect(screen.queryByRole('img', { name: /Uptime/ })).toBeNull()
+})
+
 test('ledgers the tier selected in the store', () => {
   useTierStore.setState({ selectedTierId: 'silver' })
   render(<StatusBoard tiers={TIERS} />)

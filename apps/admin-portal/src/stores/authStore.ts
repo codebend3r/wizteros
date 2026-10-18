@@ -25,10 +25,12 @@ export const useAuthStore = create<AuthState>(() => ({
     }
   },
   signOut: async () => {
-    if (!supabase) {
-      return
+    // Clear local session data even when Supabase has no session left or its
+    // sign-out request fails. The auth subscription also covers remote expiry.
+    useAuthStore.setState({ status: 'signed-out', email: null })
+    if (supabase) {
+      await supabase.auth.signOut()
     }
-    await supabase.auth.signOut()
   },
 }))
 

@@ -7,6 +7,10 @@
 #   wizarr-data/         - live Wizarr DB, incl. the healed library-name cache
 #   tautulli-config/     - live Tautulli state
 #   stripe-bridge-data/  - the bridge's SQLite mapping (bridge.db)
+#   fleet-monitor-data/  - the monitor's live samples
+#   fleet-monitor-ssh/   - the collector's SSH key
+# Only committed files from git archive HEAD are transferred; ignored local
+# data, secrets, dependencies and build output never enter the archive.
 #
 # The westeroz compose project (wizarr/tautulli/sab/radarr/sonarr) is a separate
 # stack on the NAS and is never rebuilt here.
@@ -18,7 +22,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="${WZ_REPO:-$(cd "$SCRIPT_DIR/../../../.." && pwd)}"
 NAS_HOST="${WZ_NAS_HOST:-$("$REPO/scripts/nas-host.sh" meleys)}"
 NAS_PATH="${WZ_NAS_PATH:-/volume1/docker/stripe-bridge}"
-SMB_PATH="${WZ_SMB_PATH:-/Volumes/docker/stripe-bridge}"
 DOCKER="/usr/local/bin/docker"   # NOPASSWD sudoers rule matches this literal path
 SERVICE="stripe-bridge"
 SHA_FILE=".deployed-sha"
@@ -46,7 +49,7 @@ die()  { printf '\n✗ %s\n' "$*" >&2; exit 1; }
 # commit touching only them used to read as "nothing to do" and need --force.
 # Both servers build from apps/ and libs/server-common through the bun
 # workspace, so the root manifests and lockfile count as well.
-NAS_PATHS=(apps/stripe-bridge apps/fleet-monitor libs/server-common docker-compose.yml scripts package.json bun.lock)
+NAS_PATHS=(apps/stripe-bridge apps/fleet-monitor libs/server-common docker-compose.yml scripts package.json bun.lock tsconfig.server.json .oxlintrc.server.json .node-version)
 
 say "═══════════════════════════════════════════"
 say "deploy-nas — wizteros stripe-bridge"
@@ -67,7 +70,7 @@ BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 
 if [ -n "$(git status --porcelain)" ]; then
   git status --short | sed 's/^/    /'
-  die "working tree is dirty. Commit or stash before deploying — the NAS gets your working tree, not your last commit."
+  die "working tree is dirty. Commit or stash before deploying — the NAS gets git archive HEAD only."
 fi
 
 git fetch --quiet origin main || die "could not fetch origin"
@@ -122,11 +125,7 @@ fi
 
 if [ "$DRY_RUN" = 1 ]; then
   step "Dry run — would sync and rebuild"
-  if [ -d "$SMB_PATH" ]; then
-    say "  transport: rsync over SMB mount ($SMB_PATH)"
-  else
-    say "  transport: tar over SSH (SMB not mounted)"
-  fi
+  say "  transport: git archive HEAD over SSH (committed files only)"
   say "  then: cd $NAS_PATH && sudo -n $DOCKER compose up -d --build"
   say ""
   say "✓ Dry run complete. Nothing changed."
@@ -146,25 +145,10 @@ fi
 # ─── sync code ────────────────────────────────────────────────────────────────
 step "Syncing code to the NAS"
 
-EXCLUDES=(
-  --exclude '.git' --exclude 'node_modules' --exclude '.netlify' --exclude '.nx'
-  --exclude '.env' --exclude 'wizarr-data' --exclude 'tautulli-config'
-  --exclude 'stripe-bridge-data' --exclude '.DS_Store' --exclude '._*' --exclude 'dist'
-)
-
-if [ -d "$SMB_PATH" ]; then
-  say "  · transport: rsync over SMB mount"
-  rsync -a "${EXCLUDES[@]}" "$REPO/" "$SMB_PATH/" || die "rsync to $SMB_PATH failed"
-else
-  # macOS ships openrsync, which fails key auth against this NAS — tar over SSH
-  # is the reliable path and needs nothing mounted.
-  say "  · transport: tar over SSH (SMB not mounted)"
-  # --no-xattrs/--no-mac-metadata keep bsdtar from emitting LIBARCHIVE.xattr
-  # headers that the NAS's GNU tar then warns about for every single file.
-  COPYFILE_DISABLE=1 tar -cf - --no-xattrs --no-mac-metadata "${EXCLUDES[@]}" -C "$REPO" . \
-    | $SSH "$NAS_HOST" "tar -xf - -C $NAS_PATH" \
-    || die "tar-over-ssh sync failed — NAS may hold a partial tree; rerun before rebuilding"
-fi
+say "  · transport: git archive HEAD over SSH (committed files only)"
+git archive HEAD \
+  | $SSH "$NAS_HOST" "tar -xf - -C $NAS_PATH" \
+  || die "git-archive sync failed — NAS may hold a partial tree; rerun before rebuilding"
 say "  · code synced"
 
 # Prove the bytes landed rather than trusting the transport's exit code.
@@ -212,7 +196,7 @@ else
   # 2. the app answers — 401 from the admin router proves the routes mounted
   #    and auth is wired, which a bare port check or a 404 would not.
   PROBE=""
-  for i in 1 2 3 4 5 6 7 8 9 10; do
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
     PROBE="$($SSH "$NAS_HOST" "curl -s -o /dev/null -m 5 -w '%{http_code}' http://localhost:8000/admin/members || true" | tr -d '[:space:]')"
     [ "$PROBE" = "401" ] && break
     sleep 3
@@ -242,16 +226,19 @@ else
   sleep 25
   LOGS="$($SSH "$NAS_HOST" "sudo -n $DOCKER logs --tail 120 $SERVICE 2>&1" || true)"
 
-  if printf '%s' "$LOGS" | grep -q 'tier scope check:'; then
+  if printf '%s' "$LOGS" | grep -qF '[TIER_SCOPE_ALARM]'; then
     say ""
     say "  ⚠ TIER SCOPE ALARM — a tier no longer resolves against the live Wizarr libraries:"
-    printf '%s' "$LOGS" | grep 'tier scope check:' | sed 's/^/      /'
+    printf '%s' "$LOGS" | grep -F '[TIER_SCOPE_ALARM]' | sed 's/^/      /'
     say ""
     say "  The build itself is healthy; this is the drift alarm firing on data, not code."
     say "  Members cannot sign up for the listed tier(s) until the names line up."
     TIER_ALARM=1
+  elif printf '%s' "$LOGS" | grep -qE 'tier scope check: could not read|tier scope check failed'; then
+    say "  ⚠ tier scope check could not run — drift is unverified, not a tier alarm"
+    TIER_UNVERIFIED=1
   else
-    say "  · tier scope check: no alarms — all tiers resolve"
+    say "  · tier scope check: no alarms observed"
     TIER_ALARM=0
   fi
 
@@ -274,8 +261,10 @@ say "deployed:  $(git rev-parse --short HEAD)  $(git log -1 --pretty=%s | cut -c
 say "container: $SERVICE up and answering on :8000"
 if [ "${TIER_ALARM:-0}" = 1 ]; then
   say "tiers:     ⚠ ALARM — see above"
+elif [ "$SKIP_VERIFY" = 1 ] || [ "${TIER_UNVERIFIED:-0}" = 1 ]; then
+  say "tiers:     unverified"
 else
-  say "tiers:     all resolving"
+  say "tiers:     no alarms observed"
 fi
 say ""
 say "✓ Deploy complete."

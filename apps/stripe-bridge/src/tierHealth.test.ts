@@ -135,7 +135,9 @@ describe('checkTierScopes', () => {
     expect(fake.mailer.sendAlert).toHaveBeenCalledOnce()
     expect(alertsSent(fake)[0]?.body).toContain('youth')
     // The stack-health and deploy-nas skills grep the container logs for this line.
-    expect(logged.some((line) => line.startsWith('tier scope check: youth -> '))).toBe(true)
+    expect(
+      logged.some((line) => line.startsWith('[TIER_SCOPE_ALARM] tier scope check: youth -> ')),
+    ).toBe(true)
   })
 
   it('health check stays quiet while healthy', async () => {
@@ -178,8 +180,17 @@ describe('checkTierScopes', () => {
   it('health check survives wizarr being down', async () => {
     const fake = sweepsBridge()
     fake.wizarr.listLibraries.mockRejectedValue(new Error('wizarr down'))
-    expect(await checkTierScopes({ bridge: asBridge(fake), alert: alerts.tierScope })).toEqual({})
-    expect(fake.mailer.sendAlert).not.toHaveBeenCalled() // unreachable != misconfigured
+    const error = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => {})
+    try {
+      expect(await checkTierScopes({ bridge: asBridge(fake), alert: alerts.tierScope })).toEqual({})
+      expect(error).toHaveBeenCalled()
+      expect(error.mock.calls.some(([line]) => String(line).includes('[TIER_SCOPE_ALARM]'))).toBe(
+        false,
+      )
+      expect(fake.mailer.sendAlert).not.toHaveBeenCalled() // unreachable != misconfigured
+    } finally {
+      error.mockRestore()
+    }
   })
 })
 

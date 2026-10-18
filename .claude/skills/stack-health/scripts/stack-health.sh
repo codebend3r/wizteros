@@ -326,7 +326,7 @@ else
   # the same thing (see checkTierScopes in apps/stripe-bridge/src/sweeps.ts
   # and the reconcile loop in apps/stripe-bridge/src/loops.ts):
   #
-  #   "tier scope check: <tier> -> <reason>"                    real drift alarm
+  #   "[TIER_SCOPE_ALARM] tier scope check: <tier> -> <reason>"  real drift alarm
   #   "tier scope check: could not read libraries from Wizarr"  check could not run
   #   "tier scope check failed"                                 check could not run
   #
@@ -337,10 +337,10 @@ else
   # wrong diagnosis, on a stack where nothing is actually misconfigured.
   TIER_ALARM=0
   TIER_UNRAN=0
-  if printf '%s' "$LOGS" | grep -qE 'tier scope check: .+ -> '; then
+  if printf '%s' "$LOGS" | grep -qF '[TIER_SCOPE_ALARM]'; then
     say ""
     say "  ⚠ TIER SCOPE ALARM: a tier no longer resolves against the live Wizarr libraries."
-    printf '%s' "$LOGS" | grep -E 'tier scope check: .+ -> ' | sed 's/^/      /'
+    printf '%s' "$LOGS" | grep -F '[TIER_SCOPE_ALARM]' | sed 's/^/      /'
     say ""
     TIER_ALARM=1
   fi

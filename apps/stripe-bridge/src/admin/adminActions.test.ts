@@ -272,6 +272,25 @@ describe('POST /admin/reset-tier', () => {
 // --- reissue ----------------------------------------------------------------------------------------------
 
 describe('POST /admin/reissue-invite', () => {
+  it.each(['platinum', '', 'GOLD'])(
+    'rejects unknown tier %j before any upstream call',
+    async (tier) => {
+      const h = await harness()
+      const answer = await post({
+        h,
+        url: '/admin/reissue-invite',
+        payload: { email: 'a@x.com', tier },
+      })
+      expect(answer.statusCode).toBe(400)
+      expect(answer.json()).toEqual({ detail: `unknown tier ${JSON.stringify(tier)}` })
+      expect(h.bridge.wizarr.listLibraries).not.toHaveBeenCalled()
+      expect(h.bridge.wizarr.createInvite).not.toHaveBeenCalled()
+      expect(h.bridge.wizarr.disableUser).not.toHaveBeenCalled()
+      expect(h.bridge.mailer.sendInvite).not.toHaveBeenCalled()
+      expect(await getEvents({ h, email: 'a@x.com' })).toEqual([])
+    },
+  )
+
   it('keeps covered records enabled', async () => {
     const h = await harness()
     h.bridge.wizarr.listLibraries.mockResolvedValue(FIXTURE_LIBRARIES)

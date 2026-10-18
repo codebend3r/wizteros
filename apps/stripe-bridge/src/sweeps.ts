@@ -157,7 +157,8 @@ export const checkTierScopes = async ({
     return {}
   }
   Object.entries(problems).forEach(([tier, reason]) => {
-    log.error(`tier scope check: ${tier} -> ${reason}`)
+    // Stable machine marker: dependency failures must never match this alarm.
+    log.error(`[TIER_SCOPE_ALARM] tier scope check: ${tier} -> ${reason}`)
   })
   await alert.fire({
     current: problems,

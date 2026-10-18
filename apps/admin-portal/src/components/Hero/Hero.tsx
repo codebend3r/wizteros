@@ -5,27 +5,17 @@ import styles from '@/components/Hero/Hero.module.scss'
 import { shuffle } from '@/lib/shuffle'
 
 const BADGE_LABEL = 'Plex, member funded'
-const HEADLINE_LINES = ["Everything you'd stream.", "Nothing you'd skip."] as const
-const CTA_LABEL = 'Choose a plan'
+const HEADLINE_LINES = ['Community powered.', 'Member funded.'] as const
+const CTA_LABEL = 'Choose a contribution'
 
-// Uptime and maintenance figures are static placeholders until the bridge
-// exposes real ones; they mirror the StatusBoard card, which carries the
-// canonical copy of the same numbers.
 const TICKER_ITEMS = [
-  '4K UHD',
-  '4K and 1080p movies',
-  '4K and 1080p TV shows',
-  'Sitcoms',
-  'Lossless music albums',
-  'Anime shows',
-  'Anime movies',
-  'Documentaries',
-  'Kids TV shows',
-  'Old TV classics',
-  'Offline downloads',
-  'Request queue',
-  'Uptime 99.94% / 90d',
-  'Last maintenance 3 days ago',
+  'Server hardware',
+  'Storage & bandwidth',
+  'Network capacity',
+  'Disk replacement reserve',
+  'Backups & monitoring',
+  'Maintenance & updates',
+  'Member funded',
 ] as const
 
 const TONES = ['toneGold', 'toneGreen', 'toneRose'] as const
