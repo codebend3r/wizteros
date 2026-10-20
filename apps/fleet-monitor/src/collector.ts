@@ -12,7 +12,7 @@ import {
 import { type Connection, session } from '@/db.js'
 import { type Compact, compactInWorker } from '@/compaction.js'
 import * as incidents from '@/incidents.js'
-import { runForever as runPlexForever } from '@/plexSync.js'
+import { runForever as runPlexForever } from '@/plexSync/index.js'
 import * as docker from '@/probes/docker.js'
 import * as proc from '@/probes/proc.js'
 import * as script from '@/probes/script.js'
