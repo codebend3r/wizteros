@@ -1,8 +1,9 @@
+import { guardOf, type HostStatus, hostStatusSchema } from '@wizteros/wire'
 import { AdminAuthError } from '@/lib/adminApi'
 import { isNumberOrNull, isRecord, isStringOrNull } from '@/lib/guards'
 import { supabase } from '@/lib/supabaseClient'
 
-export type HostStatus = 'ok' | 'warn' | 'unknown'
+export type { HostStatus }
 
 /** One container as `/fleet` reports it. `healthy` is meaningless unless
     `has_healthcheck` is true: most containers on this fleet declare no
@@ -201,8 +202,7 @@ export const toHostSummary = (host: FleetHost): HostSummary => ({
   })),
 })
 
-const isHostStatus = (value: unknown): value is HostStatus =>
-  value === 'ok' || value === 'warn' || value === 'unknown'
+const isHostStatus = guardOf(hostStatusSchema)
 
 const isFleetContainer = (value: unknown): value is FleetContainer =>
   isRecord(value) &&

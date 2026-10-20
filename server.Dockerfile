@@ -11,9 +11,10 @@
 # fleet-monitor image with `node dist/collectorMain.js` as its compose command.
 #
 # Built from the repo root, not an app directory: each app depends on
-# libs/server-common through the bun workspace, so both have to be in the
-# build context. server.Dockerfile.dockerignore next to this file allowlists
-# exactly what an image may take, which keeps .env and the live data out of it.
+# libs/server-common and libs/wire through the bun workspace, so all three
+# have to be in the build context. server.Dockerfile.dockerignore next to this
+# file allowlists exactly what an image may take, which keeps .env and the
+# live data out of it.
 #
 # Bun installs and builds; Node runs, since that is the runtime NestJS
 # supports. Bun is installed at the version the root package.json pins in
@@ -28,16 +29,19 @@ WORKDIR /repo
 COPY package.json bun.lock ./
 RUN npm install --global "$(node -p "require('./package.json').packageManager")"
 COPY libs/server-common/package.json libs/server-common/
+COPY libs/wire/package.json libs/wire/
 COPY apps/${APP}/package.json apps/${APP}/
 
 FROM bun AS build
 ARG APP
 RUN bun install --frozen-lockfile --ignore-scripts \
-      --filter "$APP" --filter @wizteros/server-common
+      --filter "$APP" --filter @wizteros/server-common --filter @wizteros/wire
 COPY tsconfig.server.json ./
 COPY libs/server-common/ libs/server-common/
+COPY libs/wire/ libs/wire/
 COPY apps/${APP}/ apps/${APP}/
 RUN cd libs/server-common && bun run build \
+ && cd ../wire && bun run build \
  && cd "../../apps/$APP" && bun run build
 
 FROM bun AS deps
@@ -67,6 +71,7 @@ VOLUME ["/data"]
 WORKDIR /repo
 COPY --from=deps /repo ./
 COPY --from=build /repo/libs/server-common/dist libs/server-common/dist
+COPY --from=build /repo/libs/wire/dist libs/wire/dist
 COPY --from=build /repo/apps/${APP}/dist apps/${APP}/dist
 WORKDIR /repo/apps/${APP}
 EXPOSE ${PORT}

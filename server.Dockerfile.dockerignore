@@ -8,6 +8,7 @@
 !bun.lock
 !tsconfig.server.json
 !libs/server-common
+!libs/wire
 !apps/stripe-bridge
 !apps/fleet-monitor
 **/node_modules
