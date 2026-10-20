@@ -15,9 +15,8 @@ import { initDb } from '@/schema.js'
 import * as config from '@/config.js'
 import { type Connection, openConnection, session } from '@/db.js'
 import { checkResult, initDb as initIncidents, observedRun, record } from '@/incidents.js'
-import { compact, initDb as initRollups, read, RESOLUTIONS } from '@/rollups.js'
-import { initDb as initStore, lastHeartbeat, writeHeartbeat, writeSamples } from '@/store.js'
-import { openTestConnection, removeTempDirs, tempDbPath } from '@/test/support.js'
+import { initDb as initStore, lastHeartbeat, writeHeartbeat } from '@/store.js'
+import { removeTempDirs, tempDbPath } from '@/test/support.js'
 import { CAPTURE_FACTOR } from '@/transport/ssh.js'
 
 // Every connection the app opens goes through one of these two: a session
@@ -43,7 +42,7 @@ const T0 = new Date(Date.UTC(2026, 7, 10, 12, 0, 0))
 /** T0 moved by a number of seconds, the `T0 + timedelta(...)` of the Python tests. */
 const at = (seconds: number): Date => addSeconds({ at: T0, seconds })
 
-// A second process standing in for a compaction that holds the write lock:
+// A second process standing in for a prune that holds the write lock:
 // the API and the collector are two processes on one file, and a thread in
 // this one could not hold a lock while the test blocks in SQLite's busy wait.
 // It takes the lock the way a write session does (BEGIN IMMEDIATE), writes
@@ -195,84 +194,6 @@ describe('db', () => {
     expect(streaks).toBe(0)
   })
 
-  describe('with an initialized connection', () => {
-    let db: Connection
-
-    const start = (): Connection => {
-      db = openTestConnection({ init: [initStore, initRollups] })
-      return db
-    }
-
-    afterEach(() => {
-      db.close()
-    })
-
-    it('scans only what is new on compact', () => {
-      // The second run over unchanged data must not redo the first one's work.
-      //
-      // Without a lower bound this re-read and re-upserted the whole retention
-      // window every fifteen minutes, so a no-op cost exactly as much as a real
-      // compaction and grew with the database.
-      const connection = start()
-      const offsets = Array.from({ length: 20 }, (_, index) => index * 60)
-      offsets.forEach((offset) =>
-        writeSamples({
-          connection,
-          target: 'host:meleys',
-          at: at(offset),
-          samples: [{ metric: 'load.1m', value: 1.0, kind: 'gauge' }],
-        }),
-      )
-      const later = at(3600)
-
-      const first = compact({ connection, name: '5m', now: later })
-      const repeat = compact({ connection, name: '5m', now: later })
-
-      expect(first).toBeGreaterThan(0)
-      // only the newest already-written bucket is revisited, to absorb a late
-      // sample; everything behind it is left alone
-      expect(repeat).toBe(1)
-    })
-
-    it('still lands a late sample in the last compacted bucket', () => {
-      const connection = start()
-      writeSamples({
-        connection,
-        target: 'host:meleys',
-        at: T0,
-        samples: [{ metric: 'load.1m', value: 1.0, kind: 'gauge' }],
-      })
-      const later = at(3600)
-      compact({ connection, name: '5m', now: later })
-
-      writeSamples({
-        connection,
-        target: 'host:meleys',
-        at: at(30),
-        samples: [{ metric: 'load.1m', value: 3.0, kind: 'gauge' }],
-      })
-      compact({ connection, name: '5m', now: later })
-
-      const rows = read({ connection, name: '5m', target: 'host:meleys', metric: 'load.1m' })
-      expect(rows.map((row) => [row[1], row[2], row[4]])).toEqual([[1.0, 3.0, 2]])
-    })
-
-    it('never lets an unknown resolution reach the query', () => {
-      const connection = start()
-      expect(() => compact({ connection, name: 'rollup_5m; DROP TABLE samples', now: T0 })).toThrow(
-        RangeError,
-      )
-      expect(() =>
-        read({ connection, name: '7d', target: 'host:meleys', metric: 'load.1m' }),
-      ).toThrow(RangeError)
-    })
-  })
-
-  it('carries its own retention on every resolution', () => {
-    expect(new Set(RESOLUTIONS.map((tier) => tier.name))).toEqual(new Set(['5m', '1h']))
-    expect(RESOLUTIONS.map((tier) => tier.table)).toEqual(['rollup_5m', 'rollup_1h'])
-  })
-
   it('gives the transport factor exactly one home', () => {
     expect(config.MAX_ROUND_SECONDS).toBe(
       (config.VITALS_TIMEOUT + config.SLOW_TIMEOUT) * CAPTURE_FACTOR,
@@ -280,8 +201,8 @@ describe('db', () => {
     expect('SSH_CAPTURE_FACTOR' in config).toBe(false)
   })
 
-  it('makes a tick wait for a compaction rather than lose itself', async () => {
-    // Compaction runs beside the ticks, so it can genuinely overlap a round's
+  it('makes a tick wait for a prune rather than lose itself', async () => {
+    // The prune runs beside the ticks, so it can genuinely overlap a round's
     // write. sqlite serializes writers, and on a short busy timeout the round
     // loses its whole tick to "database is locked" instead of waiting a moment
     // for the lock.

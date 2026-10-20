@@ -135,13 +135,13 @@ const withinGap = ({
  * healthy (which would silently close a real incident) or down (which
  * would fabricate one).
  *
- * Skipping it is also what makes the coverage mark honest, and that is the
+ * Skipping it is also what keeps the observed run honest, and that is the
  * other half of this row. Every recorded check extends this target's observed
  * run; a tick that recorded nothing for it extends nothing, so a stretch the
  * collector could not observe shows up as a gap here rather than as an
- * unbroken run over hours nobody watched. `gap` is the same tolerance the
- * collector-wide mark uses, in seconds, and is a parameter only so a test can
- * span hours in two calls.
+ * unbroken run over hours nobody watched. `gap` is that tolerance in seconds
+ * (COVERAGE_GAP_SECONDS), and is a parameter only so a test can span hours in
+ * two calls.
  *
  * Commits with the session, not on its own, so one host's whole container set
  * advances together instead of leaving half the containers with an advanced

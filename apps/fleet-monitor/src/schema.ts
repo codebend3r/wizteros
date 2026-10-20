@@ -1,7 +1,6 @@
 import { session } from '@/db.js'
 import * as incidents from '@/incidents.js'
 import * as plays from '@/plays/index.js'
-import * as rollups from '@/rollups.js'
 import * as store from '@/store.js'
 
 /**
@@ -21,7 +20,6 @@ export const initDb = (path: string): void => {
     path,
     work: (connection) => {
       store.initDb(connection)
-      rollups.initDb(connection)
       incidents.initDb(connection)
       plays.initDb(connection)
     },

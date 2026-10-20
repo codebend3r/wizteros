@@ -22,7 +22,7 @@ export const MAX_INCIDENT_HOURS = 24 * 365 * 5
 // The history window every chart shares. The floor is one vitals tick past
 // nothing (a counter-derived series yields no delta from a single reading, so
 // anything shorter cannot answer); the ceiling is seven days, which is how
-// long raw samples live before rollups.prune takes them, so asking for more
+// long raw samples live before store.prune takes them, so asking for more
 // could only ever answer with less. Windows past a few hours carry more ticks
 // than a chart can draw, so the series is bucketed on the way out rather than
 // the window being refused.

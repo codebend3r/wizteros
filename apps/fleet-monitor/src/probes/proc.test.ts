@@ -18,7 +18,6 @@ describe('parseStat', () => {
     expect(got['cpu3.idle']).toBe(171007)
     // 5 cpu lines x 8 tracked fields
     expect(parseStat(text)).toHaveLength(40)
-    expect(parseStat(text).every((sample) => sample.kind === 'counter')).toBe(true)
   })
 })
 
@@ -34,7 +33,6 @@ describe('parseMeminfo', () => {
     // exactly what `head -n 16` in VITALS_SCRIPT is sized for
     expect(got['mem.swap_total_bytes']).toBe(2097084 * 1024)
     expect(got['mem.swap_free_bytes']).toBe(2094876 * 1024)
-    expect(parseMeminfo(text).every((sample) => sample.kind === 'gauge')).toBe(true)
   })
 })
 
