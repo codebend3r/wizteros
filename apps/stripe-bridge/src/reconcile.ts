@@ -1,10 +1,10 @@
 import { Logger } from '@nestjs/common'
 import { addDays, isoformat, parseIso } from '@wizteros/server-common'
-import { type IdentitySnapshot, identityFor } from '@/identity.js'
-import { identitySnapshot } from '@/members.js'
+import { type Identity, identityFor } from '@/identity.js'
+import { identitySnapshot, standingOf } from '@/members.js'
 import { eachInOrder, mapInOrder } from '@/sequence.js'
 import { isTimeBoxed } from '@/standing.js'
-import type { Bridge, CustomerRow, WizarrUser } from '@/types.js'
+import type { Bridge, WizarrUser } from '@/types.js'
 
 // The expiry sweep the reconcile loop runs after its drift alarms.
 
@@ -18,27 +18,18 @@ const log = new Logger('bridge')
  * member who re-subscribed while already holding access never redeems the
  * new invite.
  */
-const unstampedRecords = ({
-  snapshot,
-  email,
-  row,
-}: {
-  snapshot: IdentitySnapshot
-  email: string
-  row: CustomerRow
-}): WizarrUser[] =>
-  identityFor({ snapshot, email, inviteCode: row.invite_code }).records.filter(
-    (user) => !user.expires,
-  )
+const unstampedRecords = (identity: Identity): WizarrUser[] =>
+  identity.records.filter((user) => !user.expires)
 
 /**
  * Stamp the paid expiry on records that joined without one; returns records stamped.
  *
  * Wizarr does not translate an invite's duration into record expiry, so a
  * brand-new member redeems into records with no expiry at all — and no
- * webhook fires at redemption to correct it. Sweep every subscribed, non-VIP
- * member and stamp invited_at + ACCESS_DURATION (the signup date anchors the
- * window) on any of their records still unlimited. Records that already
+ * webhook fires at redemption to correct it. Sweep every subscribed member
+ * who is neither VIP nor banned under any of their addresses, and stamp
+ * invited_at + ACCESS_DURATION (the signup date anchors the window) on any
+ * of their records still unlimited. Records that already
  * carry an expiry are never touched. When the signup anchor is old enough
  * that the window has already closed, the expiry is re-anchored at the sweep
  * rather than stamped in the past: a background job must never revoke a
@@ -53,18 +44,21 @@ const unstampedRecords = ({
 export const reconcilePendingExpiries = async (bridge: Bridge): Promise<number> => {
   const customers = bridge.store.allCustomerRows()
   const tags = bridge.store.allMemberTags()
-  const pending = [...customers].filter(
-    ([email, row]) => row.subscribed && !!row.invited_at && isTimeBoxed(tags.get(email) ?? null),
-  )
-  if (pending.length === 0) {
+  const paying = [...customers].filter(([, row]) => row.subscribed && !!row.invited_at)
+  if (paying.length === 0) {
     return 0
   }
   const snapshot = await identitySnapshot(bridge)
+  // A VIP or ban tagged under the member's Plex address governs the payer too.
+  const pending = paying.flatMap(([email, row]) => {
+    const identity = identityFor({ snapshot, email, inviteCode: row.invite_code })
+    return isTimeBoxed(standingOf({ bridge, identity, tags })) ? [{ email, row, identity }] : []
+  })
   const now = new Date()
   const counts = await mapInOrder({
     items: pending,
-    run: async ([email, row]): Promise<number> => {
-      const records = unstampedRecords({ snapshot, email, row })
+    run: async ({ email, row, identity }): Promise<number> => {
+      const records = unstampedRecords(identity)
       if (records.length === 0 || !row.invited_at) {
         return 0
       }

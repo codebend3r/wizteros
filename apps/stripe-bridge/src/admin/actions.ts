@@ -5,6 +5,8 @@ import { issueInvite, liveScope, TierScopeEmpty } from '@/invites.js'
 import { eachInOrder, mapInOrder } from '@/sequence.js'
 import { isBanned, isMemberTag, type MemberTag } from '@/standing.js'
 import { isTier, staleRecordIds, type Tier } from '@/tiers.js'
+import { everyRecord, type Identity, type IdentitySnapshot, recordsAt } from '@/identity.js'
+import { identitySnapshot, personAt, snapshotOver, standingOf, storedSnapshot } from '@/members.js'
 import type { Bridge, StripeSubscription } from '@/types.js'
 
 // What each admin POST does once its body is read, over a Bridge. A refusal
@@ -179,26 +181,39 @@ export const cancelAtOf = (subscriptions: readonly StripeSubscription[]): string
   return latest ? isoformat(new Date(latest * 1000)) : null
 }
 
+/** The person's addresses with the one asked about first, then the rest in order. */
+const addressesOf = ({ email, identity }: { email: string; identity: Identity }): string[] => {
+  const asked = email.toLowerCase()
+  return [asked, ...[...identity.addresses].filter((address) => address !== asked).toSorted()]
+}
+
 /**
- * Flag every live Stripe subscription for an email to cancel at period end.
+ * Flag every live Stripe subscription a person holds to cancel at period end.
  *
  * Answers whether a customer exists, what was newly flagged, and what was
- * flagged already. Customer ids come from the bridge's own mapping first,
- * falling back to a live Stripe email lookup for members who predate the
- * mapping. Subscriptions already flagged are left alone. Nothing here throws
- * for an unknown email or an email with no subscription: the caller decides
- * whether that is an error. Every Stripe call goes out one at a time, in
- * order.
+ * flagged already. Every address of the person is looked up, since the one
+ * the admin acted on is usually the Plex account and Stripe bills another.
+ * Customer ids come from the bridge's own mapping first, falling back to a
+ * live Stripe email lookup for an address the mapping does not know.
+ * Subscriptions already flagged are left alone. Nothing here throws for an
+ * unknown email or an email with no subscription: the caller decides whether
+ * that is an error. Every Stripe call goes out one at a time, in order.
  */
 const flagSubscriptions = async ({
   bridge,
-  email,
+  addresses,
 }: {
   bridge: Bridge
-  email: string
+  addresses: readonly string[]
 }): Promise<Flagged> => {
-  const mapped = bridge.store.customerIdsForEmail({ email })
-  const customerIds = mapped.length > 0 ? mapped : await bridge.stripe.customerIdsForEmail(email)
+  const perAddress = await mapInOrder({
+    items: addresses,
+    run: async (address) => {
+      const mapped = bridge.store.customerIdsForEmail({ email: address })
+      return mapped.length > 0 ? mapped : bridge.stripe.customerIdsForEmail(address)
+    },
+  })
+  const customerIds = [...new Set(perAddress.flat())]
   const perCustomer = await mapInOrder({
     items: customerIds,
     run: async (customerId) => {
@@ -221,6 +236,10 @@ const flagSubscriptions = async ({
 /**
  * Flag every live Stripe subscription for an email to cancel at period end.
  *
+ * Every address of the person is covered, found from the Wizarr data the
+ * caller already holds: who a person is changes rarely, and a cancellation
+ * disables nothing itself, so it need not wait on a fresh read of Wizarr.
+ *
  * Mirrors a portal self-cancel: the member keeps access through the period
  * they already contributed for, then Stripe fires
  * customer.subscription.deleted and the webhook disables their records.
@@ -230,11 +249,19 @@ const flagSubscriptions = async ({
 export const cancelSubscription = async ({
   bridge,
   email,
+  seen,
 }: {
   bridge: Bridge
   email: string
+  /** Wizarr's users and invitations already in hand; null leaves only the stored links. */
+  seen: Pick<IdentitySnapshot, 'users' | 'invitations'> | null
 }): Promise<CancelResult> => {
-  const { found, flagged, already } = await flagSubscriptions({ bridge, email })
+  const snapshot = seen ? snapshotOver({ bridge, seen }) : storedSnapshot(bridge)
+  const identity = personAt({ snapshot, email })
+  const { found, flagged, already } = await flagSubscriptions({
+    bridge,
+    addresses: addressesOf({ email, identity }),
+  })
   if (!found) {
     throw httpError({ status: 404, detail: 'no stripe customer for that email' })
   }
@@ -256,10 +283,11 @@ export const cancelSubscription = async ({
  * Revoke a member and mark them so nothing brings them back by accident.
  *
  * Three things, in the order that fails safest: the tag first (from here on
- * the webhooks refuse to invite, extend or restore this address), then every
- * Wizarr record disabled now, then every live Stripe subscription flagged to
- * cancel at period end so no further charge lands. Stripe being down costs
- * the cancellation, not the ban: the tag and the disable have already
+ * the webhooks refuse to invite, extend or restore this person, under any of
+ * their addresses), then every Wizarr record they hold under any address
+ * disabled now, then every live Stripe subscription on any of those
+ * addresses flagged to cancel at period end so no further charge lands.
+ * Stripe being down costs the cancellation, not the ban: the tag and the disable have already
  * happened, the event says what was skipped, and the subscription can be
  * cancelled by hand. Refunds are a Stripe decision and are never made here.
  * Clearing the tag (set-tag with null) lifts the ban; access is re-granted
@@ -273,9 +301,13 @@ export const banMember = async ({
   email: string
 }): Promise<BanResult> => {
   bridge.store.setMemberTag({ email, tag: 'banned' })
-  const ids = (await bridge.wizarr.findUsersByEmail(email)).map((user) => user.id)
+  // Read live, unlike a cancellation: these ids are about to be disabled.
+  const snapshot = await identitySnapshot(bridge)
+  const identity = personAt({ snapshot, email })
+  const ids = everyRecord({ snapshot, identity }).map((user) => user.id)
   await eachInOrder({ items: ids, run: (id) => bridge.wizarr.disableUser(id) })
-  const billing = await flagSubscriptions({ bridge, email }).then(
+  const addresses = addressesOf({ email, identity })
+  const billing = await flagSubscriptions({ bridge, addresses }).then(
     ({ flagged }) => {
       const cancelAt = cancelAtOf(flagged)
       return {
@@ -437,7 +469,9 @@ export const reissueInvite = async ({
   if (!settings.publicInviteBase) {
     throw httpError({ status: 500, detail: 'PUBLIC_INVITE_BASE not configured' })
   }
-  if (isBanned(store.getMemberTag({ email }))) {
+  const snapshot = await identitySnapshot(bridge)
+  const identity = personAt({ snapshot, email })
+  if (isBanned(standingOf({ bridge, identity }))) {
     throw httpError({ status: 409, detail: 'member is banned; clear the tag first' })
   }
   // Stale cache rows are dropped the same way the checkout path does it: an
@@ -449,7 +483,7 @@ export const reissueInvite = async ({
         : error
     },
   )
-  const records = await wizarr.findUsersByEmail(email)
+  const records = recordsAt({ users: snapshot.users, address: email.toLowerCase() })
   // The admin's downloads toggle wins over the tier default when set.
   const override = store.getMemberDownloads({ email })
   // Create the invite BEFORE any disable: disableUser is account-wide (it

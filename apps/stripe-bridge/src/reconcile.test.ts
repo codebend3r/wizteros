@@ -196,6 +196,20 @@ describe('reconcilePendingExpiries', () => {
     expect(bridge.wizarr.setExpiry).not.toHaveBeenCalled()
   })
 
+  it('skips a payer whose Plex account is tagged VIP', async () => {
+    // The admin tagged the account the members list shows; the payer is the
+    // subscribed row. One person, so the standing grant covers both.
+    bridge.store.upsertPending({ customerId: 'cus_1', email: 'pays@x.com', inviteCode: 'INV1' })
+    bridge.store.setMemberTag({ email: 'watches@x.com', tag: 'vip' })
+    bridge.wizarr.listUsers.mockResolvedValue([
+      { id: 7, email: 'watches@x.com', server: 'Meleys', expires: null },
+    ])
+    bridge.wizarr.listInvitations.mockResolvedValue([{ id: 1, code: 'INV1', used_by: '<User 7>' }])
+
+    expect(await reconcile()).toBe(0)
+    expect(bridge.wizarr.setExpiry).not.toHaveBeenCalled()
+  })
+
   it('skips banned members', async () => {
     bridge.store.upsertPending({
       customerId: 'cus_1',

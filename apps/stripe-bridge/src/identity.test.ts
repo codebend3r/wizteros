@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { type IdentitySnapshot, identityFor } from '@/identity.js'
+import { everyRecord, type IdentitySnapshot, identityFor } from '@/identity.js'
 import type { WizarrInvitation, WizarrUser } from '@/types.js'
 
 const USERS: readonly WizarrUser[] = [
@@ -14,11 +14,13 @@ const snapshot = ({
   users = USERS,
   invitations = [],
   links = new Map(),
+  invites = new Map(),
 }: {
   users?: readonly WizarrUser[]
   invitations?: readonly WizarrInvitation[]
   links?: ReadonlyMap<string, string>
-} = {}): IdentitySnapshot => ({ users, invitations, links })
+  invites?: ReadonlyMap<string, string>
+} = {}): IdentitySnapshot => ({ users, invitations, links, invites })
 
 const ids = (records: readonly WizarrUser[]): number[] => records.map((record) => record.id)
 
@@ -149,5 +151,69 @@ describe('identityFor', () => {
       inviteCode: 'abc',
     })
     expect(identity.addresses).toEqual(new Set(['pays@x.com', 'watches@x.com', 'card@x.com']))
+  })
+
+  it('joins a payer to the Plex account that redeemed their invite, from either side', () => {
+    // An admin tags the member list's row, which is the Plex account; Stripe
+    // bills the payer. Without this the two never read as one person.
+    const linked = snapshot({
+      invitations: [{ id: 1, code: 'abc', used_by: '<User 7>' }],
+      invites: new Map([['pays@x.com', 'abc']]),
+    })
+    const person = new Set(['pays@x.com', 'watches@x.com'])
+    expect(
+      identityFor({ snapshot: linked, email: 'pays@x.com', inviteCode: null }).addresses,
+    ).toEqual(person)
+    expect(
+      identityFor({ snapshot: linked, email: 'watches@x.com', inviteCode: null }).addresses,
+    ).toEqual(person)
+  })
+
+  it('lets a stated link outrank the one a redemption implies', () => {
+    const identity = identityFor({
+      snapshot: snapshot({
+        links: new Map([['pays@x.com', 'pat@x.com']]),
+        invitations: [{ id: 1, code: 'abc', used_by: '<User 7>' }],
+        invites: new Map([['pays@x.com', 'abc']]),
+      }),
+      email: 'pays@x.com',
+      inviteCode: null,
+    })
+    expect(identity.addresses).toEqual(new Set(['pays@x.com', 'pat@x.com']))
+  })
+
+  it('implies nothing from an unredeemed invite or one redeemed under the same address', () => {
+    const identity = identityFor({
+      snapshot: snapshot({
+        invitations: [
+          { id: 1, code: 'new', used_by: null },
+          { id: 2, code: 'own', used_by: '<User 1>' },
+        ],
+        invites: new Map([
+          ['new@x.com', 'new'],
+          ['pat@x.com', 'own'],
+        ]),
+      }),
+      email: 'pat@x.com',
+      inviteCode: null,
+    })
+    expect(identity.addresses).toEqual(new Set(['pat@x.com']))
+  })
+})
+
+describe('everyRecord', () => {
+  it("collects the person's records under every address, without repeats", () => {
+    const linked = snapshot({ links: new Map([['pat@x.com', 'watches@x.com']]) })
+    const identity = identityFor({ snapshot: linked, email: 'pat@x.com', inviteCode: null })
+    expect(identity.records.map((record) => record.id)).toEqual([1, 2])
+    expect(everyRecord({ snapshot: linked, identity }).map((record) => record.id)).toEqual([
+      1, 2, 7, 8,
+    ])
+  })
+
+  it('keeps an email-less redeemer the identity was found by', () => {
+    const linked = snapshot({ invitations: [{ id: 1, code: 'abc', used_by: '<User 281>' }] })
+    const identity = identityFor({ snapshot: linked, email: null, inviteCode: 'abc' })
+    expect(everyRecord({ snapshot: linked, identity }).map((record) => record.id)).toEqual([281])
   })
 })

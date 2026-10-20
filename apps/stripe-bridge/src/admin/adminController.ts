@@ -1,5 +1,15 @@
-import { Body, Controller, Get, HttpCode, Inject, Post, Query, UseGuards } from '@nestjs/common'
-import { SupabaseAdminGuard } from '@wizteros/server-common'
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Inject,
+  Logger,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common'
+import { stackOf, SupabaseAdminGuard } from '@wizteros/server-common'
 import type { z } from 'zod'
 import * as actions from '@/admin/actions.js'
 import {
@@ -18,6 +28,8 @@ import { MEMBERS_SNAPSHOT, type MembersSnapshot } from '@/admin/membersSnapshot.
 import * as queries from '@/admin/queries.js'
 import { BRIDGE } from '@/bridgeToken.js'
 import type { Bridge, EventRow, Member, PlexShares } from '@/types.js'
+
+const log = new Logger('bridge.admin')
 
 // Every admin route sits behind the Supabase session gate, and answers both
 // bare and under /stripe: the Funnel strips the prefix and direct calls keep
@@ -108,10 +120,16 @@ export class AdminController {
 
   @Post('cancel-subscription')
   @HttpCode(200)
-  cancelSubscription(
+  async cancelSubscription(
     @Body({ schema: EmailBody }) body: z.output<typeof EmailBody>,
   ): Promise<actions.CancelResult> {
-    return actions.cancelSubscription({ bridge: this.bridge, email: body.email })
+    // The warm snapshot says who the person is; a cold one that cannot load
+    // leaves the stored links to say it.
+    const seen = await this.snapshot.get().catch((error: unknown): null => {
+      log.error('cancel: members snapshot unavailable; using stored links only', stackOf(error))
+      return null
+    })
+    return actions.cancelSubscription({ bridge: this.bridge, email: body.email, seen })
   }
 
   @Post('ban')

@@ -1,6 +1,6 @@
 import { redeemerEmail } from '@/clients/wizarr.js'
 import { canonicalTier, type Tier, tierDownloads, tierServerLibraries } from '@/tiers.js'
-import type { MemberTag } from '@/standing.js'
+import { type MemberTag, strongestTag } from '@/standing.js'
 import type {
   CustomerRow,
   Member,
@@ -309,7 +309,9 @@ export const withPlexAccess = ({
 /**
  * Stamp each member with its admin overrides.
  *
- * tag: the manual designation ("vip"/"hvu"/"banned"), null untagged.
+ * tag: the manual designation ("vip"/"hvu"/"banned"), null untagged. A member
+ * paying under another address carries the stronger of the two addresses'
+ * tags, the same standing the webhooks act on.
  * downloads: the admin's toggle wins over the tier-derived value when set.
  */
 export const withOverrides = ({
@@ -325,7 +327,10 @@ export const withOverrides = ({
     const key = member.email.toLowerCase()
     return {
       ...member,
-      tag: tags.get(key) ?? null,
+      tag: strongestTag([
+        tags.get(key) ?? null,
+        member.stripe_email ? (tags.get(member.stripe_email) ?? null) : null,
+      ]),
       downloads: downloads.get(key) ?? member.downloads,
     }
   })
