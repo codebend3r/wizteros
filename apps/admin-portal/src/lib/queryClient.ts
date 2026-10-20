@@ -1,5 +1,5 @@
 import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query'
-import { AdminAuthError } from '@/lib/adminApi'
+import { AdminAuthError } from '@/lib/http'
 import { useAuthStore } from '@/stores/authStore'
 
 // The members call is ~15s (Wizarr fan-out), so never refetch it just for
@@ -8,7 +8,7 @@ import { useAuthStore } from '@/stores/authStore'
 export const CACHE_MS = 30 * 60 * 1000
 
 /**
- * End the session on a 401 from the bridge.
+ * End the session on a 401 from either server.
  *
  * Every 401 means the same thing wherever it lands, so the caches own the
  * reaction and the gate takes the page back; no query and no mutation repeats

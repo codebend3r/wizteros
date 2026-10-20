@@ -1,5 +1,7 @@
 import { isRecord } from '@/lib/guards'
-import { supabase } from '@/lib/supabaseClient'
+import { createClient, NotFoundError } from '@/lib/http'
+
+export { AdminAuthError, NotFoundError } from '@/lib/http'
 
 export type PaidTier = 'bronze' | 'silver' | 'gold' | 'youth'
 export type Tier = PaidTier | 'unknown'
@@ -109,26 +111,11 @@ export type BanResult = {
   cancel_at: string | null
 }
 
-export class AdminAuthError extends Error {}
-
-/**
- * The bridge has no record under that key. Its own class because a 404 is an
- * answer for some callers ("no such member") and a failure for the rest.
- */
-export class NotFoundError extends Error {}
-
-const ADMIN_API_BASE: string = import.meta.env.VITE_ADMIN_API_BASE ?? ''
-
-// The bridge authorizes admin calls off the Supabase session: send the
-// user's access token as a bearer, refreshed from the client each request.
-const authHeader = async (): Promise<Record<string, string>> => {
-  if (!supabase) {
-    return {}
-  }
-  const { data } = await supabase.auth.getSession()
-  const token = data.session?.access_token
-  return token ? { Authorization: `Bearer ${token}` } : {}
-}
+const bridge = createClient({
+  base: import.meta.env.VITE_ADMIN_API_BASE ?? '',
+  baseVariable: 'VITE_ADMIN_API_BASE',
+  name: 'the bridge',
+})
 
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === 'string')
@@ -287,52 +274,6 @@ const isLinkAddressResult = (value: unknown): value is LinkAddressResult =>
 const isSetDownloadsResult = (value: unknown): value is SetDownloadsResult =>
   isRecord(value) && typeof value.email === 'string' && typeof value.downloads === 'boolean'
 
-type RequestArgs = {
-  path: string
-  method?: 'GET' | 'POST'
-  body?: unknown
-}
-
-// The bridge reports failures as {"detail": "..."}; carrying a snippet of it
-// into the thrown error is what distinguishes a dead upstream from a bad
-// request once the page only shows the message.
-const bodySnippet = async (response: Response): Promise<string> => {
-  try {
-    return (await response.text()).slice(0, 200)
-  } catch {
-    return ''
-  }
-}
-
-const requestJson = async ({ path, method = 'GET', body }: RequestArgs): Promise<unknown> => {
-  const response = await fetch(`${ADMIN_API_BASE}${path}`, {
-    method,
-    headers: {
-      ...(await authHeader()),
-      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  })
-  if (response.status === 401) {
-    throw new AdminAuthError('Not signed in')
-  }
-  if (!response.ok) {
-    const detail = await bodySnippet(response)
-    const message = `Request failed (${response.status})${!!detail ? `: ${detail}` : ''}`
-    throw response.status === 404 ? new NotFoundError(message) : new Error(message)
-  }
-  // With VITE_ADMIN_API_BASE unset every call is relative, so the dev server
-  // and Netlify both answer with index.html at 200. Name that instead of
-  // letting it surface as an opaque JSON parse error.
-  const contentType = response.headers?.get('content-type') ?? ''
-  if (!!contentType && !contentType.includes('json')) {
-    throw new Error(
-      `Expected JSON from ${path} but got ${contentType}. Is VITE_ADMIN_API_BASE set?`,
-    )
-  }
-  return response.json()
-}
-
 // The cause carries the only clue about a bridge-side failure (status, the
 // bridge's own detail, or the offending row), so the pages render it rather
 // than collapsing every load error into the same sentence.
@@ -341,24 +282,22 @@ export const loadErrorMessage = (cause: unknown): string =>
     ? `Could not load members. ${cause.message}`
     : 'Could not load members.'
 
-export const fetchMembers = async (): Promise<Member[]> => {
-  const data = await requestJson({ path: '/admin/members' })
-  if (!isMemberPayloadArray(data)) {
-    throw new Error(`Unexpected members response: ${describeMembersMismatch(data)}`)
-  }
-  return data
-}
+export const fetchMembers = (): Promise<Member[]> =>
+  bridge.read({
+    path: '/admin/members',
+    is: isMemberPayloadArray,
+    what: 'members response',
+    explain: describeMembersMismatch,
+  })
 
 /** The member, or null when the bridge has never heard of that address. */
 export const fetchMember = async ({ email }: { email: string }): Promise<Member | null> => {
   try {
-    const data = await requestJson({
+    return await bridge.read({
       path: `/admin/member?email=${encodeURIComponent(email)}`,
+      is: isMemberPayload,
+      what: 'member response',
     })
-    if (!isMemberPayload(data)) {
-      throw new Error('Unexpected member response')
-    }
-    return data
   } catch (cause) {
     if (cause instanceof NotFoundError) {
       return null
@@ -367,15 +306,12 @@ export const fetchMember = async ({ email }: { email: string }): Promise<Member 
   }
 }
 
-export const fetchPlexAccess = async ({ email }: { email: string }): Promise<PlexAccess> => {
-  const data = await requestJson({
+export const fetchPlexAccess = ({ email }: { email: string }): Promise<PlexAccess> =>
+  bridge.read({
     path: `/admin/plex-access?email=${encodeURIComponent(email)}`,
+    is: isPlexAccess,
+    what: 'plex-access response',
   })
-  if (!isPlexAccess(data)) {
-    throw new Error('Unexpected plex-access response')
-  }
-  return data
-}
 
 const isBanResult = (value: unknown): value is BanResult =>
   isRecord(value) &&
@@ -385,53 +321,38 @@ const isBanResult = (value: unknown): value is BanResult =>
   (typeof value.cancel_at === 'string' || value.cancel_at === null)
 
 /** The whole action log across every member, newest first. */
-export const fetchAllEvents = async (): Promise<MemberEvent[]> => {
-  const data = await requestJson({ path: '/admin/events' })
-  if (!isMemberEventArray(data)) {
-    throw new Error('Unexpected events response')
-  }
-  return data
-}
+export const fetchAllEvents = (): Promise<MemberEvent[]> =>
+  bridge.read({ path: '/admin/events', is: isMemberEventArray, what: 'events response' })
 
-export const fetchMemberEvents = async ({ email }: { email: string }): Promise<MemberEvent[]> => {
-  const data = await requestJson({
+export const fetchMemberEvents = ({ email }: { email: string }): Promise<MemberEvent[]> =>
+  bridge.read({
     path: `/admin/events?email=${encodeURIComponent(email)}`,
+    is: isMemberEventArray,
+    what: 'events response',
   })
-  if (!isMemberEventArray(data)) {
-    throw new Error('Unexpected events response')
-  }
-  return data
-}
 
-export const fetchMemberNotes = async ({ email }: { email: string }): Promise<MemberNotes> => {
-  const data = await requestJson({
+export const fetchMemberNotes = ({ email }: { email: string }): Promise<MemberNotes> =>
+  bridge.read({
     path: `/admin/notes?email=${encodeURIComponent(email)}`,
+    is: isMemberNotes,
+    what: 'notes response',
   })
-  if (!isMemberNotes(data)) {
-    throw new Error('Unexpected notes response')
-  }
-  return data
-}
 
-export const saveMemberNotes = async ({
+export const saveMemberNotes = ({
   email,
   notes,
 }: {
   email: string
   notes: string
-}): Promise<MemberNotes> => {
-  const data = await requestJson({
+}): Promise<MemberNotes> =>
+  bridge.write({
     path: '/admin/notes',
-    method: 'POST',
     body: { email, notes },
+    is: isMemberNotes,
+    what: 'notes response',
   })
-  if (!isMemberNotes(data)) {
-    throw new Error('Unexpected notes response')
-  }
-  return data
-}
 
-export const resetExpiry = async ({
+export const resetExpiry = ({
   email,
   days = null,
   expiresAt = null,
@@ -439,136 +360,103 @@ export const resetExpiry = async ({
   email: string
   days?: number | null
   expiresAt?: string | null
-}): Promise<ResetExpiryResult> => {
-  const data = await requestJson({
+}): Promise<ResetExpiryResult> =>
+  bridge.write({
     path: '/admin/reset-expiry',
-    method: 'POST',
     body: { email, days, expires_at: expiresAt },
+    is: isResetExpiryResult,
+    what: 'reset-expiry response',
   })
-  if (!isResetExpiryResult(data)) {
-    throw new Error('Unexpected reset-expiry response')
-  }
-  return data
-}
 
-export const resetTier = async ({
+export const resetTier = ({
   email,
   tier,
 }: {
   email: string
   tier: PaidTier
-}): Promise<ResetTierResult> => {
-  const data = await requestJson({
+}): Promise<ResetTierResult> =>
+  bridge.write({
     path: '/admin/reset-tier',
-    method: 'POST',
     body: { email, tier },
+    is: isResetTierResult,
+    what: 'reset-tier response',
   })
-  if (!isResetTierResult(data)) {
-    throw new Error('Unexpected reset-tier response')
-  }
-  return data
-}
 
-export const cancelSubscription = async ({
+export const cancelSubscription = ({
   email,
 }: {
   email: string
-}): Promise<CancelSubscriptionResult> => {
-  const data = await requestJson({
+}): Promise<CancelSubscriptionResult> =>
+  bridge.write({
     path: '/admin/cancel-subscription',
-    method: 'POST',
     body: { email },
+    is: isCancelSubscriptionResult,
+    what: 'cancel-subscription response',
   })
-  if (!isCancelSubscriptionResult(data)) {
-    throw new Error('Unexpected cancel-subscription response')
-  }
-  return data
-}
 
 /**
  * Revoke a member for good: tag them banned, disable every server record now,
  * and stop their billing at period end. Clearing the tag lifts the ban.
  */
-export const banMember = async ({ email }: { email: string }): Promise<BanResult> => {
-  const data = await requestJson({ path: '/admin/ban', method: 'POST', body: { email } })
-  if (!isBanResult(data)) {
-    throw new Error('Unexpected ban response')
-  }
-  return data
-}
+export const banMember = ({ email }: { email: string }): Promise<BanResult> =>
+  bridge.write({ path: '/admin/ban', body: { email }, is: isBanResult, what: 'ban response' })
 
-export const setMemberTag = async ({
+export const setMemberTag = ({
   email,
   tag,
 }: {
   email: string
   tag: MemberTag | null
-}): Promise<SetTagResult> => {
-  const data = await requestJson({
+}): Promise<SetTagResult> =>
+  bridge.write({
     path: '/admin/set-tag',
-    method: 'POST',
     body: { email, tag },
+    is: isSetTagResult,
+    what: 'set-tag response',
   })
-  if (!isSetTagResult(data)) {
-    throw new Error('Unexpected set-tag response')
-  }
-  return data
-}
 
 /**
  * Declare that one address bills for the member watching under another, so the
  * two stop reading as two members. `plexEmail: null` undoes it.
  */
-export const linkMemberAddress = async ({
+export const linkMemberAddress = ({
   stripeEmail,
   plexEmail,
 }: {
   stripeEmail: string
   plexEmail: string | null
-}): Promise<LinkAddressResult> => {
-  const data = await requestJson({
+}): Promise<LinkAddressResult> =>
+  bridge.write({
     path: '/admin/link-address',
-    method: 'POST',
     body: { stripe_email: stripeEmail, plex_email: plexEmail },
+    is: isLinkAddressResult,
+    what: 'link-address response',
   })
-  if (!isLinkAddressResult(data)) {
-    throw new Error('Unexpected link-address response')
-  }
-  return data
-}
 
-export const setMemberDownloads = async ({
+export const setMemberDownloads = ({
   email,
   allow,
 }: {
   email: string
   allow: boolean
-}): Promise<SetDownloadsResult> => {
-  const data = await requestJson({
+}): Promise<SetDownloadsResult> =>
+  bridge.write({
     path: '/admin/set-downloads',
-    method: 'POST',
     body: { email, allow },
+    is: isSetDownloadsResult,
+    what: 'set-downloads response',
   })
-  if (!isSetDownloadsResult(data)) {
-    throw new Error('Unexpected set-downloads response')
-  }
-  return data
-}
 
-export const reissueInvite = async ({
+export const reissueInvite = ({
   email,
   tier,
 }: {
   email: string
   tier: PaidTier
-}): Promise<InviteResult> => {
-  const data = await requestJson({
+}): Promise<InviteResult> =>
+  bridge.write({
     path: '/admin/reissue-invite',
-    method: 'POST',
     body: { email, tier },
+    is: isInviteResult,
+    what: 'reissue-invite response',
   })
-  if (!isInviteResult(data)) {
-    throw new Error('Unexpected reissue-invite response')
-  }
-  return data
-}
