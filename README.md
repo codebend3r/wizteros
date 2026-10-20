@@ -125,30 +125,46 @@ and the secrets/private-infrastructure scan).
 
 ### CI
 
-`.github/workflows/pull-request-checks.yml` runs on PRs and pushes to `main`.
-Independent lanes run concurrently, with `fail-fast: false` so one failure does
-not hide the others:
+Two entry workflows share the same checks, which live in reusable workflows
+(`checks.yml` and `sanity-check.yml`):
 
-- **Repository:** root lint/format, Node tooling tests in `scripts/` and
-  `.claude/skills/`, version parity, security scan, actionlint and ShellCheck.
-- **Static:** workspace TS/JS lint, SCSS lint, formatting and typechecks.
-- **Tests:** all affected workspace test suites.
-- **Builds:** production builds, including a non-empty web entrypoint check.
-- **Containers (two parallel jobs):** build and boot both production images,
-  check public/authenticated routes, and confirm the fleet image contains the
+- `pull-request-checks.yml` runs on PRs only. A new push to a PR cancels its
+  obsolete run.
+- `main-checks.yml` runs on every push to `main`, as the post-merge sanity check.
+  Its concurrency group is the commit SHA, so back-to-back merges never cancel
+  or replace each other; every merged commit finishes with its own verdict
+  (**🏁 Main checks**). It also writes a NAS deploy notice to the run summary when
+  the push touched `apps/stripe-bridge`, `apps/fleet-monitor`, `libs/server-common`
+  or `docker-compose.yml`, since the NAS never redeploys on its own.
+
+Each run is three jobs: two runners in parallel, then the verdict. The jobs
+themselves take seconds, so runner boot, install and waiting for one of the
+account's 20 concurrent job slots used to dominate; a few busy jobs keep
+several PRs from queueing behind each other.
+
+- **🔍 Checks (one runner):** one install, then every check at once through
+  `scripts/ci/run-parallel.sh`: the Nx targets (TS/JS lint, SCSS lint,
+  formatting, typechecks, tests and production builds, at most three tasks at a
+  time), root lint/format, Node tooling tests in `scripts/` and
+  `.claude/skills/`, version parity, security scan, actionlint/ShellCheck
+  (`scripts/ci/lint-workflows.sh`) and the dependency audit. Every task always
+  finishes, its log prints whole in its own collapsible group, and the job fails
+  if any task did. A final step confirms a non-empty web entrypoint.
+- **🐳 Containers (one runner):** one `buildx bake` (`.github/ci/images.hcl`)
+  builds both production images concurrently, then both boot side by side to
+  check public/authenticated routes and confirm the fleet image contains the
   collector entrypoint and SSH client. No live services or credentials are used.
 
-PR workspace lanes use `nx affected` against the PR base and checked-out merge
-commit; `main` always runs every project. Nx still respects `^build` dependencies,
-with at most three tasks per runner. The existing **🚦 Pull request checks** name
-is the final required-check verdict, and fails unless every lane succeeds.
-`sanity-check.yml` is now the reusable container workflow, not a second web build.
+PRs use `nx affected` against the PR base and checked-out merge commit; `main`
+always runs every project with a shallow checkout, which catches two PRs that
+each pass alone but break together. Nx still respects `^build` dependencies. The
+existing **🚦 Pull request checks** name is the final required-check verdict, and
+fails unless every job succeeds.
 
-Bun downloads and per-lane Nx results are cached. Node/Bun versions and shared
+Bun downloads and Nx results are cached. Node/Bun versions and shared
 runtime/CI configuration are task inputs, preventing stale results after tooling
 changes. Buildx caches Docker layers separately for each image; only `main`
-publishes those layers, while PRs can restore them. New pushes cancel obsolete
-runs. Parallel lanes trade additional runner-minutes for a shorter critical path.
+publishes those layers, while PRs can restore them.
 
 `bun audit --audit-level=high` also reports dependency findings, but is explicitly
 **non-blocking** until the existing high-severity advisories are remediated; a
@@ -159,7 +175,8 @@ to local `verify`. To repeat them locally:
 ```bash
 actionlint
 shellcheck scripts/ci/*.sh
-# Build the matching app image as <app>:sanity first:
+# Build both images as <app>:sanity first (drop the CI-only layer cache):
+docker buildx bake -f .github/ci/images.hcl --set '*.cache-from='
 bun run ci:smoke stripe-bridge
 bun run ci:smoke fleet-monitor
 ```

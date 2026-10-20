@@ -1,7 +1,8 @@
 name: ✅ Container sanity check
 
-# Called by the PR/main workflow so image failures are part of its verdict,
-# rather than discovering a broken production image only after merging.
+# Called by the PR and main workflows so image failures are part of their verdict,
+# rather than discovering a broken production image only after merging. One
+# bake builds both images concurrently on one runner, then both boot at once.
 on:
   workflow_call:
 
@@ -9,14 +10,10 @@ permissions:
   contents: read
 
 jobs:
-  image:
-    name: 🐳 ${{ matrix.app }} image + boot smoke
+  images:
+    name: 🐳 Images + boot smoke
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        app: [stripe-bridge, fleet-monitor]
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v7
@@ -24,17 +21,17 @@ jobs:
           persist-credentials: false
       - name: 🐳 Set up Buildx
         uses: docker/setup-buildx-action@v4
-      - name: 🏗️ Build and load image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: apps/${{ matrix.app }}/Dockerfile
-          load: true
-          tags: ${{ matrix.app }}:sanity
-          cache-from: type=gha,scope=${{ matrix.app }}
-          # Only trusted main runs publish shared layers; PRs can consume them.
-          cache-to: ${{ github.event_name == 'push' && format('type=gha,scope={0},mode=max', matrix.app) || '' }}
-      - name: 🚦 Smoke test the production image
+      - name: 🏗️ Build and load both images
+        uses: docker/bake-action@v7
         env:
-          APP: ${{ matrix.app }}
-        run: bash scripts/ci/smoke-container.sh "$APP"
+          # Only trusted main runs publish shared layers; PRs can consume them.
+          PUBLISH_CACHE: ${{ github.event_name == 'push' && 'true' || '' }}
+        with:
+          source: .
+          files: .github/ci/images.hcl
+      # The two containers use different names and ports, so they boot side by side.
+      - name: 🚦 Smoke test both production images
+        run: |
+          bash scripts/ci/run-parallel.sh \
+            "stripe-bridge=bash scripts/ci/smoke-container.sh stripe-bridge" \
+            "fleet-monitor=bash scripts/ci/smoke-container.sh fleet-monitor"
