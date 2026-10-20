@@ -9,6 +9,13 @@ import { fileURLToPath } from 'node:url'
 const script = fileURLToPath(new URL('./deploy-nas.sh', import.meta.url))
 const root = fileURLToPath(new URL('../../../../', import.meta.url))
 
+// Hooks export GIT_DIR, GIT_INDEX_FILE and friends. Inherited, they point every
+// fixture git call (and the deploy script's own) at the invoking repository: a
+// pre-push run once committed the fixture there and re-initialised it as bare.
+const isolatedEnv = Object.fromEntries(
+  Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')),
+)
+
 const put = (path, body) => {
   mkdirSync(join(path, '..'), { recursive: true })
   writeFileSync(path, body)
@@ -21,7 +28,8 @@ const fixture = (t) => {
   const nas = join(dir, 'nas')
   const bin = join(dir, 'bin')
   ;[repo, nas, bin].forEach((path) => mkdirSync(path))
-  const git = (...args) => execFileSync('git', args, { cwd: repo, stdio: 'pipe' }).toString().trim()
+  const git = (...args) =>
+    execFileSync('git', args, { cwd: repo, stdio: 'pipe', env: isolatedEnv }).toString().trim()
   git('init', '-b', 'main')
   git('config', 'core.hooksPath', '/dev/null')
   git('config', 'user.email', 'fixture@invalid.test')
@@ -36,7 +44,7 @@ const fixture = (t) => {
   git('add', '.')
   git('commit', '-m', 'fixture')
   const remote = join(dir, 'origin.git')
-  execFileSync('git', ['init', '--bare', remote], { stdio: 'pipe' })
+  execFileSync('git', ['init', '--bare', remote], { stdio: 'pipe', env: isolatedEnv })
   git('remote', 'add', 'origin', remote)
   git('push', '-u', 'origin', 'main')
   const statePaths = [
@@ -82,8 +90,8 @@ esac
     spawnSync('bash', [script, ...flags], {
       encoding: 'utf8',
       env: {
-        ...process.env,
-        PATH: `${bin}:${process.env.PATH}`,
+        ...isolatedEnv,
+        PATH: `${bin}:${isolatedEnv.PATH}`,
         WZ_REPO: repo,
         WZ_NAS_HOST: 'fixture-only',
         WZ_NAS_PATH: nas,
