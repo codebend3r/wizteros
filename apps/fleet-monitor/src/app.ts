@@ -1,11 +1,6 @@
-import { HttpAdapterHost, NestFactory } from '@nestjs/core'
+import { NestFactory } from '@nestjs/core'
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify'
-import {
-  fastApiValidationPipe,
-  HttpDetailFilter,
-  starletteCors,
-  starletteMethodNotAllowed,
-} from '@wizteros/server-common'
+import { fastApiCompat } from '@wizteros/server-common'
 import { useFastApiJson } from '@/api/json.js'
 import { AppModule } from '@/appModule.js'
 
@@ -27,15 +22,12 @@ export const configureApp = (app: NestFastifyApplication): NestFastifyApplicatio
   // answers 401 without a session. Authorization has to be named, since
   // sending it cross-origin triggers a preflight that otherwise ends the
   // request before it is made.
-  app.enableCors(starletteCors({ origin: '*', methods: ['GET'], headers: ['Authorization'] }))
+  //
   // Every error leaves as {"detail": ...}, the body FastAPI sent and the
-  // portal shows.
-  app.useGlobalFilters(new HttpDetailFilter(app.get(HttpAdapterHost)))
-  // A bad query parameter is FastAPI's 422, and every Date in a body is
-  // written the way Pydantic wrote it.
-  app.useGlobalPipes(fastApiValidationPipe())
+  // portal shows, and a bad query parameter is FastAPI's 422.
+  fastApiCompat({ app, cors: { origin: '*', methods: ['GET'], headers: ['Authorization'] } })
+  // Every Date in a body is written the way Pydantic wrote it.
   useFastApiJson(app)
-  starletteMethodNotAllowed(app)
   return app
 }
 

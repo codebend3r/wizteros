@@ -2,7 +2,7 @@
 // ES256 tokens, and the two mounts every route answers on.
 
 import type { NestFastifyApplication } from '@nestjs/platform-fastify'
-import { type CryptoKey, createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose'
+import { supabaseSigner } from '@wizteros/server-common/testing'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AdminModule } from '@/admin/adminModule.js'
 import { mapInOrder } from '@/sequence.js'
@@ -16,21 +16,15 @@ afterEach(stopServed)
 // --- require_admin ------------------------------------------------------------------------
 
 const SUPABASE_URL = 'https://project.supabase.co'
-const KID = 'supabase-test-key'
 
-// One throwaway ES256 keypair standing in for Supabase's, so a token really
+// A throwaway ES256 keypair standing in for Supabase's, so a token really
 // verifies rather than a stubbed-out decode passing whatever it is handed.
-const signingKey = await generateKeyPair('ES256')
-const publicKeySet = createLocalJWKSet({
-  keys: [{ ...(await exportJWK(signingKey.publicKey)), kid: KID, alg: 'ES256', use: 'sig' }],
+const { keySet: publicKeySet, mint } = await supabaseSigner({
+  supabaseUrl: SUPABASE_URL,
+  email: 'admin@example.com',
 })
 
-const token = ({ email, key = signingKey.privateKey }: { email: string; key?: CryptoKey }) =>
-  new SignJWT({ email })
-    .setProtectedHeader({ alg: 'ES256', kid: KID })
-    .setIssuer(`${SUPABASE_URL}/auth/v1`)
-    .setAudience('authenticated')
-    .sign(key)
+const token = ({ email }: { email: string }): Promise<string> => mint({ email })
 
 describe('require_admin', () => {
   let app: NestFastifyApplication

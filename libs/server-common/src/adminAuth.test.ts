@@ -1,21 +1,14 @@
 import { Controller, Get, Module, UseGuards } from '@nestjs/common'
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify'
 import { Test } from '@nestjs/testing'
-import {
-  type CryptoKey,
-  createLocalJWKSet,
-  exportJWK,
-  generateKeyPair,
-  type JWTVerifyGetKey,
-  SignJWT,
-} from 'jose'
+import { generateKeyPair, type JWTVerifyGetKey } from 'jose'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { AdminAuthModule, SupabaseAdminGuard } from './adminAuth.js'
 import { parseEmailAllowlist, trimTrailingSlashes } from './env.js'
+import { bearer, supabaseSigner } from './testing.js'
 
 const SUPABASE_URL = 'https://project.supabase.co'
 const ADMIN_EMAIL = 'admin@example.com'
-const KID = 'supabase-test-key'
 
 @Controller('gated')
 @UseGuards(SupabaseAdminGuard)
@@ -40,36 +33,10 @@ class ElsewhereController {
 @Module({ controllers: [ElsewhereController] })
 class ElsewhereModule {}
 
-// One throwaway ES256 keypair standing in for Supabase's. The test owns both
-// halves so it can mint a token that really verifies, rather than asserting
-// against a stubbed-out verifier that would still pass with the check removed.
-const signingKey = await generateKeyPair('ES256')
-const publicKeySet = createLocalJWKSet({
-  keys: [{ ...(await exportJWK(signingKey.publicKey)), kid: KID, alg: 'ES256', use: 'sig' }],
+const { keySet: publicKeySet, mint } = await supabaseSigner({
+  supabaseUrl: SUPABASE_URL,
+  email: ADMIN_EMAIL,
 })
-
-const mint = ({
-  key = signingKey.privateKey,
-  email = ADMIN_EMAIL,
-  issuer = `${SUPABASE_URL}/auth/v1`,
-  audience = 'authenticated',
-  expiresAt = '5m',
-}: {
-  key?: CryptoKey
-  email?: string
-  issuer?: string
-  audience?: string
-  expiresAt?: string | number
-} = {}): Promise<string> =>
-  new SignJWT({ email })
-    .setProtectedHeader({ alg: 'ES256', kid: KID })
-    .setIssuer(issuer)
-    .setAudience(audience)
-    .setIssuedAt()
-    .setExpirationTime(expiresAt)
-    .sign(key)
-
-const bearer = (token: string): Record<string, string> => ({ authorization: `Bearer ${token}` })
 
 describe('SupabaseAdminGuard', () => {
   // Stands in for the environment each app reads its admin config from, so a
