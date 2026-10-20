@@ -202,6 +202,6 @@ Everything else here is convention, and the import-alias rule in particular has 
 
 ## Skills
 
-Repo-scoped skills live in `.claude/skills/`. Prefer them over improvising: `commiter` and `pr-creator` for the conventions above, `version-bumper` and `deploy-nas` for shipping, `nas-state-backup` before touching live NAS state, `copy-compliance` for user-facing copy, `monitor-ci` for CI. The README lists all of them.
+Repo-scoped skills live in `.claude/skills/`. Prefer them over improvising: `commiter` and `pr-creator` for the conventions above, `version-bumper` and `deploy-nas` for shipping, `nas-state-backup` before touching live NAS state, `copy-compliance` for user-facing copy. The README lists all of them. CI runs on GitHub Actions without Nx Cloud, so watch a PR's checks with `gh pr checks <pr> --watch` or a run with `gh run watch <run-id>`.
 
 Repo-scoped subagents live in `.claude/agents/`: `wizteros-reviewer` reviews a diff, branch, or PR against the conventions here that the toolchain does not enforce.

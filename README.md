@@ -254,7 +254,6 @@ Skills under `.claude/skills/` are scoped to this repo. Each one's `SKILL.md` ca
 | `sales-agent`      | Finds win-back opportunities among declined and lapsed members, ranks them, and drafts a compliance-checked email to send by hand                                  |
 | `invite-audit`     | Audits the invitation set: the four per-tier baseline links, their expiry and scope, and whether the 03:00 rotation is still running                               |
 | `security-audit`   | Scans the public repo, tree and history, for private addresses, tailnet names, real emails, secrets and secret files, then reviews auth, webhooks and dependencies |
-| `monitor-ci`       | Watches Nx Cloud CI, evaluates failures, and coordinates supported self-healing fixes                                                                              |
 
 **Nx**
 
