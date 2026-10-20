@@ -9,6 +9,7 @@ import {
 } from '@wizteros/server-common'
 import type { Units } from '@/store/units.js'
 import type { PaymentState } from '@/subscriptionStatus.js'
+import { canonicalTier, type Tier } from '@/tiers.js'
 import type { CustomerRow } from '@/types.js'
 
 // customer_map: what the bridge knows about each paying address. A row is keyed
@@ -46,7 +47,10 @@ const customerRowOf = (row: Row): CustomerRow => {
   return {
     customer_id: (customerId ?? '').startsWith('cus_') ? customerId : null,
     invite_code: read.textOrNull('invite_code'),
-    tier: read.textOrNull('tier'),
+    // Case and padding are forgiven, as access recovery always did, and a
+    // pre-rebrand name reads as the tier it became. One that names no tier
+    // reads as none, which is how the members list already treated it.
+    tier: canonicalTier(read.textOrNull('tier')?.trim().toLowerCase() ?? null),
     invited_at: read.textOrNull('invited_at'),
     subscribed: !!read.number('subscribed'),
     payment_state: read.textOrNull('payment_state') === 'past_due' ? 'past_due' : null,
@@ -106,7 +110,7 @@ export const customerStore = ({ read, write }: Units) => ({
     customerId: string
     email: string
     inviteCode: string
-    tier?: string | null
+    tier?: Tier | null
   }): void => {
     const invitedAt = isoformat(new Date())
     write((connection) => {
@@ -148,7 +152,7 @@ export const customerStore = ({ read, write }: Units) => ({
   }: {
     email: string
     inviteCode: string
-    tier?: string | null
+    tier?: Tier | null
   }): void => {
     const invitedAt = isoformat(new Date())
     write((connection) =>
@@ -186,7 +190,7 @@ export const customerStore = ({ read, write }: Units) => ({
    * placeholder when the bridge has no row yet so the member shows up on
    * /admin/members with the forced tier.
    */
-  setTier: ({ email, tier }: { email: string; tier: string }): void =>
+  setTier: ({ email, tier }: { email: string; tier: Tier }): void =>
     write((connection) => setByEmailOrPlaceholder({ connection, email, cols: [['tier', tier]] })),
 
   /**

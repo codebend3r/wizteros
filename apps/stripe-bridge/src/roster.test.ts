@@ -112,11 +112,11 @@ describe('memberFromCustomer', () => {
   it('names the member after the local part and holds nothing yet', () => {
     const member = memberFromCustomer({
       email: 'max@x.com',
-      row: row({ tier: 'kids' }),
+      row: row({ tier: 'youth' }),
       libraries: LIBRARIES,
     })
     expect(member.member).toBe('max')
-    expect(member.tier).toBe('youth') // the legacy alias
+    expect(member.tier).toBe('youth')
     expect(member.servers).toEqual([])
     expect(member.libraries).toEqual({})
     expect(member.stripe_email).toBeNull()

@@ -18,8 +18,10 @@ const log = new Logger('bridge')
  * it every question it has, rather than one lookup per guess.
  */
 export const identitySnapshot = async (bridge: Bridge): Promise<IdentitySnapshot> => {
-  const users = await bridge.wizarr.listUsers()
-  const invitations = await bridge.wizarr.listInvitations()
+  const [users, invitations] = await Promise.all([
+    bridge.wizarr.listUsers(),
+    bridge.wizarr.listInvitations(),
+  ])
   return { users, invitations, ...storedIdentity(bridge) }
 }
 

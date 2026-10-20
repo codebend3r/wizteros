@@ -26,6 +26,23 @@ describe('store', () => {
     removeTempDirs()
   })
 
+  it('reads a stored tier through case, padding and the legacy aliases, and an unknown one as none', () => {
+    const path = tempDbPath()
+    const store = openStore(path)
+    store.init()
+    store.upsertPending({ customerId: 'cus_1', email: 'old@x.com', inviteCode: 'a' })
+    store.upsertPending({ customerId: 'cus_2', email: 'odd@x.com', inviteCode: 'b' })
+    execute({
+      path,
+      sql: [
+        "UPDATE customer_map SET tier = ' Kids ' WHERE email = 'old@x.com'",
+        "UPDATE customer_map SET tier = 'platinum' WHERE email = 'odd@x.com'",
+      ],
+    })
+    expect(store.customerRow({ email: 'old@x.com' })?.tier).toBe('youth')
+    expect(store.customerRow({ email: 'odd@x.com' })?.tier).toBeNull()
+  })
+
   it('upserts and gets', () => {
     const store = freshStore()
 
