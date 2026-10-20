@@ -2,12 +2,16 @@ import { request as httpsRequest } from 'node:https'
 import { text } from 'node:stream/consumers'
 import { getSystemErrorName } from 'node:util'
 
-export type HttpResult = Readonly<{
-  ok: boolean
-  status: number
-  body: string
-  reason: string
-}>
+/**
+ * One GET, judged: the decoded JSON of a 2xx answer, or the reason there is
+ * none. `reason` names the transport failure (`timeout`, `refused`, `dns`,
+ * `transport_error`), the status of an answer outside 2xx (`http_404`), or
+ * `bad_json` for a 2xx nothing could parse. Every caller used to re-decode a
+ * raw body, and each wrote its own `bad_json` branch to do it.
+ */
+export type HttpResult =
+  | Readonly<{ ok: true; payload: unknown }>
+  | Readonly<{ ok: false; reason: string }>
 
 /** What one GET answered before it is judged: the status and the decoded body. */
 export type HttpAnswer = Readonly<{
@@ -124,8 +128,23 @@ const classify = (error: unknown): string => {
   return connect.some(isUnknownName) ? 'dns' : 'refused'
 }
 
+const failure = (reason: string): HttpResult => ({ ok: false, reason })
+
+// `json.loads` on an answer that arrived, answering rather than raising.
+const judge = ({ status, body }: HttpAnswer): HttpResult => {
+  if (status < 200 || status >= 300) {
+    return failure(`http_${status}`)
+  }
+  try {
+    return { ok: true, payload: JSON.parse(body) }
+  } catch {
+    return failure('bad_json')
+  }
+}
+
 /**
- * GET a URL, never raising. A dead endpoint degrades that target only.
+ * GET a URL as JSON, never raising on the server's account. A dead endpoint
+ * degrades that target only.
  *
  * `verify` is off only for the two Plex servers that insist on https: they
  * present Plex's *.plex.direct wildcard certificate on a LAN ip, which no
@@ -133,29 +152,52 @@ const classify = (error: unknown): string => {
  * either transport. Everything else keeps the default.
  *
  * The timeout covers the whole request, headers to last byte. httpx applied
- * its timeout to each phase (connect, then every read) instead.
+ * its timeout to each phase (connect, then every read) instead, and a server
+ * that keeps trickling bytes never trips a per-read timeout: vermithor
+ * answered one listing page's headers at once and then took fifty-nine
+ * minutes over its body (2026-09-18).
+ *
+ * `signal` is the caller giving up (a shutdown). It reaches the wire, so the
+ * socket closes rather than running on to the deadline, and it is the one
+ * rejection: an AbortError, whichever of the request and the abort settled
+ * first, because a request the abort cut short fails with a reason of its own
+ * and reporting that would count the shutdown against the server.
  */
 export const getJson = async ({
   url,
   timeout = 8.0,
   headers = null,
   verify = true,
+  signal = null,
   get = send,
 }: {
   url: string
   timeout?: number
   headers?: Readonly<Record<string, string>> | null
   verify?: boolean
+  signal?: AbortSignal | null
   get?: Send
 }): Promise<HttpResult> => {
-  const signal = AbortSignal.timeout(timeout * 1000)
-  try {
-    const { status, body } = await get({ url, headers: headers ?? {}, verify, signal })
-    const ok = status >= 200 && status < 300
-    return { ok, status, body, reason: ok ? '' : `http_${status}` }
-  } catch (error) {
-    // once the deadline has passed, whatever the request died of was the
-    // deadline: node:https reports a body cut short as a reset, not a timeout
-    return { ok: false, status: 0, body: '', reason: signal.aborted ? 'timeout' : classify(error) }
+  const deadline = AbortSignal.timeout(timeout * 1000)
+  const attempt = async (): Promise<HttpResult> => {
+    try {
+      return judge(
+        await get({
+          url,
+          headers: headers ?? {},
+          verify,
+          signal: signal === null ? deadline : AbortSignal.any([deadline, signal]),
+        }),
+      )
+    } catch (error) {
+      // once the deadline has passed, whatever the request died of was the
+      // deadline: node:https reports a body cut short as a reset, not a timeout
+      return failure(deadline.aborted ? 'timeout' : classify(error))
+    }
   }
+  const result = await attempt()
+  if (signal !== null && signal.aborted) {
+    throw new DOMException('This operation was aborted', 'AbortError')
+  }
+  return result
 }

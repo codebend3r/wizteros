@@ -10,7 +10,8 @@ import * as plex from '@/probes/plex.js'
 import { initDb } from '@/schema.js'
 import { removeTempDirs, tempDbPath } from '@/test/support.js'
 import { addSeconds, epochSeconds } from '@wizteros/server-common'
-import type { HttpResult } from '@/transport/http.js'
+import { refusal } from '@/test/send.js'
+import type { Send } from '@/transport/http.js'
 
 const T0 = new Date(Date.UTC(2026, 8, 18, 12, 0, 0))
 const NOW = epochSeconds(T0)
@@ -176,12 +177,10 @@ type FakePlex = {
   stall: Set<string>
   historyBudget: number | null
   requests: Sent[]
-  getJson: plexSync.GetJson
+  send: Send
   // the transport every pass is handed, standing in for the patched module
   via: plexSync.Transport
 }
-
-const REFUSED: HttpResult = { ok: false, status: 0, body: '', reason: 'refused' }
 
 const answer = ({
   fake,
@@ -239,19 +238,20 @@ const fakePlex = ({
   sections?: readonly Json[]
   sectionItems?: Readonly<Record<string, readonly Json[]>>
 } = {}): FakePlex => {
-  const getJson: plexSync.GetJson = async ({ url, headers, verify }) => {
+  const send: Send = async ({ url, headers, verify, signal }) => {
     const parts = new URL(url)
     const query = Object.fromEntries(parts.searchParams)
     fake.requests.push({ path: parts.pathname, query, headers: { ...headers }, verify })
     if (fake.refuse.has(parts.pathname)) {
-      return REFUSED
+      throw refusal()
     }
     if ([...fake.stall].some((marker) => parts.pathname.includes(marker))) {
-      await sleep(1000)
+      // trickles until the request is abandoned, as a real socket would be
+      await sleep(1000, undefined, { signal })
     }
     if (parts.pathname === HISTORY && fake.historyBudget !== null) {
       if (fake.historyBudget <= 0) {
-        return REFUSED
+        throw refusal()
       }
       fake.historyBudget -= 1
     }
@@ -259,9 +259,9 @@ const fakePlex = ({
     const size = Number(headers['X-Plex-Container-Size'] ?? '1000000')
     const body = answer({ fake, path: parts.pathname, query, start, size })
     if (body === null) {
-      return { ok: false, status: 404, body: '', reason: 'http_404' }
+      return { status: 404, body: '' }
     }
-    return { ok: true, status: 200, body: JSON.stringify(body), reason: '' }
+    return { status: 200, body: JSON.stringify(body) }
   }
   const fake: FakePlex = {
     history: history.toSorted((a, b) => a.viewedAt - b.viewedAt),
@@ -272,8 +272,8 @@ const fakePlex = ({
     stall: new Set(),
     historyBudget: null,
     requests: [],
-    getJson,
-    via: plexSync.transport({ get: getJson }),
+    send,
+    via: plexSync.transport({ send }),
   }
   return fake
 }
@@ -864,7 +864,7 @@ describe('plexSync', () => {
     // headers at once and then took fifty-nine minutes over the body
     const fake = fakePlex()
     fake.stall.add('/accounts')
-    const via = plexSync.transport({ get: fake.getJson, timeout: 0.05 })
+    const via = plexSync.transport({ send: fake.send, timeout: 0.05 })
 
     expect(await plexSync.fetch({ host: HOST, path: '/accounts', token: 'tok', via })).toEqual({
       payload: null,
@@ -889,7 +889,7 @@ describe('plexSync', () => {
     })
     // any metadata request naming this key trickles past the budget
     fake.stall.add('666')
-    const via = plexSync.transport({ get: fake.getJson, timeout: 0.05 })
+    const via = plexSync.transport({ send: fake.send, timeout: 0.05 })
 
     const check = await plexSync.syncHistory({
       host: HOST,
@@ -1005,7 +1005,7 @@ describe('plexSync', () => {
       now: T0,
       inventoryDue: new Set(),
       hosts: [HOST],
-      via: plexSync.transport({ get: fake.getJson, signal: controller.signal }),
+      via: plexSync.transport({ send: fake.send, signal: controller.signal }),
     })
     await vi.waitFor(() => expect(paths(fake)).toContain('/accounts'))
     controller.abort()

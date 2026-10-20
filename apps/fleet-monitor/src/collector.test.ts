@@ -3,7 +3,6 @@ import {
   collectContainers,
   collectHost,
   collectSlow,
-  type GetJson,
   isSlowRound,
   type Loop,
   PARSERS,
@@ -22,7 +21,8 @@ import { lastHeartbeat, latest, series } from '@/store.js'
 import { logRaised } from '@/tasks.js'
 import { removeTempDirs, tempDbPath } from '@/test/support.js'
 import { addSeconds } from '@wizteros/server-common'
-import type { HttpResult } from '@/transport/http.js'
+import { answering, refusing } from '@/test/send.js'
+import type { Send } from '@/transport/http.js'
 import type { SshResult } from '@/transport/ssh.js'
 
 const MINUTE = 60
@@ -120,12 +120,6 @@ const fakeSsh =
   async () =>
     result
 
-/** A http.getJson replacement that answers every url with one result. */
-const fakeHttp =
-  (result: HttpResult): GetJson =>
-  async () =>
-    result
-
 const sshResult = ({
   ok,
   stdout = '',
@@ -134,7 +128,7 @@ const sshResult = ({
   ok: boolean
   stdout?: string
   reason?: string
-}): SshResult => ({ ok, stdout, reason })
+}): SshResult => (ok ? { ok, stdout } : { ok, reason })
 
 /** Await `step` for each index in turn, as the Python tests awaited inside a for loop. */
 const inTurn = <T>({
@@ -159,14 +153,10 @@ const entry = ({
   status?: string
 }) => ({ Names: [`/${name}`], State: state, Status: status })
 
-const dockerOk = (...entries: readonly unknown[]): HttpResult => ({
-  ok: true,
-  status: 200,
-  body: JSON.stringify(entries),
-  reason: '',
-})
+const dockerOk = (...entries: readonly unknown[]): Send =>
+  answering({ status: 200, body: JSON.stringify(entries) })
 
-const DOCKER_REFUSED: HttpResult = { ok: false, status: 0, body: '', reason: 'refused' }
+const DOCKER_REFUSED: Send = refusing
 
 const targets = (checks: readonly CheckResult[]): ReadonlySet<string> =>
   new Set(checks.map((check) => check.target))
@@ -455,11 +445,9 @@ describe('collectContainers', () => {
       host: DOCKER_HOST,
       at: T0,
       path: db,
-      getJson: fakeHttp(
-        dockerOk(
-          entry({ name: 'sonarr' }),
-          entry({ name: 'radarr', state: 'exited', status: 'Exited' }),
-        ),
+      send: dockerOk(
+        entry({ name: 'sonarr' }),
+        entry({ name: 'radarr', state: 'exited', status: 'Exited' }),
       ),
     })
     const byTarget = new Map(checks.map((check) => [check.target, check] as const))
@@ -483,7 +471,7 @@ describe('collectContainers', () => {
       host: DOCKER_HOST,
       at: T0,
       path: db,
-      getJson: fakeHttp(dockerOk(entry({ name: 'plex', status: 'Up 3 hours (unhealthy)' }))),
+      send: dockerOk(entry({ name: 'plex', status: 'Up 3 hours (unhealthy)' })),
     })
     const byTarget = new Map(checks.map((check) => [check.target, check] as const))
 
@@ -500,7 +488,7 @@ describe('collectContainers', () => {
       host: DOCKER_HOST,
       at: T0,
       path: db,
-      getJson: fakeHttp(DOCKER_REFUSED),
+      send: DOCKER_REFUSED,
     })
 
     expect(targets(checks)).toEqual(new Set(['docker:meleys']))
@@ -515,7 +503,7 @@ describe('collectContainers', () => {
       host: DOCKER_HOST,
       at: T0,
       path: db,
-      getJson: fakeHttp({ ok: true, status: 200, body: '<html>nope', reason: '' }),
+      send: answering({ status: 200, body: '<html>nope' }),
     })
 
     expect(targets(checks)).toEqual(new Set(['docker:meleys']))
@@ -529,21 +517,16 @@ describe('collectContainers', () => {
     // retireAbsent an empty seen, closing every live container incident as
     // "removed" and wiping its streak.
     const db = freshDb()
-    const exited = fakeHttp(dockerOk(entry({ name: 'sonarr', state: 'exited' })))
-    await collectContainers({ host: DOCKER_HOST, at: T0, path: db, getJson: exited })
-    await collectContainers({ host: DOCKER_HOST, at: at(30), path: db, getJson: exited })
+    const exited = dockerOk(entry({ name: 'sonarr', state: 'exited' }))
+    await collectContainers({ host: DOCKER_HOST, at: T0, path: db, send: exited })
+    await collectContainers({ host: DOCKER_HOST, at: at(30), path: db, send: exited })
     expect(openTargets(db)).toEqual(new Set(['container:meleys/sonarr']))
 
     const checks = await collectContainers({
       host: DOCKER_HOST,
       at: at(5 * MINUTE),
       path: db,
-      getJson: fakeHttp({
-        ok: true,
-        status: 200,
-        body: '{"message":"page not found"}',
-        reason: '',
-      }),
+      send: answering({ status: 200, body: '{"message":"page not found"}' }),
     })
 
     expect(targets(checks)).toEqual(new Set(['docker:meleys']))
@@ -560,12 +543,11 @@ describe('collectContainers', () => {
     // production today. Recording ok=false per container would open an incident
     // for every container on both boxes, forever.
     const db = freshDb()
-    const getJson = fakeHttp(DOCKER_REFUSED)
+    const send = DOCKER_REFUSED
 
     await inTurn({
       indexes: [0, 1, 2, 3],
-      step: (index) =>
-        collectContainers({ host: DOCKER_HOST, at: at(30 * index), path: db, getJson }),
+      step: (index) => collectContainers({ host: DOCKER_HOST, at: at(30 * index), path: db, send }),
     })
 
     expect(openTargets(db)).toEqual(new Set(['docker:meleys']))
@@ -575,16 +557,16 @@ describe('collectContainers', () => {
     // the other half of the trap: recording ok=true for containers we could not
     // see would silently close an outage that is still happening
     const db = freshDb()
-    const exited = fakeHttp(dockerOk(entry({ name: 'sonarr', state: 'exited' })))
-    await collectContainers({ host: DOCKER_HOST, at: T0, path: db, getJson: exited })
-    await collectContainers({ host: DOCKER_HOST, at: at(30), path: db, getJson: exited })
+    const exited = dockerOk(entry({ name: 'sonarr', state: 'exited' }))
+    await collectContainers({ host: DOCKER_HOST, at: T0, path: db, send: exited })
+    await collectContainers({ host: DOCKER_HOST, at: at(30), path: db, send: exited })
     expect(openTargets(db)).toEqual(new Set(['container:meleys/sonarr']))
 
-    const refused = fakeHttp(DOCKER_REFUSED)
+    const refused = DOCKER_REFUSED
     await inTurn({
       indexes: [2, 3, 4, 5],
       step: (index) =>
-        collectContainers({ host: DOCKER_HOST, at: at(30 * index), path: db, getJson: refused }),
+        collectContainers({ host: DOCKER_HOST, at: at(30 * index), path: db, send: refused }),
     })
 
     const stillOpen = new Map(
@@ -598,15 +580,15 @@ describe('collectContainers', () => {
     // retireAbsent is driven by the observed container set; an empty `seen`
     // from a failed fetch would close every container incident as "removed"
     const db = freshDb()
-    const exited = fakeHttp(dockerOk(entry({ name: 'sonarr', state: 'exited' })))
-    await collectContainers({ host: DOCKER_HOST, at: T0, path: db, getJson: exited })
-    await collectContainers({ host: DOCKER_HOST, at: at(30), path: db, getJson: exited })
+    const exited = dockerOk(entry({ name: 'sonarr', state: 'exited' }))
+    await collectContainers({ host: DOCKER_HOST, at: T0, path: db, send: exited })
+    await collectContainers({ host: DOCKER_HOST, at: at(30), path: db, send: exited })
 
     await collectContainers({
       host: DOCKER_HOST,
       at: at(5 * MINUTE),
       path: db,
-      getJson: fakeHttp(DOCKER_REFUSED),
+      send: DOCKER_REFUSED,
     })
 
     const rows = historyOf({ path: db, since: at(-HOUR) })
@@ -617,16 +599,16 @@ describe('collectContainers', () => {
 
   it('retires a container that is gone on a successful fetch', async () => {
     const db = freshDb()
-    const exited = fakeHttp(dockerOk(entry({ name: 'oldapp', state: 'exited' })))
-    await collectContainers({ host: DOCKER_HOST, at: T0, path: db, getJson: exited })
-    await collectContainers({ host: DOCKER_HOST, at: at(30), path: db, getJson: exited })
+    const exited = dockerOk(entry({ name: 'oldapp', state: 'exited' }))
+    await collectContainers({ host: DOCKER_HOST, at: T0, path: db, send: exited })
+    await collectContainers({ host: DOCKER_HOST, at: at(30), path: db, send: exited })
     expect(openTargets(db)).toEqual(new Set(['container:meleys/oldapp']))
 
     await collectContainers({
       host: DOCKER_HOST,
       at: at(5 * MINUTE),
       path: db,
-      getJson: fakeHttp(dockerOk(entry({ name: 'sonarr' }))),
+      send: dockerOk(entry({ name: 'sonarr' })),
     })
 
     expect(openIncidentsOf(db)).toEqual([])
@@ -642,7 +624,7 @@ describe('tick', () => {
       at: T0,
       path: db,
       run: fakeSsh(sshResult({ ok: false, reason: 'spawn_error' })),
-      getJson: fakeHttp(DOCKER_REFUSED),
+      send: DOCKER_REFUSED,
     })
 
     expect(checks.some((check) => check.target.startsWith('host:'))).toBe(false)
@@ -656,11 +638,11 @@ describe('tick', () => {
     // scored a flawless day over hours in which not one of them was observed.
     const db = freshDb()
     const run = fakeSsh(sshResult({ ok: false, reason: 'spawn_error' }))
-    const getJson = fakeHttp(DOCKER_REFUSED)
+    const send = DOCKER_REFUSED
 
     await inTurn({
       indexes: [0, 1, 2, 3],
-      step: (index) => tick({ at: at(30 * index), path: db, run, getJson }),
+      step: (index) => tick({ at: at(30 * index), path: db, run, send }),
     })
 
     expect(observedRunOf({ path: db, target: 'host:meleys' })).toBeNull()
@@ -676,7 +658,7 @@ describe('tick', () => {
       at: T0,
       path: db,
       run: fakeSsh(sshResult({ ok: true, stdout: stdoutOf(SECTIONS) })),
-      getJson: fakeHttp(dockerOk(entry({ name: 'sonarr' }))),
+      send: dockerOk(entry({ name: 'sonarr' })),
     })
     const all = [...targets(checks)]
 
@@ -697,10 +679,10 @@ describe('tick', () => {
     // today's production shape: every host answers ssh, no host answers docker
     const db = freshDb()
     const run = fakeSsh(sshResult({ ok: true, stdout: stdoutOf(SECTIONS) }))
-    const getJson = fakeHttp(DOCKER_REFUSED)
+    const send = DOCKER_REFUSED
 
-    await tick({ at: T0, path: db, run, getJson })
-    const checks = await tick({ at: at(30), path: db, run, getJson })
+    await tick({ at: T0, path: db, run, send })
+    const checks = await tick({ at: at(30), path: db, run, send })
 
     expect(checks.some((check) => check.target.startsWith('container:'))).toBe(false)
     expect(openTargets(db)).toEqual(
@@ -721,7 +703,7 @@ describe('tick', () => {
       return sshResult({ ok: true, stdout: stdoutOf(SECTIONS) })
     }
 
-    const checks = await tick({ at: T0, path: db, run, getJson: fakeHttp(DOCKER_REFUSED) })
+    const checks = await tick({ at: T0, path: db, run, send: DOCKER_REFUSED })
 
     expect(targets(checks)).not.toContain('host:caraxes')
     expect(targets(checks)).toContain('host:vermithor')
@@ -750,7 +732,7 @@ describe('runForever', () => {
       path: db,
       signal: controller.signal,
       run: fakeSsh(sshResult({ ok: true, stdout: stdoutOf({ ...SECTIONS, ...SLOW_SECTIONS }) })),
-      getJson: fakeHttp(DOCKER_REFUSED),
+      send: DOCKER_REFUSED,
       compact: (job) => {
         jobs.push(job)
         controller.abort()
@@ -775,7 +757,7 @@ describe('runForever', () => {
       runForever({
         path: db,
         run: fakeSsh(sshResult({ ok: true, stdout: stdoutOf(SECTIONS) })),
-        getJson: fakeHttp(DOCKER_REFUSED),
+        send: DOCKER_REFUSED,
         compact: async () => {
           throw new Error('disk full')
         },

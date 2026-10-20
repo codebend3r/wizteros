@@ -32,8 +32,8 @@ export type Parser = (text: string) => readonly Sample[]
 /** `ssh.run`'s shape, so a test can answer for every host without leaving the process. */
 export type RunSsh = typeof ssh.run
 
-/** `http.getJson`'s shape, for the same reason on the docker endpoint. */
-export type GetJson = typeof http.getJson
+/** One GET on the wire, for the same reason on the docker endpoint. */
+export type Send = http.Send
 
 /** One of the two loops `runAll` runs side by side. */
 export type Loop = (options: Readonly<{ path: string; signal: AbortSignal }>) => Promise<void>
@@ -165,7 +165,7 @@ export const collectHost = async ({
   run?: RunSsh
 }): Promise<readonly incidents.CheckResult[]> => {
   const result = await probe({ host, body: script.VITALS_SCRIPT, timeout, run })
-  if (NOT_OBSERVED.has(result.reason)) {
+  if (!result.ok && NOT_OBSERVED.has(result.reason)) {
     log.warn(`vitals probe for ${host.name} could not run: ${result.reason}`)
     return []
   }
@@ -177,7 +177,7 @@ export const collectHost = async ({
       const recorded = incidents.checkResult({
         target: `host:${host.name}`,
         ok: result.ok && written > 0,
-        reason: result.reason || (written ? '' : 'empty_payload'),
+        reason: !result.ok ? result.reason : written ? '' : 'empty_payload',
       })
       incidents.record({ connection, result: recorded, at })
       return recorded
@@ -273,17 +273,6 @@ const endpointOnly = ({
   return [check]
 }
 
-// `json.loads`, answering a decode failure rather than raising it.
-type Decoded = Readonly<{ ok: true; payload: unknown }> | Readonly<{ ok: false }>
-
-const decode = (body: string): Decoded => {
-  try {
-    return { ok: true, payload: JSON.parse(body) }
-  } catch {
-    return { ok: false }
-  }
-}
-
 /**
  * Container state for one docker host, plus a per-container check.
  *
@@ -301,35 +290,34 @@ export const collectContainers = async ({
   at,
   path,
   timeout = 8.0,
-  getJson = http.getJson,
+  send = http.send,
 }: {
   host: Host
   at: Date
   path: string
   timeout?: number
-  getJson?: GetJson
+  send?: Send
 }): Promise<readonly incidents.CheckResult[]> => {
   if (!host.docker_url) {
     return []
   }
 
-  const response = await getJson({ url: `${host.docker_url}/containers/json?all=1`, timeout })
+  const response = await http.getJson({
+    url: `${host.docker_url}/containers/json?all=1`,
+    timeout,
+    get: send,
+  })
   if (!response.ok) {
     return endpointOnly({ host, path, at, reason: response.reason })
   }
 
-  const decoded = decode(response.body)
-  if (!decoded.ok) {
-    return endpointOnly({ host, path, at, reason: 'bad_json' })
-  }
-
   // a 200 carrying an object rather than an array is a proxy error page, not
   // an empty fleet; treating it as zero containers would retire all of them
-  if (!Array.isArray(decoded.payload)) {
+  if (!Array.isArray(response.payload)) {
     return endpointOnly({ host, path, at, reason: 'bad_json' })
   }
 
-  const states = docker.parseContainers(decoded.payload)
+  const states = docker.parseContainers(response.payload)
   const endpoint = incidents.checkResult({ target: `docker:${host.name}`, ok: true, reason: '' })
   const checks = [endpoint, ...states.map((state) => containerCheck({ host, state }))]
 
@@ -368,17 +356,17 @@ export const tick = async ({
   at,
   path,
   run = ssh.run,
-  getJson = http.getJson,
+  send = http.send,
 }: {
   at: Date
   path: string
   run?: RunSsh
-  getJson?: GetJson
+  send?: Send
 }): Promise<readonly incidents.CheckResult[]> => {
   const hostJobs = fleetHosts().map((host) => collectHost({ host, at, path, run }))
   const dockerJobs = fleetHosts()
     .filter((host) => !!host.docker_url)
-    .map((host) => collectContainers({ host, at, path, getJson }))
+    .map((host) => collectContainers({ host, at, path, send }))
   const outcomes = await Promise.allSettled([...hostJobs, ...dockerJobs])
   const completed = logRaised({ label: 'tick', outcomes })
 
@@ -435,18 +423,18 @@ const round = async ({
   path,
   signal,
   run,
-  getJson,
+  send,
   compact,
 }: {
   index: number
   path: string
   signal: AbortSignal
   run: RunSsh
-  getJson: GetJson
+  send: Send
   compact: Compact
 }): Promise<void> => {
   const now = new Date()
-  await unlessAborted({ work: tick({ at: now, path, run, getJson }), signal })
+  await unlessAborted({ work: tick({ at: now, path, run, send }), signal })
   if (!isSlowRound(index)) {
     return
   }
@@ -470,27 +458,27 @@ const round = async ({
  *
  * Returns once `signal` aborts, from whichever await it was at; a failure of
  * anything else still rejects, as it raised out of the Python loop. `run`,
- * `getJson` and `compact` are parameters only so a test can drive a round
+ * `send` and `compact` are parameters only so a test can drive a round
  * without the LAN or a worker.
  */
 export const runForever = async ({
   path,
   signal = new AbortController().signal,
   run = ssh.run,
-  getJson = http.getJson,
+  send = http.send,
   compact = compactInWorker,
 }: {
   path: string
   signal?: AbortSignal
   run?: RunSsh
-  getJson?: GetJson
+  send?: Send
   compact?: Compact
 }): Promise<void> => {
   initDb(path)
   await every({
     seconds: VITALS_INTERVAL,
     signal,
-    round: (index) => round({ index, path, signal, run, getJson, compact }),
+    round: (index) => round({ index, path, signal, run, send, compact }),
   })
 }
 

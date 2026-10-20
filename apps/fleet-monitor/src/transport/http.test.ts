@@ -1,7 +1,7 @@
 import { type RequestListener, type Server, createServer as createHttpServer } from 'node:http'
 import { createServer } from 'node:net'
 import { afterEach, describe, expect, it } from 'vitest'
-import { getJson } from '@/transport/http.js'
+import { getJson, type HttpResult } from '@/transport/http.js'
 
 // A local port nothing listens on: bound, read back, then released. The
 // Python tests used port 1, but fetch refuses to dial port 1 at all (it is on
@@ -17,6 +17,9 @@ const deadPort = async (): Promise<number> => {
   }
   return address.port
 }
+
+// The reason of a failed result, or empty for an answered one.
+const reasonOf = (result: HttpResult): string => (result.ok ? '' : result.reason)
 
 const servers: Server[] = []
 
@@ -52,15 +55,14 @@ describe('getJson', () => {
     const result = await getJson({ url: `http://127.0.0.1:${port}/containers/json`, timeout: 2 })
 
     expect(result.ok).toBe(false)
-    expect(['refused', 'timeout', 'transport_error']).toContain(result.reason)
-    expect(result.status).toBe(0)
+    expect(['refused', 'timeout', 'transport_error']).toContain(reasonOf(result))
   })
 
   it('reports a bad url as a typed failure', async () => {
     const result = await getJson({ url: 'http://nonexistent.invalid/x', timeout: 2 })
 
     expect(result.ok).toBe(false)
-    expect(['dns', 'timeout', 'transport_error']).toContain(result.reason)
+    expect(['dns', 'timeout', 'transport_error']).toContain(reasonOf(result))
   })
 
   it('accepts a verify switch for self-signed servers', async () => {
@@ -75,33 +77,29 @@ describe('getJson', () => {
     })
 
     expect(result.ok).toBe(false)
-    expect(['refused', 'timeout', 'transport_error']).toContain(result.reason)
+    expect(['refused', 'timeout', 'transport_error']).toContain(reasonOf(result))
   })
 
   // The tests below have no Python counterpart. The Python suite only ever
   // reached get_json's failure branch; these pin the answered branch and the
   // two places where fetch and httpx differ by default.
 
-  it('hands back the body of a 2xx answer', async () => {
+  it('hands back the decoded body of a 2xx answer', async () => {
     const url = await serve((_request, response) => response.writeHead(200).end('[]'))
 
-    expect(await getJson({ url: `${url}/containers/json` })).toEqual({
-      ok: true,
-      status: 200,
-      body: '[]',
-      reason: '',
-    })
+    expect(await getJson({ url: `${url}/containers/json` })).toEqual({ ok: true, payload: [] })
+  })
+
+  it('names a 2xx nothing could parse bad_json', async () => {
+    const url = await serve((_request, response) => response.writeHead(200).end('<html>nope'))
+
+    expect(await getJson({ url })).toEqual({ ok: false, reason: 'bad_json' })
   })
 
   it('judges a non-2xx answer by its status', async () => {
     const url = await serve((_request, response) => response.writeHead(503).end('down'))
 
-    expect(await getJson({ url })).toEqual({
-      ok: false,
-      status: 503,
-      body: 'down',
-      reason: 'http_503',
-    })
+    expect(await getJson({ url })).toEqual({ ok: false, reason: 'http_503' })
   })
 
   it('does not follow a redirect', async () => {
@@ -110,10 +108,7 @@ describe('getJson', () => {
       response.writeHead(302, { Location: '/elsewhere' }).end(),
     )
 
-    const result = await getJson({ url })
-
-    expect(result.status).toBe(302)
-    expect(result.reason).toBe('http_302')
+    expect(await getJson({ url })).toEqual({ ok: false, reason: 'http_302' })
   })
 
   it('times out a body that never finishes', async () => {
@@ -124,11 +119,18 @@ describe('getJson', () => {
       response.write('[')
     })
 
-    expect(await getJson({ url, timeout: 0.2 })).toEqual({
-      ok: false,
-      status: 0,
-      body: '',
-      reason: 'timeout',
-    })
+    expect(await getJson({ url, timeout: 0.2 })).toEqual({ ok: false, reason: 'timeout' })
+  })
+
+  it('rejects as an abort once the caller gives up, not as a failure', async () => {
+    // a shutdown is not the server failing, so it must not come back as a
+    // reason that would be recorded against it
+    const url = await serve(() => undefined)
+    const controller = new AbortController()
+
+    const pending = getJson({ url, timeout: 60, signal: controller.signal })
+    controller.abort()
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
   })
 })

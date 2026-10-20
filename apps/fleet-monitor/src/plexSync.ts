@@ -17,7 +17,6 @@
 // installed. The ledger already exists on every server, so it is read instead
 // of guessed.
 
-import { setTimeout as sleep } from 'node:timers/promises'
 import { inspect } from 'node:util'
 import { Logger } from '@nestjs/common'
 import {
@@ -39,7 +38,7 @@ import * as plex from '@/probes/plex.js'
 import { initDb } from '@/schema.js'
 import { every, logRaised } from '@/tasks.js'
 import { addSeconds, epochSeconds } from '@wizteros/server-common'
-import { getJson, type HttpResult, send } from '@/transport/http.js'
+import { getJson, type Send, send } from '@/transport/http.js'
 
 const log = new Logger('fleet.plex')
 
@@ -146,57 +145,28 @@ export type HostOutcome = Readonly<{
 }>
 
 /**
- * The GET a pass sends: `getJson`'s shape, plus the signal that abandons the
- * request once `fetch` has stopped waiting for it (its deadline passed, or the
- * loop is shutting down). A stand-in server may ignore the signal; `fetch`
- * stops waiting either way.
- */
-export type GetJson = (
-  request: Readonly<{
-    url: string
-    timeout: number
-    headers: Readonly<Record<string, string>>
-    verify: boolean
-    signal: AbortSignal
-  }>,
-) => Promise<HttpResult>
-
-/**
- * `getJson`, with the abandoning signal carried down to the wire, so a request
- * `fetch` gave up on closes its socket rather than running on to getJson's
- * own deadline. Without it a shutdown could wait out a slow server's last
- * request before the process was free to exit.
- */
-const getJsonUntil: GetJson = ({ signal, ...request }) =>
-  getJson({
-    ...request,
-    get: (call) => send({ ...call, signal: AbortSignal.any([call.signal, signal]) }),
-  })
-
-/**
- * How a pass reaches Plex: the GET it sends, the budget each request gets,
- * and the signal that abandons a request in flight. Production passes nothing
- * and gets `getJson` (through `getJsonUntil`), TIMEOUT and no signal; a test
- * stands in for the server
- * and narrows the budget (the Python tests patched `http.get_json` and
- * `TIMEOUT` on the module, which an ESM export does not allow), and
- * `runForever` hands its shutdown signal down.
+ * How a pass reaches Plex: the wire it sends on, the budget each request
+ * gets, and the signal that abandons a request in flight. Production passes
+ * nothing and gets `send`, TIMEOUT and no signal; a test stands in for the
+ * server at the wire and narrows the budget (the Python tests patched
+ * `http.get_json` and `TIMEOUT` on the module, which an ESM export does not
+ * allow), and `runForever` hands its shutdown signal down.
  */
 export type Transport = Readonly<{
-  get: GetJson
+  send: Send
   timeout: number
   signal: AbortSignal | null
 }>
 
 export const transport = ({
-  get = getJsonUntil,
+  send: wire = send,
   timeout = TIMEOUT,
   signal = null,
 }: {
-  get?: GetJson
+  send?: Send
   timeout?: number
   signal?: AbortSignal | null
-} = {}): Transport => ({ get, timeout, signal })
+} = {}): Transport => ({ send: wire, timeout, signal })
 
 const secure = (host: Host): boolean => host.plex_url.startsWith('https://')
 
@@ -229,10 +199,13 @@ const urlencode = (params: Readonly<Record<string, string>>): string =>
  * Plex's wildcard certificate on a LAN address, which no verifier accepts,
  * and the token is what authorizes the request on either transport.
  *
+ * The whole request gets the budget, headers to last byte, so a server that
+ * keeps trickling bytes cannot hold a five-server loop for an hour.
+ *
  * The one rejection is the transport's signal aborting, which is a shutdown
- * rather than the server failing: it surfaces as an AbortError, which
- * `logRaised` passes through, so a round torn down mid-request records no
- * failed check against a server that did nothing wrong. Python's task
+ * rather than the server failing: `getJson` surfaces it as an AbortError,
+ * which `logRaised` passes through, so a round torn down mid-request records
+ * no failed check against a server that did nothing wrong. Python's task
  * cancellation did the same.
  */
 export const fetch = async ({
@@ -263,46 +236,17 @@ export const fetch = async ({
     ...(start === null ? {} : { 'X-Plex-Container-Start': String(start) }),
     ...(size === null ? {} : { 'X-Plex-Container-Size': String(size) }),
   }
-  // The transport's own timeout is per read, not per request: a server that
-  // keeps trickling bytes never trips it. vermithor answered one listing
-  // page's headers at once and then took fifty-nine minutes over its body
-  // (2026-09-18), and a loop with five servers to visit every five minutes
-  // cannot wait on one of them for an hour. The whole request gets the
-  // budget, headers to last byte. getJson already bounds its own request the
-  // same way; this deadline is the asyncio.wait_for around it, which holds
-  // whatever GET the transport carries.
-  const settled = new AbortController()
-  const abandon = AbortSignal.any(
-    via.signal === null ? [settled.signal] : [settled.signal, via.signal],
-  )
-  try {
-    const result = await Promise.race([
-      via.get({ url, timeout: budget, headers, verify: !secure(host), signal: abandon }),
-      // null is the deadline passing; an abort rejects with an AbortError
-      sleep(budget * 1000, null, { signal: abandon }),
-    ])
-    // A shutdown ends the pass as an abort whichever of the two settled first:
-    // a request the abort cut short answers with a failure of its own, and
-    // recording that would count the shutdown against the server.
-    if (via.signal !== null && via.signal.aborted) {
-      throw new DOMException('This operation was aborted', 'AbortError')
-    }
-    if (result === null) {
-      return { payload: null, reason: 'timeout' }
-    }
-    if (!result.ok) {
-      return { payload: null, reason: result.reason }
-    }
-    try {
-      const payload: unknown = JSON.parse(result.body)
-      return { payload, reason: '' }
-    } catch {
-      return { payload: null, reason: 'bad_json' }
-    }
-  } finally {
-    // stops the deadline's timer once the request has answered
-    settled.abort()
-  }
+  const result = await getJson({
+    url,
+    timeout: budget,
+    headers,
+    verify: !secure(host),
+    signal: via.signal,
+    get: via.send,
+  })
+  return result.ok
+    ? { payload: result.payload, reason: '' }
+    : { payload: null, reason: result.reason }
 }
 
 /**
