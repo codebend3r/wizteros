@@ -40,9 +40,9 @@ const NOW = new Date(Date.UTC(2026, 8, 26, 7, 0, 0))
 /** NOW moved back by a number of seconds, the `now - timedelta(...)` of the Python tests. */
 const ago = (seconds: number): Date => addSeconds({ at: NOW, seconds: -seconds })
 
-const gauge = (metric: string, value: number): Sample => ({ metric, value, kind: 'gauge' })
+const gauge = (metric: string, value: number): Sample => ({ metric, value })
 
-const counter = (metric: string, value: number): Sample => ({ metric, value, kind: 'counter' })
+const counter = (metric: string, value: number): Sample => ({ metric, value })
 
 describe('fleetView', () => {
   let db: Connection
@@ -66,8 +66,7 @@ describe('fleetView', () => {
     samples: readonly Sample[]
   }) => writeSamples({ connection: db, target, at: when, samples })
 
-  const heartbeat = ({ when, gap }: { when: Date; gap?: number }) =>
-    writeHeartbeat({ connection: db, at: when, gap })
+  const heartbeat = ({ when }: { when: Date }) => writeHeartbeat({ connection: db, at: when })
 
   /**
    * Record the two healthy checks that say this target was observed from
@@ -349,10 +348,9 @@ describe('fleetView', () => {
   })
 
   it('scores uptime once the collector has watched the window', () => {
-    // one unbroken run reaching back past the window: two rounds is enough to
-    // express that, with a gap tolerance wide enough to admit the second
+    // the collector ticking across the window, which on its own is not enough
     heartbeat({ when: ago(25 * HOUR) })
-    heartbeat({ when: NOW, gap: 2 * DAY })
+    heartbeat({ when: NOW })
     // and the host itself checked across that run, not merely the collector
     // ticking beside it. A round that recorded no check for this host observed
     // the fleet, not the host.
@@ -369,7 +367,7 @@ describe('fleetView', () => {
     // on unbroken through hours in which not one host was observed, and scored
     // them a flawless 100%.
     heartbeat({ when: ago(25 * HOUR) })
-    heartbeat({ when: NOW, gap: 2 * DAY })
+    heartbeat({ when: NOW })
     // checks for this host stop six hours ago; its readings are still inside
     // the age window, so the card is still showing numbers
     watched({

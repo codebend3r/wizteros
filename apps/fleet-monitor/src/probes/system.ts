@@ -36,10 +36,10 @@ export const parseDf = (text: string): readonly Sample[] =>
       }
       const name = fields[MOUNT].replace(/^\/+/, '').replaceAll('/', '_') || 'root'
       return [
-        { metric: `disk.${name}.total_bytes`, value: total * BLOCK_BYTES, kind: 'gauge' },
-        { metric: `disk.${name}.used_bytes`, value: used * BLOCK_BYTES, kind: 'gauge' },
-        { metric: `disk.${name}.available_bytes`, value: available * BLOCK_BYTES, kind: 'gauge' },
-        { metric: `disk.${name}.used_percent`, value: capacity, kind: 'gauge' },
+        { metric: `disk.${name}.total_bytes`, value: total * BLOCK_BYTES },
+        { metric: `disk.${name}.used_bytes`, value: used * BLOCK_BYTES },
+        { metric: `disk.${name}.available_bytes`, value: available * BLOCK_BYTES },
+        { metric: `disk.${name}.used_percent`, value: capacity },
       ]
     })
 
@@ -64,7 +64,7 @@ export const parseHwmon = (text: string): readonly Sample[] =>
       const label = key.endsWith('_input') ? key.slice(0, -'_input'.length) : key
       return millidegrees === null
         ? []
-        : [{ metric: `temp.${fields[0]}.${label}`, value: millidegrees / 1000, kind: 'gauge' }]
+        : [{ metric: `temp.${fields[0]}.${label}`, value: millidegrees / 1000 }]
     })
 
 /**
@@ -91,7 +91,6 @@ export const parseInotify = (text: string): readonly Sample[] => {
     ...[...values].map(([key, value]): Sample => ({
       metric: `inotify.${key}`,
       value,
-      kind: 'gauge',
     })),
     ...ratio({
       metric: 'inotify.instances_used_ratio',
@@ -125,8 +124,8 @@ export const parseGpuFreq = (text: string): readonly Sample[] => {
     return []
   }
   return [
-    { metric: 'gpu.freq_mhz', value: current, kind: 'gauge' },
-    { metric: 'gpu.freq_max_mhz', value: ceiling, kind: 'gauge' },
+    { metric: 'gpu.freq_mhz', value: current },
+    { metric: 'gpu.freq_max_mhz', value: ceiling },
     ...ratio({ metric: 'gpu.freq_ratio', value: current, ceiling }),
   ]
 }

@@ -15,7 +15,7 @@ import { observedRun, uptimePercent } from '@/incidents.js'
 import { type ContainerView, fromSamples } from '@/probes/docker.js'
 import { pythonRound } from '@/pythonMath.js'
 import { MEMORY_AVAILABLE_METRIC, MEMORY_TOTAL_METRIC } from '@/series.js'
-import { coverageSince, lastHeartbeat, latest, metricAges } from '@/store.js'
+import { lastHeartbeat, latest, metricAges } from '@/store.js'
 import { addSeconds, secondsBetween } from '@wizteros/server-common'
 
 // Three missed vitals ticks. Past this the dashboard is showing history, not
@@ -183,27 +183,25 @@ const stalestFamily = (ages: Readonly<Record<string, Date>>): readonly [string, 
 /**
  * This target's 24h availability, or null when nobody watched the window.
  *
- * Two coverage facts have to hold, and they are not the same fact.
- * `observedSince` is collector-wide and says a round happened at all; the
- * per-target run says a round observed *this* target. A spawn failure (ssh
- * missing from PATH, the process out of file descriptors) records no check
- * for any host while the docker endpoints beside them keep recording one, so
- * the collector-wide mark runs on unbroken and would score a flawless day
- * over hours in which not one host was looked at.
+ * Watched means this target's own run of recorded checks, not merely the
+ * collector ticking. A spawn failure (ssh missing from PATH, the process out
+ * of file descriptors) records no check for any host while the docker
+ * endpoints beside them keep recording one, so a collector-wide mark would run
+ * on unbroken and score a flawless day over hours in which not one host was
+ * looked at. A host check only ever lands in a round, so the run also never
+ * starts before the collector's own unbroken run of rounds did.
  */
 const uptime24h = ({
   connection,
   target,
   now,
-  observedSince,
 }: {
   connection: Connection
   target: string
   now: Date
-  observedSince: Date | null
 }): number | null => {
   const run = observedRun({ connection, target })
-  if (run === null || observedSince === null) {
+  if (run === null) {
     return null
   }
   return uptimePercent({
@@ -211,11 +209,7 @@ const uptime24h = ({
     target,
     since: addSeconds({ at: now, seconds: -24 * 3600 }),
     now,
-    // the later of the two starts: neither mark may widen the other's claim
-    observed: {
-      since: observedSince.getTime() > run.since.getTime() ? observedSince : run.since,
-      until: run.until,
-    },
+    observed: run,
   })
 }
 
@@ -271,12 +265,10 @@ export const hostView = ({
   connection,
   host,
   now,
-  observedSince,
 }: {
   connection: Connection
   host: Host
   now: Date
-  observedSince: Date | null
 }): HostView => {
   const target = `host:${host.name}`
   // one floor, read once, for both: a value `metricAges` cannot date is a
@@ -317,7 +309,7 @@ export const hostView = ({
     // incident history must not read as proven uptime. Neither must hours
     // nothing observed this host for, whether because the collector was not
     // running or because it was running and could not see it.
-    uptime_percent_24h: collected ? uptime24h({ connection, target, now, observedSince }) : null,
+    uptime_percent_24h: collected ? uptime24h({ connection, target, now }) : null,
   }
 }
 
@@ -355,10 +347,7 @@ export const fleetView = ({
   now: Date
 }): FleetView => {
   const last = lastHeartbeat(connection)
-  // read once for the whole fleet: it is a property of the collector, not of
-  // any one host
-  const observedSince = coverageSince(connection)
-  const hosts = fleetHosts().map((host) => hostView({ connection, host, now, observedSince }))
+  const hosts = fleetHosts().map((host) => hostView({ connection, host, now }))
   const age = ageSeconds({ now, at: last })
   return {
     collected_at: last,

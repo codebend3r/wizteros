@@ -67,17 +67,14 @@ export const toSamples = (states: readonly ContainerState[]): readonly Sample[] 
     {
       metric: `container.${state.name}.up`,
       value: state.running ? 1 : 0,
-      kind: 'gauge',
     },
     {
       metric: `container.${state.name}.healthy`,
       value: state.health === 'healthy' && state.running ? 1 : 0,
-      kind: 'gauge',
     },
     {
       metric: `container.${state.name}.has_healthcheck`,
       value: state.health === 'none' ? 0 : 1,
-      kind: 'gauge',
     },
   ])
 

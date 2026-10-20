@@ -2,6 +2,7 @@ import { MAX_ROUND_SECONDS, VITALS_INTERVAL } from '@/config.js'
 import type { Connection } from '@/db.js'
 import type { Sample } from '@/probes/types.js'
 import {
+  addSeconds,
   asRow,
   asRows,
   fields,
@@ -11,13 +12,23 @@ import {
   secondsBetween,
 } from '@wizteros/server-common'
 
+const DAY_SECONDS = 86_400
+
+// How long a raw sample is kept. History reads samples and nothing else, so
+// this is also the longest window the API will chart.
+export const SAMPLE_RETENTION_SECONDS = 7 * DAY_SECONDS
+
+// A file created before this version also holds a `kind` column (gauge or
+// counter) that nothing ever read, plus the coverage and rollup_5m/rollup_1h
+// tables nothing reads any more. They are left exactly as they are: dropping
+// them means rewriting a live 1.8 GB file, and that is a cleanup for after a
+// backup, not something a deploy does on its own.
 const SAMPLES_SCHEMA = `
 CREATE TABLE IF NOT EXISTS samples (
     target TEXT NOT NULL,
     metric TEXT NOT NULL,
     at     TEXT NOT NULL,
-    value  REAL NOT NULL,
-    kind   TEXT NOT NULL
+    value  REAL NOT NULL
 )
 `
 
@@ -32,31 +43,31 @@ CREATE TABLE IF NOT EXISTS heartbeat (
 )
 `
 
-const COVERAGE_SCHEMA = `
-CREATE TABLE IF NOT EXISTS coverage (
-    id         INTEGER PRIMARY KEY CHECK (id = 1),
-    started_at TEXT NOT NULL
-)
-`
-
 // How far apart two rounds may start before the silence between them counts as
 // unwatched. Measured start to start, which means a round's own duration is
 // inside it: a slow round spends up to MAX_ROUND_SECONDS on ssh before the loop
 // sleeps again, so consecutive stamps land further apart than the interval with
 // the collector never having stopped.
 //
-// The tolerance is one worst-case slow round plus three missed intervals. It
-// used to have to absorb compaction too, which was unbounded and ran on the
-// event loop; that is fixed at the source now (rollups.compact scans only what
-// is new, off the loop), so this covers what it says it covers.
+// The tolerance is one worst-case slow round plus three missed intervals.
+// Pruning runs off the event loop, so it never delays a round's start.
 export const COVERAGE_GAP_SECONDS = MAX_ROUND_SECONDS + VITALS_INTERVAL * 3
 
 export const initDb = (connection: Connection): void => {
   connection.prepare(SAMPLES_SCHEMA).run()
   connection.prepare(SAMPLES_INDEX).run()
   connection.prepare(HEARTBEAT_SCHEMA).run()
-  connection.prepare(COVERAGE_SCHEMA).run()
 }
+
+// Whether this file's samples table predates the dropped `kind` column. It is
+// NOT NULL there, so a row still has to fill it; the value is a placeholder
+// nothing reads, written rather than altering the table in place.
+const hasKindColumn = (connection: Connection): boolean =>
+  asRow(
+    connection
+      .prepare("SELECT 1 AS present FROM pragma_table_info('samples') WHERE name = 'kind'")
+      .get(),
+  ) !== null
 
 /**
  * Insert one tick's samples.
@@ -80,9 +91,11 @@ export const writeSamples = ({
     return 0
   }
   const insert = connection.prepare(
-    'INSERT INTO samples (target, metric, at, value, kind) VALUES (?, ?, ?, ?, ?)',
+    hasKindColumn(connection)
+      ? "INSERT INTO samples (target, metric, at, value, kind) VALUES (?, ?, ?, ?, '')"
+      : 'INSERT INTO samples (target, metric, at, value) VALUES (?, ?, ?, ?)',
   )
-  samples.forEach((sample) => insert.run(target, sample.metric, stamp, sample.value, sample.kind))
+  samples.forEach((sample) => insert.run(target, sample.metric, stamp, sample.value))
   return samples.length
 }
 
@@ -318,49 +331,23 @@ export const rateSeries = (points: Series): Series =>
   })
 
 /**
- * Record that a collection round completed, and advance the coverage mark.
+ * Record that a collection round completed.
  *
  * The collector runs on a box it also monitors, so it cannot report that box
  * being down. The UI reads this to show staleness instead of a frozen green
  * dashboard.
  *
- * The coverage mark is the second half of that: it is when the current
- * unbroken run of rounds began. A round more than `gap` seconds after the
- * previous one (or before it, if the clock stepped backwards) means time went
- * unwatched, so the mark restarts and no window reaching back past it can be
- * scored as uptime. `gap` is a parameter only so a test can span hours in two
- * writes; the collector always uses the default.
- *
- * This mark is collector-wide and says only that a round happened. Whether
- * any one target was observed by that round is a separate fact, tracked per
+ * It says only that a round happened. Whether any one target was observed by
+ * that round, and since when without a break, is a separate fact, tracked per
  * target in `incidents.observedRun`.
  */
-export const writeHeartbeat = ({
-  connection,
-  at,
-  gap = COVERAGE_GAP_SECONDS,
-}: {
-  connection: Connection
-  at: Date
-  gap?: number
-}): void => {
-  const row = asRow(connection.prepare('SELECT at FROM heartbeat WHERE id = 1').get())
-  const last = row ? parseIso(fields(row).text('at')) : null
+export const writeHeartbeat = ({ connection, at }: { connection: Connection; at: Date }): void => {
   connection
     .prepare(
       'INSERT INTO heartbeat (id, at) VALUES (1, ?) ' +
         'ON CONFLICT(id) DO UPDATE SET at = excluded.at',
     )
     .run(isoformat(at))
-  const sinceLast = last === null ? null : secondsBetween({ from: last, to: at })
-  if (sinceLast === null || !(0 <= sinceLast && sinceLast <= gap)) {
-    connection
-      .prepare(
-        'INSERT INTO coverage (id, started_at) VALUES (1, ?) ' +
-          'ON CONFLICT(id) DO UPDATE SET started_at = excluded.started_at',
-      )
-      .run(isoformat(at))
-  }
 }
 
 export const lastHeartbeat = (connection: Connection): Date | null => {
@@ -368,11 +355,8 @@ export const lastHeartbeat = (connection: Connection): Date | null => {
   return row ? parseIso(fields(row).text('at')) : null
 }
 
-/**
- * When the collector's current unbroken run of rounds began, or null when it
- * has never completed one.
- */
-export const coverageSince = (connection: Connection): Date | null => {
-  const row = asRow(connection.prepare('SELECT started_at FROM coverage WHERE id = 1').get())
-  return row ? parseIso(fields(row).text('started_at')) : null
-}
+/** Drop samples past their retention window. Returns how many went. */
+export const prune = ({ connection, now }: { connection: Connection; now: Date }): number =>
+  connection
+    .prepare('DELETE FROM samples WHERE at < ?')
+    .run(isoformat(addSeconds({ at: now, seconds: -SAMPLE_RETENTION_SECONDS }))).changes
