@@ -355,35 +355,6 @@ export const wizarrClient = ({
 
     findUsersByEmail,
 
-    /** All record ids for an email (one record per server). */
-    findUserIdsByEmail: async (email) => (await findUsersByEmail(email)).map((user) => user.id),
-
-    /**
-     * All record ids for the Plex account that redeemed the invite.
-     *
-     * Fallback for when the Stripe email differs from the Plex account email.
-     */
-    findUserIdsByInvite: async (code) => {
-      const invitation = (await invitations()).find((row) => row.code === code)
-      if (!invitation?.used_by) {
-        return []
-      }
-      const everyone = await users({})
-      const record = redeemerRecord({ invitation, users: everyone })
-      if (record === null) {
-        return []
-      }
-      const email = (record.email ?? '').toLowerCase()
-      // A record with no email cannot fan out to its sibling servers; the one
-      // record that redeemed the invite is still the right thing to act on.
-      if (email === '') {
-        return [record.id]
-      }
-      return everyone
-        .filter((user) => (user.email ?? '').toLowerCase() === email)
-        .map((user) => user.id)
-    },
-
     /**
      * Set a record's expiry to an absolute ISO datetime, or null to clear it.
      *

@@ -2,6 +2,7 @@
 
 import { Logger } from '@nestjs/common'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { recordsUnder } from '@/test/fakes.js'
 import {
   type WebhookHarness,
   webhookHarness,
@@ -35,7 +36,7 @@ describe('invoice.paid', () => {
   it('a renewal extends', async () => {
     h.bridge.store.upsertPending({ customerId: 'cus_1', email: 'a@x.com', inviteCode: 'abc' })
     h.bridge.store.setSubscribed({ email: 'a@x.com', value: false }) // prove the renewal restores it
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([9, 10])
+    h.bridge.wizarr.listUsers.mockResolvedValue(recordsUnder({ email: 'a@x.com', ids: [9, 10] }))
     await h.handle(invoicePaid({ id: 'evt_inv_cycle', customer: 'cus_1', email: 'a@x.com' }))
     // renewal sets expiry on every server record, all to the same absolute date
     expect(h.setExpiryIds().toSorted(byNumber)).toEqual([9, 10])
@@ -50,7 +51,7 @@ describe('invoice.paid', () => {
   it("a renewal leaves a VIP's expiry alone", async () => {
     h.bridge.store.upsertPending({ customerId: 'cus_1', email: 'vip@x.com', inviteCode: 'abc' })
     h.bridge.store.setMemberTag({ email: 'vip@x.com', tag: 'vip' })
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([9, 10]) // would be stamped if not VIP
+    h.bridge.wizarr.listUsers.mockResolvedValue(recordsUnder({ email: 'vip@x.com', ids: [9, 10] })) // would be stamped if not VIP
     await h.handle(invoicePaid({ id: 'evt_inv_vip', customer: 'cus_1', email: 'vip@x.com' }))
     expect(h.bridge.wizarr.setExpiry).not.toHaveBeenCalled()
     // the payment itself is still acknowledged
@@ -68,9 +69,7 @@ describe('invoice.paid', () => {
       tier: 'bronze',
     })
     h.bridge.store.setMemberLink({ stripeEmail: 'pays@x.com', plexEmail: 'watches@x.com' })
-    h.bridge.wizarr.findUserIdsByEmail.mockImplementation(async (email) =>
-      email === 'watches@x.com' ? [7] : [],
-    )
+    h.bridge.wizarr.listUsers.mockResolvedValue(recordsUnder({ email: 'watches@x.com', ids: [7] }))
 
     await h.handle(invoicePaid({ id: 'evt_renew', customer: 'cus_1', email: 'pays@x.com' }))
 
@@ -90,8 +89,6 @@ describe('invoice.paid', () => {
       tier: 'bronze',
     })
     h.wizarrMints('new1')
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([])
-    h.bridge.wizarr.findUserIdsByInvite.mockResolvedValue([])
     await h.handle(
       invoicePaid({ id: 'evt_inv_orphan', customer: 'cus_lapsed', email: 'lapsed@x.com' }),
     )
@@ -122,7 +119,6 @@ describe('invoice.paid', () => {
     // second customer): recovery must not depend on the bridge already knowing
     // them, and an unrecorded tier falls back to bronze rather than nothing.
     h.wizarrMints('new2')
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([])
     await h.handle(
       invoicePaid({ id: 'evt_inv_unmapped', customer: 'cus_new', email: 'second@x.com' }),
     )
@@ -135,7 +131,6 @@ describe('invoice.paid', () => {
 
   it('recovery never touches a VIP', async () => {
     h.bridge.store.setMemberTag({ email: 'vip@x.com', tag: 'vip' })
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([])
     await h.handle(
       invoicePaid({ id: 'evt_inv_vip_orphan', customer: 'cus_vip', email: 'vip@x.com' }),
     )
@@ -171,7 +166,7 @@ describe('invoice.paid', () => {
       tier: 'gold',
     })
     h.bridge.store.setMemberTag({ email: 'banned@x.com', tag: 'banned' })
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([147])
+    h.bridge.wizarr.listUsers.mockResolvedValue(recordsUnder({ email: 'banned@x.com', ids: [147] }))
 
     await h.handle(invoicePaid({ id: 'evt_paid_banned', customer: 'cus_1', email: 'banned@x.com' }))
 
@@ -247,7 +242,7 @@ describe('invoice.payment_failed', () => {
       inviteCode: 'abc',
       tier: 'bronze',
     })
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([9])
+    h.bridge.wizarr.listUsers.mockResolvedValue(recordsUnder({ email: 'a@x.com', ids: [9] }))
     await h.handle(
       paymentFailed({
         id: 'evt_failed_2',
@@ -270,8 +265,6 @@ describe('invoice.payment_failed', () => {
       inviteCode: 'abc',
       tier: 'bronze',
     })
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([])
-    h.bridge.wizarr.findUserIdsByInvite.mockResolvedValue([])
     await h.handle(
       paymentFailed({
         id: 'evt_failed_mail',
@@ -306,7 +299,7 @@ describe('invoice.payment_failed', () => {
       inviteCode: 'abc',
       tier: 'bronze',
     })
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([7])
+    h.bridge.wizarr.listUsers.mockResolvedValue(recordsUnder({ email: 'a@x.com', ids: [7] }))
     await h.handle(
       paymentFailed({
         id: 'evt_failed_held',

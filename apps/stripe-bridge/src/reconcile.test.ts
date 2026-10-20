@@ -126,7 +126,7 @@ describe('reconcilePendingExpiries', () => {
       { id: 287, email: 'watches@x.com', server: 'Vermithor', expires: null },
       { id: 288, email: 'watches@x.com', server: 'Meleys', expires: null },
     ])
-    bridge.wizarr.findUserIdsByInvite.mockResolvedValue([]) // unredeemed
+    bridge.wizarr.listInvitations.mockResolvedValue([{ id: 1, code: 'INVNEW', used_by: null }])
 
     expect(await reconcile()).toBe(2)
 
@@ -165,23 +165,24 @@ describe('reconcilePendingExpiries', () => {
       { id: 300, email: 'relay@privaterelay.example', server: 'Meleys', expires: null },
       { id: 9, email: 'other@x.com', server: 'Meleys', expires: null },
     ])
-    bridge.wizarr.findUserIdsByInvite.mockResolvedValue([300])
+    bridge.wizarr.listInvitations.mockResolvedValue([{ id: 1, code: 'abc', used_by: '<User 300>' }])
     expect(await reconcile()).toBe(1)
-    expect(bridge.wizarr.findUserIdsByInvite).toHaveBeenCalledExactlyOnceWith('abc')
     expect(stampedIds()).toEqual([300])
     const events = bridge.store.eventsForEmail({ email: 'stripe@x.com' })
     expect(events[0]?.action).toBe('Expiry stamped')
   })
 
-  it('skips the invite lookup when the email matches stamped records', async () => {
-    // An email-resolvable member whose records already carry an expiry needs no
-    // fallback; the invite lookup costs live Wizarr calls per member per sweep.
+  it('reads Wizarr once however many members are pending', async () => {
+    // Every member resolves from one snapshot; the invite fallback costs no
+    // extra Wizarr call per member per sweep.
+    bridge.store.upsertPending({ customerId: 'cus_2', email: 'other@x.com', inviteCode: 'def' })
     bridge.store.upsertPending({ customerId: 'cus_1', email: 'paid@x.com', inviteCode: 'abc' })
     bridge.wizarr.listUsers.mockResolvedValue([
       { id: 2, email: 'paid@x.com', server: 'Meleys', expires: '2099-01-01T00:00:00' },
     ])
     expect(await reconcile()).toBe(0)
-    expect(bridge.wizarr.findUserIdsByInvite).not.toHaveBeenCalled()
+    expect(bridge.wizarr.listUsers).toHaveBeenCalledOnce()
+    expect(bridge.wizarr.listInvitations).toHaveBeenCalledOnce()
     expect(bridge.wizarr.setExpiry).not.toHaveBeenCalled()
   })
 
@@ -190,7 +191,7 @@ describe('reconcilePendingExpiries', () => {
     // no used_by yet, so the sweep must leave everything alone until next time.
     bridge.store.upsertPending({ customerId: 'cus_1', email: 'pending@x.com', inviteCode: 'abc' })
     bridge.wizarr.listUsers.mockResolvedValue([])
-    bridge.wizarr.findUserIdsByInvite.mockResolvedValue([])
+    bridge.wizarr.listInvitations.mockResolvedValue([{ id: 1, code: 'abc', used_by: null }])
     expect(await reconcile()).toBe(0)
     expect(bridge.wizarr.setExpiry).not.toHaveBeenCalled()
   })

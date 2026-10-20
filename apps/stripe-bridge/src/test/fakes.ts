@@ -8,6 +8,7 @@ import type {
   StripeApi,
   StripeSubscription,
   WizarrApi,
+  WizarrUser,
 } from '@/types.js'
 
 // Stand-ins for the four services. Every method is a vi.fn with a harmless
@@ -42,11 +43,18 @@ export const fakeWizarr = (): FakeWizarr => ({
   deleteInvitation: vi.fn<WizarrApi['deleteInvitation']>(async () => {}),
   listUsers: vi.fn<WizarrApi['listUsers']>(async () => []),
   findUsersByEmail: vi.fn<WizarrApi['findUsersByEmail']>(async () => []),
-  findUserIdsByEmail: vi.fn<WizarrApi['findUserIdsByEmail']>(async () => []),
-  findUserIdsByInvite: vi.fn<WizarrApi['findUserIdsByInvite']>(async () => []),
   setExpiry: vi.fn<WizarrApi['setExpiry']>(async () => {}),
   disableUser: vi.fn<WizarrApi['disableUser']>(async () => {}),
 })
+
+/** One Wizarr record per id, all under `email`: a member holding those records, as /api/users lists them. */
+export const recordsUnder = ({
+  email,
+  ids,
+}: {
+  email: string
+  ids: readonly number[]
+}): WizarrUser[] => ids.map((id) => ({ id, email }))
 
 /** A subscription with the fields the bridge reads; override what a test is about. */
 export const subscription = (fields: Partial<StripeSubscription> = {}): StripeSubscription => ({

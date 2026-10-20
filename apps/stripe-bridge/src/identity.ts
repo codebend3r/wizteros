@@ -17,6 +17,9 @@ export type IdentitySnapshot = Readonly<{
   links: ReadonlyMap<string, string>
 }>
 
+/** Which evidence answered for the records: the order `identityFor` tries them in. */
+export type IdentityVia = 'email' | 'link' | 'invite' | 'none'
+
 export type Identity = Readonly<{
   /**
    * Every lowercased address of the person: the one asked about, the Plex
@@ -25,6 +28,8 @@ export type Identity = Readonly<{
   addresses: ReadonlySet<string>
   /** The Wizarr records the person holds right now, found as `identityFor` describes. */
   records: readonly WizarrUser[]
+  /** What the records were found by; 'none' when nothing was found. */
+  via: IdentityVia
 }>
 
 /** A record's email lowercased, '' when it has none. */
@@ -122,12 +127,13 @@ export const identityFor = ({
   const addresses = linkedTo({ links: snapshot.links, seeds })
   const byEmail = address ? recordsAt({ users: snapshot.users, address }) : []
   if (byEmail.length > 0) {
-    return { addresses, records: byEmail }
+    return { addresses, records: byEmail, via: 'email' }
   }
   const linked = address ? snapshot.links.get(address) : undefined
   const byLink = linked ? recordsAt({ users: snapshot.users, address: linked }) : []
-  return {
-    addresses,
-    records: byLink.length > 0 ? byLink : redeemerRecords({ users: snapshot.users, redeemer }),
+  if (byLink.length > 0) {
+    return { addresses, records: byLink, via: 'link' }
   }
+  const byInvite = redeemerRecords({ users: snapshot.users, redeemer })
+  return { addresses, records: byInvite, via: byInvite.length > 0 ? 'invite' : 'none' }
 }

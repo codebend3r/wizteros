@@ -6,7 +6,7 @@ import { type CryptoKey, createLocalJWKSet, exportJWK, generateKeyPair, SignJWT 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AdminModule } from '@/admin/adminModule.js'
 import { mapInOrder } from '@/sequence.js'
-import { asBridge, fakeBridge, subscription } from '@/test/fakes.js'
+import { asBridge, fakeBridge, recordsUnder, subscription } from '@/test/fakes.js'
 import { serve } from '@/test/serve.js'
 import { tempDbPath } from '@/test/support.js'
 import { harness, stopServed, get, post } from '@/test/adminHarness.js'
@@ -129,7 +129,9 @@ describe('the two mounts', () => {
         tier: 'gold',
       })
       h.bridge.plex.hasToken.mockReturnValue(true)
-      h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([1])
+      h.bridge.wizarr.findUsersByEmail.mockResolvedValue(
+        recordsUnder({ email: 'a@x.com', ids: [1] }),
+      )
       h.bridge.stripe.subscriptionsFor.mockResolvedValue([subscription()])
       // one at a time, in order, since the ban has to come last
       const answers = await mapInOrder({

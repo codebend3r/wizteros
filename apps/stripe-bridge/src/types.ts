@@ -73,10 +73,6 @@ export type WizarrApi = Readonly<{
   listUsers: () => Promise<WizarrUser[]>
   /** All records for an email, compared case-insensitively. */
   findUsersByEmail: (email: string) => Promise<WizarrUser[]>
-  /** All record ids for an email. */
-  findUserIdsByEmail: (email: string) => Promise<number[]>
-  /** All record ids for the Plex account that redeemed an invite code. */
-  findUserIdsByInvite: (code: string) => Promise<number[]>
   /** Set a record's expiry to an absolute ISO datetime, or null to clear it. */
   setExpiry: (update: { userId: number; expires: string | null }) => Promise<void>
   /** Disable (not delete) a record so its access stops. */

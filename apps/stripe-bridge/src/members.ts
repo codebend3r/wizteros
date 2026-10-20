@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common'
+import { type Identity, type IdentitySnapshot, identityFor } from '@/identity.js'
 import { isLiveStatus, stripeStatusByCustomer } from '@/subscriptionStatus.js'
 import type { Bridge } from '@/types.js'
 import { stackOf } from '@wizteros/server-common'
@@ -9,17 +10,49 @@ import { stackOf } from '@wizteros/server-common'
 const log = new Logger('bridge')
 
 /**
- * All Wizarr record ids for a member (one per server), resolved live.
+ * The evidence a member's identity is resolved from, read once per unit of
+ * work: every Wizarr record and invitation, and the admin's links.
  *
- * Prefer email, then the address an admin linked this one to, then the
- * stored invite code (the Stripe email may differ from the Plex account
- * email). The linked address comes second on purpose: it is a stated fact
- * about who this customer is, while the invite code only infers it from a
- * redemption. It is also the only thing that answers for a member who
- * re-subscribed under a re-typed address without ever redeeming the invite
- * that checkout issued: their renewal would otherwise find nothing to extend
- * and mint yet another invite they have no reason to click.
+ * /api/users is the slow call (~15s), so a handler loads this once and asks
+ * it every question it has, rather than one lookup per guess.
  */
+export const identitySnapshot = async (bridge: Bridge): Promise<IdentitySnapshot> => {
+  const users = await bridge.wizarr.listUsers()
+  const invitations = await bridge.wizarr.listInvitations()
+  return { users, invitations, links: bridge.store.allMemberLinks() }
+}
+
+/**
+ * Who a Stripe customer is in Wizarr, and the records they hold.
+ *
+ * The invite followed is the one stored against the customer, so a member
+ * whose Plex account email differs from the Stripe email is still found.
+ * `identityFor` says in which order the evidence is tried, and why.
+ */
+export const resolveIdentity = ({
+  bridge,
+  snapshot,
+  customerId,
+  email,
+}: {
+  bridge: Bridge
+  snapshot: IdentitySnapshot
+  customerId: string | null
+  email: string | null
+}): Identity => {
+  const inviteCode = customerId
+    ? (bridge.store.getMapping({ customerId })?.invite_code ?? null)
+    : null
+  const identity = identityFor({ snapshot, email, inviteCode })
+  if (identity.via === 'link' && email) {
+    log.log(
+      `resolved ${email} through its linked address ${snapshot.links.get(email.toLowerCase()) ?? ''}`,
+    )
+  }
+  return identity
+}
+
+/** The record ids a Stripe customer holds, resolved live from a fresh snapshot. */
 export const resolveUserIds = async ({
   bridge,
   customerId,
@@ -29,29 +62,8 @@ export const resolveUserIds = async ({
   customerId: string | null
   email: string | null
 }): Promise<number[]> => {
-  const byEmail = email ? await bridge.wizarr.findUserIdsByEmail(email) : []
-  if (byEmail.length > 0 || !email) {
-    return byEmail.length > 0 || !customerId ? byEmail : fromInvite({ bridge, customerId })
-  }
-  const linked = bridge.store.getMemberLink({ stripeEmail: email })
-  const byLink = linked ? await bridge.wizarr.findUserIdsByEmail(linked) : []
-  if (byLink.length > 0) {
-    log.log(`resolved ${email} through its linked address ${linked}`)
-    return byLink
-  }
-  return customerId ? fromInvite({ bridge, customerId }) : []
-}
-
-/** The records that redeemed the invite stored against a customer, or none. */
-const fromInvite = async ({
-  bridge,
-  customerId,
-}: {
-  bridge: Bridge
-  customerId: string
-}): Promise<number[]> => {
-  const code = bridge.store.getMapping({ customerId })?.invite_code ?? null
-  return code ? bridge.wizarr.findUserIdsByInvite(code) : []
+  const snapshot = await identitySnapshot(bridge)
+  return resolveIdentity({ bridge, snapshot, customerId, email }).records.map((user) => user.id)
 }
 
 /** One sentence on whether the member can watch right now, for an alert body. */

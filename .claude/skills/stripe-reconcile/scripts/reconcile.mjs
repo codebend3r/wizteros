@@ -433,7 +433,7 @@ async function main() {
   }
 
   // Stripe email -> Plex username, for members whose Plex account uses another
-  // address. Mirrors findUserIdsByInvite in the bridge's Wizarr client. Wizarr serializes
+  // address. Mirrors identityFor in the bridge (identity.ts). Wizarr serializes
   // used_by as a Python repr like "<User 281>", not a username, so the repr id
   // resolves through the user list first; only the exact repr shape is read as
   // an id (a username that merely contains digits stays a username).
