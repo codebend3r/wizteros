@@ -1,27 +1,5 @@
+// One module per server surface, each a schema per response and the
+// read-only type it vouches for.
 export { guardOf, type Immutable, type Wire } from './guard.js'
-export {
-  type FleetContainer,
-  fleetContainerSchema,
-  type FleetHost,
-  fleetHostSchema,
-  type FleetResponse,
-  fleetResponseSchema,
-  type Health,
-  healthSchema,
-  type HostStatus,
-  hostStatusSchema,
-  type Incident,
-  type IncidentFeed,
-  incidentFeedSchema,
-  incidentSchema,
-  type MetricHistory,
-  metricHistorySchema,
-  type MetricHostSeries,
-  metricHostSeriesSchema,
-  type MetricKind,
-  metricKindSchema,
-  type MetricPoint,
-  metricPointSchema,
-  type MetricUnit,
-  metricUnitSchema,
-} from './fleet.js'
+export * from './fleet.js'
+export * from './plays.js'

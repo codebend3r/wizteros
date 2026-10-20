@@ -1,13 +1,7 @@
 import { IconTile } from '@/components/IconTile/IconTile'
 import type { IconName } from '@/components/Icon/Icon'
-import {
-  PLAY_KINDS,
-  PLAY_QUALITIES,
-  PLAY_RANGES,
-  type KindFilter,
-  type PlaysFilters as Filters,
-  type QualityFilter,
-} from '@/lib/playsApi'
+import { type KindFilter, type PlaysFilters as Filters, type QualityFilter } from '@/lib/playsApi'
+import { PLAY_KINDS, PLAY_QUALITIES, PLAY_RANGES } from '@/pages/Plays/playsToolbar'
 import styles from '@/pages/Plays/PlaysFilters.module.scss'
 
 /** One server the select can name: the config host and, when the monitor has

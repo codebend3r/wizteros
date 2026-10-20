@@ -1,5 +1,6 @@
 import type { UseQueryResult } from '@tanstack/react-query'
-import { windowProse, type PlayHistory } from '@/lib/playsApi'
+import { type PlayHistory } from '@/lib/playsApi'
+import { windowProse } from '@/pages/Plays/playsToolbar'
 import { errorMessage } from '@/components/AsyncSection/AsyncSection'
 import { PagedTable } from '@/pages/Plays/Pager'
 import {

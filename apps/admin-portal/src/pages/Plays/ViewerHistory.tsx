@@ -1,5 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { fetchViewerHistory, windowProse, type PlaysFilters } from '@/lib/playsApi'
+import { fetchViewerHistory, type PlaysFilters } from '@/lib/playsApi'
+import { windowProse } from '@/pages/Plays/playsToolbar'
 import { AsyncSection } from '@/components/AsyncSection/AsyncSection'
 import { PagedTable } from '@/pages/Plays/Pager'
 import {
