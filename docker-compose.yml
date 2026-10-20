@@ -68,9 +68,9 @@ services:
     container_name: fleet-collector
     restart: unless-stopped
     command: ['node', 'dist/collectorMain.js']
-    # A stop waits for an in-flight compaction to finish rather than killing
-    # it: ending a worker thread inside native SQLite code crashes Node, and a
-    # killed compaction is only rolled back, never half-applied, but losing it
+    # A stop waits for an in-flight prune to finish rather than killing it:
+    # ending a worker thread inside native SQLite code crashes Node, and a
+    # killed prune is only rolled back, never half-applied, but losing it
     # still costs the next round the work. Ten seconds was Docker's default.
     stop_grace_period: 60s
     env_file:

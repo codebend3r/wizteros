@@ -40,4 +40,4 @@ export const ratio = ({
   value: number | null
   ceiling: number
 }): readonly Sample[] =>
-  value === null || ceiling <= 0 ? [] : [{ metric, value: value / ceiling, kind: 'gauge' }]
+  value === null || ceiling <= 0 ? [] : [{ metric, value: value / ceiling }]

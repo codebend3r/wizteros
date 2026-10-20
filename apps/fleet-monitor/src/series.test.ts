@@ -311,8 +311,8 @@ describe('fleetHistory', () => {
   }) => writeSamples({ connection: db, target, at: when, samples })
 
   const cpuTick = ({ user, idle }: { user: number; idle: number }): readonly Sample[] => [
-    { metric: 'cpu.total.user', value: user, kind: 'counter' },
-    { metric: 'cpu.total.idle', value: idle, kind: 'counter' },
+    { metric: 'cpu.total.user', value: user },
+    { metric: 'cpu.total.idle', value: idle },
   ]
 
   const valuesByHost = ({ kind, minutes = 60 }: { kind: string; minutes?: number }) =>
@@ -368,8 +368,8 @@ describe('fleetHistory', () => {
       target: 'host:meleys',
       when: ago(30),
       samples: [
-        { metric: 'mem.total_bytes', value: 16 * GB, kind: 'gauge' },
-        { metric: 'mem.available_bytes', value: 4 * GB, kind: 'gauge' },
+        { metric: 'mem.total_bytes', value: 16 * GB },
+        { metric: 'mem.available_bytes', value: 4 * GB },
       ],
     })
 
@@ -387,7 +387,7 @@ describe('fleetHistory', () => {
     write({
       target: 'host:vermithor',
       when: ago(30),
-      samples: [{ metric: 'gpu.freq_ratio', value: 0.4, kind: 'gauge' }],
+      samples: [{ metric: 'gpu.freq_ratio', value: 0.4 }],
     })
 
     const view = fleetHistory({ connection: db, kind: 'gpu', minutes: 60, now: NOW })
@@ -405,16 +405,16 @@ describe('fleetHistory', () => {
       target: 'host:meleys',
       when: ago(40),
       samples: [
-        { metric: 'net.eth0.rx_bytes', value: 0, kind: 'counter' },
-        { metric: 'net.eth1.tx_bytes', value: 0, kind: 'counter' },
+        { metric: 'net.eth0.rx_bytes', value: 0 },
+        { metric: 'net.eth1.tx_bytes', value: 0 },
       ],
     })
     write({
       target: 'host:meleys',
       when: ago(30),
       samples: [
-        { metric: 'net.eth0.rx_bytes', value: 1000, kind: 'counter' },
-        { metric: 'net.eth1.tx_bytes', value: 500, kind: 'counter' },
+        { metric: 'net.eth0.rx_bytes', value: 1000 },
+        { metric: 'net.eth1.tx_bytes', value: 500 },
       ],
     })
 
@@ -438,15 +438,15 @@ describe('fleetHistory', () => {
         target: 'host:meleys',
         when: ago(offset),
         samples: [
-          { metric: 'net.eth0.rx_bytes', value, kind: 'counter' },
-          { metric: 'mem.total_bytes', value: 8 * GB, kind: 'gauge' },
-          { metric: 'procs.total', value: 300, kind: 'gauge' },
+          { metric: 'net.eth0.rx_bytes', value },
+          { metric: 'mem.total_bytes', value: 8 * GB },
+          { metric: 'procs.total', value: 300 },
         ],
       })
       write({
         target: 'host:vermithor',
         when: ago(offset),
-        samples: [{ metric: 'net.eth0.rx_bytes', value: value * 9, kind: 'counter' }],
+        samples: [{ metric: 'net.eth0.rx_bytes', value: value * 9 }],
       })
     })
 

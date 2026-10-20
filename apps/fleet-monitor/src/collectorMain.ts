@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common'
 import { stackOf } from '@wizteros/server-common'
 import { runAll } from '@/collector.js'
-import { joinCompactions } from '@/compaction.js'
+import { joinPrunes } from '@/retention.js'
 import { dbPath, fleetHosts, SLOW_INTERVAL, sshUser, VITALS_INTERVAL } from '@/config.js'
 
 // `node dist/collectorMain.js`, the port of `python -m fleet_monitor.collector`:
@@ -43,9 +43,9 @@ try {
   process.exitCode = 1
 }
 
-// A compaction thread has to finish before the process exits: exiting under a
+// A prune thread has to finish before the process exits: exiting under a
 // worker still inside native SQLite code crashes V8.
-await joinCompactions()
+await joinPrunes()
 
 // A stopped loop stops waiting, but other work it abandoned mid-round (an ssh
 // capture, a Plex page) runs on to its own timeout and would hold the process

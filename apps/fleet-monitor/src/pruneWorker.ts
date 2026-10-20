@@ -1,12 +1,12 @@
 import { workerData } from 'node:worker_threads'
-import { compactAndPrune } from '@/compaction.js'
+import { pruneSamples } from '@/retention.js'
 
-// The worker thread behind `compactInWorker`: one compaction, then exit.
+// The worker thread behind `pruneInWorker`: one prune, then exit.
 //
-// It opens its own session inside `compactAndPrune`, on a connection of its
+// It opens its own session inside `pruneSamples`, on a connection of its
 // own, so the blocking SQLite work never touches the event loop the ticks run
 // on. A throw here is an uncaught error in the worker, which the main thread
-// receives as the rejection of the compaction it is awaiting.
+// receives as the rejection of the prune it is awaiting.
 
 // The job the main thread posted. `now` crosses as epoch milliseconds, and
 // workerData arrives untyped, so it is narrowed rather than trusted.
@@ -23,7 +23,7 @@ const isJob = (value: unknown): value is Job =>
 const job: unknown = workerData
 
 if (!isJob(job)) {
-  throw new TypeError('the compaction worker needs a { path, now } job')
+  throw new TypeError('the prune worker needs a { path, now } job')
 }
 
-compactAndPrune({ path: job.path, now: new Date(job.now) })
+pruneSamples({ path: job.path, now: new Date(job.now) })

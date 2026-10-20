@@ -91,7 +91,7 @@ export const parseStat = (text: string): readonly Sample[] =>
       const label = row[0] === 'cpu' ? 'cpu.total' : row[0]
       return CPU_FIELDS.flatMap((field, index): readonly Sample[] => {
         const value = index + 1 < row.length ? number(row[index + 1]) : null
-        return value === null ? [] : [{ metric: `${label}.${field}`, value, kind: 'counter' }]
+        return value === null ? [] : [{ metric: `${label}.${field}`, value }]
       })
     })
 
@@ -104,9 +104,7 @@ export const parseMeminfo = (text: string): readonly Sample[] =>
       const metric = MEM_KEYS.get(key)
       const [first] = words(rest)
       const kilobytes = first === undefined ? null : number(first)
-      return metric === undefined || kilobytes === null
-        ? []
-        : [{ metric, value: kilobytes * 1024, kind: 'gauge' }]
+      return metric === undefined || kilobytes === null ? [] : [{ metric, value: kilobytes * 1024 }]
     })
 
 /**
@@ -138,8 +136,8 @@ export const parseNetDev = (text: string): readonly Sample[] =>
       return received === null || sent === null
         ? []
         : [
-            { metric: `net.${name}.rx_bytes`, value: received, kind: 'counter' },
-            { metric: `net.${name}.tx_bytes`, value: sent, kind: 'counter' },
+            { metric: `net.${name}.rx_bytes`, value: received },
+            { metric: `net.${name}.tx_bytes`, value: sent },
           ]
     })
 
@@ -163,7 +161,6 @@ export const parseLoadavg = (text: string): readonly Sample[] => {
   return LOAD_METRICS.map((metric, index): Sample => ({
     metric,
     value: values[index],
-    kind: 'gauge',
   }))
 }
 
@@ -176,5 +173,5 @@ export const parseLoadavg = (text: string): readonly Sample[] => {
 export const parseUptime = (text: string): readonly Sample[] => {
   const [first] = words(text)
   const seconds = first === undefined ? null : number(first)
-  return seconds === null ? [] : [{ metric: 'uptime.seconds', value: seconds, kind: 'gauge' }]
+  return seconds === null ? [] : [{ metric: 'uptime.seconds', value: seconds }]
 }

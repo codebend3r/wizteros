@@ -37,9 +37,9 @@ const GB = 1024 ** 3
 
 const HISTORY_ROUTES = ['/fleet/cpu', '/fleet/memory', '/fleet/gpu', '/fleet/network']
 
-const gauge = (metric: string, value: number): Sample => ({ metric, value, kind: 'gauge' })
+const gauge = (metric: string, value: number): Sample => ({ metric, value })
 
-const counter = (metric: string, value: number): Sample => ({ metric, value, kind: 'counter' })
+const counter = (metric: string, value: number): Sample => ({ metric, value })
 
 // One session per write, the same way a collector round opens one. store and
 // incidents take a connection, and the API under test opens its own, so a
@@ -57,8 +57,8 @@ const writeSamplesTo = ({
 }): number =>
   session({ path, work: (connection) => writeSamples({ connection, target, at, samples }) })
 
-const writeHeartbeatTo = ({ path, at, gap }: { path: string; at: Date; gap?: number }): void =>
-  session({ path, work: (connection) => writeHeartbeat({ connection, at, gap }) })
+const writeHeartbeatTo = ({ path, at }: { path: string; at: Date }): void =>
+  session({ path, work: (connection) => writeHeartbeat({ connection, at }) })
 
 const recordTo = ({
   path,
@@ -478,10 +478,9 @@ describe('the fleet API', () => {
   it('scores uptime once the collector has watched the window', async () => {
     const now = new Date()
     const dayAndAnHourAgo = addSeconds({ at: now, seconds: -25 * HOUR })
-    // one unbroken run reaching back past the window: two rounds is enough to
-    // express that, with a gap tolerance wide enough to admit the second
+    // the collector ticking across the window, which on its own is not enough
     writeHeartbeatTo({ path: db, at: dayAndAnHourAgo })
-    writeHeartbeatTo({ path: db, at: now, gap: 2 * DAY })
+    writeHeartbeatTo({ path: db, at: now })
     // and the host itself checked across that run, not merely the collector
     // ticking beside it. A round that recorded no check for this host
     // observed the fleet, not the host.
@@ -501,7 +500,7 @@ describe('the fleet API', () => {
     const now = new Date()
     const sixHoursAgo = addSeconds({ at: now, seconds: -6 * HOUR })
     writeHeartbeatTo({ path: db, at: addSeconds({ at: now, seconds: -25 * HOUR }) })
-    writeHeartbeatTo({ path: db, at: now, gap: 2 * DAY })
+    writeHeartbeatTo({ path: db, at: now })
     // checks for this host stop six hours ago; its readings are still inside
     // the age window, so the card is still showing numbers
     watched({
