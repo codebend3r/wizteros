@@ -2,7 +2,7 @@
 
 import type { NestFastifyApplication } from '@nestjs/platform-fastify'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { initDb } from '@/collector.js'
+import { initDb } from '@/schema.js'
 import { session } from '@/db.js'
 import * as plays from '@/plays/index.js'
 import type { Kind, MediaItem, PlayEntry, Quality } from '@/probes/plex.js'

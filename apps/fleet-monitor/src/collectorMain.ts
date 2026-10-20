@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common'
 import { stackOf } from '@wizteros/server-common'
-import { joinCompactions, runAll } from '@/collector.js'
+import { runAll } from '@/collector.js'
+import { joinCompactions } from '@/compaction.js'
 import { dbPath, fleetHosts, SLOW_INTERVAL, sshUser, VITALS_INTERVAL } from '@/config.js'
 
 // `node dist/collectorMain.js`, the port of `python -m fleet_monitor.collector`:

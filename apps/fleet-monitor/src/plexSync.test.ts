@@ -7,8 +7,7 @@ import * as incidents from '@/incidents.js'
 import * as plays from '@/plays/index.js'
 import * as plexSync from '@/plexSync.js'
 import * as plex from '@/probes/plex.js'
-import * as rollups from '@/rollups.js'
-import * as store from '@/store.js'
+import { initDb } from '@/schema.js'
 import { removeTempDirs, tempDbPath } from '@/test/support.js'
 import { addSeconds, epochSeconds } from '@wizteros/server-common'
 import type { HttpResult } from '@/transport/http.js'
@@ -279,22 +278,10 @@ const fakePlex = ({
   return fake
 }
 
-/**
- * The pytest `path` fixture: a fresh file with every table
- * `collector.init_db` creates, built from the modules it calls so this suite
- * does not wait on the collector port.
- */
+/** The pytest `path` fixture: a fresh file with every table `initDb` creates. */
 const initialisedPath = (): string => {
   const path = tempDbPath()
-  session({
-    path,
-    work: (connection) => {
-      store.initDb(connection)
-      rollups.initDb(connection)
-      incidents.initDb(connection)
-      plays.initDb(connection)
-    },
-  })
+  initDb(path)
   return path
 }
 

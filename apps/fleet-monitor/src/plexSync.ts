@@ -36,6 +36,7 @@ import * as incidents from '@/incidents.js'
 import type { CheckResult } from '@/incidents.js'
 import * as plays from '@/plays/index.js'
 import * as plex from '@/probes/plex.js'
+import { initDb } from '@/schema.js'
 import { logRaised } from '@/tasks.js'
 import { addSeconds, epochSeconds } from '@wizteros/server-common'
 import { getJson, type HttpResult, send } from '@/transport/http.js'
@@ -848,22 +849,6 @@ export const syncHost = async ({
   }
   return { history_ok: historyOk, inventory_ran: true, inventory_complete: complete }
 }
-
-/**
- * Every table a pass writes: the ledger and the incident machine it records
- * its checks into. Both, because this loop can be the first thing to run
- * against a fresh file (`runOnce`, or the loop started alone), and a pass
- * that backfilled a year and then died on a missing check table would leave
- * the server marked as never reached.
- */
-export const initDb = (path: string): void =>
-  session({
-    path,
-    work: (connection) => {
-      plays.initDb(connection)
-      incidents.initDb(connection)
-    },
-  })
 
 /**
  * Every Plex host concurrently. The token is read per round rather than once

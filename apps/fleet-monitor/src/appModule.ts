@@ -2,8 +2,8 @@ import { Module, type OnModuleInit } from '@nestjs/common'
 import { AdminAuthModule } from '@wizteros/server-common'
 import { FleetController, HealthController } from '@/api/fleetController.js'
 import { PlaysController } from '@/api/playsController.js'
-import { initDb } from '@/collector.js'
 import { adminAuthConfig, dbPath } from '@/config.js'
+import { initDb } from '@/schema.js'
 
 @Module({
   imports: [AdminAuthModule.forRoot({ readConfig: adminAuthConfig })],

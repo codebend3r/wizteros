@@ -6,7 +6,7 @@
 import type { NestFastifyApplication } from '@nestjs/platform-fastify'
 import { type CryptoKey, createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { initDb } from '@/collector.js'
+import { initDb } from '@/schema.js'
 import { appBehindTheGate } from '@/test/apiApp.js'
 import { removeTempDirs, tempDbPath } from '@/test/support.js'
 

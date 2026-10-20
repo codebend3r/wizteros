@@ -1,5 +1,5 @@
 import { workerData } from 'node:worker_threads'
-import { compactAndPrune } from '@/collector.js'
+import { compactAndPrune } from '@/compaction.js'
 
 // The worker thread behind `compactInWorker`: one compaction, then exit.
 //
