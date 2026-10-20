@@ -15,6 +15,8 @@ export type IdentitySnapshot = Readonly<{
   invitations: readonly WizarrInvitation[]
   /** Admin-stated links, lowercased payer address -> lowercased Plex address. */
   links: ReadonlyMap<string, string>
+  /** The invite each paying address was issued, lowercased address -> invite code. */
+  invites: ReadonlyMap<string, string>
 }>
 
 /** Which evidence answered for the records: the order `identityFor` tries them in. */
@@ -23,7 +25,8 @@ export type IdentityVia = 'email' | 'link' | 'invite' | 'none'
 export type Identity = Readonly<{
   /**
    * Every lowercased address of the person: the one asked about, the Plex
-   * account that redeemed their invite, and both halves of any admin link.
+   * account that redeemed their invite, and both halves of any link, whether
+   * an admin stated it or a redeemed invite implies it.
    */
   addresses: ReadonlySet<string>
   /** The Wizarr records the person holds right now, found as `identityFor` describes. */
@@ -36,7 +39,7 @@ export type Identity = Readonly<{
 const emailOf = (user: WizarrUser): string => (user.email ?? '').toLowerCase()
 
 /** Every record under one lowercased address. */
-const recordsAt = ({
+export const recordsAt = ({
   users,
   address,
 }: {
@@ -79,6 +82,20 @@ const redeemerRecords = ({
 }
 
 /**
+ * Payer -> Plex address for every paying address whose invite was redeemed
+ * under another address: the link a redemption implies without an admin
+ * having to state it.
+ */
+const impliedLinks = (snapshot: IdentitySnapshot): ReadonlyMap<string, string> =>
+  new Map(
+    [...snapshot.invites].flatMap(([payer, code]) => {
+      const redeemer = redeemerOf({ snapshot, inviteCode: code })
+      const plex = redeemer ? emailOf(redeemer) : ''
+      return plex !== '' && plex !== payer ? [[payer, plex] as const] : []
+    }),
+  )
+
+/**
  * Every address linked to any of `seeds`, the seeds included.
  *
  * Links point payer -> Plex account, so a person is identified by the Plex
@@ -97,6 +114,30 @@ const linkedTo = ({
   const owners = new Set(seeds.map((address) => links.get(address) ?? address))
   const payers = [...links].filter(([, plex]) => owners.has(plex)).map(([payer]) => payer)
   return new Set([...seeds, ...owners, ...payers])
+}
+
+/**
+ * Every record the person holds under any of their addresses, plus the
+ * records `identityFor` found them by (which covers a redeemer with no email).
+ *
+ * For acting on the whole person, a ban above all: `records` stops at the
+ * first evidence that answers, while a person who watches under two
+ * addresses holds records under both.
+ */
+export const everyRecord = ({
+  snapshot,
+  identity,
+}: {
+  snapshot: IdentitySnapshot
+  identity: Identity
+}): WizarrUser[] => {
+  const found: ReadonlySet<number> = new Set(identity.records.map((record) => record.id))
+  return [
+    ...identity.records,
+    ...snapshot.users.filter(
+      (user) => !found.has(user.id) && identity.addresses.has(emailOf(user)),
+    ),
+  ]
 }
 
 /**
@@ -124,7 +165,9 @@ export const identityFor = ({
   const redeemer = redeemerOf({ snapshot, inviteCode })
   const redeemerAddress = redeemer ? emailOf(redeemer) : ''
   const seeds = [address ?? '', redeemerAddress].filter((seed) => seed !== '')
-  const addresses = linkedTo({ links: snapshot.links, seeds })
+  // A stated link outranks the one a redemption implies for the same payer.
+  const links = new Map([...impliedLinks(snapshot), ...snapshot.links])
+  const addresses = linkedTo({ links, seeds })
   const byEmail = address ? recordsAt({ users: snapshot.users, address }) : []
   if (byEmail.length > 0) {
     return { addresses, records: byEmail, via: 'email' }

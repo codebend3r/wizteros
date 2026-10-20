@@ -201,6 +201,27 @@ describe('sweeps', () => {
     expect(fake.mailer.sendAlert).not.toHaveBeenCalled()
   })
 
+  it("vip access check finds a VIP's records under the address they watch with", async () => {
+    // Tagged as the payer, holding records as the Plex account their invite
+    // was redeemed under: one person, not a stranded VIP.
+    const { fake, bridge } = setup()
+    bridge.store.upsertPending({ customerId: 'cus_1', email: 'pays@x.com', inviteCode: 'INV1' })
+    bridge.store.setMemberTag({ email: 'pays@x.com', tag: 'vip' })
+    fake.wizarr.listUsers.mockResolvedValue([
+      { id: 7, email: 'watches@x.com', server: 'Meleys', expires: null },
+    ])
+    fake.wizarr.listInvitations.mockResolvedValue([{ id: 1, code: 'INV1', used_by: '<User 7>' }])
+    expect(await checkVipAccess({ bridge, alert: alerts.vipAccess })).toEqual([])
+  })
+
+  it('vip access check does not count a VIP who is banned under another address', async () => {
+    const { bridge } = setup()
+    bridge.store.setMemberLink({ stripeEmail: 'pays@x.com', plexEmail: 'watches@x.com' })
+    bridge.store.setMemberTag({ email: 'pays@x.com', tag: 'vip' })
+    bridge.store.setMemberTag({ email: 'watches@x.com', tag: 'banned' })
+    expect(await checkVipAccess({ bridge, alert: alerts.vipAccess })).toEqual([])
+  })
+
   it('vip access check survives wizarr being down', async () => {
     const { fake, bridge } = setup()
     bridge.store.setMemberTag({ email: 'vip@x.com', tag: 'vip' })

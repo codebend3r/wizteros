@@ -37,7 +37,6 @@ afterEach(stopServed)
 describe('history and notes', () => {
   it('appends admin actions to the member history', async () => {
     const h = await harness()
-    h.bridge.wizarr.findUsersByEmail.mockResolvedValueOnce([])
     h.bridge.wizarr.findUsersByEmail.mockResolvedValue(recordsUnder({ email: 'a@x.com', ids: [9] }))
     h.bridge.wizarr.createInvite.mockResolvedValue({ code: 'xyz', url: 'http://wizarr-lan/j/xyz' })
     await reissue({ h, body: { email: 'A@X.com', tier: 'gold' } })
@@ -299,7 +298,7 @@ describe('POST /admin/reissue-invite', () => {
     const h = await harness()
     h.bridge.wizarr.listLibraries.mockResolvedValue(FIXTURE_LIBRARIES)
     // every record sits on a server the new scope covers -> access survives
-    h.bridge.wizarr.findUsersByEmail.mockResolvedValue([{ id: 9, server: 'Meleys' }])
+    h.bridge.wizarr.listUsers.mockResolvedValue([{ id: 9, email: 'a@x.com', server: 'Meleys' }])
     h.bridge.wizarr.createInvite.mockResolvedValue({ code: 'xyz', url: 'http://wizarr-lan/j/xyz' })
     const out = await reissue({ h, body: { email: 'a@x.com', tier: 'silver' } })
 
@@ -324,9 +323,9 @@ describe('POST /admin/reissue-invite', () => {
     h.bridge.wizarr.listLibraries.mockResolvedValue(FIXTURE_LIBRARIES)
     // the retired servers are in no tier's scope and there is no per-server
     // unshare, so the reissue falls back to disable-first
-    h.bridge.wizarr.findUsersByEmail.mockResolvedValue([
-      { id: 9, server: 'Meleys' },
-      { id: 12, server: 'Caraxes' },
+    h.bridge.wizarr.listUsers.mockResolvedValue([
+      { id: 9, email: 'a@x.com', server: 'Meleys' },
+      { id: 12, email: 'a@x.com', server: 'Caraxes' },
     ])
     h.bridge.wizarr.createInvite.mockResolvedValue({ code: 'xyz', url: 'http://wizarr-lan/j/xyz' })
     const out = await reissue({ h, body: { email: 'a@x.com', tier: 'silver' } })
@@ -343,7 +342,7 @@ describe('POST /admin/reissue-invite', () => {
   it('emails the link', async () => {
     const h = await harness()
     h.bridge.wizarr.listLibraries.mockResolvedValue(FIXTURE_LIBRARIES)
-    h.bridge.wizarr.findUsersByEmail.mockResolvedValue([])
+    h.bridge.wizarr.listUsers.mockResolvedValue([])
     h.bridge.wizarr.createInvite.mockResolvedValue({ code: 'xyz', url: 'http://wizarr-lan/j/xyz' })
     const out = await reissue({ h, body: { email: 'a@x.com', tier: 'silver' } })
     expect(h.bridge.mailer.sendInvite).toHaveBeenCalledTimes(1)
@@ -357,7 +356,7 @@ describe('POST /admin/reissue-invite', () => {
   it('survives an email failure', async () => {
     const h = await harness()
     h.bridge.wizarr.listLibraries.mockResolvedValue(FIXTURE_LIBRARIES)
-    h.bridge.wizarr.findUsersByEmail.mockResolvedValue([{ id: 9, server: 'Caraxes' }])
+    h.bridge.wizarr.listUsers.mockResolvedValue([{ id: 9, email: 'a@x.com', server: 'Caraxes' }])
     h.bridge.wizarr.createInvite.mockResolvedValue({ code: 'xyz', url: 'http://wizarr-lan/j/xyz' })
     h.bridge.mailer.sendInvite.mockRejectedValue(new Error('smtp down'))
     const out = await reissue({ h, body: { email: 'a@x.com', tier: 'silver' } })
@@ -370,7 +369,7 @@ describe('POST /admin/reissue-invite', () => {
   it('keeps the member visible as pending', async () => {
     const h = await harness()
     h.bridge.wizarr.listLibraries.mockResolvedValue(FIXTURE_LIBRARIES)
-    h.bridge.wizarr.findUsersByEmail.mockResolvedValue([{ id: 9, server: 'Meleys' }])
+    h.bridge.wizarr.listUsers.mockResolvedValue([{ id: 9, email: 'code@x.com', server: 'Meleys' }])
     h.bridge.wizarr.createInvite.mockResolvedValue({
       code: 'NEW1',
       url: 'http://wizarr-lan/j/NEW1',
@@ -392,7 +391,7 @@ describe('POST /admin/reissue-invite', () => {
   it('fails closed without a public base', async () => {
     const h = await harness({ settings: { ...TEST_SETTINGS, publicInviteBase: '' } })
     h.bridge.wizarr.listLibraries.mockResolvedValue(FIXTURE_LIBRARIES)
-    h.bridge.wizarr.findUsersByEmail.mockResolvedValue([{ id: 9, server: 'Caraxes' }])
+    h.bridge.wizarr.listUsers.mockResolvedValue([{ id: 9, email: 'a@x.com', server: 'Caraxes' }])
     const answer = await post({
       h,
       url: '/admin/reissue-invite',
@@ -406,7 +405,7 @@ describe('POST /admin/reissue-invite', () => {
   it('applies the downloads override', async () => {
     const h = await harness()
     h.bridge.wizarr.listLibraries.mockResolvedValue(FIXTURE_LIBRARIES)
-    h.bridge.wizarr.findUsersByEmail.mockResolvedValue([{ id: 9, server: 'Vermithor' }])
+    h.bridge.wizarr.listUsers.mockResolvedValue([{ id: 9, email: 'a@x.com', server: 'Vermithor' }])
     h.bridge.wizarr.createInvite.mockResolvedValue({ code: 'xyz', url: 'http://wizarr-lan/j/xyz' })
     h.bridge.store.setMemberDownloads({ email: 'a@x.com', allow: true })
 
@@ -421,7 +420,7 @@ describe('POST /admin/reissue-invite', () => {
   it('kicks a snapshot refresh', async () => {
     const h = await harness()
     h.bridge.wizarr.listLibraries.mockResolvedValue(FIXTURE_LIBRARIES)
-    h.bridge.wizarr.findUsersByEmail.mockResolvedValue([{ id: 9, server: 'Vermithor' }])
+    h.bridge.wizarr.listUsers.mockResolvedValue([{ id: 9, email: 'a@x.com', server: 'Vermithor' }])
     h.bridge.wizarr.createInvite.mockResolvedValue({ code: 'xyz', url: 'http://wizarr-lan/j/xyz' })
     const refreshed = vi.spyOn(h.snapshot, 'refreshAsync').mockImplementation(() => {})
     await reissue({ h, body: { email: 'a@x.com', tier: 'silver' } })
@@ -613,9 +612,7 @@ describe('POST /admin/ban', () => {
     h.bridge.stripe.cancelAtPeriodEnd.mockResolvedValue(
       subscription({ id: 'sub_1', cancel_at: 1790000000, cancel_at_period_end: true }),
     )
-    h.bridge.wizarr.findUsersByEmail.mockResolvedValue(
-      recordsUnder({ email: 'a@x.com', ids: [1, 2] }),
-    )
+    h.bridge.wizarr.listUsers.mockResolvedValue(recordsUnder({ email: 'a@x.com', ids: [1, 2] }))
 
     const result = await ban({ h, email: 'A@X.com' })
 
@@ -639,7 +636,7 @@ describe('POST /admin/ban', () => {
     // Someone already gone from Wizarr and Stripe can still be marked, so the
     // next checkout or re-invite under that address is refused.
     const h = await harness()
-    h.bridge.wizarr.findUsersByEmail.mockResolvedValue([])
+    h.bridge.wizarr.listUsers.mockResolvedValue([])
 
     const result = await ban({ h, email: 'gone@x.com' })
 
@@ -654,7 +651,7 @@ describe('POST /admin/ban', () => {
     const h = await harness()
     h.bridge.stripe.subscriptionsFor.mockRejectedValue(new Error('stripe is down'))
     h.bridge.stripe.customerIdsForEmail.mockRejectedValue(new Error('stripe is down'))
-    h.bridge.wizarr.findUsersByEmail.mockResolvedValue(recordsUnder({ email: 'a@x.com', ids: [7] }))
+    h.bridge.wizarr.listUsers.mockResolvedValue(recordsUnder({ email: 'a@x.com', ids: [7] }))
 
     const result = await ban({ h, email: 'a@x.com' })
 
@@ -664,6 +661,87 @@ describe('POST /admin/ban', () => {
     expect(h.bridge.store.eventsForEmail({ email: 'a@x.com' })[0]?.detail).toContain(
       'could not reach Stripe',
     )
+  })
+})
+
+// --- a person under two addresses -------------------------------------------------------------------------------------
+//
+// The portal acts on the Plex account; Stripe bills the payer whose invite it
+// redeemed. Ban and cancel reach the payer's subscriptions too.
+
+describe('acting on a person who pays under another address', () => {
+  const payerWatchingElsewhere = (h: Harness): void => {
+    h.bridge.store.upsertPending({
+      customerId: 'cus_pays',
+      email: 'pays@x.com',
+      inviteCode: 'INV1',
+      tier: 'gold',
+    })
+    h.bridge.wizarr.listUsers.mockResolvedValue([
+      ...recordsUnder({ email: 'watches@x.com', ids: [7, 8] }),
+      ...recordsUnder({ email: 'pays@x.com', ids: [3] }),
+    ])
+    h.bridge.wizarr.listInvitations.mockResolvedValue([
+      { id: 1, code: 'INV1', used_by: '<User 7>' },
+    ])
+    h.bridge.stripe.subscriptionsFor.mockImplementation(async (customerId) =>
+      customerId === 'cus_pays' ? [subscription({ id: 'sub_pays', customer: 'cus_pays' })] : [],
+    )
+    h.bridge.stripe.cancelAtPeriodEnd.mockResolvedValue(
+      subscription({ id: 'sub_pays', cancel_at: 1790000000, cancel_at_period_end: true }),
+    )
+  }
+
+  it("a ban on the Plex account disables both addresses' records and stops the payer's billing", async () => {
+    const h = await harness()
+    payerWatchingElsewhere(h)
+
+    const result = await ban({ h, email: 'watches@x.com' })
+
+    expect(h.bridge.wizarr.disableUser.mock.calls).toEqual([[7], [8], [3]])
+    expect(h.bridge.stripe.cancelAtPeriodEnd).toHaveBeenCalledExactlyOnceWith('sub_pays')
+    expect(result).toEqual({
+      email: 'watches@x.com',
+      disabled: 3,
+      canceled: 1,
+      cancel_at: '2026-09-21T14:13:20+00:00',
+    })
+  })
+
+  it("a cancellation on the Plex account flags the payer's subscription", async () => {
+    const h = await harness()
+    payerWatchingElsewhere(h)
+
+    const result = await cancel({ h, email: 'watches@x.com' })
+
+    expect(h.bridge.stripe.cancelAtPeriodEnd).toHaveBeenCalledExactlyOnceWith('sub_pays')
+    expect(result.canceled).toBe(1)
+  })
+
+  it('a ban under the payer refuses a reissue for the Plex account', async () => {
+    const h = await harness()
+    payerWatchingElsewhere(h)
+    h.bridge.store.setMemberTag({ email: 'pays@x.com', tag: 'banned' })
+
+    const answer = await post({
+      h,
+      url: '/admin/reissue-invite',
+      payload: { email: 'watches@x.com', tier: 'gold' },
+    })
+
+    expect(answer.statusCode).toBe(409)
+    expect(h.bridge.wizarr.createInvite).not.toHaveBeenCalled()
+  })
+
+  it("the members list shows the payer's tag on the Plex account's row", async () => {
+    const h = await harness()
+    payerWatchingElsewhere(h)
+    h.bridge.store.setMemberTag({ email: 'pays@x.com', tag: 'vip' })
+
+    const member = await getMember({ h, email: 'watches@x.com' })
+
+    expect(member.stripe_email).toBe('pays@x.com')
+    expect(member.tag).toBe('vip')
   })
 })
 

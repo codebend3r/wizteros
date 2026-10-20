@@ -1,12 +1,12 @@
 import { Logger } from '@nestjs/common'
 import type { ChangeAlert } from '@/changeAlert.js'
 import { dunningSweep, type DunningFinding, tierScopes, vipsWithoutAccess } from '@/alerts.js'
-import { accessLine } from '@/members.js'
+import { accessLine, identitySnapshot, personAt, standingOf } from '@/members.js'
 import { mapInOrder } from '@/sequence.js'
 import { holdsStandingGrant } from '@/standing.js'
 import { statusRule, stripeStatusByCustomer } from '@/subscriptionStatus.js'
 import { libraryCacheProblems, tierScopeProblems } from '@/tiers.js'
-import type { Bridge, WizarrUser } from '@/types.js'
+import type { Bridge } from '@/types.js'
 import { stackOf } from '@wizteros/server-common'
 
 // The drift alarms the reconcile loop runs between webhooks.
@@ -102,13 +102,20 @@ export const checkVipAccess = async ({
     alert.clear()
     return []
   }
-  const users = await bridge.wizarr.listUsers().catch((error: unknown): WizarrUser[] | null => {
-    log.error('vip access check: could not read users from Wizarr', stackOf(error))
+  const snapshot = await identitySnapshot(bridge).catch((error: unknown): null => {
+    log.error('vip access check: could not read users or invitations from Wizarr', stackOf(error))
     return null
   })
-  if (users === null) return []
-  const held = new Set(users.map((user) => (user.email ?? '').toLowerCase()))
-  const stranded = vips.filter((email) => !held.has(email))
+  if (snapshot === null) return []
+  // The tag may sit on the payer while the records sit under the Plex
+  // account, so a VIP is stranded only when their person holds nothing; one
+  // also banned under another address is not a VIP at all.
+  const stranded = vips.filter((email) => {
+    const identity = personAt({ snapshot, email })
+    return (
+      holdsStandingGrant(standingOf({ bridge, identity, tags })) && identity.records.length === 0
+    )
+  })
   if (stranded.length === 0) {
     alert.clear()
     return []

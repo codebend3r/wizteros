@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common'
 import { type Identity, type IdentitySnapshot, identityFor } from '@/identity.js'
+import { type MemberTag, strongestAcross } from '@/standing.js'
 import { isLiveStatus, stripeStatusByCustomer } from '@/subscriptionStatus.js'
 import type { Bridge } from '@/types.js'
 import { stackOf } from '@wizteros/server-common'
@@ -19,8 +20,69 @@ const log = new Logger('bridge')
 export const identitySnapshot = async (bridge: Bridge): Promise<IdentitySnapshot> => {
   const users = await bridge.wizarr.listUsers()
   const invitations = await bridge.wizarr.listInvitations()
-  return { users, invitations, links: bridge.store.allMemberLinks() }
+  return { users, invitations, ...storedIdentity(bridge) }
 }
+
+/** The half of a snapshot the bridge's own store holds: the links, and each payer's invite. */
+const storedIdentity = (bridge: Bridge): Pick<IdentitySnapshot, 'links' | 'invites'> => ({
+  links: bridge.store.allMemberLinks(),
+  invites: new Map(
+    [...bridge.store.allCustomerRows()].flatMap(([email, row]) =>
+      row.invite_code ? [[email, row.invite_code] as const] : [],
+    ),
+  ),
+})
+
+/**
+ * A snapshot over Wizarr data already in hand, such as the members list's
+ * warm one, for a caller that only needs to know who a person is rather than
+ * which records they hold this second.
+ */
+export const snapshotOver = ({
+  bridge,
+  seen,
+}: {
+  bridge: Bridge
+  seen: Pick<IdentitySnapshot, 'users' | 'invitations'>
+}): IdentitySnapshot => ({
+  users: seen.users,
+  invitations: seen.invitations,
+  ...storedIdentity(bridge),
+})
+
+/** The person behind any one of their addresses, with the invite stored against it followed. */
+export const personAt = ({
+  snapshot,
+  email,
+}: {
+  snapshot: IdentitySnapshot
+  email: string
+}): Identity =>
+  identityFor({ snapshot, email, inviteCode: snapshot.invites.get(email.toLowerCase()) ?? null })
+
+/**
+ * A snapshot from the store alone, for a caller that can do without Wizarr:
+ * the admin's links still join a person's addresses, the invites cannot.
+ */
+export const storedSnapshot = (bridge: Bridge): IdentitySnapshot => ({
+  users: [],
+  invitations: [],
+  ...storedIdentity(bridge),
+})
+
+/**
+ * The tag that governs the person: the strongest one across all their
+ * addresses. A sweep that asks for many people hands in the tags it read once.
+ */
+export const standingOf = ({
+  bridge,
+  identity,
+  tags = bridge.store.allMemberTags(),
+}: {
+  bridge: Bridge
+  identity: Identity
+  tags?: ReadonlyMap<string, MemberTag>
+}): MemberTag | null => strongestAcross({ tags, addresses: identity.addresses })
 
 /**
  * Who a Stripe customer is in Wizarr, and the records they hold.
@@ -126,30 +188,6 @@ export const liveSiblingCustomer = async ({
 }
 
 /**
- * Every address belonging to the same person as `email`, lowercased.
- *
- * Links point payer -> Plex account, so the person is identified by the Plex
- * address: either this address pays for someone (follow the link) or it is
- * the account itself. Both directions matter, since a cancellation can land
- * on either half of the pair.
- */
-export const linkedAddresses = ({
-  bridge,
-  email,
-}: {
-  bridge: Bridge
-  email: string
-}): ReadonlySet<string> => {
-  const links = bridge.store.allMemberLinks()
-  const lowered = email.toLowerCase()
-  const owner = links.get(lowered) ?? lowered
-  return new Set([
-    owner,
-    ...[...links].filter(([, plex]) => plex === owner).map(([payer]) => payer),
-  ])
-}
-
-/**
  * Another address of the same person still carrying a live subscription.
  *
  * A member can hold two Stripe customers, and only one of them dying is the
@@ -160,14 +198,14 @@ export const linkedAddresses = ({
 export const stillSubscribedElsewhere = ({
   bridge,
   email,
+  identity,
 }: {
   bridge: Bridge
   email: string
+  identity: Identity
 }): string | null => {
   const rows = bridge.store.allCustomerRows()
   const lowered = email.toLowerCase()
-  const others = [...linkedAddresses({ bridge, email })]
-    .filter((address) => address !== lowered)
-    .toSorted()
+  const others = [...identity.addresses].filter((address) => address !== lowered).toSorted()
   return others.find((address) => rows.get(address)?.subscribed ?? false) ?? null
 }

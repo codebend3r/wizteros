@@ -2,12 +2,13 @@ import { Logger } from '@nestjs/common'
 import { addDays, isoformat, isRow, type Row } from '@wizteros/server-common'
 import { accessRestored, bannedCheckout, describeInvoice, paymentFailed, signup } from '@/alerts.js'
 import { inviteUrl, issueInvite, liveScope, mint, TierScopeEmpty } from '@/invites.js'
+import type { Identity, IdentitySnapshot } from '@/identity.js'
 import {
   accessLine,
   identitySnapshot,
   liveSiblingCustomer,
   resolveIdentity,
-  resolveUserIds,
+  standingOf,
   stillSubscribedElsewhere,
 } from '@/members.js'
 import { eachInOrder } from '@/sequence.js'
@@ -173,11 +174,13 @@ const blockBannedCheckout = async ({
 /** Disable the records the new tier no longer covers and re-stamp the rest. */
 const resetExistingRecords = async ({
   bridge,
+  snapshot,
   email,
   customerId,
   access,
 }: {
   bridge: Bridge
+  snapshot: IdentitySnapshot
   email: string
   customerId: string | null
   access: TierScope
@@ -187,7 +190,6 @@ const resetExistingRecords = async ({
   // new tier leaves a current server uncovered (no per-server unshare),
   // or when the member is only findable via the invite-code fallback
   // (Plex email differs, so coverage can't be evaluated — fail closed).
-  const snapshot = await identitySnapshot(bridge)
   const identity = resolveIdentity({ bridge, snapshot, customerId, email })
   const records = identity.via === 'email' ? identity.records : []
   const existing =
@@ -214,36 +216,38 @@ const resetExistingRecords = async ({
   }
 }
 
-/** Stamp the paid expiry on every record the customer resolves to: the ids stamped, and the expiry. */
+/** Stamp the paid expiry on every record the person holds: the ids stamped, and the expiry. */
 const renewRecords = async ({
   bridge,
-  customerId,
-  email,
+  identity,
+  who,
 }: {
   bridge: Bridge
-  customerId: string
-  email: string | null
+  identity: Identity
+  who: string
 }): Promise<{ ids: number[]; expires: string }> => {
-  const ids = await resolveUserIds({ bridge, customerId, email })
+  const ids = identity.records.map((record) => record.id)
   const expires = accessExpiryIso(bridge.settings)
   await eachInOrder({ items: ids, run: (userId) => bridge.wizarr.setExpiry({ userId, expires }) })
   if (ids.length > 0) {
-    log.log(`renewed ${ids.length} record(s) for ${email ?? customerId} (expires ${expires})`)
+    log.log(`renewed ${ids.length} record(s) for ${who} (expires ${expires})`)
   }
   return { ids, expires }
 }
 
-/** Disable every record the customer resolves to; how many there were. */
+/** Disable every record the person holds; how many there were. */
 const disableRecords = async ({
   bridge,
+  identity,
   customerId,
   email,
 }: {
   bridge: Bridge
+  identity: Identity
   customerId: string
   email: string | null
 }): Promise<number> => {
-  const ids = await resolveUserIds({ bridge, customerId, email })
+  const ids = identity.records.map((record) => record.id)
   await eachInOrder({ items: ids, run: (userId) => bridge.wizarr.disableUser(userId) })
   if (ids.length > 0) {
     log.log(`disabled ${ids.length} record(s) for ${email ?? customerId}`)
@@ -251,6 +255,20 @@ const disableRecords = async ({
     log.log(`cancel: no wizarr user for ${customerId} / ${email ?? 'no email'}`)
   }
   return ids.length
+}
+
+/** Who a customer is, read from a fresh snapshot, with the snapshot it came from. */
+const resolveLive = async ({
+  bridge,
+  customerId,
+  email,
+}: {
+  bridge: Bridge
+  customerId: string | null
+  email: string | null
+}): Promise<{ snapshot: IdentitySnapshot; identity: Identity }> => {
+  const snapshot = await identitySnapshot(bridge)
+  return { snapshot, identity: resolveIdentity({ bridge, snapshot, customerId, email }) }
 }
 
 /** Mint and mail the tier invite for a completed checkout, once per session. */
@@ -265,8 +283,15 @@ const onCheckoutCompleted: EventHandler = async ({ bridge, obj }) => {
     return
   }
   const tier = normalizeTier(nested({ obj, key: 'metadata' }).tier)
-  const tag = bridge.store.getMemberTag({ email })
-  // A banned address can still reach a Payment Link. Nothing is issued
+  // Read before anything is minted or stored: the tag governing the person is
+  // the strongest across every address of theirs, and the one the payer's
+  // earlier invite was redeemed under is usually the one an admin tagged.
+  // Finding that address needs Wizarr's users list, so the invite now waits
+  // on it (~15s), and a Wizarr outage leaves the event for Stripe to retry
+  // rather than mailing an invite a ban might have stopped.
+  const { snapshot, identity } = await resolveLive({ bridge, customerId, email })
+  const tag = standingOf({ bridge, identity })
+  // A banned person can still reach a Payment Link. Nothing is issued
   // and nothing is recorded against the customer; the operator is told,
   // because the charge itself went through and is theirs to refund.
   if (isBanned(tag)) {
@@ -323,7 +348,7 @@ const onCheckoutCompleted: EventHandler = async ({ bridge, obj }) => {
     log.log(`${email} is VIP — existing records left untouched`)
     return
   }
-  await resetExistingRecords({ bridge, email, customerId, access })
+  await resetExistingRecords({ bridge, snapshot, email, customerId, access })
 }
 
 /** Extend a renewal's access, or restore it when the payer holds no records. */
@@ -344,13 +369,15 @@ const onInvoicePaid: EventHandler = async ({ bridge, obj }) => {
   if (!email) {
     // Nobody to record the payment against; the records the customer's
     // invite resolves to still get their window.
-    const { ids } = await renewRecords({ bridge, customerId, email: null })
+    const { identity } = await resolveLive({ bridge, customerId, email: null })
+    const { ids } = await renewRecords({ bridge, identity, who: customerId })
     if (ids.length === 0) {
       log.warn(`renewal: no wizarr user for ${customerId}, which has no email`)
     }
     return
   }
-  const tag = bridge.store.getMemberTag({ email })
+  const { identity } = await resolveLive({ bridge, customerId, email })
+  const tag = standingOf({ bridge, identity })
   // A ban outranks a payment: nothing is extended and nothing restored.
   if (isBanned(tag)) {
     log.warn(`renewal: ${email} is banned; access not extended`)
@@ -372,7 +399,7 @@ const onInvoicePaid: EventHandler = async ({ bridge, obj }) => {
     })
     return
   }
-  const { ids, expires } = await renewRecords({ bridge, customerId, email })
+  const { ids, expires } = await renewRecords({ bridge, identity, who: email })
   if (ids.length > 0) {
     bridge.store.recordEvent({
       email,
@@ -439,7 +466,8 @@ const onSubscriptionDeleted: EventHandler = async ({ bridge, obj }) => {
   if (!email) {
     // Nobody to record the cancellation against; the records the customer's
     // invite resolves to are still disabled.
-    await disableRecords({ bridge, customerId, email: null })
+    const { identity } = await resolveLive({ bridge, customerId, email: null })
+    await disableRecords({ bridge, identity, customerId, email: null })
     return
   }
   // This customer really did stop, but the person behind it may not
@@ -456,7 +484,8 @@ const onSubscriptionDeleted: EventHandler = async ({ bridge, obj }) => {
   // A VIP's access is a standing grant, not something the subscription
   // buys. The renewal handler already leaves their expiry alone and the
   // sweep skips them; disabling them here undid both.
-  if (holdsStandingGrant(bridge.store.getMemberTag({ email }))) {
+  const { identity } = await resolveLive({ bridge, customerId, email })
+  if (holdsStandingGrant(standingOf({ bridge, identity }))) {
     log.log(`cancel: ${email} is VIP; access left alone`)
     bridge.store.recordEvent({
       email,
@@ -465,7 +494,7 @@ const onSubscriptionDeleted: EventHandler = async ({ bridge, obj }) => {
     })
     return
   }
-  const paying = sibling || stillSubscribedElsewhere({ bridge, email })
+  const paying = sibling || stillSubscribedElsewhere({ bridge, email, identity })
   if (paying) {
     log.log(`cancel: ${email} still pays under ${paying}; access left alone`)
     bridge.store.recordEvent({
@@ -475,7 +504,7 @@ const onSubscriptionDeleted: EventHandler = async ({ bridge, obj }) => {
     })
     return
   }
-  const disabled = await disableRecords({ bridge, customerId, email })
+  const disabled = await disableRecords({ bridge, identity, customerId, email })
   bridge.store.recordEvent({
     email,
     action: 'Canceled',
