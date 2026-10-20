@@ -1,0 +1,70 @@
+name: 🏁 Main checks
+
+# The post-merge sanity check: every project, every check, both images, on the
+# exact commit that landed. Nothing here is "affected only".
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# One group per commit, so back-to-back merges never cancel or replace each
+# other's run; each merged commit gets its own complete verdict.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    name: 🔍 Checks
+    uses: ./.github/workflows/checks.yml
+    with:
+      affected-only: false
+
+  # Main pushes are the only runs that publish the shared Buildx layer cache.
+  images:
+    name: 🐳 Containers
+    uses: ./.github/workflows/sanity-check.yml
+
+  main-checks:
+    name: 🏁 Main checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    needs: [checks, images]
+    if: always()
+    steps:
+      # The NAS never redeploys on its own, so say so when this push needs one.
+      # Read from the API rather than a checkout, so this job stays seconds long.
+      - name: 📦 NAS deploy notice
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          if [ "$BEFORE" = 0000000000000000000000000000000000000000 ]; then
+            files="$(gh api "repos/$REPO/commits/$AFTER" --jq '.files[].filename')"
+          else
+            files="$(gh api "repos/$REPO/compare/$BEFORE...$AFTER" --jq '.files[].filename')"
+          fi
+          changed="$(printf '%s\n' "$files" | grep -E '^(apps/stripe-bridge|apps/fleet-monitor|libs/server-common)/|^docker-compose\.yml$' || true)"
+          if [ -n "$changed" ]; then
+            echo "::notice::This push changes the NAS services; run 'bun run deploy:nas' and confirm GET /version."
+            {
+              echo '### 📦 NAS deploy needed'
+              echo 'Netlify redeploys the portal on its own; the NAS does not. Changed server files:'
+              echo '```'
+              printf '%s\n' "$changed"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'No NAS service changes in this push.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: 📝 Check every lane
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          printf '%s\n' "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"' >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' "$RESULTS" | jq -e 'all(.[]; .result == "success")'

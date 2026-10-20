@@ -1,0 +1,70 @@
+name: 🔍 Checks
+
+# Every non-container check in one job: one runner boot and one install, then
+# all of it at once. Splitting these across runners cost more in boot, install
+# and queueing for a free job slot than the checks themselves take.
+on:
+  workflow_call:
+    inputs:
+      affected-only:
+        description: Run Nx targets only for projects affected since the PR base
+        type: boolean
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  NX_DAEMON: 'false'
+  NX_NO_CLOUD: 'true'
+
+jobs:
+  checks:
+    name: 🔍 Lint, test and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NX_BASE: ${{ github.event.pull_request.base.sha }}
+      NX_HEAD: ${{ github.sha }}
+      AFFECTED_ONLY: ${{ inputs.affected-only }}
+    steps:
+      # nx affected needs history back to the PR base; run-many does not.
+      - name: 📥 Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: ${{ fromJSON(inputs.affected-only && '0' || '1') }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup-workspace
+      - name: ♻️ Restore Nx task cache
+        uses: actions/cache@v5
+        with:
+          path: .nx/cache
+          key: nx-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock', '.node-version') }}-${{ github.sha }}
+          restore-keys: |
+            nx-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock', '.node-version') }}-
+      # PRs compare the synthetic merge commit, not just the PR head. Main runs
+      # every project, catching anything an affected calculation misses.
+      # Existing high advisories need a separate dependency-remediation change,
+      # so the audit warns instead of failing.
+      - name: 🚀 Run every check concurrently
+        run: |
+          if [ "$AFFECTED_ONLY" = true ]; then scope=affected; else scope=run-many; fi
+          bash scripts/ci/run-parallel.sh \
+            "Nx: lint, format, typecheck, test, build=bunx nx $scope -t lint:ts lint:css format:check typecheck test build --parallel=3 --outputStyle=static" \
+            "Root lint (oxlint)=bun run lint:root" \
+            "Root formatting (oxfmt)=bun run format:check:root" \
+            "Repository tooling tests=bun run test:tooling" \
+            "Version parity=bun run check:versions" \
+            "Secrets and private infrastructure scan=bun run security:scan" \
+            "Workflows and shell (actionlint, ShellCheck)=bash scripts/ci/lint-workflows.sh" \
+            "Dependency audit (non-blocking)=bun audit --audit-level=high || { echo '::warning::Dependency audit failed; see its log for advisories or registry errors.'; echo '⚠️ Dependency audit failed (advisories or registry error); this report is not yet a blocking gate.' >> \"\$GITHUB_STEP_SUMMARY\"; }"
+      - name: 🕵️ Verify web build output when built
+        run: |
+          if [ "$AFFECTED_ONLY" = true ]; then
+            projects="$(bunx nx show projects --affected --json)"
+          else
+            projects='["admin-portal"]'
+          fi
+          if printf '%s\n' "$projects" | jq -e 'index("admin-portal") != null' >/dev/null; then
+            test -s apps/admin-portal/dist/index.html
+          fi
