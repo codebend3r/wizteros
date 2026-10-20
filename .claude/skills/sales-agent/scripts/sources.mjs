@@ -1,13 +1,12 @@
-import { execFileSync } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { nasHost, stripeList as stripeWalk, wizarrGet as wizarrRead } from '../../_shared/ops.mjs'
+import {
+  bridgeOps,
+  shellQuote,
+  stripeList as stripeWalk,
+  wizarrGet as wizarrRead,
+} from '../../_shared/ops.mjs'
 
 const REQUIRED = ['STRIPE_API_KEY', 'WIZARR_BASE_URL', 'WIZARR_API_KEY']
 const PAYING = new Set(['active', 'trialing'])
-const NAS_PATH = process.env.WZ_NAS_PATH || '/volume1/docker/stripe-bridge'
-const SSH_OPTS = '-o BatchMode=yes -o ConnectTimeout=10'
 const WIZARR_TIMEOUT_MS = 60_000
 
 export const requireConfig = ({ env = process.env } = {}) => {
@@ -120,54 +119,29 @@ export const peopleFrom = ({ users }) =>
     }, {}),
   )
 
-export const shellQuote = (value) =>
-  /**
-   * Wrap a value in single quotes for a POSIX shell, escaping any single quote
-   * it contains as '\'' so nothing inside it is ever expanded or word split.
-   */
-  `'${String(value).replaceAll("'", "'\\''")}'`
+// Kept as this module's export too, since its callers and tests import it here.
+export { shellQuote }
 
-const readStore = () => {
+const readStore = async () => {
   /**
-   * Copy bridge.db off the NAS and read it with sqlite3, deleting the temp copy
-   * before returning. Columns come from PRAGMA table_info because tier,
-   * invited_at, and subscribed were all added by migrations.
-   *
-   * This is the one call in this file that drops to `sh -c`, because it needs a
-   * redirect, so every interpolation is shell quoted. The host and the redirect
-   * target are quoted for the local shell; the remote command is quoted once
-   * for the local shell and its path quoted again for the remote one. Only
-   * SSH_OPTS goes in bare, since it is a fixed literal that has to word split
-   * into separate ssh arguments.
+   * Every customer row and tag, through the bridge's read-only ops CLI over
+   * SSH: one row per email, picked and read (tier aliases, tag guard) exactly
+   * as the bridge reads its own store, without copying bridge.db off the NAS.
    */
-  const dir = mkdtempSync(join(tmpdir(), 'wz-sales-'))
   try {
-    const db = join(dir, 'bridge.db')
-    const remote = `cat ${shellQuote(`${NAS_PATH}/stripe-bridge-data/bridge.db`)}`
-    execFileSync(
-      'sh',
-      ['-c', `ssh ${SSH_OPTS} ${shellQuote(nasHost())} ${shellQuote(remote)} > ${shellQuote(db)}`],
-      { stdio: ['ignore', 'ignore', 'pipe'] },
-    )
-    const columns = new Set(
-      JSON.parse(
-        execFileSync('sqlite3', ['-readonly', '-json', db, 'PRAGMA table_info(customer_map)'], {
-          encoding: 'utf8',
-        }) || '[]',
-      ).map((row) => row.name),
-    )
-    const pick = (name) => (columns.has(name) ? name : `NULL AS ${name}`)
-    const sql = `SELECT c.email, ${pick('tier')}, ${pick('invited_at')}, ${pick('subscribed')}, c.invite_code, t.tag
-                 FROM customer_map c LEFT JOIN member_tags t ON lower(c.email) = t.email
-                 WHERE c.email IS NOT NULL`
-    const rows = JSON.parse(
-      execFileSync('sqlite3', ['-readonly', '-json', db, sql], { encoding: 'utf8' }) || '[]',
-    )
+    const { customers, tags } = await bridgeOps({ args: ['customers'] })
+    const tagOf = new Map(tags.map(({ email, tag }) => [email, tag]))
+    const rows = customers.map((row) => ({
+      email: row.email,
+      tier: row.tier,
+      invited_at: row.invited_at,
+      subscribed: row.subscribed,
+      invite_code: row.invite_code,
+      tag: tagOf.get(row.email) ?? null,
+    }))
     return { ok: true, rows }
   } catch (error) {
     return { ok: false, why: error.message, rows: [] }
-  } finally {
-    rmSync(dir, { recursive: true, force: true })
   }
 }
 
@@ -304,7 +278,9 @@ export const fetchAll = async ({ config, skipStore = false }) => {
     wizarrGet({ config, path: '/api/users', key: 'users' }),
     wizarrGet({ config, path: '/api/invitations', key: 'invitations' }),
   ])
-  const store = skipStore ? { ok: false, why: 'skipped with --no-store', rows: [] } : readStore()
+  const store = skipStore
+    ? { ok: false, why: 'skipped with --no-store', rows: [] }
+    : await readStore()
   return {
     members: joinMembers({
       storeRows: store.rows,
