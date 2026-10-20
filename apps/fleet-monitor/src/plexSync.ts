@@ -37,7 +37,7 @@ import type { CheckResult } from '@/incidents.js'
 import * as plays from '@/plays/index.js'
 import * as plex from '@/probes/plex.js'
 import { initDb } from '@/schema.js'
-import { logRaised } from '@/tasks.js'
+import { every, logRaised } from '@/tasks.js'
 import { addSeconds, epochSeconds } from '@wizteros/server-common'
 import { getJson, type HttpResult, send } from '@/transport/http.js'
 
@@ -898,8 +898,6 @@ export const runRound = async ({
 /** The loop's clock: monotonic seconds, like asyncio's `loop.time()`. */
 const monotonic = (): number => performance.now() / 1000
 
-const isAbort = (error: unknown): boolean => error instanceof Error && error.name === 'AbortError'
-
 /**
  * History every PLEX_HISTORY_INTERVAL, an inventory per host every
  * PLEX_LIBRARY_INTERVAL, the first one on the first round.
@@ -925,18 +923,17 @@ export const runForever = async ({
     log.warn('no Plex token in FM_PLEX_TOKEN or PLEX_TOKEN; play history idles until one appears')
   }
   const via = transport({ signal })
-  let due = monotonic()
   let inventoryNext: ReadonlyMap<string, number> = new Map(
     plexHosts().map((host) => [host.name, 0] as const),
   )
-  try {
-    while (!signal.aborted) {
+  await every({
+    seconds: PLEX_HISTORY_INTERVAL,
+    signal,
+    round: async () => {
       const now = new Date()
       const inventoryDue = new Set(
         [...inventoryNext].filter(([, at]) => monotonic() >= at).map(([name]) => name),
       )
-      // one round at a time is the point of the loop
-      // oxlint-disable-next-line no-await-in-loop
       const outcomes = await runRound({ path, now, inventoryDue, via })
       inventoryNext = new Map([
         ...inventoryNext,
@@ -944,18 +941,8 @@ export const runForever = async ({
           .filter(([, outcome]) => outcome.inventory_complete)
           .map(([name]) => [name, monotonic() + PLEX_LIBRARY_INTERVAL] as const),
       ])
-      // measured from when the round was due, not from when it finished, so a
-      // long first backfill is absorbed rather than added to every interval
-      due += PLEX_HISTORY_INTERVAL
-      // oxlint-disable-next-line no-await-in-loop
-      await sleep(Math.max(0, due - monotonic()) * 1000, undefined, { signal })
-    }
-  } catch (error) {
-    if (signal.aborted && isAbort(error)) {
-      return
-    }
-    throw error
-  }
+    },
+  })
 }
 
 /**

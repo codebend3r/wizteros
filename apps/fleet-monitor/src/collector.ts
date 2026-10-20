@@ -1,6 +1,5 @@
 import { Logger } from '@nestjs/common'
 import { stackOf } from '@wizteros/server-common'
-import { setTimeout as sleep } from 'node:timers/promises'
 import {
   fleetHosts,
   type Host,
@@ -21,7 +20,7 @@ import * as system from '@/probes/system.js'
 import type { Sample } from '@/probes/types.js'
 import { initDb } from '@/schema.js'
 import * as store from '@/store.js'
-import { logRaised } from '@/tasks.js'
+import { every, logRaised } from '@/tasks.js'
 import * as http from '@/transport/http.js'
 import * as ssh from '@/transport/ssh.js'
 
@@ -60,10 +59,6 @@ const SLOW_EVERY = Math.floor(SLOW_INTERVAL / VITALS_INTERVAL)
 // host check would manufacture an outage on all five hosts at once, from a
 // fault none of them have. Same contract the docker endpoint already follows.
 const NOT_OBSERVED: ReadonlySet<string> = new Set(['spawn_error'])
-
-// An abort is the process being torn down: what a stopping loop sees, and the
-// one rejection it returns on rather than raises.
-const isAbort = (error: unknown): boolean => error instanceof Error && error.name === 'AbortError'
 
 /**
  * One section's samples, or none if its parser could not read it.
@@ -492,28 +487,11 @@ export const runForever = async ({
   compact?: Compact
 }): Promise<void> => {
   initDb(path)
-  // the loop's own state, in milliseconds on the monotonic clock. A while
-  // loop and two counters rather than recursion: this never ends, and an
-  // async function that returns its own next call holds every earlier
-  // round's promise for as long as the process lives
-  let due = performance.now()
-  let rounds = 0
-  try {
-    while (!signal.aborted) {
-      // oxlint-disable-next-line no-await-in-loop -- each round is due only after the one before it
-      await round({ index: rounds, path, signal, run, getJson, compact })
-      rounds += 1
-      // measured from when the round was due, not from when it finished, so a
-      // long round is absorbed rather than added to every interval after it
-      due += VITALS_INTERVAL * 1000
-      // oxlint-disable-next-line no-await-in-loop -- the wait between rounds is the loop's whole cadence
-      await sleep(Math.max(0, due - performance.now()), undefined, { signal })
-    }
-  } catch (error) {
-    if (!(signal.aborted && isAbort(error))) {
-      throw error
-    }
-  }
+  await every({
+    seconds: VITALS_INTERVAL,
+    signal,
+    round: (index) => round({ index, path, signal, run, getJson, compact }),
+  })
 }
 
 /**
