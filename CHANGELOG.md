@@ -12,6 +12,57 @@ the version recorded in the tree at that commit. That was not always true; the
 history was rewritten on 2026-08-08 to make it so. See
 [The 2026-08-08 history rewrite](#the-2026-08-08-history-rewrite).
 
+## v0.4.4 (2026-10-20)
+
+- Read a member's ban and VIP standing across every address they use. Tags
+  were written under the Plex address but read under the Stripe payer
+  address, so a banned member was still renewed and a VIP was time-boxed and
+  disabled on cancel. A redeemed invite now links a payer to its Plex account
+  the way an admin link does, a ban covers every address, and reissue refuses
+  a person banned under any of them
+- Resolve members through one Wizarr snapshot in checkout, renewal, cancel,
+  the dunning line, the expiry sweep and the stranded-VIP alarm, so a new
+  signup reads `/api/users` once instead of twice. Checkout now reads Wizarr
+  before the ban check, so a Wizarr outage defers the invite to Stripe's
+  retry
+- Reject a reissue for an unknown tier with a 400 instead of normalising it,
+  acknowledge a failed-payment invoice that carries no customer instead of
+  looking one up, and tag real tier-scope alarms `[TIER_SCOPE_ALARM]` so a dependency
+  failure never matches them
+- Rewrite the landing page in contribution terms: the hero lists server,
+  storage and maintenance costs instead of content categories, and the status
+  board drops its placeholder uptime and status figures for "Not connected"
+  and "Unverified". The cost split is labelled illustrative
+- In the portal, require every field of a member payload, treat a
+  fleet-monitor 401 as signed out, and clear local session state and cached
+  queries on sign-out even when Supabase's sign-out fails
+- Stop maintaining the fleet monitor's `rollup_5m` and `rollup_1h` tables,
+  its `coverage` mark and the `samples.kind` column, none of which were read.
+  History still reads raw samples capped at seven days, and the seven-day
+  prune still runs on a worker thread. The live `fleet.db` is untouched: no
+  table or column is dropped, and the dead rollup rows simply stop being
+  pruned
+- Restructure the rest of the fleet monitor with no change to its API: one
+  `initDb` shared by the API and both loops, one cadence helper for the
+  loops, a transport that owns its result shape, and plexSync split into
+  client, history and inventory modules behind one Plex client and pager. A
+  200 whose body is a bare JSON `null` now fails as `bad_json` instead of
+  reading as a successful sync. The one-round plexSync entrypoint moves from
+  `dist/plexSync.js` to `dist/plexSync/index.js`
+- Run PR checks on PRs only and every project's checks on each push to
+  `main` (`main-checks.yml`), with the checks running concurrently on one
+  runner and both images built and smoke-tested side by side. CI now also
+  gates the tooling tests, version parity, the security scan and workflow
+  linting
+- Share the server TypeScript and lint configs (`tsconfig.server.json`),
+  move the duplicated error, number and record helpers into
+  `libs/server-common`, and leave the bridge's test helpers out of its
+  production build
+- Group both `.env.example` files into sections, document the variables they
+  left out (commented, with their defaults), and mark `PUID`/`PGID` legacy
+- Deploy note: this release changes the bridge and the fleet monitor, so the
+  NAS needs `bun run deploy:nas` (now backed by the `deploy-nas` skill)
+
 ## v0.4.3 (2026-10-16)
 
 - Move the Bun pin to 1.4.3 in `packageManager` and Netlify's `BUN_VERSION`.
