@@ -3,12 +3,12 @@ import { MAX_ROUND_SECONDS, VITALS_INTERVAL } from '@/config.js'
 import type { Connection } from '@/db.js'
 import {
   COVERAGE_GAP_SECONDS,
-  coverageSince,
   initDb,
   lastHeartbeat,
   latest,
   metricAges,
   metricSeries,
+  prune,
   rate,
   rateSeries,
   series,
@@ -49,8 +49,8 @@ describe('store', () => {
       target: 'host:vermithor',
       at: T0,
       samples: [
-        { metric: 'load.1m', value: 0.46, kind: 'gauge' },
-        { metric: 'mem.total_bytes', value: 16_642_768_896.0, kind: 'gauge' },
+        { metric: 'load.1m', value: 0.46 },
+        { metric: 'mem.total_bytes', value: 16_642_768_896.0 },
       ],
     })
 
@@ -65,13 +65,13 @@ describe('store', () => {
       connection: db,
       target: 'host:meleys',
       at: T0,
-      samples: [{ metric: 'load.1m', value: 1.01, kind: 'gauge' }],
+      samples: [{ metric: 'load.1m', value: 1.01 }],
     })
     writeSamples({
       connection: db,
       target: 'host:meleys',
       at: at(30),
-      samples: [{ metric: 'load.1m', value: 0.75, kind: 'gauge' }],
+      samples: [{ metric: 'load.1m', value: 0.75 }],
     })
 
     expect(latest({ connection: db, target: 'host:meleys', since: ANY_AGE })['load.1m']).toBe(0.75)
@@ -88,7 +88,7 @@ describe('store', () => {
         connection: db,
         target: 'host:syrax',
         at: at(offset),
-        samples: [{ metric: 'load.1m', value: offset / 100, kind: 'gauge' }],
+        samples: [{ metric: 'load.1m', value: offset / 100 }],
       }),
     )
 
@@ -114,9 +114,9 @@ describe('store', () => {
         target: 'host:syrax',
         at: at(offset),
         samples: [
-          { metric: 'cpu.total.user', value: user, kind: 'counter' },
-          { metric: 'cpu.total.idle', value: idle, kind: 'counter' },
-          { metric: 'load.1m', value: 0.5, kind: 'gauge' },
+          { metric: 'cpu.total.user', value: user },
+          { metric: 'cpu.total.idle', value: idle },
+          { metric: 'load.1m', value: 0.5 },
         ],
       }),
     )
@@ -145,19 +145,19 @@ describe('store', () => {
       connection: db,
       target: 'host:syrax',
       at: at(-2 * HOUR),
-      samples: [{ metric: 'cpu.total.user', value: 1.0, kind: 'counter' }],
+      samples: [{ metric: 'cpu.total.user', value: 1.0 }],
     })
     writeSamples({
       connection: db,
       target: 'host:meleys',
       at: T0,
-      samples: [{ metric: 'cpu.total.user', value: 2.0, kind: 'counter' }],
+      samples: [{ metric: 'cpu.total.user', value: 2.0 }],
     })
     writeSamples({
       connection: db,
       target: 'host:syrax',
       at: T0,
-      samples: [{ metric: 'cpu.total.user', value: 3.0, kind: 'counter' }],
+      samples: [{ metric: 'cpu.total.user', value: 3.0 }],
     })
 
     const result = metricSeries({
@@ -219,13 +219,13 @@ describe('store', () => {
       connection: db,
       target: 'host:vermithor',
       at: at(-3 * DAY),
-      samples: [{ metric: 'net.veth8a3f21.rx_bytes', value: 12.0, kind: 'counter' }],
+      samples: [{ metric: 'net.veth8a3f21.rx_bytes', value: 12.0 }],
     })
     writeSamples({
       connection: db,
       target: 'host:vermithor',
       at: T0,
-      samples: [{ metric: 'load.1m', value: 0.4, kind: 'gauge' }],
+      samples: [{ metric: 'load.1m', value: 0.4 }],
     })
 
     const ages = metricAges({ connection: db, target: 'host:vermithor', since: at(-24 * HOUR) })
@@ -241,7 +241,7 @@ describe('store', () => {
       connection: db,
       target: 'host:vermithor',
       at: at(-6 * HOUR),
-      samples: [{ metric: 'disk.volume1.used_percent', value: 42.0, kind: 'gauge' }],
+      samples: [{ metric: 'disk.volume1.used_percent', value: 42.0 }],
     })
 
     const ages = metricAges({ connection: db, target: 'host:vermithor', since: at(-24 * HOUR) })
@@ -249,33 +249,52 @@ describe('store', () => {
     expect(ages['disk.volume1.used_percent']).toEqual(at(-6 * HOUR))
   })
 
-  it('starts coverage at the first heartbeat', () => {
-    expect(coverageSince(db)).toBeNull()
+  it('keeps only the newest heartbeat', () => {
+    expect(lastHeartbeat(db)).toBeNull()
     writeHeartbeat({ connection: db, at: T0 })
-    expect(coverageSince(db)).toEqual(T0)
+    writeHeartbeat({ connection: db, at: at(30) })
+
+    expect(lastHeartbeat(db)).toEqual(at(30))
   })
 
-  it('keeps coverage across consecutive rounds', () => {
-    const offsets = [0, 30, 60, 90]
-    offsets.forEach((offset) => writeHeartbeat({ connection: db, at: at(offset) }))
+  it('drops raw samples past retention on prune', () => {
+    writeSamples({
+      connection: db,
+      target: 'host:syrax',
+      at: at(-8 * DAY),
+      samples: [{ metric: 'load.1m', value: 9.0 }],
+    })
+    writeSamples({
+      connection: db,
+      target: 'host:syrax',
+      at: T0,
+      samples: [{ metric: 'load.1m', value: 1.0 }],
+    })
 
-    expect(coverageSince(db)).toEqual(T0)
+    expect(prune({ connection: db, now: T0 })).toBe(1)
+    expect(latest({ connection: db, target: 'host:syrax', since: ANY_AGE })['load.1m']).toBe(1.0)
   })
 
-  it('restarts coverage on a gap in the rounds', () => {
-    // the collector was down for those hours. Nobody watched them, and an
-    // empty incident history over unwatched hours is not proof of uptime.
-    writeHeartbeat({ connection: db, at: T0 })
-    writeHeartbeat({ connection: db, at: at(8 * HOUR) })
+  it('makes the prune boundary strictly older than the window', () => {
+    writeSamples({
+      connection: db,
+      target: 'host:onboundary',
+      at: at(-7 * DAY),
+      samples: [{ metric: 'load.1m', value: 1.0 }],
+    })
+    writeSamples({
+      connection: db,
+      target: 'host:pastboundary',
+      at: at(-(7 * DAY + 1)),
+      samples: [{ metric: 'load.1m', value: 2.0 }],
+    })
 
-    expect(coverageSince(db)).toEqual(at(8 * HOUR))
-  })
+    prune({ connection: db, now: T0 })
 
-  it('restarts coverage on a backwards clock step', () => {
-    writeHeartbeat({ connection: db, at: T0 })
-    writeHeartbeat({ connection: db, at: at(-2 * HOUR) })
-
-    expect(coverageSince(db)).toEqual(at(-2 * HOUR))
+    expect(latest({ connection: db, target: 'host:onboundary', since: ANY_AGE })['load.1m']).toBe(
+      1.0,
+    )
+    expect(latest({ connection: db, target: 'host:pastboundary', since: ANY_AGE })).toEqual({})
   })
 
   it('drops a reading from latest that the age window cannot date', () => {
@@ -287,13 +306,13 @@ describe('store', () => {
       connection: db,
       target: 'host:caraxes',
       at: at(-7 * DAY),
-      samples: [{ metric: 'disk.volume1.used_percent', value: 42.0, kind: 'gauge' }],
+      samples: [{ metric: 'disk.volume1.used_percent', value: 42.0 }],
     })
     writeSamples({
       connection: db,
       target: 'host:caraxes',
       at: T0,
-      samples: [{ metric: 'load.1m', value: 0.1, kind: 'gauge' }],
+      samples: [{ metric: 'load.1m', value: 0.1 }],
     })
 
     const floor = at(-24 * HOUR)
@@ -317,24 +336,12 @@ describe('store', () => {
       connection: db,
       target: 'host:caraxes',
       at: at(-6 * HOUR),
-      samples: [{ metric: 'disk.volume1.used_percent', value: 42.0, kind: 'gauge' }],
+      samples: [{ metric: 'disk.volume1.used_percent', value: 42.0 }],
     })
 
     const got = latest({ connection: db, target: 'host:caraxes', since: at(-24 * HOUR) })
 
     expect(got['disk.volume1.used_percent']).toBe(42.0)
-  })
-
-  it('never restarts coverage on a slow round', () => {
-    // the gap is measured between round starts, so a round's own duration is
-    // spent inside it. A slow round can spend MAX_ROUND_SECONDS on ssh before
-    // the loop sleeps VITALS_INTERVAL again: ~120s apart, collector never
-    // stopped. A 90s tolerance tripped on that every 15 minutes and blanked
-    // every uptime score for the following 24 hours.
-    writeHeartbeat({ connection: db, at: T0 })
-    writeHeartbeat({ connection: db, at: at(120) })
-
-    expect(coverageSince(db)).toEqual(T0)
   })
 
   it('admits a worst-case round in the coverage gap', () => {
@@ -353,7 +360,7 @@ describe('store', () => {
       connection: db,
       target: 'host:vhagar',
       at: T0,
-      samples: [{ metric: 'load.1m', value: 0.14, kind: 'gauge' }],
+      samples: [{ metric: 'load.1m', value: 0.14 }],
     })
 
     expect(latest({ connection: db, target: 'host:vhagar', since: ANY_AGE })['load.1m']).toBe(0.14)

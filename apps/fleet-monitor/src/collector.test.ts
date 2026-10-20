@@ -12,7 +12,7 @@ import {
   samplesFromSections,
   tick,
 } from '@/collector.js'
-import type { CompactJob } from '@/compaction.js'
+import type { PruneJob } from '@/retention.js'
 import { fleetHosts, host, SLOW_TIMEOUT, VITALS_TIMEOUT } from '@/config.js'
 import { session } from '@/db.js'
 import { checkResult, history, type CheckResult, observedRun, openIncidents } from '@/incidents.js'
@@ -720,20 +720,20 @@ describe('isSlowRound', () => {
 })
 
 // No Python counterpart: run_forever and run_all had no tests, and these pin
-// the two seams the port added, the injectable compaction and the abort that
+// the two seams the port added, the injectable prune and the abort that
 // stops both loops.
 describe('runForever', () => {
-  it('runs a whole first round, compacts, and returns once aborted', async () => {
+  it('runs a whole first round, prunes, and returns once aborted', async () => {
     const db = tempDbPath()
     const controller = new AbortController()
-    const jobs: CompactJob[] = []
+    const jobs: PruneJob[] = []
 
     await runForever({
       path: db,
       signal: controller.signal,
       run: fakeSsh(sshResult({ ok: true, stdout: stdoutOf({ ...SECTIONS, ...SLOW_SECTIONS }) })),
       send: DOCKER_REFUSED,
-      compact: (job) => {
+      prune: (job) => {
         jobs.push(job)
         controller.abort()
       },
@@ -742,15 +742,15 @@ describe('runForever', () => {
     expect(jobs).toHaveLength(1)
     expect(jobs[0].path).toBe(db)
     // one instant stamps the whole round: the tick, the slow tier and the
-    // compaction all judge against the same `now`
+    // prune all judge against the same `now`
     expect(lastHeartbeatOf(db)).toEqual(jobs[0].now)
     expect(latestOf({ path: db, target: 'host:meleys' })['disk.volume1.used_percent']).toBe(40.0)
   })
 
-  it('rejects when the compaction fails', async () => {
+  it('rejects when the prune fails', async () => {
     // Python let the exception out of to_thread and out of the loop, which
     // ended the process; the port keeps that rather than looping on a broken
-    // compaction
+    // prune
     const db = tempDbPath()
 
     await expect(
@@ -758,7 +758,7 @@ describe('runForever', () => {
         path: db,
         run: fakeSsh(sshResult({ ok: true, stdout: stdoutOf(SECTIONS) })),
         send: DOCKER_REFUSED,
-        compact: async () => {
+        prune: async () => {
           throw new Error('disk full')
         },
       }),

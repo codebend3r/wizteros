@@ -10,7 +10,7 @@ import {
   VITALS_TIMEOUT,
 } from '@/config.js'
 import { type Connection, session } from '@/db.js'
-import { type Compact, compactInWorker } from '@/compaction.js'
+import { type Prune, pruneInWorker } from '@/retention.js'
 import * as incidents from '@/incidents.js'
 import { runForever as runPlexForever } from '@/plexSync/index.js'
 import * as docker from '@/probes/docker.js'
@@ -416,7 +416,7 @@ const unlessAborted = <T>({
 
 /**
  * One round of the loop: the tick, then on a slow round the slow tier and the
- * compaction. One instant stamps all three, as `now` did in the Python loop.
+ * prune. One instant stamps all three, as `now` did in the Python loop.
  */
 const round = async ({
   index,
@@ -424,14 +424,14 @@ const round = async ({
   signal,
   run,
   send,
-  compact,
+  prune,
 }: {
   index: number
   path: string
   signal: AbortSignal
   run: RunSsh
   send: Send
-  compact: Compact
+  prune: Prune
 }): Promise<void> => {
   const now = new Date()
   await unlessAborted({ work: tick({ at: now, path, run, send }), signal })
@@ -450,15 +450,15 @@ const round = async ({
   // off the event loop: this is blocking sqlite, and a stalled loop is a
   // stalled vitals tier, which is what MAX_ROUND_SECONDS and every tolerance
   // derived from it are supposed to bound
-  await unlessAborted({ work: Promise.resolve(compact({ path, now })), signal })
+  await unlessAborted({ work: Promise.resolve(prune({ path, now })), signal })
 }
 
 /**
- * Vitals every 30s, slow hardware and compaction every 15 minutes.
+ * Vitals every 30s, slow hardware and the prune every 15 minutes.
  *
  * Returns once `signal` aborts, from whichever await it was at; a failure of
  * anything else still rejects, as it raised out of the Python loop. `run`,
- * `send` and `compact` are parameters only so a test can drive a round
+ * `send` and `prune` are parameters only so a test can drive a round
  * without the LAN or a worker.
  */
 export const runForever = async ({
@@ -466,19 +466,19 @@ export const runForever = async ({
   signal = new AbortController().signal,
   run = ssh.run,
   send = http.send,
-  compact = compactInWorker,
+  prune = pruneInWorker,
 }: {
   path: string
   signal?: AbortSignal
   run?: RunSsh
   send?: Send
-  compact?: Compact
+  prune?: Prune
 }): Promise<void> => {
   initDb(path)
   await every({
     seconds: VITALS_INTERVAL,
     signal,
-    round: (index) => round({ index, path, signal, run, send, compact }),
+    round: (index) => round({ index, path, signal, run, send, prune }),
   })
 }
 
