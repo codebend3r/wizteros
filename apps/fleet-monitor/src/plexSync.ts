@@ -111,27 +111,27 @@ export const excludedSections = ({
   )
 
 /**
- * One Plex answer, decoded, or the reason there is none. `reason` is empty on
- * success and otherwise names the transport failure the way the docker
- * endpoint's checks do, plus `bad_json` for a 200 nothing could parse.
- * `payload` is null when there is no answer, as it was None in Python.
+ * One Plex answer, decoded, or the reason there is none. `reason` names the
+ * transport failure the way the docker endpoint's checks do, plus `bad_json`
+ * for a 200 nothing could parse or that carried a bare JSON `null`.
  */
-export type Fetched = Readonly<{
-  payload: unknown
-  reason: string
-}>
+export type Fetched =
+  | Readonly<{ ok: true; payload: unknown }>
+  | Readonly<{ ok: false; reason: string }>
 
 /**
  * Whether the server said something the caller can act on.
  *
  * A 404 is the server saying what was asked for does not exist any more,
  * which is an answer: the enrichment stubs those keys and moves on. Anything
- * else with no payload is the server not answering, which is not the same
- * fact and ends the pass. Stated once because both enrichment paths have to
- * draw the line in the same place.
+ * else that failed is the server not answering, which is not the same fact
+ * and ends the pass. Stated once because both enrichment paths have to draw
+ * the line in the same place.
  */
-export const answeredOrGone = (fetched: Fetched): boolean =>
-  fetched.payload !== null || fetched.reason === 'http_404'
+const answeredOrGone = (fetched: Fetched): boolean => fetched.ok || fetched.reason === 'http_404'
+
+/** What an answer described, or nothing for a key the server has forgotten. */
+const payloadOf = (fetched: Fetched): unknown => (fetched.ok ? fetched.payload : null)
 
 /**
  * What one round did for one host: whether the history pass succeeded and
@@ -186,10 +186,27 @@ const urlencode = (params: Readonly<Record<string, string>>): string =>
     .map(([key, value]) => `${quotePlus(key)}=${quotePlus(value)}`)
     .join('&')
 
+/** One GET a pass asks of its server: the path, its query, and the page wanted. */
+export type PlexRequest = Readonly<{
+  path: string
+  params?: Readonly<Record<string, string>>
+  start?: number
+  size?: number
+}>
+
 /**
- * GET one Plex path as JSON, never failing on the server's account. `timeout`
- * is the whole request's budget in seconds, the transport's (TIMEOUT) unless
- * a caller narrows it.
+ * One Plex server as a pass sees it: the host it is, and a GET that already
+ * carries the token and the transport. Built once per host per pass, so
+ * nothing below has to hand the four of them along.
+ */
+export type PlexClient = Readonly<{
+  host: Host
+  get: (request: PlexRequest) => Promise<Fetched>
+}>
+
+/**
+ * The client for one server. Its `get` fetches one Plex path as JSON, never
+ * failing on the server's account, within the transport's budget.
  *
  * Paging travels in the two container headers, the way every Plex client
  * sends it. The query keeps `>` and `:` literal because `viewedAt>=` and
@@ -202,52 +219,44 @@ const urlencode = (params: Readonly<Record<string, string>>): string =>
  * The whole request gets the budget, headers to last byte, so a server that
  * keeps trickling bytes cannot hold a five-server loop for an hour.
  *
+ * A 200 carrying a bare JSON `null` is a failure named `bad_json`: there is
+ * nothing in it to store, and reading it as an answer let a pass report
+ * success having committed nothing.
+ *
  * The one rejection is the transport's signal aborting, which is a shutdown
  * rather than the server failing: `getJson` surfaces it as an AbortError,
  * which `logRaised` passes through, so a round torn down mid-request records
  * no failed check against a server that did nothing wrong. Python's task
  * cancellation did the same.
  */
-export const fetch = async ({
+export const plexClient = ({
   host,
-  path,
   token,
-  params = null,
-  start = null,
-  size = null,
-  timeout = null,
   via = transport(),
 }: {
   host: Host
-  path: string
   token: string
-  params?: Readonly<Record<string, string>> | null
-  start?: number | null
-  size?: number | null
-  timeout?: number | null
   via?: Transport
-}): Promise<Fetched> => {
-  const budget = timeout ?? via.timeout
-  const query = urlencode(params ?? {})
-  const url = `${host.plex_url}${path}${query ? `?${query}` : ''}`
-  const headers: Readonly<Record<string, string>> = {
-    'X-Plex-Token': token,
-    Accept: 'application/json',
-    ...(start === null ? {} : { 'X-Plex-Container-Start': String(start) }),
-    ...(size === null ? {} : { 'X-Plex-Container-Size': String(size) }),
-  }
-  const result = await getJson({
-    url,
-    timeout: budget,
-    headers,
-    verify: !secure(host),
-    signal: via.signal,
-    get: via.send,
-  })
-  return result.ok
-    ? { payload: result.payload, reason: '' }
-    : { payload: null, reason: result.reason }
-}
+}): PlexClient => ({
+  host,
+  get: async ({ path, params = {}, start, size }) => {
+    const query = urlencode(params)
+    const result = await getJson({
+      url: `${host.plex_url}${path}${query ? `?${query}` : ''}`,
+      timeout: via.timeout,
+      headers: {
+        'X-Plex-Token': token,
+        Accept: 'application/json',
+        ...(start === undefined ? {} : { 'X-Plex-Container-Start': String(start) }),
+        ...(size === undefined ? {} : { 'X-Plex-Container-Size': String(size) }),
+      },
+      verify: !secure(host),
+      signal: via.signal,
+      get: via.send,
+    })
+    return result.ok && result.payload === null ? { ok: false, reason: 'bad_json' } : result
+  },
+})
 
 /**
  * Record a history pass that could not complete, against the server it could
@@ -278,10 +287,42 @@ const failed = ({
 }
 
 /**
+ * Page one Plex listing from `start` to its end, handing each page to `keep`
+ * before asking for the next. Returns the failure reason, or empty when the
+ * last page landed.
+ *
+ * Each page is kept, and so committed, before the next is asked for, which is
+ * what lets a pass that dies midway resume from the last page that landed.
+ */
+const pageAll = async ({
+  client,
+  request,
+  pageSize,
+  keep,
+  start = 0,
+}: {
+  client: PlexClient
+  request: Omit<PlexRequest, 'start' | 'size'>
+  pageSize: number
+  keep: (payload: unknown) => void
+  start?: number
+}): Promise<string> => {
+  const fetched = await client.get({ ...request, start, size: pageSize })
+  if (!fetched.ok) {
+    return fetched.reason
+  }
+  keep(fetched.payload)
+  const info = plex.pageInfo(fetched.payload)
+  if (info === null || info.size === 0 || start + info.size >= info.total_size) {
+    return ''
+  }
+  return pageAll({ client, request, pageSize, keep, start: start + info.size })
+}
+
+/**
  * Page the ledger from `since` upward, committing each page with the cursor
  * it advanced. Returns the failure reason, or empty when the last page
- * landed. Each page asks for the next one once it has committed, so `start`
- * is where this call's page begins.
+ * landed.
  *
  * Ascending, so the cursor only ever moves forward and a page that commits is
  * a page nobody has to read again. A play landing on the server while the
@@ -292,73 +333,51 @@ const failed = ({
  * moves the cursor: the page was read, and re-reading it next pass would only
  * drop the same rows again.
  */
-const pageHistory = async ({
-  host,
+const pageHistory = ({
+  client,
   path,
-  token,
   since,
   pageSize,
   excluded,
-  via,
-  start = 0,
 }: {
-  host: Host
+  client: PlexClient
   path: string
-  token: string
   since: number
   pageSize: number
   excluded: ReadonlySet<string>
-  via: Transport
-  start?: number
-}): Promise<string> => {
-  const fetched = await fetch({
-    host,
-    path: HISTORY_PATH,
-    token,
-    params: { sort: 'viewedAt:asc', 'viewedAt>': String(since) },
-    start,
-    size: pageSize,
-    via,
-  })
-  if (fetched.payload === null) {
-    return fetched.reason
-  }
-  const entries = plex.parseHistory(fetched.payload)
-  const kept = entries.filter(
-    (entry) => entry.section_id === null || !excluded.has(entry.section_id),
-  )
-  const info = plex.pageInfo(fetched.payload)
-  const inserted = session({
-    path,
-    work: (connection) => {
-      const count = plays.insertPlays({ connection, host: host.name, plays: kept })
-      if (entries.length > 0) {
-        plays.setHistoryCursor({
-          connection,
-          host: host.name,
-          cursor: entries.reduce((newest, entry) => Math.max(newest, entry.viewed_at), -Infinity),
-        })
+}): Promise<string> =>
+  pageAll({
+    client,
+    request: { path: HISTORY_PATH, params: { sort: 'viewedAt:asc', 'viewedAt>': String(since) } },
+    pageSize,
+    keep: (payload) => {
+      const host = client.host.name
+      const entries = plex.parseHistory(payload)
+      const kept = entries.filter(
+        (entry) => entry.section_id === null || !excluded.has(entry.section_id),
+      )
+      const inserted = session({
+        path,
+        work: (connection) => {
+          const count = plays.insertPlays({ connection, host, plays: kept })
+          if (entries.length > 0) {
+            plays.setHistoryCursor({
+              connection,
+              host,
+              cursor: entries.reduce(
+                (newest, entry) => Math.max(newest, entry.viewed_at),
+                -Infinity,
+              ),
+            })
+          }
+          return count
+        },
+      })
+      if (inserted) {
+        log.log(`play history for ${host}: ${inserted} new plays`)
       }
-      return count
     },
   })
-  if (inserted) {
-    log.log(`play history for ${host.name}: ${inserted} new plays`)
-  }
-  if (info === null || info.size === 0 || start + info.size >= info.total_size) {
-    return ''
-  }
-  return pageHistory({
-    host,
-    path,
-    token,
-    since,
-    pageSize,
-    excluded,
-    via,
-    start: start + info.size,
-  })
-}
 
 /** Keep what a metadata request described and stub what it did not. */
 const storeAnswered = ({
@@ -397,35 +416,32 @@ const storeAnswered = ({
  * keys after it unasked.
  */
 const enrichSingly = ({
-  host,
+  client,
   path,
-  token,
   now,
   keys,
-  via,
 }: {
-  host: Host
+  client: PlexClient
   path: string
-  token: string
   now: Date
   keys: readonly string[]
-  via: Transport
 }): Promise<string> =>
   keys.reduce<Promise<string>>(async (previous, key) => {
     const reason = await previous
     if (reason) {
       return reason
     }
-    const fetched = await fetch({ host, path: `/library/metadata/${key}`, token, via })
-    if (fetched.reason === 'timeout') {
+    const { host } = client
+    const fetched = await client.get({ path: `/library/metadata/${key}` })
+    if (!fetched.ok && fetched.reason === 'timeout') {
       log.warn(`metadata for ${host.name} item ${key} stalled on its own; stubbed`)
       storeAnswered({ path, host, now, keys: [key], payload: null })
       return ''
     }
-    if (!answeredOrGone(fetched)) {
+    if (!fetched.ok && !answeredOrGone(fetched)) {
       return fetched.reason
     }
-    storeAnswered({ path, host, now, keys: [key], payload: fetched.payload })
+    storeAnswered({ path, host, now, keys: [key], payload: payloadOf(fetched) })
     return ''
   }, Promise.resolve(''))
 
@@ -437,19 +453,16 @@ const enrichSingly = ({
  * about once rather than on every pass. Each batch shrinks the missing set,
  * so this always terminates.
  */
-export const enrichItems = async ({
-  host,
+const enrichItems = async ({
+  client,
   path,
-  token,
   now,
-  via = transport(),
 }: {
-  host: Host
+  client: PlexClient
   path: string
-  token: string
   now: Date
-  via?: Transport
 }): Promise<string> => {
+  const { host } = client
   const keys = session({
     path,
     mode: 'read',
@@ -459,24 +472,24 @@ export const enrichItems = async ({
   if (keys.length === 0) {
     return ''
   }
-  const fetched = await fetch({ host, path: `/library/metadata/${keys.join(',')}`, token, via })
-  if (fetched.reason === 'timeout') {
+  const fetched = await client.get({ path: `/library/metadata/${keys.join(',')}` })
+  if (!fetched.ok && fetched.reason === 'timeout') {
     // One key can stall a whole batch, and the batch is retried in the same
     // order on every pass, so a stalled key would block every item behind it
     // forever. Ask for each alone: the ones that answer are kept, the one
     // that stalls on its own is stubbed and named, and the next inventory
     // restores it if the library still has it.
-    const reason = await enrichSingly({ host, path, token, now, keys, via })
+    const reason = await enrichSingly({ client, path, now, keys })
     if (reason) {
       return reason
     }
-    return enrichItems({ host, path, token, now, via })
+    return enrichItems({ client, path, now })
   }
-  if (!answeredOrGone(fetched)) {
+  if (!fetched.ok && !answeredOrGone(fetched)) {
     return fetched.reason
   }
-  storeAnswered({ path, host, now, keys, payload: fetched.payload })
-  return enrichItems({ host, path, token, now, via })
+  storeAnswered({ path, host, now, keys, payload: payloadOf(fetched) })
+  return enrichItems({ client, path, now })
 }
 
 /**
@@ -518,9 +531,10 @@ export const syncHistory = async ({
   if (!token) {
     return failed({ host, path, at: now, reason: 'no_token' })
   }
+  const client = plexClient({ host, token, via })
 
-  const root = await fetch({ host, path: '/', token, via })
-  if (root.payload === null) {
+  const root = await client.get({ path: '/' })
+  if (!root.ok) {
     return failed({ host, path, at: now, reason: root.reason })
   }
   const info = plex.parseServer(root.payload)
@@ -538,19 +552,19 @@ export const syncHistory = async ({
     },
   })
 
-  const accounts = await fetch({ host, path: '/accounts', token, via })
-  const devices = await fetch({ host, path: '/devices', token, via })
+  const accounts = await client.get({ path: '/accounts' })
+  const devices = await client.get({ path: '/devices' })
   session({
     path,
     work: (connection) => {
-      if (accounts.payload !== null) {
+      if (accounts.ok) {
         plays.upsertAccounts({
           connection,
           host: host.name,
           accounts: plex.parseAccounts(accounts.payload),
         })
       }
-      if (devices.payload !== null) {
+      if (devices.ok) {
         plays.upsertDevices({
           connection,
           host: host.name,
@@ -564,12 +578,12 @@ export const syncHistory = async ({
     cursor !== null
       ? cursor - OVERLAP_SECONDS
       : epochSeconds(addSeconds({ at: now, seconds: -lookbackDays * DAY_SECONDS }))
-  const paged = await pageHistory({ host, path, token, since, pageSize, excluded, via })
+  const paged = await pageHistory({ client, path, since, pageSize, excluded })
   if (paged) {
     return failed({ host, path, at: now, reason: paged })
   }
   if (enrich) {
-    const reason = await enrichItems({ host, path, token, now, via })
+    const reason = await enrichItems({ client, path, now })
     if (reason) {
       return failed({ host, path, at: now, reason })
     }
@@ -588,62 +602,38 @@ export const syncHistory = async ({
 
 /**
  * Every leaf item of one section, a page per session, all stamped with this
- * run. Returns the failure reason, or empty when the last page landed. Each
- * page asks for the next once it has committed, from `start`.
+ * run. Returns the failure reason, or empty when the last page landed.
  */
-const pageSection = async ({
-  host,
+const pageSection = ({
+  client,
   path,
-  token,
   section,
   now,
   pageSize,
-  via,
-  start = 0,
 }: {
-  host: Host
+  client: PlexClient
   path: string
-  token: string
   section: plex.Section
   now: Date
   pageSize: number
-  via: Transport
-  start?: number
-}): Promise<string> => {
-  const leaf = String(plex.LEAF_TYPE[section.kind])
-  const fetched = await fetch({
-    host,
-    path: `/library/sections/${section.section_id}/all`,
-    token,
-    params: { type: leaf, includeGuids: '0' },
-    start,
-    size: pageSize,
-    via,
-  })
-  if (fetched.payload === null) {
-    return fetched.reason
-  }
-  // the listing does not name its own section on each row
-  const items = plex.parseItems({ payload: fetched.payload, sectionId: section.section_id })
-  const info = plex.pageInfo(fetched.payload)
-  session({
-    path,
-    work: (connection) => plays.upsertItems({ connection, host: host.name, items, seenAt: now }),
-  })
-  if (info === null || info.size === 0 || start + info.size >= info.total_size) {
-    return ''
-  }
-  return pageSection({
-    host,
-    path,
-    token,
-    section,
-    now,
+}): Promise<string> =>
+  pageAll({
+    client,
+    request: {
+      path: `/library/sections/${section.section_id}/all`,
+      params: { type: String(plex.LEAF_TYPE[section.kind]), includeGuids: '0' },
+    },
     pageSize,
-    via,
-    start: start + info.size,
+    keep: (payload) => {
+      // the listing does not name its own section on each row
+      const items = plex.parseItems({ payload, sectionId: section.section_id })
+      session({
+        path,
+        work: (connection) =>
+          plays.upsertItems({ connection, host: client.host.name, items, seenAt: now }),
+      })
+    },
   })
-}
 
 /**
  * One host's inventory pass. True when every section paged to its end.
@@ -676,8 +666,9 @@ export const syncLibrary = async ({
   if (!host.plex_url || !token) {
     return false
   }
-  const sections = await fetch({ host, path: '/library/sections', token, via })
-  if (sections.payload === null) {
+  const client = plexClient({ host, token, via })
+  const sections = await client.get({ path: '/library/sections' })
+  if (!sections.ok) {
     session({
       path,
       work: (connection) =>
@@ -715,7 +706,7 @@ export const syncLibrary = async ({
     if (excluded.has(section.section_id)) {
       return earlier
     }
-    const reason = await pageSection({ host, path, token, section, now, pageSize, via })
+    const reason = await pageSection({ client, path, section, now, pageSize })
     if (reason) {
       log.warn(`inventory for ${host.name} stopped in '${section.title}': ${reason}`)
       return reason
@@ -785,7 +776,7 @@ export const syncHost = async ({
     return { history_ok: historyOk, inventory_ran: false, inventory_complete: false }
   }
   const complete = await syncLibrary({ host, path, now, token, via })
-  const reason = await enrichItems({ host, path, token, now, via })
+  const reason = await enrichItems({ client: plexClient({ host, token, via }), path, now })
   if (reason) {
     // the ledger and the library both landed; what is missing is the detail
     // of a few deleted items, which the next pass asks for again

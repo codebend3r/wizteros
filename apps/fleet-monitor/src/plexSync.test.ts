@@ -866,11 +866,33 @@ describe('plexSync', () => {
     fake.stall.add('/accounts')
     const via = plexSync.transport({ send: fake.send, timeout: 0.05 })
 
-    expect(await plexSync.fetch({ host: HOST, path: '/accounts', token: 'tok', via })).toEqual({
-      payload: null,
-      reason: 'timeout',
+    const client = plexSync.plexClient({ host: HOST, token: 'tok', via })
+
+    expect(await client.get({ path: '/accounts' })).toEqual({ ok: false, reason: 'timeout' })
+    expect((await client.get({ path: '/' })).ok).toBe(true)
+  })
+
+  it('fails a pass whose page is a bare JSON null rather than reporting success', async () => {
+    // a 200 carrying `null` has nothing in it to store; it used to read as an
+    // answer, so the pass recorded a healthy check having committed nothing
+    const path = initialisedPath()
+    const fake = fakePlex({
+      history: [play({ historyId: 1, ratingKey: '100', viewedAt: NOW - DAY })],
     })
-    expect((await plexSync.fetch({ host: HOST, path: '/', token: 'tok', via })).reason).toBe('')
+    const nullHistory: Send = async (call) =>
+      new URL(call.url).pathname === HISTORY ? { status: 200, body: 'null' } : fake.send(call)
+
+    const check = await plexSync.syncHistory({
+      host: HOST,
+      path,
+      now: T0,
+      token: 'tok',
+      lookbackDays: 365,
+      via: plexSync.transport({ send: nullHistory }),
+    })
+
+    expect(check).toEqual({ target: 'plex:syrax', ok: false, reason: 'bad_json' })
+    expect(status(path).last_error).toBe('bad_json')
   })
 
   it('stubs a key that stalls alone and keeps the rest', async () => {
@@ -1045,9 +1067,9 @@ describe('plexSync', () => {
         plex_url: `http://127.0.0.1:${address.port}`,
       })
 
-      expect(await plexSync.fetch({ host: local, path: '/', token: 'tok' })).toEqual({
+      expect(await plexSync.plexClient({ host: local, token: 'tok' }).get({ path: '/' })).toEqual({
+        ok: true,
         payload: ROOT,
-        reason: '',
       })
       const sent = must(seen.at(0)).headers
       expect([sent['x-plex-token'], sent.accept]).toEqual(['tok', 'application/json'])
@@ -1055,12 +1077,13 @@ describe('plexSync', () => {
       // the budget is the full ninety seconds, so only the abort reaching the
       // wire can close this socket inside the wait below
       const controller = new AbortController()
-      const pending = plexSync.fetch({
-        host: local,
-        path: '/wedged',
-        token: 'tok',
-        via: plexSync.transport({ signal: controller.signal }),
-      })
+      const pending = plexSync
+        .plexClient({
+          host: local,
+          token: 'tok',
+          via: plexSync.transport({ signal: controller.signal }),
+        })
+        .get({ path: '/wedged' })
       await vi.waitFor(() => expect(seen.map((request) => request.url)).toContain('/wedged'))
       controller.abort()
 
