@@ -189,11 +189,22 @@ Stack A implementation notes:
 - Validation: `bun run verify --skip-nx-cache` passed across all four workspace projects, including tooling tests, version parity and the security scan. Copy extractor ran in filtered and `--all` modes; both shell scripts passed `bash -n` and ShellCheck.
 - No release or production deployment performed.
 
+Stack B implementation notes:
+
+- B1: `identityFor({snapshot, email, inviteCode})` resolves records by email, then admin link, then invite redeemer, and reports which one answered (`via`).
+- B2: `identitySnapshot` reads Wizarr users and invitations once per unit of work; the checkout reset, renewal, cancel, dunning line and expiry sweep resolve from it. `findUserIdsByEmail` and `findUserIdsByInvite` are gone from the port. A new signup reads `/api/users` once.
+- B3: decision 1 taken as recommended. `strongestTag` (banned over vip over hvu) is read across every address of a person, and a redeemed invite now joins a payer to the Plex account as an admin link does. Checkout, renewal, cancel, the expiry sweep, the stranded-VIP alarm, ban, cancel, reissue and the members list's tag all follow it. Ban disables records under every address; ban and cancel flag every address's subscriptions. Cancel finds the person from the warm members snapshot rather than a fresh 15s read. Checkout now reads Wizarr before the ban check, so a signup's invite waits on `/api/users` and a Wizarr outage defers it to Stripe's retry. The regression tests fail on B2.
+- B4: `rescopeRecords` and `issueInvite({sessionId})` in `invites.ts`; one `payerEmail`; the pending row and the cleared dunning flag stay one write. Two edge cases now differ, both noted in the commit: an invoice with no `customer_email` reads the stored mapping before Stripe, and a checkout with no Stripe customer records a pending row by email.
+- B5: `CustomerRow.tier` is `Tier | null`, read through the legacy aliases; the store forgives case and padding as access recovery did, and `normalizeTier` is confined to Stripe metadata. Members are finished in one walk after one sort. The members sweep, the member page and the identity snapshot read Wizarr in parallel.
+- Validation: `lint:ts`, `typecheck`, `test` (455), `format:check` and `build` for stripe-bridge, uncached, at every commit from B2 on.
+- A `wizteros-reviewer` pass found no blockers; its fixes are folded into B3 to B5.
+- Still to do after merge: `e2e-runner`, release, `deploy:nas`. The five commits sit on one local branch, not yet split into stacked PRs or pushed.
+
 | Stack | State                                     | PRs                                                   |
 | ----- | ----------------------------------------- | ----------------------------------------------------- |
 | 0     | merged                                    | [#70](https://github.com/codebend3r/wizteros/pull/70) |
 | A     | open; A1–A4 combined, local checks passed | [#71](https://github.com/codebend3r/wizteros/pull/71) |
-| B     | not started                               |                                                       |
+| B     | implemented locally; not pushed           |                                                       |
 | C     | not started                               |                                                       |
 | D     | not started                               |                                                       |
 | E     | not started                               |                                                       |
