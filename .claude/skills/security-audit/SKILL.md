@@ -81,7 +81,7 @@ legal name, personal domains and the handles the repo should never carry.
    - **Injection.** Every SQLite value bound, never interpolated; any `spawn`/`exec` built
      from an argv array, not a shell string; no user-controlled URLs.
    - **Secrets in flight.** Nothing logged, echoed in an error body, or stored; `.env`
-     excluded from every Docker context (`Dockerfile.dockerignore`); which containers get
+     excluded from every Docker context (`server.Dockerfile.dockerignore`); which containers get
      which env (a public-facing service should not hold the Stripe key).
    - **Containers and workflows.** Root users, published ports, unauthenticated Docker TCP,
      `pull_request_target`, `${{ github.event.* }}` inside `run:`, unpinned third-party

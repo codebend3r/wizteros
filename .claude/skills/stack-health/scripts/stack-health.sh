@@ -292,7 +292,7 @@ else
         # the paths the NAS builds from. Same list as deploy-nas.sh's NAS_PATHS.
         DRIFT_FILES="$(git diff --name-only "$DEPLOYED" "$ORIGIN" \
           -- apps/stripe-bridge apps/fleet-monitor \
-          libs/server-common docker-compose.yml scripts package.json bun.lock 2>/dev/null \
+          libs/server-common docker-compose.yml server.Dockerfile server.Dockerfile.dockerignore scripts package.json bun.lock 2>/dev/null \
           | grep -c . || true)"
         if [ -z "$MERGE_BASE" ]; then
           note "common ancestor:   none, the two histories share no commits"

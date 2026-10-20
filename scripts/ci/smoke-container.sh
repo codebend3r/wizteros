@@ -73,6 +73,8 @@ if [ "$app" = stripe-bridge ]; then
   expect 401 "$base/admin/members"
   expect 400 -X POST -H 'Content-Type: application/json' -d '{}' "$base/webhook"
   expect 400 -X POST -H 'Content-Type: application/json' -d '{}' "$base/stripe/webhook"
+  # The build leaves the test plumbing out of dist, so none of it ships.
+  docker exec "$container" test ! -e dist/test
 else
   expect 200 "$base/health"
   expect 401 "$base/fleet"

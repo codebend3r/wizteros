@@ -94,7 +94,7 @@ Split the commits into two piles:
   `apps/admin-portal/` (ships via Netlify from main), the two NestJS servers
   (`apps/stripe-bridge/`, `apps/fleet-monitor/`) and `libs/server-common/`
   they share, and the deploy config that alters the running stack
-  (`docker-compose.yml`, `netlify.toml`, each server's `Dockerfile`).
+  (`docker-compose.yml`, `netlify.toml`, `server.Dockerfile`).
 - **Housekeeping**: `docs/`, `.github/`, `.claude/`, `scripts/` tooling, CI, test-only
   changes, and the monorepo wiring itself (`nx.json`, root `package.json` aliases,
   `project.json` target definitions, `nx.includedScripts` in any app's

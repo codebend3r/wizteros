@@ -2,12 +2,18 @@ name: stripe-bridge
 
 services:
   # Built from the repo root because the app depends on libs/server-common
-  # through the bun workspace. TZ comes from .env, which is what keeps the
+  # through the bun workspace; server.Dockerfile builds either server, and
+  # the args pick this one. TZ comes from .env, which is what keeps the
   # baseline rotation firing at the same local hour.
   stripe-bridge:
     build:
       context: .
-      dockerfile: apps/stripe-bridge/Dockerfile
+      dockerfile: server.Dockerfile
+      args:
+        APP: stripe-bridge
+        PORT: '8000'
+        DB_ENV: MAP_DB_PATH
+        DB_FILE: bridge.db
     image: wizteros-stripe-bridge
     container_name: stripe-bridge
     restart: unless-stopped
@@ -32,11 +38,18 @@ services:
   # dashboard down with it, and restarting either one alone is safe.
   #
   # Both are built from the repo root because the app depends on
-  # libs/server-common through the bun workspace.
+  # libs/server-common through the bun workspace, with the same
+  # server.Dockerfile args, so they share one image.
   fleet-monitor:
-    build:
+    build: &fleet-monitor-build
       context: .
-      dockerfile: apps/fleet-monitor/Dockerfile
+      dockerfile: server.Dockerfile
+      args:
+        APP: fleet-monitor
+        PORT: '8010'
+        DB_ENV: FM_DB_PATH
+        DB_FILE: fleet.db
+        SYSTEM_PACKAGES: openssh-client
     image: wizteros-fleet-monitor
     container_name: fleet-monitor
     restart: unless-stopped
@@ -61,9 +74,7 @@ services:
       retries: 3
 
   fleet-collector:
-    build:
-      context: .
-      dockerfile: apps/fleet-monitor/Dockerfile
+    build: *fleet-monitor-build
     image: wizteros-fleet-monitor
     container_name: fleet-collector
     restart: unless-stopped

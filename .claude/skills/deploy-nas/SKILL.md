@@ -87,7 +87,7 @@ Run it as a single Bash invocation so the user sees the whole transcript. Defaul
   original names, and the Python apps' own files (`stripe_bridge/`, `fleet_monitor/`,
   `tests/`, `requirements*.txt`, `pytest.ini`, `ruff.toml`) are still inside
   `apps/stripe-bridge/` and `apps/fleet-monitor/` on the NAS. None of it is built: each
-  `Dockerfile.dockerignore` allowlists what an image takes. Remove it by hand once the
+  `server.Dockerfile.dockerignore` allowlists what an image takes. Remove it by hand once the
   first deploy after the removal verifies healthy, listing each path before deleting it.
 
 ## Reporting Back
