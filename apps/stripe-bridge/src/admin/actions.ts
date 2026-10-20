@@ -273,7 +273,7 @@ export const banMember = async ({
   email: string
 }): Promise<BanResult> => {
   bridge.store.setMemberTag({ email, tag: 'banned' })
-  const ids = await bridge.wizarr.findUserIdsByEmail(email)
+  const ids = (await bridge.wizarr.findUsersByEmail(email)).map((user) => user.id)
   await eachInOrder({ items: ids, run: (id) => bridge.wizarr.disableUser(id) })
   const billing = await flagSubscriptions({ bridge, email }).then(
     ({ flagged }) => {
@@ -375,7 +375,7 @@ export const resetExpiry = async ({
   days: number | null
   expiresAt: string | null
 }): Promise<ExpiryResult> => {
-  const ids = await bridge.wizarr.findUserIdsByEmail(email)
+  const ids = (await bridge.wizarr.findUsersByEmail(email)).map((user) => user.id)
   if (ids.length === 0) {
     throw httpError({ status: 404, detail: 'no member for that email' })
   }

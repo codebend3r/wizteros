@@ -29,8 +29,6 @@ describe('checkout.session.completed', () => {
       code: 'abc',
       url: 'http://wizarr-lan:5690/j/abc',
     })
-    h.bridge.wizarr.findUsersByEmail.mockResolvedValue([]) // no existing records yet
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([])
     await h.handle(
       checkout({
         id: 'evt_checkout_1',
@@ -55,6 +53,9 @@ describe('checkout.session.completed', () => {
     })
     // brand-new member has no records to time-box; invite redemption sets expiry
     expect(h.bridge.wizarr.setExpiry).not.toHaveBeenCalled()
+    // the ~15s users list is read once for the whole checkout
+    expect(h.bridge.wizarr.listUsers).toHaveBeenCalledOnce()
+    expect(h.bridge.wizarr.findUsersByEmail).not.toHaveBeenCalled()
     expect(h.bridge.store.getMapping({ customerId: 'cus_1' })?.invite_code).toBe('abc')
     // checkout is the confirmed-payment signal that drives "Subscribed Monthly"
     expect(h.rowFor('a@x.com')?.subscribed).toBe(true)
@@ -67,9 +68,9 @@ describe('checkout.session.completed', () => {
     // Redeeming re-scopes the share in place on the share server, so a member
     // already on Meleys alone keeps access through the invite window.
     h.wizarrMints('abc')
-    h.bridge.wizarr.findUsersByEmail.mockResolvedValue([
-      { id: 147, server: 'Meleys' },
-      { id: 57, server: 'Meleys' },
+    h.bridge.wizarr.listUsers.mockResolvedValue([
+      { id: 147, email: 'a@x.com', server: 'Meleys' },
+      { id: 57, email: 'a@x.com', server: 'Meleys' },
     ])
     await h.handle(
       checkout({
@@ -95,9 +96,9 @@ describe('checkout.session.completed', () => {
     // on every surviving record — otherwise a short pre-signup window (e.g. the
     // 14-day Invited backfill) survives the purchase.
     h.wizarrMints('abc')
-    h.bridge.wizarr.findUsersByEmail.mockResolvedValue([
-      { id: 147, server: 'Meleys' },
-      { id: 57, server: 'Meleys' },
+    h.bridge.wizarr.listUsers.mockResolvedValue([
+      { id: 147, email: 'a@x.com', server: 'Meleys' },
+      { id: 57, email: 'a@x.com', server: 'Meleys' },
     ])
     await h.handle(
       checkout({
@@ -120,9 +121,9 @@ describe('checkout.session.completed', () => {
   it('a VIP member is never time-boxed', async () => {
     h.bridge.store.setMemberTag({ email: 'vip@x.com', tag: 'vip' })
     h.wizarrMints('abc')
-    h.bridge.wizarr.findUsersByEmail.mockResolvedValue([
-      { id: 147, server: 'Meleys' },
-      { id: 57, server: 'Meleys' },
+    h.bridge.wizarr.listUsers.mockResolvedValue([
+      { id: 147, email: 'vip@x.com', server: 'Meleys' },
+      { id: 57, email: 'vip@x.com', server: 'Meleys' },
     ])
     await h.handle(
       checkout({
@@ -144,12 +145,12 @@ describe('checkout.session.completed', () => {
     // friendship), so a legacy member still on the retired servers is fully
     // reset; redeeming the emailed invite re-grants the tier on Meleys alone.
     h.wizarrMints('abc')
-    h.bridge.wizarr.findUsersByEmail.mockResolvedValue([
-      { id: 147, server: 'Vermithor' }, // retired
-      { id: 57, server: 'Meleys' },
-      { id: 106, server: 'Vhagar' }, // retired
-      { id: 155, server: 'Syrax' }, // retired
-      { id: 204, server: 'Caraxes' }, // retired
+    h.bridge.wizarr.listUsers.mockResolvedValue([
+      { id: 147, email: 'a@x.com', server: 'Vermithor' }, // retired
+      { id: 57, email: 'a@x.com', server: 'Meleys' },
+      { id: 106, email: 'a@x.com', server: 'Vhagar' }, // retired
+      { id: 155, email: 'a@x.com', server: 'Syrax' }, // retired
+      { id: 204, email: 'a@x.com', server: 'Caraxes' }, // retired
     ])
     await h.handle(
       checkout({
@@ -174,7 +175,6 @@ describe('checkout.session.completed', () => {
 
   it('a brand-new member has nothing disabled', async () => {
     h.wizarrMints('abc')
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([])
     await h.handle(
       checkout({
         id: 'evt_checkout_fresh',
@@ -198,7 +198,6 @@ describe('checkout.session.completed', () => {
   it('falls back to the customer_email field', async () => {
     // Some checkout sessions carry customer_email instead of customer_details.
     h.wizarrMints('abc')
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([])
     await h.handle(
       checkout({
         id: 'evt_fallback_email',
@@ -220,8 +219,6 @@ describe('checkout.session.completed', () => {
     })
     h.bridge.store.setPaymentState({ email: 'a@x.com', state: 'past_due' })
     h.wizarrMints('abc2')
-    h.bridge.wizarr.findUsersByEmail.mockResolvedValue([])
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([])
     await h.handle(
       checkout({
         id: 'evt_checkout_after_dunning',
@@ -238,7 +235,6 @@ describe('checkout.session.completed', () => {
 
   it('a checkout without tier metadata defaults to bronze', async () => {
     h.wizarrMints('abc')
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([])
     await h.handle(
       checkout({
         id: 'evt_no_tier',
@@ -257,7 +253,6 @@ describe('checkout.session.completed', () => {
 
   it('a gold checkout enables downloads', async () => {
     h.wizarrMints('abc')
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([])
     await h.handle(
       checkout({
         id: 'evt_gold',
@@ -281,7 +276,6 @@ describe('checkout.session.completed', () => {
 
   it('a youth checkout is scoped to the youth libraries only', async () => {
     h.wizarrMints('abc')
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([])
     await h.handle(
       checkout({
         id: 'evt_youth',
@@ -326,7 +320,6 @@ describe('checkout.session.completed', () => {
 
   it('records the tier for the customer', async () => {
     h.wizarrMints('abc')
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([])
     await h.handle(
       checkout({
         id: 'evt_tier_1',
@@ -358,7 +351,7 @@ describe('checkout.session.completed', () => {
     })
     h.wizarrMints('abc')
     // a record on a server bronze does not cover -> disable-first path
-    h.bridge.wizarr.findUsersByEmail.mockResolvedValue([{ id: 7, server: 'Vhagar' }])
+    h.bridge.wizarr.listUsers.mockResolvedValue([{ id: 7, email: 'a@x.com', server: 'Vhagar' }])
     h.bridge.wizarr.disableUser.mockRejectedValueOnce(new Error('ReadTimeout: wizarr slow'))
     await expect(h.handle(event)).rejects.toThrow('wizarr slow')
     expect(h.bridge.wizarr.createInvite).toHaveBeenCalledOnce()
@@ -384,8 +377,6 @@ describe('checkout.session.completed', () => {
       },
     })
     h.wizarrMints('abc')
-    h.bridge.wizarr.findUsersByEmail.mockResolvedValue([])
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([])
     h.bridge.mailer.sendInvite.mockRejectedValueOnce(new Error('smtp down'))
     await expect(h.handle(event)).rejects.toThrow('smtp down')
 
@@ -433,8 +424,6 @@ describe('checkout.session.completed', () => {
     // (who, what tier, how much, and the same link the member got) without
     // opening Stripe.
     h.wizarrMints('abc')
-    h.bridge.wizarr.findUsersByEmail.mockResolvedValue([])
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([])
     const session = {
       id: 'cs_1',
       customer: 'cus_1',

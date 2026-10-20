@@ -9,7 +9,7 @@ import {
 } from '@/clients/mailer.js'
 import { TierScopeEmpty } from '@/invites.js'
 import { resolveUserIds } from '@/members.js'
-import { asBridge } from '@/test/fakes.js'
+import { asBridge, recordsUnder } from '@/test/fakes.js'
 import { customerEmail } from '@/webhook/handlers.js'
 import {
   type WebhookHarness,
@@ -30,7 +30,7 @@ afterEach(stopWebhookHarness)
 describe('handleEvent', () => {
   it('drops a duplicate event', async () => {
     h.bridge.store.upsertPending({ customerId: 'cus_1', email: 'a@x.com', inviteCode: 'abc' })
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([9])
+    h.bridge.wizarr.listUsers.mockResolvedValue(recordsUnder({ email: 'a@x.com', ids: [9] }))
     const event = invoicePaid({ id: 'evt_inv_cycle_dup', customer: 'cus_1', email: 'a@x.com' })
     await h.handle(event)
     await h.handle(event)
@@ -53,7 +53,6 @@ describe('handleEvent', () => {
 
     // fix the fake and re-handle the SAME event id -- it must not be skipped
     h.wizarrMints('abc')
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([])
     await h.handle(event)
     expect(h.bridge.wizarr.createInvite).toHaveBeenCalledOnce()
   })
@@ -92,15 +91,14 @@ describe('resolveUserIds', () => {
   it('falls back from email to the invite', async () => {
     h.bridge.store.upsertPending({ customerId: 'cus_1', email: 'a@x.com', inviteCode: 'abc' })
     // email miss (Stripe email != Plex email) -> resolve via the stored invite code
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([])
-    h.bridge.wizarr.findUserIdsByInvite.mockResolvedValue([7, 8])
+    h.bridge.wizarr.listUsers.mockResolvedValue(recordsUnder({ email: 'plex@x.com', ids: [7, 8] }))
+    h.bridge.wizarr.listInvitations.mockResolvedValue([{ id: 1, code: 'abc', used_by: '<User 7>' }])
     const ids = await resolveUserIds({
       bridge: asBridge(h.bridge),
       customerId: 'cus_1',
       email: 'a@x.com',
     })
     expect(ids).toEqual([7, 8])
-    expect(h.bridge.wizarr.findUserIdsByInvite).toHaveBeenCalledExactlyOnceWith('abc')
   })
 
   it('uses a linked address before the invite code', async () => {
@@ -112,10 +110,13 @@ describe('resolveUserIds', () => {
     // access is never extended.
     h.bridge.store.upsertPending({ customerId: 'cus_1', email: 'pays@x.com', inviteCode: 'abc' })
     h.bridge.store.setMemberLink({ stripeEmail: 'pays@x.com', plexEmail: 'watches@x.com' })
-    h.bridge.wizarr.findUserIdsByEmail.mockImplementation(async (email) =>
-      email === 'watches@x.com' ? [7, 8] : [],
-    )
-    h.bridge.wizarr.findUserIdsByInvite.mockResolvedValue([99])
+    h.bridge.wizarr.listUsers.mockResolvedValue([
+      ...recordsUnder({ email: 'watches@x.com', ids: [7, 8] }),
+      ...recordsUnder({ email: 'other@x.com', ids: [99] }),
+    ])
+    h.bridge.wizarr.listInvitations.mockResolvedValue([
+      { id: 1, code: 'abc', used_by: '<User 99>' },
+    ])
 
     const ids = await resolveUserIds({
       bridge: asBridge(h.bridge),
@@ -124,20 +125,22 @@ describe('resolveUserIds', () => {
     })
 
     expect(ids).toEqual([7, 8])
-    expect(h.bridge.wizarr.findUserIdsByInvite).not.toHaveBeenCalled()
   })
 
   it("still prefers the member's own email over a link", async () => {
     h.bridge.store.upsertPending({ customerId: 'cus_1', email: 'pays@x.com', inviteCode: 'abc' })
     h.bridge.store.setMemberLink({ stripeEmail: 'pays@x.com', plexEmail: 'watches@x.com' })
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([1])
+    h.bridge.wizarr.listUsers.mockResolvedValue([
+      ...recordsUnder({ email: 'pays@x.com', ids: [1] }),
+      ...recordsUnder({ email: 'watches@x.com', ids: [7] }),
+    ])
     const ids = await resolveUserIds({
       bridge: asBridge(h.bridge),
       customerId: 'cus_1',
       email: 'pays@x.com',
     })
     expect(ids).toEqual([1])
-    expect(h.bridge.wizarr.findUserIdsByEmail).toHaveBeenCalledExactlyOnceWith('pays@x.com')
+    expect(h.bridge.wizarr.listUsers).toHaveBeenCalledOnce()
   })
 })
 

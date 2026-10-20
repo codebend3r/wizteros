@@ -4,7 +4,9 @@ import { accessRestored, bannedCheckout, describeInvoice, paymentFailed, signup 
 import { inviteUrl, issueInvite, liveScope, mint, TierScopeEmpty } from '@/invites.js'
 import {
   accessLine,
+  identitySnapshot,
   liveSiblingCustomer,
+  resolveIdentity,
   resolveUserIds,
   stillSubscribedElsewhere,
 } from '@/members.js'
@@ -185,11 +187,13 @@ const resetExistingRecords = async ({
   // new tier leaves a current server uncovered (no per-server unshare),
   // or when the member is only findable via the invite-code fallback
   // (Plex email differs, so coverage can't be evaluated — fail closed).
-  const records = await bridge.wizarr.findUsersByEmail(email)
+  const snapshot = await identitySnapshot(bridge)
+  const identity = resolveIdentity({ bridge, snapshot, customerId, email })
+  const records = identity.via === 'email' ? identity.records : []
   const existing =
-    records.length > 0
+    identity.via === 'email'
       ? staleRecordIds({ records, coveredServers: access.server_names })
-      : await resolveUserIds({ bridge, customerId, email })
+      : identity.records.map((record) => record.id)
   await eachInOrder({ items: existing, run: (userId) => bridge.wizarr.disableUser(userId) })
   if (existing.length > 0) {
     log.log(`reset ${existing.length} existing record(s) for ${email} pending re-join`)

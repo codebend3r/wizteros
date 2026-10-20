@@ -3,7 +3,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { wizarrClient } from '@/clients/wizarr.js'
-import { subscription, TEST_SETTINGS } from '@/test/fakes.js'
+import { recordsUnder, subscription, TEST_SETTINGS } from '@/test/fakes.js'
 import {
   isMemberNotes,
   isResetTierResult,
@@ -37,8 +37,8 @@ afterEach(stopServed)
 describe('history and notes', () => {
   it('appends admin actions to the member history', async () => {
     const h = await harness()
-    h.bridge.wizarr.findUsersByEmail.mockResolvedValue([])
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([9])
+    h.bridge.wizarr.findUsersByEmail.mockResolvedValueOnce([])
+    h.bridge.wizarr.findUsersByEmail.mockResolvedValue(recordsUnder({ email: 'a@x.com', ids: [9] }))
     h.bridge.wizarr.createInvite.mockResolvedValue({ code: 'xyz', url: 'http://wizarr-lan/j/xyz' })
     await reissue({ h, body: { email: 'A@X.com', tier: 'gold' } })
     await resetExpiry({ h, body: { email: 'a@x.com', days: 35 } })
@@ -89,7 +89,9 @@ describe('history and notes', () => {
 describe('POST /admin/reset-expiry', () => {
   it('sets an absolute date on every record', async () => {
     const h = await harness()
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([9, 12])
+    h.bridge.wizarr.findUsersByEmail.mockResolvedValue(
+      recordsUnder({ email: 'a@x.com', ids: [9, 12] }),
+    )
     const out = await resetExpiry({ h, body: { email: 'a@x.com', days: 15 } })
     expect(out.updated).toBe(2)
     expect(out.expires).not.toBeNull()
@@ -98,7 +100,7 @@ describe('POST /admin/reset-expiry', () => {
 
   it('clears with null days', async () => {
     const h = await harness()
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([9])
+    h.bridge.wizarr.findUsersByEmail.mockResolvedValue(recordsUnder({ email: 'a@x.com', ids: [9] }))
     const out = await resetExpiry({ h, body: { email: 'a@x.com', days: null } })
     expect(out).toEqual({ updated: 1, expires: null })
     expect(h.bridge.wizarr.setExpiry).toHaveBeenCalledTimes(1)
@@ -136,7 +138,7 @@ describe('POST /admin/reset-expiry', () => {
 
   it('accepts an absolute datetime', async () => {
     const h = await harness()
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([9])
+    h.bridge.wizarr.findUsersByEmail.mockResolvedValue(recordsUnder({ email: 'a@x.com', ids: [9] }))
     const out = await resetExpiry({
       h,
       body: { email: 'a@x.com', expires_at: '2026-08-01T00:01:00Z' },
@@ -157,7 +159,7 @@ describe('POST /admin/reset-expiry', () => {
     ['2026-08-01T00:01:00', '2026-08-01T00:01:00+00:00'],
   ])('writes expires_at %j as %j', async (expiresAt, expected) => {
     const h = await harness()
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([9])
+    h.bridge.wizarr.findUsersByEmail.mockResolvedValue(recordsUnder({ email: 'a@x.com', ids: [9] }))
     const out = await resetExpiry({ h, body: { email: 'a@x.com', expires_at: expiresAt } })
     expect(out).toEqual({ updated: 1, expires: expected })
   })
@@ -166,7 +168,9 @@ describe('POST /admin/reset-expiry', () => {
     'rejects expires_at %j',
     async (expiresAt) => {
       const h = await harness()
-      h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([9])
+      h.bridge.wizarr.findUsersByEmail.mockResolvedValue(
+        recordsUnder({ email: 'a@x.com', ids: [9] }),
+      )
       const answer = await post({
         h,
         url: '/admin/reset-expiry',
@@ -179,7 +183,7 @@ describe('POST /admin/reset-expiry', () => {
 
   it('rejects a malformed expires_at', async () => {
     const h = await harness()
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([9])
+    h.bridge.wizarr.findUsersByEmail.mockResolvedValue(recordsUnder({ email: 'a@x.com', ids: [9] }))
     const answer = await post({
       h,
       url: '/admin/reset-expiry',
@@ -195,7 +199,7 @@ describe('POST /admin/reset-expiry', () => {
 
   it('404s when there are no records', async () => {
     const h = await harness()
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([])
+    h.bridge.wizarr.findUsersByEmail.mockResolvedValue([])
     const answer = await post({
       h,
       url: '/admin/reset-expiry',
@@ -207,7 +211,7 @@ describe('POST /admin/reset-expiry', () => {
 
   it('kicks a snapshot refresh', async () => {
     const h = await harness()
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([1])
+    h.bridge.wizarr.findUsersByEmail.mockResolvedValue(recordsUnder({ email: 'a@x.com', ids: [1] }))
     const refreshed = vi.spyOn(h.snapshot, 'refreshAsync').mockImplementation(() => {})
     await resetExpiry({ h, body: { email: 'a@x.com', days: 30 } })
     expect(refreshed).toHaveBeenCalledTimes(1)
@@ -609,7 +613,9 @@ describe('POST /admin/ban', () => {
     h.bridge.stripe.cancelAtPeriodEnd.mockResolvedValue(
       subscription({ id: 'sub_1', cancel_at: 1790000000, cancel_at_period_end: true }),
     )
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([1, 2])
+    h.bridge.wizarr.findUsersByEmail.mockResolvedValue(
+      recordsUnder({ email: 'a@x.com', ids: [1, 2] }),
+    )
 
     const result = await ban({ h, email: 'A@X.com' })
 
@@ -633,7 +639,7 @@ describe('POST /admin/ban', () => {
     // Someone already gone from Wizarr and Stripe can still be marked, so the
     // next checkout or re-invite under that address is refused.
     const h = await harness()
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([])
+    h.bridge.wizarr.findUsersByEmail.mockResolvedValue([])
 
     const result = await ban({ h, email: 'gone@x.com' })
 
@@ -648,7 +654,7 @@ describe('POST /admin/ban', () => {
     const h = await harness()
     h.bridge.stripe.subscriptionsFor.mockRejectedValue(new Error('stripe is down'))
     h.bridge.stripe.customerIdsForEmail.mockRejectedValue(new Error('stripe is down'))
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([7])
+    h.bridge.wizarr.findUsersByEmail.mockResolvedValue(recordsUnder({ email: 'a@x.com', ids: [7] }))
 
     const result = await ban({ h, email: 'a@x.com' })
 
@@ -668,7 +674,7 @@ describe('POST /admin/ban', () => {
 describe('request bodies', () => {
   it.each([15, 15.0, -3])('reads days %j', async (days) => {
     const h = await harness()
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([9])
+    h.bridge.wizarr.findUsersByEmail.mockResolvedValue(recordsUnder({ email: 'a@x.com', ids: [9] }))
     await resetExpiry({ h, body: { email: 'a@x.com', days } })
     expect((await getEvents({ h, email: 'a@x.com' }))[0]?.detail).toBe(`${days} days`)
   })
@@ -677,7 +683,9 @@ describe('request bodies', () => {
     'refuses days %j with a 422',
     async (days) => {
       const h = await harness()
-      h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([9])
+      h.bridge.wizarr.findUsersByEmail.mockResolvedValue(
+        recordsUnder({ email: 'a@x.com', ids: [9] }),
+      )
       const answer = await post({
         h,
         url: '/admin/reset-expiry',

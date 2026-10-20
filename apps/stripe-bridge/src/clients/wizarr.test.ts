@@ -90,22 +90,6 @@ const client = (http: FakeHttp): WizarrApi =>
     },
   })
 
-type UserRow = Readonly<{ id: number; username: string; email: string | null; server: string }>
-
-/**
- * Mock /api/users with Wizarr's server-side username filtering.
- *
- * Live Wizarr filters on a username query param; a repr string like
- * "<User 281>" matches no username and comes back empty. The mock has to
- * reproduce that or a username lookup on the repr looks like it works.
- */
-const usersLikeWizarr = ({ http, users }: { http: FakeHttp; users: readonly UserRow[] }): void => {
-  http.routes.set(`GET ${BASE}/api/users`, (url) => {
-    const wanted = url.searchParams.get('username')
-    return { json: { users: users.filter((user) => !wanted || user.username === wanted) } }
-  })
-}
-
 describe('createInvite', () => {
   it('scopes libraries and downloads', async () => {
     const http = fakeHttp()
@@ -240,7 +224,7 @@ describe('listLibraries', () => {
   })
 })
 
-describe('findUserIdsByEmail', () => {
+describe('findUsersByEmail', () => {
   it('returns all matching records', async () => {
     // One email maps to one record per server; return every matching id.
     const http = fakeHttp()
@@ -256,11 +240,11 @@ describe('findUserIdsByEmail', () => {
         ],
       },
     })
-    expect(await client(http).findUserIdsByEmail('a@x.com')).toEqual([9, 12])
+    expect((await client(http).findUsersByEmail('a@x.com')).map((user) => user.id)).toEqual([9, 12])
 
     const reset = fakeHttp()
     on({ http: reset, method: 'GET', path: '/api/users', json: { users: [] } })
-    expect(await client(reset).findUserIdsByEmail('nope@x.com')).toEqual([])
+    expect(await client(reset).findUsersByEmail('nope@x.com')).toEqual([])
   })
 
   it('matches case-insensitively and skips null emails', async () => {
@@ -277,7 +261,7 @@ describe('findUserIdsByEmail', () => {
         ],
       },
     })
-    expect(await client(http).findUserIdsByEmail('a@x.com')).toEqual([9])
+    expect((await client(http).findUsersByEmail('a@x.com')).map((user) => user.id)).toEqual([9])
   })
 
   it('sends the email as a form-encoded query param', async () => {
@@ -285,111 +269,6 @@ describe('findUserIdsByEmail', () => {
     on({ http, method: 'GET', path: '/api/users', json: { users: [] } })
     await client(http).findUsersByEmail("o'neil+x@a.com")
     expect(http.calls[0]?.url).toBe(`${BASE}/api/users?email=o%27neil%2Bx%40a.com`)
-  })
-})
-
-describe('findUserIdsByInvite', () => {
-  it('walks used_by and returns all records', async () => {
-    const http = fakeHttp()
-    on({
-      http,
-      method: 'GET',
-      path: '/api/invitations',
-      json: { invitations: [{ id: 1, code: 'abc123', used_by: 'cj' }] },
-    })
-    on({
-      http,
-      method: 'GET',
-      path: '/api/users',
-      json: {
-        users: [
-          { id: 9, username: 'cj', email: 'a@x.com', server: 'Meleys' },
-          { id: 12, username: 'cj', email: 'a@x.com', server: 'Vhagar' },
-        ],
-      },
-    })
-    expect(await client(http).findUserIdsByInvite('abc123')).toEqual([9, 12])
-
-    const reset = fakeHttp()
-    on({
-      http: reset,
-      method: 'GET',
-      path: '/api/invitations',
-      json: { invitations: [{ id: 1, code: 'abc123', used_by: null }] },
-    })
-    expect(await client(reset).findUserIdsByInvite('abc123')).toEqual([])
-  })
-
-  it('resolves the User repr to all records', async () => {
-    // The live Wizarr serializes used_by through fields.String over a User
-    // relationship with no __str__, so the API returns "<User 281>", not a
-    // username. The number is the redeeming record's id; matching it as a
-    // username can never succeed.
-    const http = fakeHttp()
-    on({
-      http,
-      method: 'GET',
-      path: '/api/invitations',
-      json: { invitations: [{ id: 1, code: 'abc123', used_by: '<User 281>' }] },
-    })
-    usersLikeWizarr({
-      http,
-      users: [
-        { id: 281, username: 'cj', email: 'a@x.com', server: 'Meleys' },
-        { id: 300, username: 'cj', email: 'A@x.com', server: 'Vhagar' },
-        { id: 3, username: 'other', email: 'other@x.com', server: 'Meleys' },
-      ],
-    })
-    expect(await client(http).findUserIdsByInvite('abc123')).toEqual([281, 300])
-  })
-
-  it('returns the one record when the repr resolves to a record without email', async () => {
-    // A record with no email can't fan out to sibling servers; still time-box
-    // the one record that redeemed the invite.
-    const http = fakeHttp()
-    on({
-      http,
-      method: 'GET',
-      path: '/api/invitations',
-      json: { invitations: [{ id: 1, code: 'abc123', used_by: '<User 281>' }] },
-    })
-    usersLikeWizarr({ http, users: [{ id: 281, username: 'cj', email: null, server: 'Meleys' }] })
-    expect(await client(http).findUserIdsByInvite('abc123')).toEqual([281])
-  })
-
-  it('tolerates a padded repr', async () => {
-    // The JS mirrors (sales-agent, member-triage, stripe-reconcile) accept the
-    // repr with surrounding whitespace; the bridge is the enforcement path and
-    // must classify the same strings the same way.
-    const http = fakeHttp()
-    on({
-      http,
-      method: 'GET',
-      path: '/api/invitations',
-      json: { invitations: [{ id: 1, code: 'abc123', used_by: ' <User 281> ' }] },
-    })
-    usersLikeWizarr({
-      http,
-      users: [{ id: 281, username: 'cj', email: 'a@x.com', server: 'Meleys' }],
-    })
-    expect(await client(http).findUserIdsByInvite('abc123')).toEqual([281])
-  })
-
-  it('returns nothing when the repr names a missing record', async () => {
-    // The redeeming record can vanish (member removed); a dead id must not be
-    // handed to set_expiry, and no other member's record may stand in for it.
-    const http = fakeHttp()
-    on({
-      http,
-      method: 'GET',
-      path: '/api/invitations',
-      json: { invitations: [{ id: 1, code: 'abc123', used_by: '<User 281>' }] },
-    })
-    usersLikeWizarr({
-      http,
-      users: [{ id: 3, username: 'other', email: 'other@x.com', server: 'Meleys' }],
-    })
-    expect(await client(http).findUserIdsByInvite('abc123')).toEqual([])
   })
 })
 

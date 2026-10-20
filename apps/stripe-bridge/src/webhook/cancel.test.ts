@@ -1,7 +1,7 @@
 // customer.subscription.deleted: whose records a cancellation disables, and whose it leaves alone.
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { subscription } from '@/test/fakes.js'
+import { recordsUnder, subscription } from '@/test/fakes.js'
 import {
   type WebhookHarness,
   webhookHarness,
@@ -21,7 +21,9 @@ afterEach(stopWebhookHarness)
 describe('customer.subscription.deleted', () => {
   it('disables every record', async () => {
     h.bridge.store.upsertPending({ customerId: 'cus_1', email: 'a@x.com', inviteCode: 'abc' })
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([147, 57, 106, 155, 204])
+    h.bridge.wizarr.listUsers.mockResolvedValue(
+      recordsUnder({ email: 'a@x.com', ids: [147, 57, 106, 155, 204] }),
+    )
     await h.handle(cancel({ id: 'evt_cancel', customer: 'cus_1' }))
     // cancel must disable every server record, not just the first
     expect(h.disabledIds().toSorted(byNumber)).toEqual([57, 106, 147, 155, 204])
@@ -51,7 +53,9 @@ describe('customer.subscription.deleted', () => {
     })
     h.bridge.store.setSubscribed({ email: 'pays@x.com', value: true })
     h.bridge.store.setMemberLink({ stripeEmail: 'pays@x.com', plexEmail: 'watches@x.com' })
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([287, 288])
+    h.bridge.wizarr.listUsers.mockResolvedValue(
+      recordsUnder({ email: 'watches@x.com', ids: [287, 288] }),
+    )
 
     await h.handle(cancel({ id: 'evt_cancel_one_of_two', customer: 'cus_dead' }))
 
@@ -72,7 +76,9 @@ describe('customer.subscription.deleted', () => {
     // Stripe reported the subscription gone.
     h.bridge.store.upsertPending({ customerId: 'cus_1', email: 'vip@x.com', inviteCode: 'abc' })
     h.bridge.store.setMemberTag({ email: 'vip@x.com', tag: 'vip' })
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([147, 57, 106, 155, 204])
+    h.bridge.wizarr.listUsers.mockResolvedValue(
+      recordsUnder({ email: 'vip@x.com', ids: [147, 57, 106, 155, 204] }),
+    )
 
     await h.handle(cancel({ id: 'evt_vip_cancel', customer: 'cus_1' }))
 
@@ -98,7 +104,9 @@ describe('customer.subscription.deleted', () => {
     })
     h.bridge.store.setSubscribed({ email: 'pays@x.com', value: false })
     h.bridge.store.setMemberLink({ stripeEmail: 'pays@x.com', plexEmail: 'watches@x.com' })
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([287, 288])
+    h.bridge.wizarr.listUsers.mockResolvedValue(
+      recordsUnder({ email: 'watches@x.com', ids: [287, 288] }),
+    )
 
     await h.handle(cancel({ id: 'evt_cancel_last_one', customer: 'cus_dead' }))
 
@@ -122,7 +130,9 @@ describe('customer.subscription.deleted', () => {
     })
     h.bridge.store.setSubscribed({ email: 'watches@x.com', value: true })
     h.bridge.store.setMemberLink({ stripeEmail: 'pays@x.com', plexEmail: 'watches@x.com' })
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([287])
+    h.bridge.wizarr.listUsers.mockResolvedValue(
+      recordsUnder({ email: 'watches@x.com', ids: [287] }),
+    )
 
     await h.handle(cancel({ id: 'evt_cancel_payer', customer: 'cus_dead' }))
 
@@ -133,7 +143,7 @@ describe('customer.subscription.deleted', () => {
     // The ordinary case has no links at all and must keep disabling.
     h.bridge.store.upsertPending({ customerId: 'cus_1', email: 'solo@x.com', inviteCode: 'abc' })
     h.bridge.store.setSubscribed({ email: 'other@x.com', value: true }) // unrelated member
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([12])
+    h.bridge.wizarr.listUsers.mockResolvedValue(recordsUnder({ email: 'solo@x.com', ids: [12] }))
 
     await h.handle(cancel({ id: 'evt_cancel_solo', customer: 'cus_1' }))
 
@@ -163,7 +173,9 @@ describe('customer.subscription.deleted', () => {
       subscription({ customer: 'cus_old', status: 'canceled' }),
       subscription({ customer: 'cus_new', status: 'active' }),
     ])
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([303, 304, 305])
+    h.bridge.wizarr.listUsers.mockResolvedValue(
+      recordsUnder({ email: 'a@x.com', ids: [303, 304, 305] }),
+    )
     await h.handle(cancel({ id: 'evt_cancel_old_sibling', customer: 'cus_old' }))
     expect(h.bridge.wizarr.disableUser).not.toHaveBeenCalled()
     const row = h.rowFor('a@x.com')
@@ -191,7 +203,7 @@ describe('customer.subscription.deleted', () => {
       subscription({ customer: 'cus_old', status: 'canceled' }),
       subscription({ customer: 'cus_new', status: 'past_due' }),
     ])
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([9])
+    h.bridge.wizarr.listUsers.mockResolvedValue(recordsUnder({ email: 'a@x.com', ids: [9] }))
     await h.handle(cancel({ id: 'evt_cancel_both_dead', customer: 'cus_old' }))
     expect(h.bridge.wizarr.disableUser).toHaveBeenCalledExactlyOnceWith(9)
     expect(h.rowFor('a@x.com')?.subscribed).toBe(false)
@@ -199,7 +211,7 @@ describe('customer.subscription.deleted', () => {
 
   it('asks Stripe nothing when the address has one customer', async () => {
     h.bridge.store.upsertPending({ customerId: 'cus_1', email: 'a@x.com', inviteCode: 'abc' })
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([9])
+    h.bridge.wizarr.listUsers.mockResolvedValue(recordsUnder({ email: 'a@x.com', ids: [9] }))
     await h.handle(cancel({ id: 'evt_cancel_only_customer', customer: 'cus_1' }))
     expect(h.bridge.stripe.allSubscriptions).not.toHaveBeenCalled()
     expect(h.bridge.wizarr.disableUser).toHaveBeenCalledExactlyOnceWith(9)
@@ -207,18 +219,17 @@ describe('customer.subscription.deleted', () => {
 
   it('a cancel with no records is a no-op', async () => {
     h.bridge.stripe.customerEmail.mockResolvedValue('ghost@x.com')
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([])
     await h.handle(cancel({ id: 'evt_cancel_orphan', customer: 'cus_missing' }))
     expect(h.bridge.wizarr.disableUser).not.toHaveBeenCalled()
   })
 
   it('prefers the stored email over a Stripe lookup', async () => {
     h.bridge.store.upsertPending({ customerId: 'cus_1', email: 'a@x.com', inviteCode: 'abc' })
-    h.bridge.wizarr.findUserIdsByEmail.mockResolvedValue([9])
+    h.bridge.wizarr.listUsers.mockResolvedValue(recordsUnder({ email: 'a@x.com', ids: [9] }))
     await h.handle(cancel({ id: 'evt_cancel_mapped', customer: 'cus_1' }))
     // mapping has the email, so no Stripe API round-trip is needed
     expect(h.bridge.stripe.customerEmail).not.toHaveBeenCalled()
-    expect(h.bridge.wizarr.findUserIdsByEmail).toHaveBeenCalledExactlyOnceWith('a@x.com')
+    expect(h.bridge.wizarr.listUsers).toHaveBeenCalledOnce()
     expect(h.bridge.wizarr.disableUser).toHaveBeenCalledExactlyOnceWith(9)
   })
 })

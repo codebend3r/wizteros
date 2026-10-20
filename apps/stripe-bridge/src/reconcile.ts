@@ -1,5 +1,7 @@
 import { Logger } from '@nestjs/common'
 import { addDays, isoformat, parseIso } from '@wizteros/server-common'
+import { type IdentitySnapshot, identityFor } from '@/identity.js'
+import { identitySnapshot } from '@/members.js'
 import { eachInOrder, mapInOrder } from '@/sequence.js'
 import { isTimeBoxed } from '@/standing.js'
 import type { Bridge, CustomerRow, WizarrUser } from '@/types.js'
@@ -8,38 +10,26 @@ import type { Bridge, CustomerRow, WizarrUser } from '@/types.js'
 
 const log = new Logger('bridge')
 
-/** A record's email lowercased, '' when it has none: `(u.get("email") or "").lower()`. */
-const emailOf = (user: WizarrUser): string => (user.email || '').toLowerCase()
-
-/** The records one pending member holds with no expiry, found the way the docstring below says. */
-const unstampedRecords = async ({
-  bridge,
-  users,
-  links,
+/**
+ * The records one pending member holds with no expiry, found the way the docstring below says.
+ *
+ * A member who pays under this address and watches under a linked one is
+ * found through the link: the invite fallback cannot reach them, since a
+ * member who re-subscribed while already holding access never redeems the
+ * new invite.
+ */
+const unstampedRecords = ({
+  snapshot,
   email,
   row,
 }: {
-  bridge: Bridge
-  users: readonly WizarrUser[]
-  links: ReadonlyMap<string, string>
+  snapshot: IdentitySnapshot
   email: string
   row: CustomerRow
-}): Promise<WizarrUser[]> => {
-  const byEmail = users.filter((user) => emailOf(user) === email)
-  const linked = links.get(email)
-  // They pay under this address and watch under another. The invite
-  // fallback below cannot reach them: a member who re-subscribed
-  // while already holding access never redeems the new invite.
-  const matched =
-    byEmail.length === 0 && linked ? users.filter((user) => emailOf(user) === linked) : byEmail
-  if (matched.length > 0) {
-    return matched.filter((user) => !user.expires)
-  }
-  const ids: ReadonlySet<number> = new Set(
-    row.invite_code ? await bridge.wizarr.findUserIdsByInvite(row.invite_code) : [],
+}): WizarrUser[] =>
+  identityFor({ snapshot, email, inviteCode: row.invite_code }).records.filter(
+    (user) => !user.expires,
   )
-  return users.filter((user) => ids.has(user.id) && !user.expires)
-}
 
 /**
  * Stamp the paid expiry on records that joined without one; returns records stamped.
@@ -57,25 +47,24 @@ const unstampedRecords = async ({
  * A member whose Plex email differs from the Stripe email (common for
  * brand-new members, who create the Plex account at redemption) matches no
  * record by email; their records are found through the invite they redeemed
- * instead. The fallback only runs when the email matches nothing at all, so
- * already-stamped members cost no extra Wizarr calls.
+ * instead. Every member is resolved from one snapshot, so the sweep reads
+ * Wizarr's users and invitations once however many members are pending.
  */
 export const reconcilePendingExpiries = async (bridge: Bridge): Promise<number> => {
   const customers = bridge.store.allCustomerRows()
   const tags = bridge.store.allMemberTags()
-  const links = bridge.store.allMemberLinks()
   const pending = [...customers].filter(
     ([email, row]) => row.subscribed && !!row.invited_at && isTimeBoxed(tags.get(email) ?? null),
   )
   if (pending.length === 0) {
     return 0
   }
-  const users = await bridge.wizarr.listUsers()
+  const snapshot = await identitySnapshot(bridge)
   const now = new Date()
   const counts = await mapInOrder({
     items: pending,
     run: async ([email, row]): Promise<number> => {
-      const records = await unstampedRecords({ bridge, users, links, email, row })
+      const records = unstampedRecords({ snapshot, email, row })
       if (records.length === 0 || !row.invited_at) {
         return 0
       }

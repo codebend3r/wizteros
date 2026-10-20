@@ -27,6 +27,7 @@ describe('identityFor', () => {
     const identity = identityFor({ snapshot: snapshot(), email: 'PAT@x.com', inviteCode: null })
     expect(ids(identity.records)).toEqual([1, 2])
     expect(identity.addresses).toEqual(new Set(['pat@x.com']))
+    expect(identity.via).toBe('email')
   })
 
   it("prefers the member's own address over a link and an invite", () => {
@@ -52,6 +53,7 @@ describe('identityFor', () => {
       inviteCode: 'abc',
     })
     expect(ids(identity.records)).toEqual([7, 8])
+    expect(identity.via).toBe('link')
   })
 
   it('falls back to the account that redeemed the invite, on every server', () => {
@@ -62,6 +64,7 @@ describe('identityFor', () => {
     })
     expect(ids(identity.records)).toEqual([7, 8])
     expect(identity.addresses).toEqual(new Set(['pays@x.com', 'watches@x.com']))
+    expect(identity.via).toBe('invite')
   })
 
   it('resolves a redeemer named by username', () => {
@@ -83,12 +86,25 @@ describe('identityFor', () => {
     expect(identity.addresses).toEqual(new Set())
   })
 
+  it('tolerates a padded repr', () => {
+    // The JS mirrors (sales-agent, member-triage, stripe-reconcile) accept the
+    // repr with surrounding whitespace; the bridge is the enforcement path and
+    // must classify the same strings the same way.
+    const identity = identityFor({
+      snapshot: snapshot({ invitations: [{ id: 1, code: 'abc', used_by: ' <User 7> ' }] }),
+      email: null,
+      inviteCode: 'abc',
+    })
+    expect(ids(identity.records)).toEqual([7, 8])
+  })
+
   it('finds nothing for an unredeemed invite, or a redeemer no longer on the server', () => {
     const unredeemed = snapshot({ invitations: [{ id: 1, code: 'abc', used_by: null }] })
     const gone = snapshot({ invitations: [{ id: 1, code: 'abc', used_by: '<User 999>' }] })
     expect(identityFor({ snapshot: unredeemed, email: 'new@x.com', inviteCode: 'abc' })).toEqual({
       addresses: new Set(['new@x.com']),
       records: [],
+      via: 'none',
     })
     expect(identityFor({ snapshot: gone, email: null, inviteCode: 'abc' }).records).toEqual([])
   })
