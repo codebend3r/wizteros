@@ -11,7 +11,7 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { FleetController, HealthController } from '@/api/fleetController.js'
 import { PlaysController } from '@/api/playsController.js'
-import { initDb } from '@/collector.js'
+import { initDb } from '@/schema.js'
 import * as config from '@/config.js'
 import { type Connection, openConnection, session } from '@/db.js'
 import { checkResult, initDb as initIncidents, observedRun, record } from '@/incidents.js'

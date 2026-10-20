@@ -3,9 +3,7 @@ import {
   collectContainers,
   collectHost,
   collectSlow,
-  type CompactJob,
   type GetJson,
-  initDb,
   isSlowRound,
   type Loop,
   PARSERS,
@@ -15,9 +13,11 @@ import {
   samplesFromSections,
   tick,
 } from '@/collector.js'
+import type { CompactJob } from '@/compaction.js'
 import { fleetHosts, host, SLOW_TIMEOUT, VITALS_TIMEOUT } from '@/config.js'
 import { session } from '@/db.js'
 import { checkResult, history, type CheckResult, observedRun, openIncidents } from '@/incidents.js'
+import { initDb } from '@/schema.js'
 import { lastHeartbeat, latest, series } from '@/store.js'
 import { logRaised } from '@/tasks.js'
 import { removeTempDirs, tempDbPath } from '@/test/support.js'

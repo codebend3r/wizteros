@@ -10,7 +10,7 @@
 import { existsSync } from 'node:fs'
 import type { NestFastifyApplication } from '@nestjs/platform-fastify'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { initDb } from '@/collector.js'
+import { initDb } from '@/schema.js'
 import { session } from '@/db.js'
 import { METRIC_AGE_WINDOW_SECONDS } from '@/fleet.js'
 import { type CheckResult, checkResult, record } from '@/incidents.js'
