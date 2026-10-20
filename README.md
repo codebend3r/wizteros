@@ -166,6 +166,19 @@ runtime/CI configuration are task inputs, preventing stale results after tooling
 changes. Buildx caches Docker layers separately for each image; only `main`
 publishes those layers, while PRs can restore them.
 
+Nx Cloud is used when the Hobby plan can still take the run, and CI passes
+whatever state it is in. `scripts/ci/nx-cloud.sh probe` runs one small task
+against it before the real checks start. If there is no `NX_CLOUD_ACCESS_TOKEN`
+secret (fork PRs never get one), Nx Cloud answers 401 because the month's
+credits are used up, it reports any other error, or the probe fails, the run
+sets `NX_NO_CLOUD=true` and carries on with the local cache. Nx exits 0 on most
+Nx Cloud errors, so the probe reads its output rather than trusting the exit
+code. The main Nx run goes through `nx-cloud.sh run`: if Nx Cloud gives out
+mid-run and the run fails with Nx Cloud errors in its log, it reruns once
+without Nx Cloud, and the local cache limits that to the failed tasks. A real
+task failure still fails. The job summary says which mode ran. The plan has
+no usage API, so the probe is the check.
+
 `bun audit --audit-level=high` also reports dependency findings, but is explicitly
 **non-blocking** until the existing high-severity advisories are remediated; a
 failed audit writes a warning and summary rather than silently passing.
@@ -254,7 +267,6 @@ Skills under `.claude/skills/` are scoped to this repo. Each one's `SKILL.md` ca
 | `sales-agent`      | Finds win-back opportunities among declined and lapsed members, ranks them, and drafts a compliance-checked email to send by hand                                  |
 | `invite-audit`     | Audits the invitation set: the four per-tier baseline links, their expiry and scope, and whether the 03:00 rotation is still running                               |
 | `security-audit`   | Scans the public repo, tree and history, for private addresses, tailnet names, real emails, secrets and secret files, then reviews auth, webhooks and dependencies |
-| `monitor-ci`       | Watches Nx Cloud CI, evaluates failures, and coordinates supported self-healing fixes                                                                              |
 
 **Nx**
 
