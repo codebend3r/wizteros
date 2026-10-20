@@ -22,11 +22,14 @@ const REASONS: readonly (readonly [string, string])[] = [
 // how long a round can take can derive it rather than guess.
 export const CAPTURE_FACTOR = 2
 
-export type SshResult = Readonly<{
-  ok: boolean
-  stdout: string
-  reason: string
-}>
+/**
+ * One capture, judged: what the script printed, or why there is nothing.
+ * Stdout is never kept from a failed run, so a failure carries only its
+ * reason.
+ */
+export type SshResult =
+  | Readonly<{ ok: true; stdout: string }>
+  | Readonly<{ ok: false; reason: string }>
 
 /**
  * Start one process with every stdio stream piped. `run` and `runLocal` take
@@ -87,7 +90,7 @@ export const buildArgv = ({
   'bash -s',
 ]
 
-const failure = (reason: string): SshResult => ({ ok: false, stdout: '', reason })
+const failure = (reason: string): SshResult => ({ ok: false, reason })
 
 // A spawn that fails for a reason of the system's (no such binary, no
 // permission, out of file descriptors) is a system error, with a syscall on
@@ -196,7 +199,7 @@ const capture = async ({
 
   const [stdout, stderr, code] = captured
   const reason = classify({ returncode: code, stderr })
-  return { ok: !reason, stdout: reason ? '' : stdout, reason }
+  return reason ? failure(reason) : { ok: true, stdout }
 }
 
 /** Run a script on a host over a multiplexed connection. */

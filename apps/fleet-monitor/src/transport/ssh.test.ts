@@ -72,8 +72,9 @@ describe('run', () => {
     })
 
     expect(result.ok).toBe(false)
-    expect(result.stdout).toBe('')
-    expect(['timeout', 'unreachable', 'refused', 'ssh_error']).toContain(result.reason)
+    expect(['timeout', 'unreachable', 'refused', 'ssh_error']).toContain(
+      result.ok ? '' : result.reason,
+    )
     expect(spawn).toHaveBeenCalledWith(
       'ssh',
       expect.arrayContaining(['-oConnectTimeout=2', 'tester@192.0.2.1', 'bash -s']),
@@ -86,8 +87,7 @@ describe('run', () => {
     const result = await runLocal({ body: "echo '###hi'\necho body" })
 
     expect(result.ok).toBe(true)
-    expect(result.stdout).toContain('###hi')
-    expect(result.reason).toBe('')
+    expect(result.ok ? result.stdout : '').toContain('###hi')
   })
 
   it('returns a typed failure when ssh cannot be spawned', async () => {
@@ -104,9 +104,7 @@ describe('run', () => {
         spawnProcess('/nonexistent-empty-dir-for-fleet-monitor-tests/ssh', args),
     })
 
-    expect(result.ok).toBe(false)
-    expect(result.stdout).toBe('')
-    expect(result.reason).toBe('spawn_error')
+    expect(result).toEqual({ ok: false, reason: 'spawn_error' })
   })
 
   it('kills a capture that outlives its budget', async () => {
@@ -122,6 +120,6 @@ describe('run', () => {
       spawn: () => spawnProcess('sleep', ['30']),
     })
 
-    expect(result).toEqual({ ok: false, stdout: '', reason: 'timeout' })
+    expect(result).toEqual({ ok: false, reason: 'timeout' })
   })
 })
