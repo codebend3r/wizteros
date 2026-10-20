@@ -22,10 +22,15 @@
 // Exit: 0 clean, 1 drift found, 2 misconfigured, or Stripe/Wizarr unreadable.
 // An unreadable store is NOT exit 2; it degrades to a two-way comparison.
 import { execFileSync } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
+import {
+  nasHost,
+  stripeGet as stripeRead,
+  stripeList as stripeWalk,
+  wizarrGet,
+} from '../../_shared/ops.mjs'
 
 const {
   STRIPE_API_KEY,
@@ -52,14 +57,6 @@ if (!STRIPE_API_KEY || !WIZARR_BASE_URL || !WIZARR_API_KEY) {
 }
 
 const WIZARR = WIZARR_BASE_URL.replace(/\/+$/, '')
-/** The NAS ssh target: WZ_NAS_HOST, else what scripts/nas-host.sh builds from the repo's .env. */
-const nasHost = () =>
-  process.env.WZ_NAS_HOST ||
-  execFileSync(
-    fileURLToPath(new URL('../../../../scripts/nas-host.sh', import.meta.url)),
-    ['meleys'],
-    { encoding: 'utf8' },
-  ).trim()
 const NAS_PATH = process.env.WZ_NAS_PATH || '/volume1/docker/stripe-bridge'
 // docker-compose.yml binds ./stripe-bridge-data to /data, so MAP_DB_PATH's
 // basename is the file inside that directory on the NAS.
@@ -106,29 +103,10 @@ const mapInBatches = ({ items, size, run }) =>
 
 // ─── stripe ───────────────────────────────────────────────────────────────────
 
-const stripeGet = async (path) => {
-  const r = await fetch(`https://api.stripe.com/v1${path}`, {
-    headers: { Authorization: `Bearer ${STRIPE_API_KEY}` },
-    signal: AbortSignal.timeout(30_000),
-  })
-  const body = await r.json()
-  if (!r.ok) {
-    const detail = body?.error?.message ?? 'stripe error'
-    throw Object.assign(new Error(`GET ${path} -> ${r.status}: ${detail}`), { status: r.status })
-  }
-  return body
-}
+const stripeGet = (path) => stripeRead({ key: STRIPE_API_KEY, path })
 
 /** Walk a Stripe list endpoint to the end via starting_after. */
-const stripeList = async ({ path, params, startingAfter = null, acc = [] }) => {
-  const qs = new URLSearchParams([...params, ['limit', '100']])
-  if (startingAfter) qs.set('starting_after', startingAfter)
-  const body = await stripeGet(`${path}?${qs}`)
-  const data = [...acc, ...(body.data ?? [])]
-  return body.has_more && body.data?.length
-    ? stripeList({ path, params, startingAfter: body.data.at(-1).id, acc: data })
-    : data
-}
+const stripeList = ({ path, params }) => stripeWalk({ key: STRIPE_API_KEY, path, params })
 
 /** Does this customer id still resolve? "deleted" and "missing" both count as gone. */
 const customerState = async (id) => {
@@ -175,16 +153,12 @@ const stripeByEmail = (subs) =>
 
 // ─── wizarr ───────────────────────────────────────────────────────────────────
 
-const wz = (path) =>
-  fetch(`${WIZARR}${path}`, {
-    headers: { 'X-API-Key': WIZARR_API_KEY, 'Content-Type': 'application/json' },
-    // /api/users reconciles with every Plex server per call and routinely takes
-    // ~15s (see listUsers in apps/stripe-bridge/src/clients/wizarr.ts and the
-    // admin members snapshot built on it). The bridge caps it at 45s on the
-    // request path; double that here, because this sweep is an unattended read
-    // and a slow answer beats a spurious "source failed".
-    signal: AbortSignal.timeout(90_000),
-  })
+// /api/users reconciles with every Plex server per call and routinely takes
+// ~15s (see listUsers in apps/stripe-bridge/src/clients/wizarr.ts and the
+// admin members snapshot built on it). The bridge caps it at 45s on the
+// request path; double that here, because this sweep is an unattended read
+// and a slow answer beats a spurious "source failed".
+const wz = (path) => wizarrGet({ base: WIZARR, key: WIZARR_API_KEY, path, timeoutMs: 90_000 })
 
 // The bridge only ever reads id/email/username/server/expires off a user, so
 // the enabled flag is probed rather than assumed: whichever boolean the
@@ -385,14 +359,11 @@ async function main() {
         ['expand[]', 'data.customer'],
       ],
     }),
-    wz('/api/users').then(async (r) => {
-      if (!r.ok) throw new Error(`GET /api/users -> ${r.status}`)
-      return (await r.json()).users ?? []
-    }),
+    wz('/api/users').then((body) => body.users ?? []),
     // Best effort: the invite map only rescues members whose Plex email
     // differs from their Stripe email, exactly like the bridge's fallback.
     wz('/api/invitations')
-      .then(async (r) => (r.ok ? ((await r.json()).invitations ?? []) : []))
+      .then((body) => body.invitations ?? [])
       .catch(() => []),
   ])
 
