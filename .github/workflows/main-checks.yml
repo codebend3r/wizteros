@@ -21,6 +21,8 @@ jobs:
     uses: ./.github/workflows/checks.yml
     with:
       affected-only: false
+    secrets:
+      NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
 
   # Main pushes are the only runs that publish the shared Buildx layer cache.
   images:
