@@ -20,6 +20,8 @@ jobs:
     uses: ./.github/workflows/checks.yml
     with:
       affected-only: true
+    secrets:
+      NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
 
   images:
     name: 🐳 Containers

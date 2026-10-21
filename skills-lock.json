@@ -7,12 +7,6 @@
       "skillPath": "skills/link-workspace-packages/SKILL.md",
       "computedHash": "28a62513af1293c1ca064203a3d6e4dcdbd08f5be6e5ce9a16acc6176bef2ca4"
     },
-    "monitor-ci": {
-      "source": "nrwl/nx-ai-agents-config",
-      "sourceType": "github",
-      "skillPath": "skills/monitor-ci/SKILL.md",
-      "computedHash": "edb5f75c3bab6377cdc8d82003ed01d82d58b5401ce9c8052109d83e6fb8f0ee"
-    },
     "nx-generate": {
       "source": "nrwl/nx-ai-agents-config",
       "sourceType": "github",

@@ -10,13 +10,18 @@ on:
         description: Run Nx targets only for projects affected since the PR base
         type: boolean
         required: true
+    secrets:
+      NX_CLOUD_ACCESS_TOKEN:
+        description: Nx Cloud token; without it the run uses the local cache only
+        required: false
 
 permissions:
   contents: read
 
+# NX_NO_CLOUD is set per run by scripts/ci/nx-cloud.sh, never here: a
+# workflow-level value would shadow what the probe writes to GITHUB_ENV.
 env:
   NX_DAEMON: 'false'
-  NX_NO_CLOUD: 'true'
 
 jobs:
   checks:
@@ -27,6 +32,7 @@ jobs:
       NX_BASE: ${{ github.event.pull_request.base.sha }}
       NX_HEAD: ${{ github.sha }}
       AFFECTED_ONLY: ${{ inputs.affected-only }}
+      NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
     steps:
       # nx affected needs history back to the PR base; run-many does not.
       - name: 📥 Checkout
@@ -35,6 +41,11 @@ jobs:
           fetch-depth: ${{ fromJSON(inputs.affected-only && '0' || '1') }}
           persist-credentials: false
       - uses: ./.github/actions/setup-workspace
+      # Before the local cache restore, so the probe has to reach Nx Cloud. It
+      # only picks a mode; a crash here leaves the run wrapper to fall back.
+      - name: ☁️ Use Nx Cloud unless it is over the plan limit
+        continue-on-error: true
+        run: bash scripts/ci/nx-cloud.sh probe
       - name: ♻️ Restore Nx task cache
         uses: actions/cache@v5
         with:
@@ -50,7 +61,7 @@ jobs:
         run: |
           if [ "$AFFECTED_ONLY" = true ]; then scope=affected; else scope=run-many; fi
           bash scripts/ci/run-parallel.sh \
-            "Nx: lint, format, typecheck, test, build=bunx nx $scope -t lint:ts lint:css format:check typecheck test build --parallel=3 --outputStyle=static" \
+            "Nx: lint, format, typecheck, test, build=bash scripts/ci/nx-cloud.sh run bunx nx $scope -t lint:ts lint:css format:check typecheck test build --parallel=3 --outputStyle=static" \
             "Root lint (oxlint)=bun run lint:root" \
             "Root formatting (oxfmt)=bun run format:check:root" \
             "Repository tooling tests=bun run test:tooling" \
