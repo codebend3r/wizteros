@@ -145,4 +145,25 @@ describe('smtpMailer', () => {
     // The connection is closed even when the send fails.
     expect(smtp.closed).toHaveBeenCalledTimes(2)
   })
+
+  it('payment-failed mail points the member at the portal and never throws', async () => {
+    const smtp = fakeSmtp()
+    await mailer({ createTransport: smtp.createTransport }).sendPaymentFailed({
+      to: 'member@x.com',
+      portalUrl: 'https://billing.test/p/login/abc',
+    })
+    expect(smtp.sent).toHaveLength(1)
+    expect(smtp.sent[0]?.to).toBe('member@x.com')
+    expect(smtp.sent[0]?.text).toContain('https://billing.test/p/login/abc')
+    expect(smtp.sent[0]?.text).toContain('rather than signing up again')
+
+    vi.spyOn(Logger.prototype, 'error').mockImplementation(() => {})
+    const down = fakeSmtp({ fail: new Error('smtp down') })
+    await expect(
+      mailer({ createTransport: down.createTransport }).sendPaymentFailed({
+        to: 'member@x.com',
+        portalUrl: 'https://billing.test/p/login/abc',
+      }),
+    ).resolves.toBeUndefined()
+  })
 })

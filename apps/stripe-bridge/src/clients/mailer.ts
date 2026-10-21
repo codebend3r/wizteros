@@ -53,6 +53,19 @@ The invite expires in ${inviteDays} days, so please complete signup soon.
 
 If you cancel your contribution, access will be removed at the end of the current cycle.`
 
+/** The plain-text failed-charge body. */
+const paymentFailedText = (portalUrl: string): string =>
+  `We couldn't charge the card on file for your monthly server-cost contribution.
+Stripe will try it again over the next few days, and your access stays on in the
+meantime.
+
+To update your card, open the link below and sign in with this email address:
+
+  ${portalUrl}
+
+Please update the card rather than signing up again: a second signup starts a
+second contribution alongside this one.`
+
 /**
  * A mailer over the SMTP host in `smtp`. Each message opens its own
  * connection and closes it after, so a dead host never poisons the next
@@ -127,5 +140,29 @@ export const smtpMailer = ({
     }
   }
 
-  return { sendInvite, sendAlert }
+  /**
+   * Tell a member their charge failed and where to update the card; never
+   * throws. Like an alert, the dunning flow it rides on has to complete
+   * whether or not the mail gets out, and Stripe's next retry sends another.
+   */
+  const sendPaymentFailed = async ({
+    to,
+    portalUrl,
+  }: {
+    to: string
+    portalUrl: string
+  }): Promise<void> => {
+    try {
+      await send({
+        from: smtp.from,
+        to,
+        subject: 'Your Westeroz contribution did not go through',
+        text: paymentFailedText(portalUrl),
+      })
+    } catch (error) {
+      log.error(`payment-failed email to ${to} failed`, stackOf(error))
+    }
+  }
+
+  return { sendInvite, sendAlert, sendPaymentFailed }
 }

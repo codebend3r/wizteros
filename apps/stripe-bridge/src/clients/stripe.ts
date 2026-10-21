@@ -82,6 +82,24 @@ export const stripeApi = ({ apiKey }: { apiKey: string }): StripeApi => {
 
     /** Every subscription on the account in any status, all pages. */
     allSubscriptions: () => allPages(stripe.subscriptions.list({ status: 'all', limit: 100 })),
+
+    /** Cancel now; no final invoice and no proration credit, so nothing is charged or owed. */
+    cancelNow: async (subscriptionId) => {
+      await stripe.subscriptions.cancel(subscriptionId, { invoice_now: false, prorate: false })
+    },
+
+    /** The ids of a subscription's open invoices, all pages. */
+    openInvoiceIds: async (subscriptionId) => {
+      const invoices = stripe.invoices.list({ subscription: subscriptionId, status: 'open' })
+      return (await drain({ items: invoices[Symbol.asyncIterator]() })).flatMap((invoice) =>
+        invoice.id ? [invoice.id] : [],
+      )
+    },
+
+    /** Void an open invoice. */
+    voidInvoice: async (invoiceId) => {
+      await stripe.invoices.voidInvoice(invoiceId)
+    },
   }
 }
 

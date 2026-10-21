@@ -34,6 +34,10 @@ export const statusRule = (status: string): StatusRule | undefined => STATUS_RUL
 /** Whether Stripe is still charging for a subscription in this status. */
 export const isLiveStatus = (status: string): boolean => statusRule(status)?.live ?? false
 
+/** Whether Stripe is retrying a failed charge on a subscription in this status. */
+export const isDunningStatus = (status: string): boolean =>
+  statusRule(status)?.paymentState === 'past_due'
+
 const rank = (status: string | undefined): number => statusRule(status ?? '')?.rank ?? 0
 
 /** Every customer's best subscription status, straight from Stripe. */
