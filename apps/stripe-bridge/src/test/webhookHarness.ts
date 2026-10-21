@@ -1,8 +1,8 @@
 import { Logger } from '@nestjs/common'
 import { vi } from 'vitest'
-import { asBridge, type FakeBridge, fakeBridge } from '@/test/fakes.js'
+import { asBridge, type FakeBridge, fakeBridge, TEST_SETTINGS } from '@/test/fakes.js'
 import { removeTempDirs, tempDbPath } from '@/test/support.js'
-import type { CustomerRow, WizarrLibrary } from '@/types.js'
+import type { CustomerRow, Settings, WizarrLibrary } from '@/types.js'
 import { handleEvent } from '@/webhook/handlers.js'
 
 // The webhook handlers under test: a fresh bridge per test (a temp SQLite db,
@@ -47,8 +47,10 @@ export type WebhookHarness = Readonly<{
 }>
 
 /** A fresh bridge over a temp store with every service faked and the logs silenced; for a beforeEach. */
-export const webhookHarness = (): WebhookHarness => {
-  const bridge = fakeBridge({ dbPath: tempDbPath() })
+export const webhookHarness = ({
+  settings = TEST_SETTINGS,
+}: { settings?: Settings } = {}): WebhookHarness => {
+  const bridge = fakeBridge({ dbPath: tempDbPath(), settings })
   bridge.store.init()
   vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {})
   vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {})

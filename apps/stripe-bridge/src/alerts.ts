@@ -78,6 +78,60 @@ export const paymentFailed = ({
     `Stripe cancels the subscription and the bridge disables them then.\n`,
 })
 
+/** One duplicate subscription the bridge cancelled, with the invoices it voided. */
+export type RetiredSubscription = Readonly<{
+  subscription: string
+  customer: string
+  invoices: readonly string[]
+}>
+
+/** Tell the admin which duplicate subscriptions were cancelled so nobody pays twice. */
+export const duplicatesRetired = ({
+  email,
+  payingUnder,
+  retired,
+}: {
+  email: string
+  payingUnder: string
+  retired: readonly RetiredSubscription[]
+}): Alert => ({
+  subject: `cancelled ${retired.length} duplicate subscription(s) for ${email}`,
+  body:
+    `${email} pays under ${payingUnder}, and Stripe was still retrying an ` +
+    `older subscription at the same address. Cancelled now (no final invoice, ` +
+    `no proration) and its open invoices voided, so they are not charged twice:\n\n` +
+    `${retired
+      .map(
+        ({ subscription, customer, invoices }) =>
+          `- ${subscription} on ${customer}; voided ${invoices.join(', ') || 'nothing'}`,
+      )
+      .join('\n')}\n\n` +
+    `Their access is unchanged. Refund in Stripe if a duplicate was already charged.\n`,
+})
+
+/**
+ * Tell the admin a duplicate may still be charging, and the bridge could not
+ * stop it. `invoice` is the declined one when a failed charge is what found it.
+ */
+export const duplicateNotRetired = ({
+  email,
+  payingUnder,
+  invoice = null,
+}: {
+  email: string
+  payingUnder: string
+  invoice?: Readonly<Record<string, unknown>> | null
+}): Alert => ({
+  subject: `DOUBLE CHARGE RISK: ${email} already pays under ${payingUnder}`,
+  body:
+    `${email} pays under ${payingUnder}. Stripe may still be retrying an older ` +
+    `subscription at the same address, and the bridge did not cancel it.\n\n` +
+    (invoice ? `  ${describeInvoice(invoice)}\n\n` : '') +
+    `In Stripe, find every other customer at ${email}; cancel any subscription ` +
+    `still past due (no final invoice, no proration) and void its open ` +
+    `invoice before the next retry charges them twice.\n`,
+})
+
 /** Tell the admin a banned address paid; the charge is theirs to refund. */
 export const bannedCheckout = ({
   email,

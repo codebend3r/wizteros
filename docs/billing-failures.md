@@ -87,6 +87,29 @@ customer is still `active`/`trialing`. If so, the cancel is recorded as
 "access kept, still paying under cus_...", the dunning flag is cleared, and
 nothing is disabled. One Stripe call, only when a sibling row exists.
 
+That guard only kept the access. The old subscription still sat in dunning,
+and its next successful retry charged the member twice; it was cancelled by
+hand both times it happened (2026-09-18 and 2026-10-21). Three things now stop
+it before a person has to:
+
+- **Checkout retires the duplicate.** After a checkout's invite is out,
+  `retireDuplicates` (`duplicates.ts`) lists every Stripe customer at the
+  address, cancels any other subscription still `past_due`/`unpaid` (no final
+  invoice, no proration), voids its open invoices, records "Duplicate
+  cancelled" and alerts the admin. The checkout has already mapped the new
+  customer, so the cancel's own `customer.subscription.deleted` finds the live
+  sibling above and keeps their access. A Stripe failure here never fails the
+  checkout; it sends a "DOUBLE CHARGE RISK" alert instead.
+- **A failed charge on a duplicate retires it too.** `invoice.payment_failed`
+  first asks `liveSiblingCustomer` whether the address already pays under
+  another customer. If so, it retires the duplicate the same way, and neither
+  the dunning flag nor the "missed a payment" alert applies. If Stripe refuses,
+  the alert is "DOUBLE CHARGE RISK" with the invoice, not "missed a payment".
+- **The member is told to fix the card.** With `BILLING_PORTAL_URL` set to the
+  Stripe customer portal login link (Settings, Billing, Customer portal), every
+  failed charge also mails the member that link and asks them not to sign up
+  again. Unset, no member mail goes out.
+
 ## The sweep behind the webhook
 
 `check_payment_states` runs in the reconcile loop (at boot, then every
