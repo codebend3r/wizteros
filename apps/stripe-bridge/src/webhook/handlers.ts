@@ -1,6 +1,14 @@
 import { Logger } from '@nestjs/common'
 import { addDays, isoformat, isRow, type Row } from '@wizteros/server-common'
-import { accessRestored, bannedCheckout, describeInvoice, paymentFailed, signup } from '@/alerts.js'
+import {
+  accessRestored,
+  bannedCheckout,
+  describeInvoice,
+  duplicateNotRetired,
+  paymentFailed,
+  signup,
+} from '@/alerts.js'
+import { retireDuplicates } from '@/duplicates.js'
 import { inviteUrl, issueInvite, liveScope, mint, TierScopeEmpty } from '@/invites.js'
 import type { Identity, IdentitySnapshot } from '@/identity.js'
 import {
@@ -341,6 +349,17 @@ const onCheckoutCompleted: EventHandler = async ({ bridge, obj }) => {
       signup({ email, tier, session: obj, sessionId, customerId, inviteUrl: url }),
     )
   }
+  // A member whose card failed often checks out again instead of fixing it,
+  // and the old subscription keeps retrying. The row above maps this
+  // customer to the address, which is what keeps the cancel's own webhook
+  // from disabling the access they just paid for. The invite is out by
+  // now, so a Stripe failure is told to the admin, not thrown for a retry.
+  if (customerId) {
+    const { status } = await retireDuplicates({ bridge, email, payingUnder: customerId })
+    if (status === 'failed') {
+      await bridge.mailer.sendAlert(duplicateNotRetired({ email, payingUnder: customerId }))
+    }
+  }
   // VIP access is never time-boxed or reshuffled — a VIP's checkout is
   // just a contribution, so their records stay exactly as they are (no
   // disable, no expiry stamp).
@@ -414,7 +433,11 @@ const onInvoicePaid: EventHandler = async ({ bridge, obj }) => {
   await restoreAccess({ bridge, email, customerId, tier: row ? row.tier : null })
 }
 
-/** Flag the payer as past due and alert; access is held while Stripe retries. */
+/**
+ * Flag the payer as past due, alert, and point the member at the card; access
+ * is held while Stripe retries. A charge on a duplicate of a customer that is
+ * already paying is cancelled instead, before its retry can succeed.
+ */
 const onPaymentFailed: EventHandler = async ({ bridge, obj }) => {
   // Stripe retries a failed charge for weeks before giving up. Access is
   // deliberately untouched for that whole window (they have paid for the
@@ -426,6 +449,21 @@ const onPaymentFailed: EventHandler = async ({ bridge, obj }) => {
     (customerId ? await customerEmail({ bridge, customerId }) : null)
   if (!email) {
     log.warn(`payment failed for ${customerId ?? 'no customer'} with no resolvable email`)
+    return
+  }
+  // The checkout retires duplicates, so this only catches one it missed
+  // (Stripe was down then, or the sibling predates this bridge).
+  const payingUnder = customerId
+    ? await liveSiblingCustomer({ bridge, email, deadCustomer: customerId })
+    : null
+  // They are paying, so this charge is a duplicate: neither the dunning flag
+  // nor the member mail applies, and anything short of retiring it is a
+  // double charge for the admin to stop.
+  if (payingUnder) {
+    const { status } = await retireDuplicates({ bridge, email, payingUnder })
+    if (status !== 'retired') {
+      await bridge.mailer.sendAlert(duplicateNotRetired({ email, payingUnder, invoice: obj }))
+    }
     return
   }
   bridge.store.setPaymentState({ email, state: 'past_due' })
@@ -442,6 +480,14 @@ const onPaymentFailed: EventHandler = async ({ bridge, obj }) => {
   await bridge.mailer.sendAlert(
     paymentFailed({ email, invoice: obj, access: await accessLine({ bridge, customerId, email }) }),
   )
+  // Told nothing, a member whose card failed tends to sign up again, which
+  // is how one person ends up with two subscriptions.
+  if (bridge.settings.billingPortalUrl) {
+    await bridge.mailer.sendPaymentFailed({
+      to: email,
+      portalUrl: bridge.settings.billingPortalUrl,
+    })
+  }
 }
 
 /** Mirror the subscription's new status onto the member's dunning flag. */

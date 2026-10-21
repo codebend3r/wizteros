@@ -133,6 +133,12 @@ export type StripeApi = Readonly<{
   cancelAtPeriodEnd: (subscriptionId: string) => Promise<StripeSubscription>
   /** Every subscription on the account in any status, all pages. */
   allSubscriptions: () => Promise<StripeSubscription[]>
+  /** Cancel a subscription now, with no final invoice and no proration. */
+  cancelNow: (subscriptionId: string) => Promise<void>
+  /** The ids of a subscription's invoices Stripe still means to collect. */
+  openInvoiceIds: (subscriptionId: string) => Promise<string[]>
+  /** Void an open invoice, so Stripe never retries it. */
+  voidInvoice: (invoiceId: string) => Promise<void>
 }>
 
 // --- SMTP ----------------------------------------------------------------------
@@ -144,6 +150,8 @@ export type Mailer = Readonly<{
   sendInvite: (invite: { to: string; inviteUrl: string }) => Promise<void>
   /** Mail the operators an alert. Never throws. */
   sendAlert: (alert: Alert) => Promise<void>
+  /** Mail a member that their charge failed, with where to fix the card. Never throws. */
+  sendPaymentFailed: (notice: { to: string; portalUrl: string }) => Promise<void>
 }>
 
 // --- the bridge ------------------------------------------------------------------
@@ -157,6 +165,11 @@ export type Settings = Readonly<{
   inviteDays: number
   /** Days a baseline invite stays redeemable. */
   baselineExpiresDays: number
+  /**
+   * Stripe's customer portal login link, where a member updates their card;
+   * null leaves members unmailed when a charge fails.
+   */
+  billingPortalUrl: string | null
 }>
 
 /** Everything a handler, route or sweep needs, handed in rather than imported. */

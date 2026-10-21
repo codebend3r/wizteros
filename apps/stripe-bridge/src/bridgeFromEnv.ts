@@ -6,6 +6,7 @@ import {
   accessDays,
   alertAddresses,
   baselineExpiresDays,
+  billingPortalUrl,
   inviteDays,
   mapDbPath,
   plexToken,
@@ -38,5 +39,6 @@ export const bridgeFromEnv = (): Bridge => ({
     accessDays: accessDays(),
     inviteDays: inviteDays(),
     baselineExpiresDays: baselineExpiresDays(),
+    billingPortalUrl: billingPortalUrl(),
   },
 })

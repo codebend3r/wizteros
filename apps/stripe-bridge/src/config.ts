@@ -63,6 +63,13 @@ export const accessDays = (): number => intEnv({ name: 'ACCESS_DURATION', fallba
 /** The public origin members' invite links are built on. */
 export const publicInviteBase = (): string => trimTrailingSlashes(process.env.PUBLIC_INVITE_BASE)
 
+/**
+ * Stripe's customer portal login link (Settings, Billing, Customer portal),
+ * mailed to a member whose charge failed so they fix the card rather than
+ * signing up again. Unset or empty means no member mail.
+ */
+export const billingPortalUrl = (): string | null => process.env.BILLING_PORTAL_URL || null
+
 /** The SQLite file holding the customer map, tags, links and event log. */
 export const mapDbPath = (): string => process.env.MAP_DB_PATH ?? '/data/bridge.db'
 

@@ -75,6 +75,9 @@ export const fakeStripe = (): FakeStripe => ({
     subscription({ id, cancel_at_period_end: true }),
   ),
   allSubscriptions: vi.fn<StripeApi['allSubscriptions']>(async () => []),
+  cancelNow: vi.fn<StripeApi['cancelNow']>(async () => {}),
+  openInvoiceIds: vi.fn<StripeApi['openInvoiceIds']>(async () => []),
+  voidInvoice: vi.fn<StripeApi['voidInvoice']>(async () => {}),
 })
 
 /** No token and no plex.tv by default: the library list is trusted as given. */
@@ -89,6 +92,7 @@ export const fakePlex = (): FakePlex => ({
 export const fakeMailer = (): FakeMailer => ({
   sendInvite: vi.fn<Mailer['sendInvite']>(async () => {}),
   sendAlert: vi.fn<Mailer['sendAlert']>(async () => {}),
+  sendPaymentFailed: vi.fn<Mailer['sendPaymentFailed']>(async () => {}),
 })
 
 /** The settings every test runs under unless it hands in its own. */
@@ -97,6 +101,7 @@ export const TEST_SETTINGS: Settings = {
   accessDays: 35,
   inviteDays: 14,
   baselineExpiresDays: 2,
+  billingPortalUrl: null,
 }
 
 /**
