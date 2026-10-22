@@ -24,21 +24,26 @@ and are excluded by default — see Stateful Services below.
 Meleys and Vermithor each keep their stack in one compose project, discovered at runtime
 from container labels — never hardcode the paths, they have moved before.
 
-| Host        | Project      | Directory                  | Services                                                                                 |
-| ----------- | ------------ | -------------------------- | ---------------------------------------------------------------------------------------- |
-| `meleys`    | `westeroz`   | `/volume1/docker/westeroz` | sonarr, radarr, sabnzbd (+ wizarr, tautulli)                                             |
-| `vermithor` | `essoz`      | `/volume1/docker/essoz`    | sonarr, radarr, lidarr, prowlarr, sabnzbd, seerr, audiobookshelf, bookshelf (+ tautulli) |
-| `vhagar`    | _unverified_ | _unverified_               | jellyfin (expected)                                                                      |
+| Host        | Project    | Directory                  | Services                                                                                 |
+| ----------- | ---------- | -------------------------- | ---------------------------------------------------------------------------------------- |
+| `meleys`    | `westeroz` | `/volume1/docker/westeroz` | sonarr, radarr, sabnzbd (+ wizarr, tautulli)                                             |
+| `vermithor` | `essoz`    | `/volume1/docker/essoz`    | sonarr, radarr, lidarr, prowlarr, sabnzbd, seerr, audiobookshelf, bookshelf (+ tautulli) |
+| `vhagar`    | `jellyfin` | `/volume1/docker/jellyfin` | jellyfin                                                                                 |
 
 Meleys and Vermithor both run a `sonarr`, a `radarr` and a `sabnzbd`. **Always name the host** — never
 say "the sonarr container".
 
-**Vhagar is wired up but unproven.** Its SSH target (`<ssh-user>@<vhagar-ip>`) is confirmed
-reachable, but `sudo` there needs a password and the stored keychain credential is
-rejected, so the stack has never actually been enumerated — the project name, directory,
-and service list above are assumptions, not observations. Fix the sudo first (a NOPASSWD
-rule for `/usr/local/bin/docker`, matching meleys, is the reliable option), then run
-`--check` and fill this row in from what discovery actually reports.
+**Vhagar hosts two compose projects**, `jellyfin` and `raven` (`/volume1/docker/raven`, not part
+of the media stack), so `vhagar` and `all` stop at discovery unless narrowed: run it as
+`vhagar --services jellyfin`. Its docker sudo uses the stored keychain password, like Vermithor.
+
+**Jellyfin's bind mounts are CIFS remote folders** (`/volume1/Vhagar/{Caraxes,Meleys,Syrax,Vermithor}`).
+After a fleet-wide reboot (a DSM update) Vhagar mounts them before the other boxes serve SMB, the
+mounts fail once and are never retried, and a recreate then fails with `Bind mount failed:
+'/volume1/Vhagar/Caraxes/Media' does not exist`, leaving Jellyfin down. Check
+`mount -t cifs` first; `sudo /usr/syno/bin/synomount --resume` remounts every record, then
+`docker start jellyfin`. Never use `synomount --all`, which deletes non-automount records.
+Its first boot on a new release can sit at `Degraded` for several minutes while it migrates.
 
 Full inventory, ports, and volume layout: `docs/arr-stack.md`.
 
