@@ -7,7 +7,7 @@
 
 import type { Connection } from '@/db.js'
 import { type Kind, KINDS, type Quality, QUALITY_RANK } from '@/probes/plex.js'
-import { asRows, fields, parseIso } from '@wizteros/server-common'
+import { asRow, asRows, fields, parseIso, type Row } from '@wizteros/server-common'
 
 // The four buckets the page groups video by, in the order it lists them.
 // `other` folds sd and unknown together: a play whose item was deleted since
@@ -209,35 +209,68 @@ export const conditions = (narrowing: Filters): readonly [readonly string[], rea
  * six times, and the page reads it on every filter press. The table lives in
  * this connection only, which the session opened for this one request, and
  * it is dropped on the way out so a connection a test holds open stays
- * clean. A caller that opens a second one while this is held names it, so
- * the two cannot collide.
+ * clean.
  */
 export const baseTable = <T>({
   connection,
   filters: narrowing,
-  extra = [],
-  extraParams = [],
-  table = 'base_now',
   work,
 }: {
   connection: Connection
   filters: Filters
-  extra?: readonly string[]
-  extraParams?: readonly Param[]
-  table?: string
   work: (table: string) => T
 }): T => {
+  const table = 'base_now'
   const [clauses, params] = conditions(narrowing)
-  const predicate = [...clauses, ...extra, ONE_VIEWING_SQL].join(' AND ')
+  const predicate = [...clauses, ONE_VIEWING_SQL].join(' AND ')
   connection.prepare(`DROP TABLE IF EXISTS ${table}`).run()
   connection
     .prepare(`CREATE TEMP TABLE ${table} AS ${BASE_SELECT} WHERE ${predicate}`)
-    .run(...params, ...extraParams)
+    .run(...params)
   try {
     return work(table)
   } finally {
     connection.prepare(`DROP TABLE IF EXISTS ${table}`).run()
   }
+}
+
+/**
+ * What names a group, read from its most recent play across the whole
+ * ledger, with no filter and no window: kind, group_title, group_context,
+ * group_year and quality_rank. Null for a key nothing answers to.
+ *
+ * Read straight off the select rather than through `baseTable`. Naming one
+ * title is one row, and materialising the whole ledger with its LAG window
+ * into a second temp table to find it cost a full copy per page view.
+ */
+export const newestPlayOf = ({
+  connection,
+  key,
+}: {
+  connection: Connection
+  key: string
+}): Row | null =>
+  asRow(
+    connection
+      .prepare(
+        `
+        SELECT kind, group_title, group_context, group_year, quality_rank
+        FROM (${BASE_SELECT} WHERE ${ONE_VIEWING_SQL})
+        WHERE group_key = ?
+        ORDER BY viewed_at DESC, history_id DESC
+        LIMIT 1
+        `,
+      )
+      .get(key),
+  )
+
+/** The one row an aggregate always answers with, narrowed. */
+export const aggregateRow = (value: unknown) => {
+  const row = asRow(value)
+  if (row === null) {
+    throw new TypeError('an aggregate answered no row')
+  }
+  return fields(row)
 }
 
 /**

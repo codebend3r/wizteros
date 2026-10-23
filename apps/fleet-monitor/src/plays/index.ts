@@ -7,10 +7,11 @@
 // from `session` in db.ts, and a pass's page of plays commits with its cursor,
 // or neither does.
 //
-// The package is four modules and this re-export, so every caller keeps
+// The package is five modules and this re-export, so every caller keeps
 // importing from `@/plays/index.js` whichever one the name moved to: `base`
 // holds the filters and the joined select, `ledger` the schema and the writes,
-// `views` the aggregates, `neverPlayed` the unplayed engine.
+// `views` the aggregates, `history` the paged histories, `neverPlayed` the
+// unplayed engine.
 //
 // Two rules the aggregates share, stated once here because every view leans on
 // them:
@@ -63,30 +64,26 @@ export type {
   NeverPlayedSummary,
   NeverQualityCount,
 } from '@/plays/neverPlayed.js'
-export {
-  overview,
-  playHistory,
-  titleHistory,
-  topTitles,
-  userHistory,
-  users,
-} from '@/plays/views.js'
+export { playHistory, titleHistory, userHistory } from '@/plays/history.js'
 export type {
-  Bucket,
   HistoryPage,
   HistoryRow,
+  PlayHistoryPage,
+  PlayHistoryRow,
+  TitleHistoryPage,
+  TitleHistoryRow,
+} from '@/plays/history.js'
+export { overview, topTitles, users } from '@/plays/views.js'
+export type {
+  Bucket,
   HostCount,
   KindCount,
   Metric,
   Overview,
-  PlayHistoryPage,
-  PlayHistoryRow,
   QualityCount,
   Rewatcher,
   Timeline,
   TimelinePoint,
-  TitleHistoryPage,
-  TitleHistoryRow,
   TopTitle,
   Totals,
   User,
