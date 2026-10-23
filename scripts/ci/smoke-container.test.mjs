@@ -71,6 +71,11 @@ test('bridge checks both webhook prefixes and cleans up on success', () => {
   assert.ok(readiness.args.includes('--retry-all-errors'))
   assert.ok(readiness.args.includes('--retry-max-time'))
   assert.ok(readiness.args.includes('--max-time'))
+  assert.ok(
+    dockerCalls(calls).some(
+      ({ args }) => args.join(' ') === 'exec stripe-bridge-sanity test ! -e dist/test',
+    ),
+  )
   assert.deepEqual(dockerCalls(calls).at(-1).args, ['rm', '-f', 'stripe-bridge-sanity'])
   assert.ok(!dockerCalls(calls).some(({ args }) => args[0] === 'logs'))
 })

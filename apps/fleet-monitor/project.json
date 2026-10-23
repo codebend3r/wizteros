@@ -9,7 +9,7 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "docker build -f apps/fleet-monitor/Dockerfile -t fleet-monitor .",
+        "command": "docker build -f server.Dockerfile --build-arg APP=fleet-monitor --build-arg PORT=8010 --build-arg DB_ENV=FM_DB_PATH --build-arg DB_FILE=fleet.db --build-arg SYSTEM_PACKAGES=openssh-client -t fleet-monitor .",
         "cwd": "{workspaceRoot}"
       }
     }

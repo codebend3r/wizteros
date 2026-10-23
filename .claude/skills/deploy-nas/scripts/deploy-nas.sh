@@ -49,7 +49,7 @@ die()  { printf '\n✗ %s\n' "$*" >&2; exit 1; }
 # commit touching only them used to read as "nothing to do" and need --force.
 # Both servers build from apps/ and libs/server-common through the bun
 # workspace, so the root manifests and lockfile count as well.
-NAS_PATHS=(apps/stripe-bridge apps/fleet-monitor libs/server-common docker-compose.yml scripts package.json bun.lock tsconfig.server.json .oxlintrc.server.json .node-version)
+NAS_PATHS=(apps/stripe-bridge apps/fleet-monitor libs/server-common docker-compose.yml server.Dockerfile server.Dockerfile.dockerignore scripts package.json bun.lock tsconfig.server.json .oxlintrc.server.json .node-version)
 
 say "═══════════════════════════════════════════"
 say "deploy-nas — wizteros stripe-bridge"

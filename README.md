@@ -40,6 +40,7 @@ wizteros/
 ├── .claude/agents/             repo-scoped Claude Code subagents
 ├── .claude/skills/             repo-scoped Claude Code skills
 ├── docker-compose.yml          builds and runs the bridge and the fleet monitor
+├── server.Dockerfile           the one image recipe for both servers; build args pick the app
 ├── netlify.toml                builds admin-portal only
 ├── nx.json                     target defaults, cacheable targets, named inputs
 └── package.json                bun workspaces plus aliases that delegate to Nx
@@ -49,7 +50,7 @@ wizteros/
 | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `apps/admin-portal/src/`  | Public landing page and the password-gated admin pages. The `@/*` import alias maps here                                                              |
 | `apps/stripe-bridge/src/` | Bridge runtime: `webhook/` (the Stripe handlers), `admin/` (the admin API), `loops.ts`, `store.ts`, `tiers.ts`, and the service clients in `clients/` |
-| `apps/*/` roots           | Per-app config: `vite.config.ts`, `tsconfig.json`, `bunfig.toml`, `nest-cli.json`, `Dockerfile`, lint and format configs                              |
+| `apps/*/` roots           | Per-app config: `vite.config.ts`, `tsconfig.json`, `bunfig.toml`, `nest-cli.json`, lint and format configs                                            |
 
 Two things that are easy to get wrong:
 
