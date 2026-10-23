@@ -35,6 +35,7 @@ Today that is five:
 | `apps/fleet-monitor/package.json` | The fleet monitor and its collector             |
 | `apps/stripe-bridge/package.json` | The only marker that reaches the bridge's image |
 | `libs/server-common/package.json` | The lib both servers share                      |
+| `libs/wire/package.json`          | The response schemas the servers and SPA share  |
 
 `bun.lock` records each workspace package's version too, and `release.sh` refreshes it
 with `bun install --lockfile-only` in the same commit, refusing if anything other than
@@ -92,9 +93,10 @@ Split the commits into two piles:
 
 - **Shipped surface**: anything that changes what runs in production.
   `apps/admin-portal/` (ships via Netlify from main), the two NestJS servers
-  (`apps/stripe-bridge/`, `apps/fleet-monitor/`) and `libs/server-common/`
-  they share, and the deploy config that alters the running stack
-  (`docker-compose.yml`, `netlify.toml`, `server.Dockerfile`).
+  (`apps/stripe-bridge/`, `apps/fleet-monitor/`), `libs/server-common/`
+  they share, `libs/wire/` they share with the SPA, and the deploy config
+  that alters the running stack (`docker-compose.yml`, `netlify.toml`,
+  `server.Dockerfile`).
 - **Housekeeping**: `docs/`, `.github/`, `.claude/`, `scripts/` tooling, CI, test-only
   changes, and the monorepo wiring itself (`nx.json`, root `package.json` aliases,
   `project.json` target definitions, `nx.includedScripts` in any app's

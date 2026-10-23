@@ -59,9 +59,11 @@
       "cache": true
     },
     "dev": {
+      "dependsOn": ["^build"],
       "cache": false
     },
     "preview": {
+      "dependsOn": ["^build"],
       "cache": false
     },
     "test:e2e": {

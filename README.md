@@ -34,7 +34,8 @@ wizteros/
 │       ├── src/                runtime code, with each module's *.test.ts beside it
 │       └── scripts/            e2e and library snapshot entrypoints
 ├── libs/
-│   └── server-common/          the admin guard, SQLite and env helpers both servers share
+│   ├── server-common/          the admin guard, SQLite and env helpers both servers share
+│   └── wire/                   the response schemas the servers send and the portal reads
 ├── docs/                       specs, plans, and PRDs for both apps
 ├── scripts/                    release, backfill, and deploy entrypoints
 ├── .claude/agents/             repo-scoped Claude Code subagents
@@ -219,7 +220,7 @@ just that pass: `bun run lint:root`, `bun run lint:root:fix`,
 Every app and the lib are Nx projects, so tasks run through one graph with caching. Run tasks through Nx rather than by cd-ing into an app.
 
 ```bash
-bunx nx show projects                  # admin-portal, stripe-bridge, fleet-monitor, @wizteros/server-common
+bunx nx show projects                  # admin-portal, stripe-bridge, fleet-monitor, @wizteros/server-common, @wizteros/wire
 bunx nx run admin-portal:test          # one target on one project
 bunx nx run-many -t test               # that target everywhere it exists
 bunx nx graph                          # project graph in the browser

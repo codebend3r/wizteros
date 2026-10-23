@@ -2,9 +2,9 @@ name: stripe-bridge
 
 services:
   # Built from the repo root because the app depends on libs/server-common
-  # through the bun workspace; server.Dockerfile builds either server, and
-  # the args pick this one. TZ comes from .env, which is what keeps the
-  # baseline rotation firing at the same local hour.
+  # and libs/wire through the bun workspace; server.Dockerfile builds either
+  # server, and the args pick this one. TZ comes from .env, which is what
+  # keeps the baseline rotation firing at the same local hour.
   stripe-bridge:
     build:
       context: .
@@ -38,7 +38,7 @@ services:
   # dashboard down with it, and restarting either one alone is safe.
   #
   # Both are built from the repo root because the app depends on
-  # libs/server-common through the bun workspace, with the same
+  # libs/server-common and libs/wire through the bun workspace, with the same
   # server.Dockerfile args, so they share one image.
   fleet-monitor:
     build: &fleet-monitor-build

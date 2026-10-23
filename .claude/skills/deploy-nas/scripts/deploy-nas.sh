@@ -47,9 +47,9 @@ die()  { printf '\n✗ %s\n' "$*" >&2; exit 1; }
 # apps/fleet-monitor is here because the compose project builds it too: the
 # monitor API and the collector are two containers off that one image, and a
 # commit touching only them used to read as "nothing to do" and need --force.
-# Both servers build from apps/ and libs/server-common through the bun
+# Both servers build from apps/, libs/server-common and libs/wire through the bun
 # workspace, so the root manifests and lockfile count as well.
-NAS_PATHS=(apps/stripe-bridge apps/fleet-monitor libs/server-common docker-compose.yml server.Dockerfile server.Dockerfile.dockerignore scripts package.json bun.lock tsconfig.server.json .oxlintrc.server.json .node-version)
+NAS_PATHS=(apps/stripe-bridge apps/fleet-monitor libs/server-common libs/wire docker-compose.yml server.Dockerfile server.Dockerfile.dockerignore scripts package.json bun.lock tsconfig.server.json .oxlintrc.server.json .node-version)
 
 say "═══════════════════════════════════════════"
 say "deploy-nas — wizteros stripe-bridge"
