@@ -1,10 +1,10 @@
 import { Logger } from '@nestjs/common'
 import { addDays, httpError, isoformat, parseIso, stackOf } from '@wizteros/server-common'
 import { z } from 'zod'
-import { issueInvite, liveScope, TierScopeEmpty } from '@/invites.js'
+import { issueInvite, liveScope, rescopeRecords, TierScopeEmpty } from '@/invites.js'
 import { eachInOrder, mapInOrder } from '@/sequence.js'
 import { isBanned, isMemberTag, type MemberTag } from '@/standing.js'
-import { isTier, staleRecordIds, type Tier } from '@/tiers.js'
+import { isTier, type Tier } from '@/tiers.js'
 import { everyRecord, type Identity, type IdentitySnapshot, recordsAt } from '@/identity.js'
 import { identitySnapshot, personAt, snapshotOver, standingOf, storedSnapshot } from '@/members.js'
 import type { Bridge, StripeSubscription } from '@/types.js'
@@ -490,8 +490,12 @@ export const reissueInvite = async ({
   // severs the plex.tv friendship on every server), so if createInvite threw
   // after a disable loop the member would be locked out with no link to redeem.
   const invite = await issueInvite({ bridge, email, tier, scope: access, allowDownloads: override })
-  const stale = staleRecordIds({ records, coveredServers: access.server_names })
-  await eachInOrder({ items: stale, run: (id) => wizarr.disableUser(id) })
+  const { disabled } = await rescopeRecords({
+    wizarr,
+    records,
+    coveredServers: access.server_names,
+    evaluable: true,
+  })
   // An SMTP failure must not fail the reissue (it already happened); report
   // it so the admin sends the link manually instead of re-inviting.
   const emailed = await mailer.sendInvite({ to: email, inviteUrl: invite.url }).then(
@@ -506,5 +510,5 @@ export const reissueInvite = async ({
     action: 'Invite issued',
     detail: `${tier} tier — ${emailed ? 'link emailed' : 'email failed, link sent manually'}`,
   })
-  return { url: invite.url, code: invite.code, tier, disabled: stale.length, emailed }
+  return { url: invite.url, code: invite.code, tier, disabled: disabled.length, emailed }
 }

@@ -76,6 +76,18 @@ describe('invoice.paid', () => {
     expect(h.bridge.wizarr.setExpiry.mock.lastCall?.[0].userId).toBe(7)
   })
 
+  it('an invoice with no customer_email reads the stored address before Stripe', async () => {
+    h.bridge.store.upsertPending({ customerId: 'cus_1', email: 'a@x.com', inviteCode: 'abc' })
+    h.bridge.wizarr.listUsers.mockResolvedValue(recordsUnder({ email: 'a@x.com', ids: [9] }))
+    await h.handle({
+      type: 'invoice.paid',
+      id: 'evt_inv_no_email',
+      data: { object: { customer: 'cus_1', billing_reason: 'subscription_cycle' } },
+    })
+    expect(h.bridge.stripe.customerEmail).not.toHaveBeenCalled()
+    expect(h.setExpiryIds()).toEqual([9])
+  })
+
   it('a payment with no records reissues an invite', async () => {
     // The failure this exists to stop: a member pays, holds no Wizarr records
     // (their window lapsed while an earlier invoice went unpaid, or the payment
