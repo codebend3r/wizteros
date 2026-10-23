@@ -196,7 +196,8 @@ export type Bridge = Readonly<{
 export type CustomerRow = Readonly<{
   customer_id: string | null
   invite_code: string | null
-  tier: string | null
+  /** The tier recorded for the address, read through the legacy aliases; null when none is. */
+  tier: Tier | null
   invited_at: string | null
   subscribed: boolean
   payment_state: PaymentState | null

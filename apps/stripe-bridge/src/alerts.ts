@@ -1,3 +1,4 @@
+import type { Tier } from '@/tiers.js'
 import type { Alert } from '@/types.js'
 
 // Every operational alert the bridge mails an admin, as a subject and a body.
@@ -42,7 +43,7 @@ export const signup = ({
   inviteUrl,
 }: {
   email: string
-  tier: string
+  tier: Tier
   session: Readonly<Record<string, unknown>>
   sessionId: string | null
   customerId: string | null
@@ -140,7 +141,7 @@ export const bannedCheckout = ({
   customerId,
 }: {
   email: string
-  tier: string
+  tier: Tier
   sessionId: string | null
   customerId: string | null
 }): Alert => ({
@@ -153,7 +154,7 @@ export const bannedCheckout = ({
 })
 
 /** Tell the admin a payment landed on a member holding nothing, and what was done. */
-export const accessRestored = ({ email, tier }: { email: string; tier: string }): Alert => ({
+export const accessRestored = ({ email, tier }: { email: string; tier: Tier }): Alert => ({
   subject: `reissued access for ${email}`,
   body:
     `${email} paid but held no Wizarr records, so the bridge issued a fresh ` +

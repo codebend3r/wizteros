@@ -1,5 +1,5 @@
 import { redeemerEmail } from '@/clients/wizarr.js'
-import { canonicalTier, type Tier, tierDownloads, tierServerLibraries } from '@/tiers.js'
+import { type Tier, tierDownloads, tierServerLibraries } from '@/tiers.js'
 import { type MemberTag, strongestTag } from '@/standing.js'
 import type {
   CustomerRow,
@@ -53,19 +53,17 @@ type TierGrant = Readonly<{
   entitled: LibraryMap
 }>
 
-/** The grant behind a stored tier, read through the legacy aliases. */
+/** The grant behind a stored tier. */
 const tierGrant = ({
-  recorded,
+  recorded: tier,
   libraries,
 }: {
-  recorded: string | null
+  recorded: Tier | null
   libraries: readonly WizarrLibrary[]
-}): TierGrant => {
-  const tier = canonicalTier(recorded)
-  return tier === null
+}): TierGrant =>
+  tier === null
     ? { tier: 'unknown', downloads: null, entitled: {} }
     : { tier, downloads: tierDownloads(tier), entitled: tierServerLibraries({ tier, libraries }) }
-}
 
 /**
  * Invite code -> the Plex account email that redeemed it, both lowercased.
@@ -173,7 +171,15 @@ const people = (users: readonly WizarrUser[]): Person[] => {
  * Tier and invited_at are joined from the bridge's store; downloads and
  * per-server library access derive from tier.
  */
-export const dedupeMembers = ({
+export const dedupeMembers = (sources: {
+  users: readonly WizarrUser[]
+  customers: ReadonlyMap<string, CustomerRow>
+  libraries: readonly WizarrLibrary[]
+  linked?: ReadonlyMap<string, LinkedCustomer>
+}): Member[] => byName(membersOf(sources))
+
+/** dedupeMembers before the sort, which assembleMembers does once over everyone. */
+const membersOf = ({
   users,
   customers,
   libraries,
@@ -184,47 +190,45 @@ export const dedupeMembers = ({
   libraries: readonly WizarrLibrary[]
   linked?: ReadonlyMap<string, LinkedCustomer>
 }): Member[] =>
-  byName(
-    people(users).map((person) => {
-      const key = person.email ? person.email.toLowerCase() : ''
-      // Their own address first; the invite linkage only answers for members
-      // whose Plex account is under a different email than they pay with.
-      // A manual link outranks even that: "they pay under X" is only ever
-      // stated about someone whose own address is the dead or failing one,
-      // so billing has to read from the customer the admin pointed at.
-      const link = linked.get(key)
-      const own = customers.get(key)
-      const billedByLink = link !== undefined && (link.manual_link || own === undefined)
-      const row = billedByLink ? link : own
-      const { tier, downloads, entitled } = tierGrant({
-        recorded: row?.tier ?? null,
-        libraries,
-      })
-      const servers = [...person.servers].toSorted()
-      return {
-        member: person.member,
-        email: person.email,
-        tier,
-        downloads,
-        expires: person.expires,
-        servers,
-        libraries: Object.fromEntries(servers.map((server) => [server, entitled[server] ?? []])),
-        // The tier rules alone, NOT narrowed to the servers this member
-        // happens to hold records on — that is what makes it comparable to
-        // the live plex.tv share, which is how the member page tells
-        // "entitled to" apart from "actually sharing".
-        entitled,
-        subscribed: row?.subscribed ?? false,
-        payment_state: row?.payment_state ?? null,
-        invited_at: row?.invited_at ?? null,
-        customer_id: row?.customer_id ?? null,
-        // Only set when the member pays under a different address than
-        // their Plex account uses. Equal addresses are the norm and would
-        // just be the same string twice in the UI.
-        stripe_email: billedByLink ? link.stripe_email : null,
-      }
-    }),
-  )
+  people(users).map((person) => {
+    const key = person.email ? person.email.toLowerCase() : ''
+    // Their own address first; the invite linkage only answers for members
+    // whose Plex account is under a different email than they pay with.
+    // A manual link outranks even that: "they pay under X" is only ever
+    // stated about someone whose own address is the dead or failing one,
+    // so billing has to read from the customer the admin pointed at.
+    const link = linked.get(key)
+    const own = customers.get(key)
+    const billedByLink = link !== undefined && (link.manual_link || own === undefined)
+    const row = billedByLink ? link : own
+    const { tier, downloads, entitled } = tierGrant({
+      recorded: row?.tier ?? null,
+      libraries,
+    })
+    const servers = [...person.servers].toSorted()
+    return {
+      member: person.member,
+      email: person.email,
+      tier,
+      downloads,
+      expires: person.expires,
+      servers,
+      libraries: Object.fromEntries(servers.map((server) => [server, entitled[server] ?? []])),
+      // The tier rules alone, NOT narrowed to the servers this member
+      // happens to hold records on — that is what makes it comparable to
+      // the live plex.tv share, which is how the member page tells
+      // "entitled to" apart from "actually sharing".
+      entitled,
+      subscribed: row?.subscribed ?? false,
+      payment_state: row?.payment_state ?? null,
+      invited_at: row?.invited_at ?? null,
+      customer_id: row?.customer_id ?? null,
+      // Only set when the member pays under a different address than
+      // their Plex account uses. Equal addresses are the norm and would
+      // just be the same string twice in the UI.
+      stripe_email: billedByLink ? link.stripe_email : null,
+    }
+  })
 
 /**
  * A table row for a subscriber the bridge knows who hasn't joined Wizarr yet.
@@ -264,6 +268,29 @@ export const memberFromCustomer = ({
   }
 }
 
+/** One member with their live plex.tv share unioned into servers and libraries. */
+const withShare = ({ member, access }: { member: Member; access: PlexAccess }): Member => {
+  const key = member.email.toLowerCase()
+  const shares = member.email && Object.hasOwn(access, key) ? access[key] : undefined
+  // An empty share map has nothing to union in.
+  if (shares === undefined || Object.keys(shares).length === 0) {
+    return member
+  }
+  const servers = distinct([...member.servers, ...Object.keys(shares)]).toSorted()
+  return {
+    ...member,
+    servers,
+    libraries: Object.fromEntries(
+      servers.map((server) => [
+        server,
+        Object.hasOwn(shares, server)
+          ? (shares[server]?.libraries ?? [])
+          : (member.libraries[server] ?? []),
+      ]),
+    ),
+  }
+}
+
 /**
  * Union each member's live plex.tv share into their servers and libraries.
  *
@@ -279,31 +306,26 @@ export const withPlexAccess = ({
 }: {
   members: readonly Member[]
   access: PlexAccess | null
-}): Member[] => {
-  if (access === null) {
-    return [...members]
+}): Member[] =>
+  access === null ? [...members] : members.map((member) => withShare({ member, access }))
+
+/** The admin's overrides as the members list reads them. */
+export type Overrides = Readonly<{
+  tags: ReadonlyMap<string, MemberTag>
+  downloads: ReadonlyMap<string, boolean>
+}>
+
+/** One member stamped with the admin overrides, as `withOverrides` describes. */
+const overridden = ({ member, tags, downloads }: Overrides & { member: Member }): Member => {
+  const key = member.email.toLowerCase()
+  return {
+    ...member,
+    tag: strongestTag([
+      tags.get(key) ?? null,
+      member.stripe_email ? (tags.get(member.stripe_email) ?? null) : null,
+    ]),
+    downloads: downloads.get(key) ?? member.downloads,
   }
-  return members.map((member) => {
-    const key = member.email.toLowerCase()
-    const shares = member.email && Object.hasOwn(access, key) ? access[key] : undefined
-    // An empty share map has nothing to union in.
-    if (shares === undefined || Object.keys(shares).length === 0) {
-      return member
-    }
-    const servers = distinct([...member.servers, ...Object.keys(shares)]).toSorted()
-    return {
-      ...member,
-      servers,
-      libraries: Object.fromEntries(
-        servers.map((server) => [
-          server,
-          Object.hasOwn(shares, server)
-            ? (shares[server]?.libraries ?? [])
-            : (member.libraries[server] ?? []),
-        ]),
-      ),
-    }
-  })
 }
 
 /**
@@ -318,22 +340,24 @@ export const withOverrides = ({
   members,
   tags,
   downloads,
+}: Overrides & { members: readonly Member[] }): Member[] =>
+  members.map((member) => overridden({ member, tags, downloads }))
+
+/** What turns an assembled row into the one the portal is served. */
+export type Finishing = Overrides & Readonly<{ access: PlexAccess | null }>
+
+/** A member with the live plex.tv share unioned in, then the overrides stamped on. */
+export const finishMember = ({
+  member,
+  finishing,
 }: {
-  members: readonly Member[]
-  tags: ReadonlyMap<string, MemberTag>
-  downloads: ReadonlyMap<string, boolean>
-}): Member[] =>
-  members.map((member) => {
-    const key = member.email.toLowerCase()
-    return {
-      ...member,
-      tag: strongestTag([
-        tags.get(key) ?? null,
-        member.stripe_email ? (tags.get(member.stripe_email) ?? null) : null,
-      ]),
-      downloads: downloads.get(key) ?? member.downloads,
-    }
-  })
+  member: Member
+  finishing: Finishing
+}): Member => {
+  const { access, tags, downloads } = finishing
+  const shared = access === null ? member : withShare({ member, access })
+  return overridden({ member: shared, tags, downloads })
+}
 
 /**
  * Every member the two sources know, as one list sorted by name.
@@ -343,6 +367,9 @@ export const withOverrides = ({
  * map. A customer already shown as someone else's Stripe address is left out
  * of that union: standing as its own row as well is the "two entries for one
  * person" the linkage exists to collapse.
+ *
+ * With `finishing`, every row also gets its plex.tv share and the admin
+ * overrides in one walk, after the one sort.
  */
 export const assembleMembers = ({
   users,
@@ -350,23 +377,28 @@ export const assembleMembers = ({
   invitations,
   customers,
   links,
+  finishing,
 }: {
   users: readonly WizarrUser[]
   libraries: readonly WizarrLibrary[]
   invitations: readonly WizarrInvitation[]
   customers: ReadonlyMap<string, CustomerRow>
   links: ReadonlyMap<string, string>
+  finishing?: Finishing
 }): Member[] => {
   const linked = customerByPlexEmail({
     customers,
     plexEmailByInvite: plexEmailByInvite({ invitations, users }),
     manualLinks: links,
   })
-  const members = dedupeMembers({ users, customers, libraries, linked })
+  const members = membersOf({ users, customers, libraries, linked })
   const joined = new Set(members.flatMap((m) => (m.email ? [m.email.toLowerCase()] : [])))
   const claimed = new Set(members.flatMap((m) => (m.stripe_email ? [m.stripe_email] : [])))
   const pending = [...customers]
     .filter(([email]) => !joined.has(email) && !claimed.has(email))
     .map(([email, row]) => memberFromCustomer({ email, row, libraries }))
-  return byName([...members, ...pending])
+  const sorted = byName([...members, ...pending])
+  return finishing === undefined
+    ? sorted
+    : sorted.map((member) => finishMember({ member, finishing }))
 }
