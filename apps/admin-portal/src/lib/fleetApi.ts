@@ -1,140 +1,42 @@
-import { guardOf, type HostStatus, hostStatusSchema } from '@wizteros/wire'
-import { isNumberOrNull, isRecord, isStringOrNull } from '@/lib/guards'
+import {
+  type FleetContainer,
+  type FleetHost,
+  type FleetResponse,
+  fleetResponseSchema,
+  guardOf,
+  type HostStatus,
+  type Incident,
+  type IncidentFeed,
+  incidentFeedSchema,
+  type MetricHistory,
+  metricHistorySchema,
+  type MetricHostSeries,
+  type MetricKind,
+  type MetricPoint,
+  type MetricUnit,
+} from '@wizteros/wire'
 import { createClient } from '@/lib/http'
 
-export type { HostStatus }
-
-/** One container as `/fleet` reports it. `healthy` is meaningless unless
-    `has_healthcheck` is true: most containers on this fleet declare no
-    healthcheck, which is neither a pass nor a failure. */
-export type FleetContainer = {
-  readonly name: string
-  readonly up: boolean
-  readonly healthy: boolean
-  readonly has_healthcheck: boolean
+// The response types are the wire contract's, in libs/wire, where the monitor's
+// own route tests check every body against the same schemas this module reads
+// them with.
+export type {
+  FleetContainer,
+  FleetHost,
+  FleetResponse,
+  HostStatus,
+  Incident,
+  IncidentFeed,
+  MetricHistory,
+  MetricHostSeries,
+  MetricKind,
+  MetricPoint,
+  MetricUnit,
 }
 
-/** One host as `/fleet` reports it.
- *
- * Every judgment here is made by the monitor, not by this page: which volume
- * is watched, how many cores the box turned out to have, what counts as too
- * full. The SPA used to re-derive all of it from the raw metric map, which put
- * fleet knowledge in a browser and a hardcoded core count in a constant.
- */
-export type FleetHost = {
-  readonly name: string
-  readonly ip: string
-  readonly has_gpu: boolean
-  readonly has_docker: boolean
-  readonly collected: boolean
-  readonly status: HostStatus
-  readonly cores: number | null
-  readonly load_per_core: number | null
-  readonly memory_percent: number | null
-  readonly memory_total_bytes: number | null
-  readonly disk_percent: number | null
-  readonly disk_total_bytes: number | null
-  readonly disk_available_bytes: number | null
-  /** Which volume the disk readings describe. The collector's choice, reported
-      rather than hardcoded in a browser a wire away from it. */
-  readonly disk_mount: string
-  readonly containers: readonly FleetContainer[]
-  /** Derived from the metric timestamps, not the heartbeat: true when a whole
-      metric family on this host has outlived even its slowest refresh. */
-  readonly metrics_stale: boolean
-  /** Which family fell silent (`disk`, `temp`, `net`, ...), so the card can
-      name it rather than blame whichever probe is slowest in general. */
-  readonly stalest_family: string | null
-  readonly stalest_family_age_seconds: number | null
-  /** null when the host has never been collected: unknown, not a perfect score. */
-  readonly uptime_percent_24h: number | null
-}
-
-export type FleetResponse = {
-  readonly collected_at: string | null
-  /** Collector liveness only. Says nothing about any individual metric. */
-  readonly stale: boolean
-  readonly hosts: readonly FleetHost[]
-}
-
-/** Which history a response carries. One route each, one chart each, all four
-    the same shape on the wire. */
-export type MetricKind = 'cpu' | 'memory' | 'gpu' | 'network'
-
-/** What the numbers mean. The chart cannot pick a y-axis without it: a percent
-    runs against a fixed 0-100, a throughput against a ceiling derived from the
-    readings themselves. */
-export type MetricUnit = 'percent' | 'bytes_per_second'
-
-/** One reading. A counter-derived value (CPU busy, throughput) is stamped at
-    the later of the two readings it came from and describes the interval since
-    the earlier one; a gauge-derived one (memory, GPU) is stamped when it was
-    read. */
-export type MetricPoint = {
-  readonly at: string
-  readonly value: number
-}
-
-/** One host's series. Empty when the host reported nothing in the window: not
-    observed, never zero. Three of the five boxes have no render node at all,
-    so on the GPU chart empty is the permanent and correct answer. */
-export type MetricHostSeries = {
-  readonly name: string
-  readonly points: readonly MetricPoint[]
-}
-
-/** A history response. Hosts arrive in the same order as `/fleet`, guaranteed
-    and tested server-side, which is what lets position bind a host to its
-    colour on both the charts and the cards. */
-export type MetricHistory = {
-  readonly kind: MetricKind
-  readonly unit: MetricUnit
-  readonly window_minutes: number
-  readonly hosts: readonly MetricHostSeries[]
-}
-
-export type Incident = {
-  readonly id: number
-  readonly target: string
-  readonly reason: string
-  readonly opened_at: string
-  readonly closed_at: string | null
-}
-
-export type IncidentFeed = {
-  readonly open: readonly Incident[]
-  readonly recent: readonly Incident[]
-}
-
-export type ContainerSummary = {
-  readonly name: string
-  readonly up: boolean
-  /** A healthcheck ran and passed. Meaningless unless `hasHealthcheck` is true. */
-  readonly healthy: boolean
-  /** Whether the container declares a healthcheck at all. */
-  readonly hasHealthcheck: boolean
-}
-
-export type HostSummary = {
-  readonly name: string
-  readonly ip: string
-  readonly status: HostStatus
-  readonly hasGpu: boolean
-  readonly hasDocker: boolean
-  readonly cores: number | null
-  readonly loadPerCore: number | null
-  readonly memoryPercent: number | null
-  readonly memoryTotalBytes: number | null
-  readonly diskPercent: number | null
-  readonly diskTotalBytes: number | null
-  readonly diskAvailableBytes: number | null
-  readonly diskMount: string
-  readonly uptimePercent: number | null
-  readonly metricsStale: boolean
-  readonly stalestFamily: string | null
-  readonly stalestFamilyAgeSeconds: number | null
-  readonly containers: readonly ContainerSummary[]
-}
+const isFleetResponse = guardOf(fleetResponseSchema)
+const isMetricHistory = guardOf(metricHistorySchema)
+const isIncidentFeed = guardOf(incidentFeedSchema)
 
 const UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'] as const
 
@@ -167,116 +69,6 @@ export const formatAge = (seconds: number | null): string => {
     ? plural({ count: Math.floor(seconds / unit.seconds), unit: unit.name })
     : 'less than a minute'
 }
-
-/** Renames one `/fleet` host into what the card renders.
- *
- * Nothing is derived here any more, which is the point: the monitor decides
- * status, cores and usage, and this is only the wire-name to component-name
- * boundary. It used to gate five reads on `collected` while the server already
- * guaranteed those readings were absent in exactly that case.
- */
-export const toHostSummary = (host: FleetHost): HostSummary => ({
-  name: host.name,
-  ip: host.ip,
-  status: host.status,
-  hasGpu: host.has_gpu,
-  hasDocker: host.has_docker,
-  cores: host.cores,
-  loadPerCore: host.load_per_core,
-  memoryPercent: host.memory_percent,
-  memoryTotalBytes: host.memory_total_bytes,
-  diskPercent: host.disk_percent,
-  diskTotalBytes: host.disk_total_bytes,
-  diskAvailableBytes: host.disk_available_bytes,
-  diskMount: host.disk_mount,
-  uptimePercent: host.uptime_percent_24h,
-  metricsStale: host.metrics_stale,
-  stalestFamily: host.stalest_family,
-  stalestFamilyAgeSeconds: host.stalest_family_age_seconds,
-  containers: host.containers.map((container) => ({
-    name: container.name,
-    up: container.up,
-    healthy: container.healthy,
-    hasHealthcheck: container.has_healthcheck,
-  })),
-})
-
-const isHostStatus = guardOf(hostStatusSchema)
-
-const isFleetContainer = (value: unknown): value is FleetContainer =>
-  isRecord(value) &&
-  typeof value.name === 'string' &&
-  typeof value.up === 'boolean' &&
-  typeof value.healthy === 'boolean' &&
-  typeof value.has_healthcheck === 'boolean'
-
-const isFleetHost = (value: unknown): value is FleetHost =>
-  isRecord(value) &&
-  typeof value.name === 'string' &&
-  typeof value.ip === 'string' &&
-  typeof value.has_gpu === 'boolean' &&
-  typeof value.has_docker === 'boolean' &&
-  typeof value.collected === 'boolean' &&
-  isHostStatus(value.status) &&
-  isNumberOrNull(value.cores) &&
-  isNumberOrNull(value.load_per_core) &&
-  isNumberOrNull(value.memory_percent) &&
-  isNumberOrNull(value.memory_total_bytes) &&
-  isNumberOrNull(value.disk_percent) &&
-  isNumberOrNull(value.disk_total_bytes) &&
-  isNumberOrNull(value.disk_available_bytes) &&
-  typeof value.disk_mount === 'string' &&
-  Array.isArray(value.containers) &&
-  value.containers.every(isFleetContainer) &&
-  typeof value.metrics_stale === 'boolean' &&
-  isStringOrNull(value.stalest_family) &&
-  isNumberOrNull(value.stalest_family_age_seconds) &&
-  isNumberOrNull(value.uptime_percent_24h)
-
-const isFleetResponse = (value: unknown): value is FleetResponse =>
-  isRecord(value) &&
-  isStringOrNull(value.collected_at) &&
-  typeof value.stale === 'boolean' &&
-  Array.isArray(value.hosts) &&
-  value.hosts.every(isFleetHost)
-
-const isMetricKind = (value: unknown): value is MetricKind =>
-  value === 'cpu' || value === 'memory' || value === 'gpu' || value === 'network'
-
-const isMetricUnit = (value: unknown): value is MetricUnit =>
-  value === 'percent' || value === 'bytes_per_second'
-
-const isMetricPoint = (value: unknown): value is MetricPoint =>
-  isRecord(value) && typeof value.at === 'string' && typeof value.value === 'number'
-
-const isMetricHostSeries = (value: unknown): value is MetricHostSeries =>
-  isRecord(value) &&
-  typeof value.name === 'string' &&
-  Array.isArray(value.points) &&
-  value.points.every(isMetricPoint)
-
-const isMetricHistory = (value: unknown): value is MetricHistory =>
-  isRecord(value) &&
-  isMetricKind(value.kind) &&
-  isMetricUnit(value.unit) &&
-  typeof value.window_minutes === 'number' &&
-  Array.isArray(value.hosts) &&
-  value.hosts.every(isMetricHostSeries)
-
-const isIncident = (value: unknown): value is Incident =>
-  isRecord(value) &&
-  typeof value.id === 'number' &&
-  typeof value.target === 'string' &&
-  typeof value.reason === 'string' &&
-  typeof value.opened_at === 'string' &&
-  isStringOrNull(value.closed_at)
-
-const isIncidentFeed = (value: unknown): value is IncidentFeed =>
-  isRecord(value) &&
-  Array.isArray(value.open) &&
-  value.open.every(isIncident) &&
-  Array.isArray(value.recent) &&
-  value.recent.every(isIncident)
 
 /** The fleet monitor, which serves the play history too: every read on this
     page and the play-history pages goes through it. */

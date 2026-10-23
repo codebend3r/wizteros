@@ -1,13 +1,25 @@
 // The wire contract, as the portal checks it.
 //
-// These are the admin portal's own response types and runtime guards, copied
-// from apps/admin-portal/src/lib/{guards,fleetApi,playsApi}.ts: a body that
+// The fleet routes are checked with the shared schemas in libs/wire, the same
+// ones the portal parses with. The play-history types and guards below are
+// still a copy of apps/admin-portal/src/lib/{guards,playsApi}.ts: a body that
 // fails one of them is a page the portal refuses to draw. The route tests read
 // every 200 through them, which both checks the contract and hands each test a
-// typed body without a cast. Two additions the portal does not read: `metrics`
-// on a host, which the Python tests assert on, and the /health body, which
-// only the container healthcheck reads. If the portal's guards change, this
-// copy changes with them.
+// typed body without a cast. If the portal's play guards change, this copy
+// changes with them.
+
+import {
+  fleetHostSchema,
+  fleetResponseSchema,
+  guardOf,
+  healthSchema,
+  incidentFeedSchema,
+  type MetricHistory,
+  metricHistorySchema,
+  type MetricPoint,
+  type Wire,
+} from '@wizteros/wire'
+import { z } from 'zod'
 
 type Guard<T> = (value: unknown) => value is T
 
@@ -31,147 +43,30 @@ const isNumberMap = (value: unknown): value is Readonly<Record<string, number>> 
 const isListOf = <T>(value: unknown, is: Guard<T>): value is readonly T[] =>
   Array.isArray(value) && value.every(is)
 
-// --- /health --------------------------------------------------------------------
+// --- the fleet routes -----------------------------------------------------------
 
-export type Health = Readonly<{
-  ok: boolean
-  heartbeat_age_seconds: number | null
-  stale: boolean
-}>
+// The schemas the portal reads /health, /fleet, the histories and /incidents
+// with, from libs/wire. A host also carries the raw `metrics` map, which the
+// portal does not read and the Python tests asserted on, so the route tests
+// check it on top of the shared schema rather than the schema growing a field
+// no reader has.
 
-export const isHealth = (value: unknown): value is Health =>
-  isRecord(value) &&
-  typeof value.ok === 'boolean' &&
-  isNumberOrNull(value.heartbeat_age_seconds) &&
-  typeof value.stale === 'boolean'
+const fleetHostWithMetricsSchema = fleetHostSchema.extend({
+  metrics: z.record(z.string(), z.number()),
+})
 
-// --- fleetApi.ts ------------------------------------------------------------------
+const fleetWithMetricsSchema = fleetResponseSchema.extend({
+  hosts: z.array(fleetHostWithMetricsSchema),
+})
 
-export type FleetContainer = Readonly<{
-  name: string
-  up: boolean
-  healthy: boolean
-  has_healthcheck: boolean
-}>
+export type FleetHost = Wire<typeof fleetHostWithMetricsSchema>
+export type FleetResponse = Wire<typeof fleetWithMetricsSchema>
+export type { MetricHistory, MetricPoint }
 
-export type FleetHost = Readonly<{
-  name: string
-  ip: string
-  has_gpu: boolean
-  has_docker: boolean
-  collected: boolean
-  status: 'ok' | 'warn' | 'unknown'
-  cores: number | null
-  load_per_core: number | null
-  memory_percent: number | null
-  memory_total_bytes: number | null
-  disk_percent: number | null
-  disk_total_bytes: number | null
-  disk_available_bytes: number | null
-  disk_mount: string
-  containers: readonly FleetContainer[]
-  metrics: Readonly<Record<string, number>>
-  metrics_stale: boolean
-  stalest_family: string | null
-  stalest_family_age_seconds: number | null
-  uptime_percent_24h: number | null
-}>
-
-export type FleetResponse = Readonly<{
-  collected_at: string | null
-  stale: boolean
-  hosts: readonly FleetHost[]
-}>
-
-export type MetricPoint = Readonly<{ at: string; value: number }>
-
-export type MetricHostSeries = Readonly<{ name: string; points: readonly MetricPoint[] }>
-
-export type MetricHistory = Readonly<{
-  kind: 'cpu' | 'memory' | 'gpu' | 'network'
-  unit: 'percent' | 'bytes_per_second'
-  window_minutes: number
-  hosts: readonly MetricHostSeries[]
-}>
-
-export type Incident = Readonly<{
-  id: number
-  target: string
-  reason: string
-  opened_at: string
-  closed_at: string | null
-}>
-
-export type IncidentFeed = Readonly<{ open: readonly Incident[]; recent: readonly Incident[] }>
-
-const isHostStatus = (value: unknown): value is FleetHost['status'] =>
-  value === 'ok' || value === 'warn' || value === 'unknown'
-
-const isFleetContainer = (value: unknown): value is FleetContainer =>
-  isRecord(value) &&
-  typeof value.name === 'string' &&
-  typeof value.up === 'boolean' &&
-  typeof value.healthy === 'boolean' &&
-  typeof value.has_healthcheck === 'boolean'
-
-const isFleetHost = (value: unknown): value is FleetHost =>
-  isRecord(value) &&
-  typeof value.name === 'string' &&
-  typeof value.ip === 'string' &&
-  typeof value.has_gpu === 'boolean' &&
-  typeof value.has_docker === 'boolean' &&
-  typeof value.collected === 'boolean' &&
-  isHostStatus(value.status) &&
-  isNumberOrNull(value.cores) &&
-  isNumberOrNull(value.load_per_core) &&
-  isNumberOrNull(value.memory_percent) &&
-  isNumberOrNull(value.memory_total_bytes) &&
-  isNumberOrNull(value.disk_percent) &&
-  isNumberOrNull(value.disk_total_bytes) &&
-  isNumberOrNull(value.disk_available_bytes) &&
-  typeof value.disk_mount === 'string' &&
-  isListOf(value.containers, isFleetContainer) &&
-  isNumberMap(value.metrics) &&
-  typeof value.metrics_stale === 'boolean' &&
-  isStringOrNull(value.stalest_family) &&
-  isNumberOrNull(value.stalest_family_age_seconds) &&
-  isNumberOrNull(value.uptime_percent_24h)
-
-export const isFleetResponse = (value: unknown): value is FleetResponse =>
-  isRecord(value) &&
-  isStringOrNull(value.collected_at) &&
-  typeof value.stale === 'boolean' &&
-  isListOf(value.hosts, isFleetHost)
-
-const isMetricKind = (value: unknown): value is MetricHistory['kind'] =>
-  value === 'cpu' || value === 'memory' || value === 'gpu' || value === 'network'
-
-const isMetricUnit = (value: unknown): value is MetricHistory['unit'] =>
-  value === 'percent' || value === 'bytes_per_second'
-
-const isMetricPoint = (value: unknown): value is MetricPoint =>
-  isRecord(value) && typeof value.at === 'string' && typeof value.value === 'number'
-
-const isMetricHostSeries = (value: unknown): value is MetricHostSeries =>
-  isRecord(value) && typeof value.name === 'string' && isListOf(value.points, isMetricPoint)
-
-export const isMetricHistory = (value: unknown): value is MetricHistory =>
-  isRecord(value) &&
-  isMetricKind(value.kind) &&
-  isMetricUnit(value.unit) &&
-  typeof value.window_minutes === 'number' &&
-  isListOf(value.hosts, isMetricHostSeries)
-
-const isIncident = (value: unknown): value is Incident =>
-  isRecord(value) &&
-  typeof value.id === 'number' &&
-  typeof value.target === 'string' &&
-  typeof value.reason === 'string' &&
-  typeof value.opened_at === 'string' &&
-  isStringOrNull(value.closed_at)
-
-export const isIncidentFeed = (value: unknown): value is IncidentFeed =>
-  isRecord(value) && isListOf(value.open, isIncident) && isListOf(value.recent, isIncident)
+export const isHealth = guardOf(healthSchema)
+export const isFleetResponse = guardOf(fleetWithMetricsSchema)
+export const isMetricHistory = guardOf(metricHistorySchema)
+export const isIncidentFeed = guardOf(incidentFeedSchema)
 
 // --- playsApi.ts ------------------------------------------------------------------
 
