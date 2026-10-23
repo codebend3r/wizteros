@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common'
 import type { NestFastifyApplication } from '@nestjs/platform-fastify'
-import { createLocalJWKSet, exportJWK, generateKeyPair } from 'jose'
+import { supabaseSigner } from '@wizteros/server-common/testing'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { asBridge, fakeBridge } from '@/test/fakes.js'
 import { serve } from '@/test/serve.js'
@@ -25,8 +25,10 @@ describe('GET /version', () => {
 
   beforeEach(async () => {
     // A real gate with an allowlist, so a route that gained a guard would 401.
-    const { publicKey } = await generateKeyPair('ES256')
-    const keySet = createLocalJWKSet({ keys: [{ ...(await exportJWK(publicKey)), kid: 'k' }] })
+    const { keySet } = await supabaseSigner({
+      supabaseUrl: 'https://project.supabase.co',
+      email: 'admin@example.com',
+    })
     vi.stubEnv('SUPABASE_URL', 'https://project.supabase.co')
     vi.stubEnv('ADMIN_ALLOWED_EMAILS', 'admin@example.com')
     app = await serve({

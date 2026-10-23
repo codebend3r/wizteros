@@ -4,9 +4,9 @@ import {
   Catch,
   type ExceptionFilter,
   HttpException,
+  type HttpServer,
   Logger,
 } from '@nestjs/common'
-import type { HttpAdapterHost } from '@nestjs/core'
 
 // FastAPI answers every error as {"detail": ...}, and the portal shows that
 // text to the admin, so the servers keep the shape. A route that fails on
@@ -36,7 +36,10 @@ export const detailBody = (exception: unknown): { detail: unknown } => {
 export class HttpDetailFilter implements ExceptionFilter {
   private readonly log = new Logger('HttpDetailFilter')
 
-  constructor(private readonly adapterHost: HttpAdapterHost) {}
+  // Nest's HttpAdapterHost satisfies this, and so does `{ httpAdapter:
+  // app.getHttpAdapter() }`, which keeps @nestjs/core out of the lib's runtime
+  // imports.
+  constructor(private readonly adapterHost: Readonly<{ httpAdapter: Pick<HttpServer, 'reply'> }>) {}
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const status = exception instanceof HttpException ? exception.getStatus() : 500
