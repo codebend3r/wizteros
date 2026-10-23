@@ -9,7 +9,7 @@ import {
   signup,
 } from '@/alerts.js'
 import { retireDuplicates } from '@/duplicates.js'
-import { inviteUrl, issueInvite, liveScope, mint, TierScopeEmpty } from '@/invites.js'
+import { issueInvite, liveScope, rescopeRecords, TierScopeEmpty } from '@/invites.js'
 import type { Identity, IdentitySnapshot } from '@/identity.js'
 import {
   accessLine,
@@ -22,7 +22,7 @@ import {
 import { eachInOrder } from '@/sequence.js'
 import { holdsStandingGrant, isBanned } from '@/standing.js'
 import { statusRule } from '@/subscriptionStatus.js'
-import { normalizeTier, staleRecordIds, type Tier } from '@/tiers.js'
+import { normalizeTier, type Tier } from '@/tiers.js'
 import type { Bridge, Settings, TierScope } from '@/types.js'
 
 // Stripe events in, Wizarr and store changes out: checkout -> invite,
@@ -81,6 +81,35 @@ export const customerEmail = async ({
     throw new Error('the event names no customer to look an email up for')
   }
   return bridge.stripe.customerEmail(customerId)
+}
+
+/**
+ * The address a Stripe object is about.
+ *
+ * Its own email first (a session's customer_details, an invoice's
+ * customer_email), then the address the bridge recorded for the customer,
+ * and only then a round trip to Stripe's customer record. Null when none of
+ * them has one, or when there is no customer to ask about.
+ */
+const payerEmail = async ({
+  bridge,
+  obj,
+  customerId,
+}: {
+  bridge: Bridge
+  obj: StripeObject
+  customerId: string | null
+}): Promise<string | null> => {
+  const own =
+    truthyText({ obj: nested({ obj, key: 'customer_details' }), key: 'email' }) ??
+    truthyText({ obj, key: 'customer_email' })
+  if (own || !customerId) {
+    return own
+  }
+  return (
+    (bridge.store.getMapping({ customerId })?.email ?? null) ||
+    (await customerEmail({ bridge, customerId }))
+  )
 }
 
 /** Absolute expiry for a paid record: the update time plus the access window. */
@@ -193,31 +222,26 @@ const resetExistingRecords = async ({
   customerId: string | null
   access: TierScope
 }): Promise<void> => {
-  // Existing access survives the invite window: redeeming re-scopes the
-  // share in place on every covered server. Disable-first only when the
-  // new tier leaves a current server uncovered (no per-server unshare),
-  // or when the member is only findable via the invite-code fallback
-  // (Plex email differs, so coverage can't be evaluated — fail closed).
+  // Coverage can only be judged for records under the member's own address;
+  // found any other way (Plex email differs), the reset fails closed.
   const identity = resolveIdentity({ bridge, snapshot, customerId, email })
-  const records = identity.via === 'email' ? identity.records : []
-  const existing =
-    identity.via === 'email'
-      ? staleRecordIds({ records, coveredServers: access.server_names })
-      : identity.records.map((record) => record.id)
-  await eachInOrder({ items: existing, run: (userId) => bridge.wizarr.disableUser(userId) })
-  if (existing.length > 0) {
-    log.log(`reset ${existing.length} existing record(s) for ${email} pending re-join`)
+  const { disabled, surviving } = await rescopeRecords({
+    wizarr: bridge.wizarr,
+    records: identity.records,
+    coveredServers: access.server_names,
+    evaluable: identity.via === 'email',
+  })
+  if (disabled.length > 0) {
+    log.log(`reset ${disabled.length} existing record(s) for ${email} pending re-join`)
   }
   // Covered records keep access without ever redeeming the new invite,
   // so the purchase itself must stamp the paid expiry — otherwise a
   // shorter pre-signup window (e.g. the 14-day Invited backfill) would
   // survive the checkout.
-  const disabled: ReadonlySet<number> = new Set(existing)
-  const surviving = records.map((record) => record.id).filter((id) => !disabled.has(id))
   const expires = accessExpiryIso(bridge.settings)
   await eachInOrder({
     items: surviving,
-    run: (userId) => bridge.wizarr.setExpiry({ userId, expires }),
+    run: (record) => bridge.wizarr.setExpiry({ userId: record.id, expires }),
   })
   if (surviving.length > 0) {
     log.log(`stamped expiry ${expires} on ${surviving.length} surviving record(s) for ${email}`)
@@ -281,11 +305,11 @@ const resolveLive = async ({
 
 /** Mint and mail the tier invite for a completed checkout, once per session. */
 const onCheckoutCompleted: EventHandler = async ({ bridge, obj }) => {
-  const email =
-    truthyText({ obj: nested({ obj, key: 'customer_details' }), key: 'email' }) ??
-    truthyText({ obj, key: 'customer_email' })
   const customerId = truthyText({ obj, key: 'customer' })
   const sessionId = truthyText({ obj, key: 'id' })
+  // Only the session's own address: a checkout that names nobody is not
+  // looked up, since there is no one it can be said to have paid for.
+  const email = await payerEmail({ bridge, obj, customerId: null })
   if (!email) {
     log.warn(`no email on session ${sessionId ?? 'with no id'}`)
     return
@@ -311,28 +335,17 @@ const onCheckoutCompleted: EventHandler = async ({ bridge, obj }) => {
     tier,
     context: `checkout ${sessionId ?? 'with no id'}`,
   })
-  // Everything below the invite can throw (a slow Wizarr write, SMTP), and
-  // a throw leaves the event unmarked so Stripe retries the whole handler.
-  // The session -> invite binding is what stops that retry from minting a
-  // second invite and mailing the member a second link.
-  const issued = sessionId ? bridge.store.getSessionInvite({ sessionId }) : null
-  const code = issued
-    ? issued.invite_code
-    : (await mint({ wizarr: bridge.wizarr, settings: bridge.settings, tier, scope: access })).code
-  if (issued) {
-    log.log(`checkout ${sessionId ?? 'with no id'} already has invite ${code}; reusing it`)
-  } else if (sessionId) {
-    bridge.store.recordSessionInvite({ sessionId, inviteCode: code })
-  }
-  bridge.store.transaction((store) => {
-    if (customerId) {
-      store.upsertPending({ customerId, email, inviteCode: code, tier })
-    }
-    // A completed checkout settles whatever failed on the previous cycle.
-    store.setPaymentState({ email, state: null })
+  // A Stripe retry of this session gets back the invite already minted.
+  const { url, emailed } = await issueInvite({
+    bridge,
+    email,
+    tier,
+    scope: access,
+    customerId,
+    sessionId,
+    settlesPayment: true,
   })
-  if (!(issued?.emailed ?? false)) {
-    const url = inviteUrl({ settings: bridge.settings, code })
+  if (!emailed) {
     await bridge.mailer.sendInvite({ to: email, inviteUrl: url })
     log.log(`sent invite to ${email}`)
     if (sessionId) {
@@ -373,8 +386,7 @@ const onCheckoutCompleted: EventHandler = async ({ bridge, obj }) => {
 /** Extend a renewal's access, or restore it when the payer holds no records. */
 const onInvoicePaid: EventHandler = async ({ bridge, obj }) => {
   const customerId = requiredText({ obj, key: 'customer' })
-  const email =
-    truthyText({ obj, key: 'customer_email' }) ?? (await customerEmail({ bridge, customerId }))
+  const email = await payerEmail({ bridge, obj, customerId })
   // A paid invoice settles any dunning, including the signup one that is
   // otherwise skipped below. A retry that finally succeeds is exactly
   // the case this flag exists to close out.
@@ -444,9 +456,7 @@ const onPaymentFailed: EventHandler = async ({ bridge, obj }) => {
   // period they are in), but the admin UI stops calling them healthy, so
   // a member in dunning is visible before their window runs out.
   const customerId = truthyText({ obj, key: 'customer' })
-  const email =
-    truthyText({ obj, key: 'customer_email' }) ??
-    (customerId ? await customerEmail({ bridge, customerId }) : null)
+  const email = await payerEmail({ bridge, obj, customerId })
   if (!email) {
     log.warn(`payment failed for ${customerId ?? 'no customer'} with no resolvable email`)
     return
@@ -494,9 +504,7 @@ const onPaymentFailed: EventHandler = async ({ bridge, obj }) => {
 const onSubscriptionUpdated: EventHandler = async ({ bridge, obj }) => {
   const customerId = truthyText({ obj, key: 'customer' })
   const status = truthyText({ obj, key: 'status' }) ?? ''
-  const mapping = customerId ? bridge.store.getMapping({ customerId }) : null
-  const email =
-    (mapping?.email ?? null) || (customerId ? await customerEmail({ bridge, customerId }) : null)
+  const email = await payerEmail({ bridge, obj, customerId })
   const rule = statusRule(status)
   if (email && rule !== undefined) {
     bridge.store.setPaymentState({ email, state: rule.paymentState })
@@ -507,8 +515,7 @@ const onSubscriptionUpdated: EventHandler = async ({ bridge, obj }) => {
 /** Disable the member's records, unless somebody still pays for them. */
 const onSubscriptionDeleted: EventHandler = async ({ bridge, obj }) => {
   const customerId = requiredText({ obj, key: 'customer' })
-  const mapping = bridge.store.getMapping({ customerId })
-  const email = (mapping?.email ?? null) || (await customerEmail({ bridge, customerId }))
+  const email = await payerEmail({ bridge, obj, customerId })
   if (!email) {
     // Nobody to record the cancellation against; the records the customer's
     // invite resolves to are still disabled.

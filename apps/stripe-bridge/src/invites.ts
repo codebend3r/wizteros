@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common'
-import { resolveTierAccess, type Tier, withoutStale } from '@/tiers.js'
+import { eachInOrder } from '@/sequence.js'
+import { resolveTierAccess, staleRecordIds, type Tier, withoutStale } from '@/tiers.js'
 import type {
   Bridge,
   CreatedInvite,
@@ -8,6 +9,7 @@ import type {
   TierScope,
   WizarrApi,
   WizarrLibrary,
+  WizarrUser,
 } from '@/types.js'
 
 // The one way an invite is scoped and minted, wherever it is asked for.
@@ -124,8 +126,17 @@ export const mint = async ({
 export const inviteUrl = ({ settings, code }: { settings: Settings; code: string }): string =>
   `${settings.publicInviteBase}/j/${code}`
 
-/** An invite issued to a member: its code, the link they open, and what it grants. */
-export type IssuedInvite = Readonly<{ code: string; url: string; scope: TierScope }>
+/**
+ * An invite issued to a member: its code, the link they open, what it grants,
+ * and whether that link already reached them (only ever true for a checkout
+ * whose earlier delivery went out before it failed).
+ */
+export type IssuedInvite = Readonly<{
+  code: string
+  url: string
+  scope: TierScope
+  emailed: boolean
+}>
 
 /**
  * Mint a tier invite for a member and record it against them.
@@ -133,6 +144,14 @@ export type IssuedInvite = Readonly<{ code: string; url: string; scope: TierScop
  * The store row is what keeps the member on the members list while the
  * invite is pending and what restarts their grace clock: keyed by the Stripe
  * customer when there is one, else by the address alone.
+ *
+ * A checkout passes its session id. Everything after the invite can throw (a
+ * slow Wizarr write, SMTP), a throw leaves the Stripe event unmarked, and the
+ * retry runs the whole handler again; the session -> invite binding is what
+ * hands that retry the invite already minted, rather than a second invite and
+ * a second link in the member's inbox. A completed checkout also settles
+ * whatever payment failed on the previous cycle, in the same write as the
+ * pending row, so the two never disagree.
  */
 export const issueInvite = async ({
   bridge,
@@ -141,6 +160,8 @@ export const issueInvite = async ({
   scope,
   customerId = null,
   allowDownloads = null,
+  sessionId = null,
+  settlesPayment = false,
 }: {
   bridge: Bridge
   email: string
@@ -148,18 +169,73 @@ export const issueInvite = async ({
   scope: TierScope
   customerId?: string | null
   allowDownloads?: boolean | null
+  sessionId?: string | null
+  settlesPayment?: boolean
 }): Promise<IssuedInvite> => {
-  const { code } = await mint({
-    wizarr: bridge.wizarr,
-    settings: bridge.settings,
-    tier,
-    scope,
-    allowDownloads,
-  })
-  if (customerId) {
-    bridge.store.upsertPending({ customerId, email, inviteCode: code, tier })
-  } else {
-    bridge.store.upsertPendingByEmail({ email, inviteCode: code, tier })
+  const issued = sessionId ? bridge.store.getSessionInvite({ sessionId }) : null
+  const code = issued
+    ? issued.invite_code
+    : (
+        await mint({
+          wizarr: bridge.wizarr,
+          settings: bridge.settings,
+          tier,
+          scope,
+          allowDownloads,
+        })
+      ).code
+  if (issued) {
+    log.log(`checkout ${sessionId} already has invite ${code}; reusing it`)
+  } else if (sessionId) {
+    bridge.store.recordSessionInvite({ sessionId, inviteCode: code })
   }
-  return { code, url: inviteUrl({ settings: bridge.settings, code }), scope }
+  bridge.store.transaction((store) => {
+    if (customerId) {
+      store.upsertPending({ customerId, email, inviteCode: code, tier })
+    } else {
+      store.upsertPendingByEmail({ email, inviteCode: code, tier })
+    }
+    if (settlesPayment) {
+      store.setPaymentState({ email, state: null })
+    }
+  })
+  return {
+    code,
+    url: inviteUrl({ settings: bridge.settings, code }),
+    scope,
+    emailed: issued?.emailed ?? false,
+  }
+}
+
+/** What re-scoping a member's records did: the ids disabled, and the records left standing. */
+export type Rescoped = Readonly<{ disabled: readonly number[]; surviving: readonly WizarrUser[] }>
+
+/**
+ * Disable the records a new invite cannot re-scope in place; the rest survive.
+ *
+ * Redeeming an invite re-scopes the member's share in place on every server
+ * it covers, so their access survives the wait for redemption. Wizarr has no
+ * per-server unshare, though: a record on a server the new scope leaves out
+ * can only go by disabling, which severs the whole plex.tv friendship, so
+ * then every record goes and the invite re-grants what the tier covers.
+ * `evaluable` false says the records were not found under the member's own
+ * address, so coverage cannot be judged and the reset fails closed.
+ */
+export const rescopeRecords = async ({
+  wizarr,
+  records,
+  coveredServers,
+  evaluable,
+}: {
+  wizarr: WizarrApi
+  records: readonly WizarrUser[]
+  coveredServers: readonly string[]
+  evaluable: boolean
+}): Promise<Rescoped> => {
+  const disabled = evaluable
+    ? staleRecordIds({ records, coveredServers })
+    : records.map((record) => record.id)
+  await eachInOrder({ items: disabled, run: (id) => wizarr.disableUser(id) })
+  const gone: ReadonlySet<number> = new Set(disabled)
+  return { disabled, surviving: records.filter((record) => !gone.has(record.id)) }
 }
