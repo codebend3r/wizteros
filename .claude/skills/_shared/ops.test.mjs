@@ -3,7 +3,16 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { nasHost, ssh, SSH_OPTIONS, stripeGet, stripeList, wizarrGet } from './ops.mjs'
+import {
+  bridgeOps,
+  nasHost,
+  shellQuote,
+  ssh,
+  SSH_OPTIONS,
+  stripeGet,
+  stripeList,
+  wizarrGet,
+} from './ops.mjs'
 
 // A hook can export GIT_DIR and friends; nothing spawned here needs Git, and a
 // child must never inherit a repository it could write to.
@@ -147,4 +156,24 @@ test('wizarrGet sends the API key, trims the base and reports a failure by statu
     wizarrGet({ base: 'http://wizarr.invalid', key: 'wk', path: '/api/invitations', fetch }),
     { message: 'Wizarr GET /api/invitations responded 503', status: 503 },
   )
+})
+
+test('shellQuote leaves nothing for a shell to expand', () => {
+  assert.equal(shellQuote("o'brien@x.com"), "'o'\\''brien@x.com'")
+  assert.equal(shellQuote('$(rm -rf /)'), "'$(rm -rf /)'")
+})
+
+test('bridgeOps runs the read-only CLI in the bridge container and parses its answer', async () => {
+  const commands = []
+  const answer = await bridgeOps({
+    args: ['member', "o'brien@x.com"],
+    run: async ({ command }) => {
+      commands.push(command)
+      return '{"email":"o\'brien@x.com","customer":null}\n'
+    },
+  })
+  assert.deepEqual(answer, { email: "o'brien@x.com", customer: null })
+  assert.deepEqual(commands, [
+    "sudo -n /usr/local/bin/docker exec stripe-bridge node dist/opsCli.js 'member' 'o'\\''brien@x.com'",
+  ])
 })

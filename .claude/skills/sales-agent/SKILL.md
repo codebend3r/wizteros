@@ -46,10 +46,10 @@ reports a missing variable, not Node's flag parser.
 
 A live report needs `STRIPE_API_KEY`, `WIZARR_BASE_URL`, and `WIZARR_API_KEY` (the same
 three the bridge runs with), plus SSH key auth to the NAS for the bridge-store read. The
-NAS target defaults to `$WZ_NAS_HOST` and `/volume1/docker/stripe-bridge`,
-overridable with `WZ_NAS_HOST` and `WZ_NAS_PATH`. The store read is a plain SSH redirect,
-`ssh <host> "cat <path>/stripe-bridge-data/bridge.db" > <tmpfile>`, not a tar copy, into a
-`mkdtemp` directory that is removed in a `finally` whether the read succeeds or not.
+NAS target defaults to `$WZ_NAS_HOST`. The store read runs the bridge's read-only ops CLI
+in its container, `sudo -n /usr/local/bin/docker exec stripe-bridge node dist/opsCli.js
+customers`, which reads bridge.db through the bridge's own store over read-only
+connections; nothing copies the live file.
 
 `--record` and `--opt-out` touch only the local ledger and need none of the above: they
 run before the config check, so recording a contact or an opt-out works even with no
@@ -95,7 +95,7 @@ Exit codes:
   into place, so a crash mid-write can never leave that half-written state behind.
 
 The bridge-store read is the one exception: it fails soft. A bad SSH connection or a
-missing `sqlite3` degrades that source to `unavailable` and the run still exits `0`, at
+bridge without `dist/opsCli.js` degrades that source to `unavailable` and the run still exits `0`, at
 the cost of the member list being empty (see `--no-store` above). Always read the
 `sources:` line before trusting an empty report: an empty report with `store unavailable`
 means the read failed, not that the week was quiet.

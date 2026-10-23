@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import Database from 'better-sqlite3'
@@ -91,6 +91,46 @@ describe('withSqlite', () => {
       }),
     })
     expect(settings).toEqual({ journal: 'wal', busyTimeout: 30_000 })
+  })
+
+  describe('read-only', () => {
+    const insert = (database: SqliteDatabase) =>
+      database.prepare("INSERT INTO notes (body) VALUES ('nope')").run()
+
+    it('reads what is there', () => {
+      withSqlite({ path, work: insert })
+      expect(
+        withSqlite({
+          path,
+          readonly: true,
+          work: (database) => database.prepare('SELECT body FROM notes').all(),
+        }),
+      ).toEqual([{ body: 'nope' }])
+    })
+
+    it('refuses every write, whatever the mode, and leaves the file as it was', () => {
+      const before = readFileSync(path)
+      const attempts = [
+        insert,
+        (database: SqliteDatabase) => database.exec('DROP TABLE notes'),
+        (database: SqliteDatabase) => database.exec('CREATE TABLE more (id INTEGER)'),
+        (database: SqliteDatabase) => database.pragma('user_version = 7'),
+      ]
+      attempts.forEach((work) => {
+        expect(() => withSqlite({ path, readonly: true, work })).toThrow(/readonly|query_only/i)
+        expect(() => withSqlite({ path, readonly: true, mode: 'read', work })).toThrow(
+          /readonly|query_only/i,
+        )
+      })
+      expect(readFileSync(path).equals(before)).toBe(true)
+      expect(count()).toBe(0)
+    })
+
+    it('will not create a missing file', () => {
+      const missing = join(dir, 'missing.db')
+      expect(() => withSqlite({ path: missing, readonly: true, work: () => undefined })).toThrow()
+      expect(existsSync(missing)).toBe(false)
+    })
   })
 
   describe('with another writer on the file', () => {

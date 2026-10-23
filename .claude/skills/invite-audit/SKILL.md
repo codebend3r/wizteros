@@ -33,7 +33,8 @@ node --env-file=.env .claude/skills/invite-audit/scripts/audit-invites.mjs
 ```
 
 Run it from the repo root. Needs `WIZARR_BASE_URL` and `WIZARR_API_KEY`, plus SSH key
-auth to the NAS and `sudo -n /usr/local/bin/docker` there to read `baseline_invites`.
+auth to the NAS and `sudo -n /usr/local/bin/docker` there to run the bridge's read-only
+`node dist/opsCli.js baselines`, which reads `baseline_invites` through the bridge's store.
 `.env` is gitignored, so whether one exists is a property of the working copy: use it
 when present, otherwise point `--env-file` at whatever file holds the values.
 
@@ -116,8 +117,8 @@ usually across all four at once.
 - **Bridge is down or was restarted repeatedly.** `_baseline_loop` deliberately does
   not rotate at boot — a restart loop would otherwise mint a fresh set every time the
   container came up — so a bridge that keeps restarting never reaches 03:00.
-- **The deployed bridge predates the rotation.** The audit says the
-  `baseline_invites` table is absent. `GET /version` against the NAS, compare with
+- **The deployed bridge predates the rotation or the ops CLI.** The audit says the
+  bridge store is unavailable (`dist/opsCli.js` missing in the container). `GET /version` against the NAS, compare with
   `version` in `apps/stripe-bridge/package.json`, and deploy.
 
 **Remedy.** `bun run deploy:nas` (or the `deploy-nas` skill), then confirm with

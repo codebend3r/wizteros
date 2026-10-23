@@ -4,7 +4,7 @@ import { eventStore } from '@/store/events.js'
 import { inviteStore } from '@/store/invites.js'
 import { overrideStore } from '@/store/overrides.js'
 import { initSchema } from '@/store/schema.js'
-import type { Units } from '@/store/units.js'
+import type { Unit, Units } from '@/store/units.js'
 
 // The bridge's SQLite file (the customer map, the admin overrides, both logs
 // and the invites it minted) as one port on the Bridge, beside Wizarr,
@@ -54,3 +54,44 @@ export const openStore = (path: string): BridgeStore => ({
   transaction: (work) =>
     withSqlite({ path, work: (connection) => work(operationsOver(unitsOn(connection))) }),
 })
+
+/**
+ * Both units over read-only connections to the file at `path`: a `write`
+ * unit runs, and SQLite refuses its first write.
+ */
+export const readOnlyUnits = (path: string): Units => {
+  const unit: Unit = (work) => withSqlite({ path, readonly: true, work })
+  return { read: unit, write: unit }
+}
+
+/** The reads an operator's tooling may make; nothing that writes is in it. */
+export type ReadOnlyStore = Pick<
+  StoreOperations,
+  | 'allCustomerRows'
+  | 'customerRow'
+  | 'customerIdsForEmail'
+  | 'allMemberTags'
+  | 'getMemberTag'
+  | 'getMemberDownloads'
+  | 'eventsForEmail'
+  | 'allBaselineInvites'
+>
+
+/**
+ * The store over the live file, for reading only. Every connection is opened
+ * read-only, so even a write operation reached by mistake fails in SQLite,
+ * and only the reads are handed out at all.
+ */
+export const openReadOnlyStore = (path: string): ReadOnlyStore => {
+  const operations = operationsOver(readOnlyUnits(path))
+  return {
+    allCustomerRows: operations.allCustomerRows,
+    customerRow: operations.customerRow,
+    customerIdsForEmail: operations.customerIdsForEmail,
+    allMemberTags: operations.allMemberTags,
+    getMemberTag: operations.getMemberTag,
+    getMemberDownloads: operations.getMemberDownloads,
+    eventsForEmail: operations.eventsForEmail,
+    allBaselineInvites: operations.allBaselineInvites,
+  }
+}
