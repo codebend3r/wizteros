@@ -43,7 +43,8 @@ wizteros/
 │       ├── src/                webhook/ admin/ clients/ test/, tests beside each module
 │       └── scripts/            e2e and library snapshot entrypoints
 ├── libs/
-│   └── server-common/          Nx project `@wizteros/server-common`, shared by the NestJS servers
+│   ├── server-common/          Nx project `@wizteros/server-common`, shared by the NestJS servers
+│   └── wire/                   Nx project `@wizteros/wire`, the response schemas the servers send and the portal reads
 ├── docs/                       all specs, plans, and PRDs for both apps
 ├── scripts/                    release, backfill, and deploy entrypoints
 ├── .claude/agents/             repo-scoped subagents
@@ -69,6 +70,8 @@ wizteros/
 **fleet-monitor**: `api/` is routes and view models only; the fleet judgement behind them lives in `fleet.ts` and the metric history in `series.ts`. `plays/` holds the play-history ledger (`ledger.ts`), its aggregates (`views.ts`) and the unplayed engine (`neverPlayed.ts`). `pythonMath.ts` reproduces the Python rounding and division the numbers were first computed with, so the port's figures match.
 
 **server-common** (`libs/server-common`, `@wizteros/server-common`): `SupabaseAdminGuard` and `AdminAuthModule`, the env parsing both servers share, `withSqlite`, the one-connection-per-unit-of-work helper, the SQLite row guards (`rows.ts`), Python's `isoformat()` and its parsing (`time.ts`), `fastApiValidationPipe`, FastAPI's 422 for a failed query or body schema, and `fastApiCompat({app, cors})`, which wires CORS, the `{detail}` errors, that 422 and Starlette's 405 onto an app in one call. Test plumbing both servers share (the Supabase token signer, temp files, recorded fixtures) is the `@wizteros/server-common/testing` subpath, imported only from tests. Apps consume its built `dist`, which is why `typecheck`, `test` and `build` all depend on `^build`. Its `@nestjs/common` is a peer dependency, so an app and the lib share one copy and the guard's 401 stays an `HttpException` to the app.
+
+**wire** (`libs/wire`, `@wizteros/wire`): the wire contract as zod schemas, one per response, imported by the servers and bundled into the portal; `guardOf(schema)` turns one into the type guard a reader checks a body with, and `Wire<typeof schema>` is the read-only type it vouches for. Pure TypeScript with zod as its only dependency, so nothing in it may import Node or Nest. Like server-common, consumers read its built `dist` (the portal's `dev` and `preview` depend on `^build` too), and it imports same-directory `./` only.
 
 Import rules, which tooling does not catch:
 
@@ -99,6 +102,7 @@ Most projects source targets from more than one place, so check `nx show project
 | `fleet-monitor`           | `package.json` scripts (`build`, `typecheck`, `lint:ts`, `format:check`, `test`) gated by `nx.includedScripts`, plus `project.json` for `docker-build`                                                                                                                            |
 | `stripe-bridge`           | `package.json` scripts (the same five, plus `test:e2e`, `test:e2e:tiers`, `refresh:libraries`) gated by `nx.includedScripts`, **plus** `project.json` for the Docker targets (`docker-build`, `serve`, `stop`, `logs`), declared as `nx:run-commands` with `cwd: {workspaceRoot}` |
 | `@wizteros/server-common` | `package.json` scripts only, gated by `nx.includedScripts`                                                                                                                                                                                                                        |
+| `@wizteros/wire`          | `package.json` scripts only, gated by `nx.includedScripts`                                                                                                                                                                                                                        |
 
 Anything cacheable is declared in `nx.json` `targetDefaults`. A new target that is safe to cache belongs there; anything that touches Docker or the network must stay `cache: false`.
 

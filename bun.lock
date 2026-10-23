@@ -25,6 +25,7 @@
         "@tanstack/query-sync-storage-persister": "5.103.1",
         "@tanstack/react-query": "5.103.1",
         "@tanstack/react-query-persist-client": "5.103.1",
+        "@wizteros/wire": "workspace:*",
         "react": "19.3.0",
         "react-dom": "19.3.0",
         "react-router-dom": "7.18.4",
@@ -60,6 +61,7 @@
         "@nestjs/core": "12.1.0",
         "@nestjs/platform-fastify": "12.1.0",
         "@wizteros/server-common": "workspace:*",
+        "@wizteros/wire": "workspace:*",
         "reflect-metadata": "0.2.2",
         "rxjs": "7.8.2",
         "zod": "4.6.5",
@@ -84,6 +86,7 @@
         "@nestjs/core": "12.1.0",
         "@nestjs/platform-fastify": "12.1.0",
         "@wizteros/server-common": "workspace:*",
+        "@wizteros/wire": "workspace:*",
         "fast-xml-parser": "5.11.1",
         "nodemailer": "10.0.10",
         "reflect-metadata": "0.2.2",
@@ -127,6 +130,21 @@
       },
       "peerDependencies": {
         "@nestjs/common": "12.1.0",
+      },
+    },
+    "libs/wire": {
+      "name": "@wizteros/wire",
+      "version": "0.4.4",
+      "dependencies": {
+        "zod": "4.6.5",
+      },
+      "devDependencies": {
+        "@types/node": "24.19.0",
+        "@typescript/native-preview": "7.0.0-dev.20260707.2",
+        "oxfmt": "0.68.0",
+        "oxlint": "1.83.0",
+        "typescript": "6.0.3",
+        "vitest": "5.0.2",
       },
     },
   },
@@ -590,6 +608,8 @@
     "@vitest/spy": ["@vitest/spy@5.0.2", "", {}, "sha512-Ijc7T1nT9efNb5LxvjaBrEqw3f/QwUv5EE0nKqZxgqsaV/FxAAZ8baGylA8X/Z2oS4Lp+K74Jr6dTJsDKxJDeg=="],
 
     "@wizteros/server-common": ["@wizteros/server-common@workspace:libs/server-common"],
+
+    "@wizteros/wire": ["@wizteros/wire@workspace:libs/wire"],
 
     "@yarnpkg/lockfile": ["@yarnpkg/lockfile@1.1.0", "", {}, "sha512-GpSwvyXOcOOlV70vbnzjj4fW5xW/FdUF6nQEt1ENy7m4ZCczi1+/buVUPAqmGfqznsORNFzUMjctTIp8a9tuCQ=="],
 

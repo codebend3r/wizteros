@@ -1,0 +1,7 @@
+{
+  // The server compiler settings, because both servers compile against this
+  // lib as nodenext ESM. Nothing here touches Node or Nest: the admin portal
+  // bundles the same dist into the browser.
+  "extends": "../../tsconfig.server.json",
+  "include": ["src", "vitest.config.ts"]
+}
