@@ -44,6 +44,26 @@ export const ssh = async ({
   return stdout
 }
 
+/**
+ * Wrap a value in single quotes for a POSIX shell, escaping any single quote
+ * it contains as '\'' so nothing inside it is ever expanded or word split.
+ */
+export const shellQuote = (value) => `'${String(value).replaceAll("'", "'\\''")}'`
+
+// The NOPASSWD sudoers rule on the NAS matches this literal path.
+const DOCKER = '/usr/local/bin/docker'
+
+/**
+ * Ask the bridge's read-only ops CLI (`dist/opsCli.js` in the stripe-bridge
+ * container) one question and resolve to its JSON answer. It reads bridge.db
+ * through the bridge's own store, over connections SQLite refuses to write
+ * through, so no script copies the live file or queries it itself.
+ */
+export const bridgeOps = async ({ args, run = ssh }) => {
+  const command = `sudo -n ${DOCKER} exec stripe-bridge node dist/opsCli.js ${args.map(shellQuote).join(' ')}`
+  return JSON.parse(await run({ command }))
+}
+
 /** A failed GET, carrying the status so a caller can tell a 404 from an outage. */
 const failed = ({ label, status }) =>
   Object.assign(new Error(`${label} responded ${status}`), { status })

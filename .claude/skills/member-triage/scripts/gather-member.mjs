@@ -10,14 +10,15 @@
 // STRICTLY READ-ONLY, by design and not just by habit. Every admin verb
 // (reissue-invite, reset-expiry, reset-tier, set-tag, set-downloads,
 // cancel-subscription) sits behind a Supabase session JWT that no CLI can mint,
-// so mutations happen in the admin web UI. Nothing here writes: the SQLite
-// handle is opened mode=ro and the SSH calls only read.
+// so mutations happen in the admin web UI. Nothing here writes: the store is
+// read through the bridge's read-only ops CLI and the SSH calls only read.
 //
 // Run: node --env-file=<env file> .claude/skills/member-triage/scripts/gather-member.mjs member@example.com
 // `.env` is gitignored, so whether one exists is a property of the working copy,
 // not of the repo: use it when it is there, otherwise pass whichever file holds
 // the three values locally, or export them for the command.
 import {
+  bridgeOps,
   nasHost,
   ssh,
   stripeGet as stripeRead,
@@ -187,53 +188,32 @@ const wizarrSection = async ({ inviteCode }) => {
 
 // ─── The NAS: bridge store and container logs ─────────────────────────────────
 
-// SELECT-only, against a connection opened read-only so the process could not
-// write even by accident. Shipped base64 so the program survives ssh
-// re-parsing the remote command through the login shell. better-sqlite3 is
-// resolved from libs/server-common, the only place bun's install links it.
-const storeProgram = `
-const Database = require('node:module').createRequire('/repo/libs/server-common/package.json')('better-sqlite3')
-const db = new Database(process.env.MAP_DB_PATH || '/data/bridge.db', { readonly: true, fileMustExist: true })
-const email = ${JSON.stringify(EMAIL)}
-const one = (sql) => db.prepare(sql).all(email)
-console.log(JSON.stringify({
-  customers: one('SELECT stripe_customer_id, email, invite_code, tier, invited_at, subscribed'
-    + ' FROM customer_map WHERE lower(email) = lower(?)'),
-  tags: one('SELECT tag FROM member_tags WHERE email = lower(?)'),
-  downloads: one('SELECT allow FROM member_downloads WHERE email = lower(?)'),
-  events: one('SELECT at, action, detail FROM event_log WHERE email = lower(?) ORDER BY id DESC LIMIT 12'),
-}))
-`
-
-const readStore = async () => {
-  const encoded = Buffer.from(storeProgram, 'utf8').toString('base64')
-  const out = await ssh({
-    command:
-      `sudo -n ${DOCKER} exec ${SERVICE} node -e ` +
-      `"eval(Buffer.from('${encoded}', 'base64').toString())"`,
-  })
-  return JSON.parse(out)
-}
+// The bridge's own read-only ops CLI answers for the store, so this reads the
+// customer row the bridge itself would pick (and its tier aliases and tag
+// guard) and never opens bridge.db.
+const readStore = () => bridgeOps({ args: ['member', EMAIL] })
 
 const storeSection = ({ store, error }) => {
   if (error) {
     bullet(`unavailable: ${error}`)
     return
   }
-  if (!store.customers.length) {
+  const c = store.customer
+  if (!c) {
     bullet(`customer_map: ${NONE} (the bridge has never recorded this email)`)
   } else {
-    store.customers.forEach((c) =>
-      bullet(
-        `customer_map: ${c.stripe_customer_id}  tier=${c.tier ?? 'none'}  ` +
-          `subscribed=${c.subscribed}  invited_at=${when(c.invited_at)}  ` +
-          `invite=${c.invite_code ?? 'none'}`,
-      ),
+    // The row the bridge answers with; every Stripe customer id on the address
+    // is listed, since a dual checkout leaves more than one.
+    bullet(
+      `customer_map: ${store.customer_ids.join(', ') || 'admin placeholder (no Stripe customer)'}  ` +
+        `tier=${c.tier ?? 'none'}  subscribed=${c.subscribed}  ` +
+        `invited_at=${when(c.invited_at)}  invite=${c.invite_code ?? 'none'}` +
+        `${c.payment_state ? `  payment=${c.payment_state}` : ''}`,
     )
   }
   bullet(
-    `tag=${store.tags[0]?.tag ?? 'none'}  ` +
-      `downloads override=${store.downloads.length ? (store.downloads[0].allow ? 'on' : 'off') : 'none'}`,
+    `tag=${store.tag ?? 'none'}  ` +
+      `downloads override=${store.downloads === null ? 'none' : store.downloads ? 'on' : 'off'}`,
   )
   if (!store.events.length) {
     bullet(`events: ${NONE}`)

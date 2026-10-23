@@ -6,8 +6,8 @@
 //   Strays      unlimited invites the bridge did not mint — reported, not touched
 //
 // STRICTLY READ-ONLY. Rotation lives in the bridge (apps/stripe-bridge/src/baseline.ts)
-// and runs unattended; this script only looks. The SQLite handle is opened
-// mode=ro and every HTTP call is a GET, so nothing here can change live state.
+// and runs unattended; this script only looks. The store is read through the bridge's read-only ops CLI and every HTTP call is a GET, so
+// nothing here can change live state.
 //
 // The checks are written against the same rules as tiers.ts but deliberately
 // re-derived here rather than imported, so a bug in the bridge is not mirrored
@@ -17,13 +17,11 @@
 // `.env` is gitignored, so whether one exists is a property of the working copy,
 // not of the repo: use it when it is there, otherwise pass whichever file holds
 // the values locally, or export them for the command.
-import { nasHost, ssh, wizarrGet } from '../../_shared/ops.mjs'
+import { bridgeOps, nasHost, wizarrGet } from '../../_shared/ops.mjs'
 
 const { WIZARR_BASE_URL, WIZARR_API_KEY } = process.env
 
 const WIZARR = (WIZARR_BASE_URL ?? '').replace(/\/+$/, '')
-const DOCKER = '/usr/local/bin/docker' // the NOPASSWD sudoers rule matches this literal path
-const SERVICE = 'stripe-bridge'
 const HOUR = 3_600_000
 
 // Mirrors tiers.py: every tier resolves to this one server, and the others are
@@ -63,27 +61,9 @@ const ago = (date, now) => {
 
 // ─── The NAS: which codes the bridge minted ──────────────────────────────────
 
-// SELECT-only, against a connection opened read-only so the process could not
-// write even by accident. Shipped base64 so the program survives ssh
-// re-parsing the remote command through the login shell. better-sqlite3 is
-// resolved from libs/server-common, the only place bun's install links it.
-const storeProgram = `
-const Database = require('node:module').createRequire('/repo/libs/server-common/package.json')('better-sqlite3')
-const db = new Database(process.env.MAP_DB_PATH || '/data/bridge.db', { readonly: true, fileMustExist: true })
-const table = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'baseline_invites'").get()
-const rows = table ? db.prepare('SELECT code, tier, created_at, expires_at FROM baseline_invites').all() : null
-console.log(JSON.stringify({ baselines: rows }))
-`
-
-const readStore = async () => {
-  const encoded = Buffer.from(storeProgram, 'utf8').toString('base64')
-  const out = await ssh({
-    command:
-      `sudo -n ${DOCKER} exec ${SERVICE} node -e ` +
-      `"eval(Buffer.from('${encoded}', 'base64').toString())"`,
-  })
-  return JSON.parse(out).baselines
-}
+// The bridge's own read-only ops CLI answers which baselines it minted, so this
+// never opens bridge.db itself.
+const readStore = async () => (await bridgeOps({ args: ['baselines'] })).baselines
 
 // ─── Report ──────────────────────────────────────────────────────────────────
 
@@ -105,9 +85,6 @@ const main = async () => {
   heading('Baseline invites (bridge-minted, one set per tier)')
   if (owned === undefined) {
     bullet('unavailable — cannot tell baseline from stray, so nothing below is conclusive')
-  } else if (owned === null) {
-    bullet('baseline_invites table absent: the deployed bridge predates the rotation')
-    findings.push('Bridge on the NAS has no baseline_invites table — deploy the rotation')
   } else if (owned.length === 0) {
     bullet('none recorded yet — the 03:00 rotation has not run since deploy')
     findings.push('No baseline invites recorded; rotation has not run yet')

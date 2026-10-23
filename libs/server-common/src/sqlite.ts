@@ -17,6 +17,14 @@ export type SqliteFileOptions = {
    * delaying it.
    */
   wal?: boolean
+  /**
+   * Open the file read-only, for a process that must never change it (the
+   * ops CLI an operator runs against the live database). SQLite itself then
+   * refuses every write, `query_only` refuses them again at the statement
+   * level, and a missing file is an error rather than a new empty database.
+   * The unit runs as a deferred transaction whatever its mode.
+   */
+  readonly?: boolean
 }
 
 /**
@@ -38,7 +46,16 @@ export type SqliteMode = 'write' | 'read'
 
 const BUSY_TIMEOUT_MS = 30_000
 
-export const openSqlite = ({ path, wal = false }: SqliteFileOptions): SqliteDatabase => {
+export const openSqlite = ({
+  path,
+  wal = false,
+  readonly = false,
+}: SqliteFileOptions): SqliteDatabase => {
+  if (readonly) {
+    const database = new Database(path, { readonly: true, fileMustExist: true })
+    database.pragma('query_only = ON')
+    return database
+  }
   const database = new Database(path, wal ? { timeout: BUSY_TIMEOUT_MS } : {})
   if (wal) {
     try {
@@ -63,13 +80,14 @@ export const openSqlite = ({ path, wal = false }: SqliteFileOptions): SqliteData
 export const withSqlite = <T>({
   path,
   wal,
+  readonly = false,
   mode = 'write',
   work,
 }: SqliteFileOptions & { mode?: SqliteMode; work: (database: SqliteDatabase) => T }): T => {
-  const database = openSqlite({ path, wal })
+  const database = openSqlite({ path, wal, readonly })
   try {
     const transaction = database.transaction(() => work(database))
-    return mode === 'write' ? transaction.immediate() : transaction.deferred()
+    return mode === 'write' && !readonly ? transaction.immediate() : transaction.deferred()
   } finally {
     database.close()
   }

@@ -8,24 +8,22 @@
 // silently desyncs the three, and nothing else in the repo ever notices. This
 // finds that drift and prints it.
 //
-// STRICTLY READ-ONLY. No Stripe writes, no Wizarr writes, no store writes, no
-// container commands on the NAS. The only NAS access is a tar read of the
-// bridge's data directory into a temp copy that is deleted before exit.
+// STRICTLY READ-ONLY. No Stripe writes, no Wizarr writes, no store writes. The
+// only NAS access is the bridge's read-only ops CLI (`dist/opsCli.js customers`),
+// run in its container, which reads bridge.db over connections SQLite refuses
+// to write through.
 //
 //   stripe   GET /v1/subscriptions?status=all  (customer expanded inline)
 //   wizarr   GET /api/users, GET /api/invitations
-//   store    bridge.db copied off the NAS, read with `sqlite3 -readonly`
+//   store    customer_map + member_tags via the bridge's read-only ops CLI
 //
 // Run: node --env-file-if-exists=.env .claude/skills/stripe-reconcile/scripts/reconcile.mjs
 // (--env-file-if-exists, not --env-file: a missing .env makes node itself bail
 // with exit 9 before this script can report the misconfiguration as exit 2.)
 // Exit: 0 clean, 1 drift found, 2 misconfigured, or Stripe/Wizarr unreadable.
 // An unreadable store is NOT exit 2; it degrades to a two-way comparison.
-import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { basename, join } from 'node:path'
 import {
+  bridgeOps,
   nasHost,
   stripeGet as stripeRead,
   stripeList as stripeWalk,
@@ -38,7 +36,6 @@ const {
   WIZARR_API_KEY,
   ACCESS_DURATION = '35',
   INVITE_EXPIRES_DAYS = '14',
-  MAP_DB_PATH = '/data/bridge.db',
 } = process.env
 
 const FLAGS = ['--no-store', '--all']
@@ -57,11 +54,6 @@ if (!STRIPE_API_KEY || !WIZARR_BASE_URL || !WIZARR_API_KEY) {
 }
 
 const WIZARR = WIZARR_BASE_URL.replace(/\/+$/, '')
-const NAS_PATH = process.env.WZ_NAS_PATH || '/volume1/docker/stripe-bridge'
-// docker-compose.yml binds ./stripe-bridge-data to /data, so MAP_DB_PATH's
-// basename is the file inside that directory on the NAS.
-const NAS_DATA_DIR = `${NAS_PATH}/stripe-bridge-data`
-const SSH_OPTS = '-o BatchMode=yes -o ConnectTimeout=10'
 
 const DAY = 86_400_000
 const DURATION = parseInt(ACCESS_DURATION, 10)
@@ -237,83 +229,32 @@ const hasAccess = (person) =>
 
 // ─── store ────────────────────────────────────────────────────────────────────
 
-const sqlite = ({ db, sql }) => {
-  const out = execFileSync('sqlite3', ['-readonly', '-json', db, sql], { encoding: 'utf8' })
-  return out.trim() ? JSON.parse(out) : []
-}
-
 /**
- * Copy the bridge's SQLite file off the NAS and read customer_map + member_tags.
- *
- * Tars the whole data directory in one shot so a WAL/SHM sidecar comes along
- * with the main file, and selects only the columns PRAGMA reports as present.
- * tier, invited_at and subscribed were all added by migrations, so an older
- * prod DB legitimately lacks them.
+ * customer_map and member_tags as the bridge reads them, from its read-only ops
+ * CLI over one-shot SSH: one row per email, the same row the bridge itself
+ * would pick, and only tags it recognises. Nothing copies bridge.db off the NAS.
  */
-const readStore = () => {
+const readStore = async () => {
   try {
-    execFileSync('sh', ['-c', 'command -v sqlite3'], { stdio: 'ignore' })
-  } catch {
-    return { ok: false, why: 'no sqlite3 CLI on this machine (brew install sqlite)' }
-  }
-  const dir = mkdtempSync(join(tmpdir(), 'wz-reconcile-'))
-  try {
-    // pipefail is load-bearing, not decoration: `tar -xf -` reads empty stdin as
-    // an empty archive and exits 0 (bsdtar on macOS), so without it a total ssh
-    // failure yields a zero-status pipeline and the run misreports "bridge.db not
-    // in <dir>", blaming the NAS for a file that is sitting right there.
-    execFileSync(
-      'sh',
-      [
-        '-c',
-        `set -o pipefail; ssh ${SSH_OPTS} ${nasHost()} 'cd ${NAS_DATA_DIR} && tar -cf - .' | tar -xf - -C ${dir}`,
-      ],
-      { stdio: ['ignore', 'ignore', 'pipe'] },
-    )
-    const db = join(dir, basename(MAP_DB_PATH))
-    if (!existsSync(db))
-      return { ok: false, why: `${basename(MAP_DB_PATH)} not in ${NAS_DATA_DIR}` }
-
-    const columns = new Set(
-      sqlite({ db, sql: 'PRAGMA table_info(customer_map)' }).map((c) => c.name),
-    )
-    const wanted = [
-      'stripe_customer_id',
-      'email',
-      'invite_code',
-      'tier',
-      'invited_at',
-      'subscribed',
-    ]
-    const present = wanted.filter((c) => columns.has(c))
-    if (!present.includes('email')) return { ok: false, why: 'customer_map has no email column' }
-
-    const rows = sqlite({
-      db,
-      sql: `SELECT ${present.join(', ')} FROM customer_map WHERE email IS NOT NULL`,
-    })
-    const tags = sqlite({ db, sql: 'SELECT email, tag FROM member_tags' })
+    const { customers, tags } = await bridgeOps({ args: ['customers'] })
     return {
       ok: true,
-      missingColumns: wanted.filter((c) => !present.includes(c)),
-      // Admin-issued placeholder rows are keyed "admin:<email>" and hold no
-      // Stripe side; only a real cus_ id can be checked against Stripe.
       rows: new Map(
-        rows.map((r) => [
-          (r.email ?? '').toLowerCase(),
+        customers.map((r) => [
+          r.email,
           {
             email: r.email,
-            customerId: (r.stripe_customer_id ?? '').startsWith('cus_')
-              ? r.stripe_customer_id
-              : null,
+            // Admin-issued placeholder rows hold no Stripe side; the bridge
+            // reads their id as null, so only a real cus_ id is checked.
+            customerId: r.customer_id,
             inviteCode: r.invite_code ?? null,
             tier: r.tier ?? null,
             invitedAt: parseTime(r.invited_at),
-            subscribed: 'subscribed' in r ? !!r.subscribed : null,
+            subscribed: r.subscribed,
           },
         ]),
       ),
-      tags: new Map(tags.map((t) => [(t.email ?? '').toLowerCase(), t.tag])),
+      tags: new Map(tags.map((t) => [t.email, t.tag])),
     }
   } catch (e) {
     // This NAS greets every session with a multi-line post-quantum warning on
@@ -327,10 +268,7 @@ const readStore = () => {
         // oxlint-disable-next-line unicorn/prefer-array-find
         .filter((l) => l && !l.startsWith('**'))
         .at(-1) ?? 'no error output'
-    return { ok: false, why: `could not copy ${NAS_DATA_DIR} from ${nasHost()} (${detail})` }
-  } finally {
-    // Never leave a copy of live member data lying around in /tmp.
-    rmSync(dir, { recursive: true, force: true })
+    return { ok: false, why: `could not read the bridge store on ${nasHost()} (${detail})` }
   }
 }
 
@@ -369,7 +307,7 @@ async function main() {
 
   const stripers = stripeByEmail(subs)
   const people = peopleFrom(users)
-  const store = SKIP_STORE ? { ok: false, why: 'skipped (--no-store)' } : readStore()
+  const store = SKIP_STORE ? { ok: false, why: 'skipped (--no-store)' } : await readStore()
 
   const payingCount = [...stripers.values()].filter((s) => s.paying.length).length
   console.log('sources')
@@ -383,9 +321,6 @@ async function main() {
     console.log(
       `  · store    ${String(store.rows.size).padStart(4)} customer_map row(s) from ${nasHost()}`,
     )
-    if (store.missingColumns.length) {
-      console.log(`             (older schema: no ${store.missingColumns.join(', ')})`)
-    }
   } else {
     console.log(`  · store    UNAVAILABLE: ${store.why}`)
     console.log('             degraded to a two-way Stripe vs Wizarr comparison:')

@@ -12,9 +12,10 @@ down, container restarting, a Stripe retry that ran out) silently desyncs the th
 systems, and nothing else in the repo ever notices: Stripe keeps charging, the store
 keeps its old flags, Wizarr keeps whatever access it had. This skill audits that drift.
 
-**Strictly read-only.** No Stripe writes, no Wizarr writes, no store writes, no container
-commands on the NAS. It reports; a human fixes. The only NAS access is a tar read of the
-bridge's data directory into a temp copy that is deleted before the process exits.
+**Strictly read-only.** No Stripe writes, no Wizarr writes, no store writes. It reports; a
+human fixes. The only NAS access is one `docker exec` of the bridge's read-only ops CLI,
+which reads the store over connections SQLite refuses to write through; no copy of
+`bridge.db` ever leaves the NAS.
 
 ## When To Run
 
@@ -53,9 +54,7 @@ Exit codes: `0` clean, `1` drift found, `2` misconfigured, or Stripe/Wizarr unre
 An unreadable **store** is deliberately not `2`: the run degrades to a two-way comparison
 and still exits `0`/`1`, so read the `sources` block, never just the exit code.
 
-`WZ_NAS_HOST` and `WZ_NAS_PATH` override the NAS target, the same names the `deploy-nas`
-**skill** script uses. (The older `scripts/deploy-nas.sh` at the repo root is a different
-thing and keys off `NAS_MOUNT`.)
+`WZ_NAS_HOST` overrides the NAS target, the same name the `deploy-nas` skill script uses.
 
 ## What It Reads
 
@@ -73,13 +72,12 @@ thing and keys off `NAS_MOUNT`.)
    (unlimited) as the winner, where the admin table keeps the latest non-null date. The
    admin table is displaying a date; this is deciding whether the person can watch, and
    one unlimited record means they can.
-3. **The store** `bridge.db` tarred out of `/volume1/docker/stripe-bridge/stripe-bridge-data`
-   over one-shot SSH and read with `sqlite3 -readonly`, into a temp copy deleted in a
-   `finally` before the process exits. Columns come from `PRAGMA table_info`, because
-   `tier`, `invited_at` and `subscribed` were all added by migrations (`store._COLUMNS`)
-   and an older prod DB legitimately lacks them.
+3. **The store** read over one-shot SSH with
+   `sudo -n /usr/local/bin/docker exec stripe-bridge node dist/opsCli.js customers`: one
+   customer row per email, the same row and tier the bridge itself reads, and every tag
+   it recognises.
 
-No store (NAS off the LAN, no `sqlite3` locally, `--no-store`) degrades to a two-way
+No store (NAS off the LAN, a bridge without `dist/opsCli.js`, `--no-store`) degrades to a two-way
 Stripe vs Wizarr comparison. The run says so in its header and again in the summary, and
 the checks that need the store (VIP tags, ghost customers, store flags) are skipped, not
 silently passed. **Degraded runs also lose the invite-code hop**, so any member whose Plex
