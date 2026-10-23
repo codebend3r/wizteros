@@ -1,7 +1,6 @@
 import { guardOf, type HostStatus, hostStatusSchema } from '@wizteros/wire'
-import { AdminAuthError } from '@/lib/adminApi'
 import { isNumberOrNull, isRecord, isStringOrNull } from '@/lib/guards'
-import { supabase } from '@/lib/supabaseClient'
+import { createClient } from '@/lib/http'
 
 export type { HostStatus }
 
@@ -279,64 +278,16 @@ const isIncidentFeed = (value: unknown): value is IncidentFeed =>
   Array.isArray(value.recent) &&
   value.recent.every(isIncident)
 
-const FLEET_BASE: string = import.meta.env.VITE_FLEET_BASE ?? ''
-
-// The monitor is reachable from the public internet now, so it authorizes
-// every read off the Supabase session exactly as the bridge does: send the
-// signed-in admin's access token as a bearer, read from the client per
-// request so a refreshed session is picked up without a reload.
-const authHeader = async (): Promise<Record<string, string>> => {
-  if (!supabase) return {}
-  const { data } = await supabase.auth.getSession()
-  const token = data.session?.access_token
-  return token ? { Authorization: `Bearer ${token}` } : {}
-}
-
-// With VITE_FLEET_BASE unset the monitor call is relative, and /fleet is also
-// this SPA's own route: the host answers it with index.html at 200. Name that
-// instead of letting it surface later as an opaque JSON parse error.
-//
-// Private to this module: every caller goes through `readMonitor` below, so
-// the 401 wording, the JSON check and the schema check live in one place.
-const requestJson = async (path: string): Promise<unknown> => {
-  const response = await fetch(`${FLEET_BASE}${path}`, { headers: await authHeader() })
-  // The page renders behind AdminGate, so reaching here signed out means the
-  // session lapsed mid-visit or this build points at a monitor that does not
-  // allowlist the account - neither of which "fleet request failed: 401" says.
-  if (response.status === 401) {
-    throw new AdminAuthError('Not signed in, or this account is not allowed to read the fleet.')
-  }
-  if (!response.ok) throw new Error(`fleet request failed: ${response.status}`)
-  const contentType = response.headers?.get('content-type') ?? ''
-  if (!contentType.includes('json')) {
-    throw new Error(`Expected JSON from ${path} but got ${contentType}. Is VITE_FLEET_BASE set?`)
-  }
-  return await response.json()
-}
-
-/** Read one monitor route and hand back a value the guard has vouched for.
- *
- * Every fetcher below, and every one in the play-history module, is the same
- * three steps: request, check the shape, throw a sentence naming what came
- * back wrong. Written out per route it was ten copies of those three lines,
- * and the only thing that differed was the noun in the message.
- */
-export const readMonitor = async <T>({
-  path,
-  is,
-  what,
-}: {
-  path: string
-  is: (value: unknown) => value is T
-  what: string
-}): Promise<T> => {
-  const data = await requestJson(path)
-  if (!is(data)) throw new Error(`Unexpected ${what} from the fleet monitor`)
-  return data
-}
+/** The fleet monitor, which serves the play history too: every read on this
+    page and the play-history pages goes through it. */
+export const monitor = createClient({
+  base: import.meta.env.VITE_FLEET_BASE ?? '',
+  baseVariable: 'VITE_FLEET_BASE',
+  name: 'the fleet monitor',
+})
 
 export const fetchFleet = (): Promise<FleetResponse> =>
-  readMonitor({ path: '/fleet', is: isFleetResponse, what: 'fleet response' })
+  monitor.read({ path: '/fleet', is: isFleetResponse, what: 'fleet response' })
 
 /** One metric family's history. The kind is the route, so a new chart is a new
     kind on both sides rather than a second fetcher here. */
@@ -365,7 +316,7 @@ export const fetchMetricHistory = async ({
   kind: MetricKind
   minutes: number
 }): Promise<MetricHistory> => {
-  const data = await readMonitor({
+  const data = await monitor.read({
     path: `/fleet/${kind}?minutes=${minutes}`,
     is: isMetricHistory,
     what: `${kind} history response`,
@@ -379,7 +330,7 @@ export const fetchMetricHistory = async ({
 }
 
 export const fetchIncidents = ({ hours }: { hours: number }): Promise<IncidentFeed> =>
-  readMonitor({
+  monitor.read({
     path: `/incidents?hours=${hours}`,
     is: isIncidentFeed,
     what: 'incidents response',

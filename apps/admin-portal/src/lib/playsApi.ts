@@ -1,4 +1,4 @@
-import { readMonitor } from '@/lib/fleetApi'
+import { monitor } from '@/lib/fleetApi'
 import { isNumberMap, isNumberOrNull, isRecord, isStringArray, isStringOrNull } from '@/lib/guards'
 
 /** The three things a completed play can be: the rule Plex's own ledger and
@@ -624,14 +624,14 @@ export const fetchPlaysOverview = ({
 }: {
   filters: PlaysFilters
 }): Promise<PlaysOverview> =>
-  readMonitor({
+  monitor.read({
     path: `/plays/overview?${playsQuery(filters)}`,
     is: isPlaysOverview,
     what: 'play history overview',
   })
 
 export const fetchPlayUsers = ({ filters }: { filters: PlaysFilters }): Promise<PlayUsers> =>
-  readMonitor({
+  monitor.read({
     path: `/plays/users?${playsQuery(filters)}`,
     is: isPlayUsers,
     what: 'viewers response',
@@ -646,7 +646,7 @@ export const fetchPlayHistory = ({
   page: number
   pageSize: number
 }): Promise<PlayHistory> =>
-  readMonitor({
+  monitor.read({
     path: `/plays/history?${playsQuery({ ...filters, extra: { page, page_size: pageSize } })}`,
     is: isPlayHistory,
     what: 'play history response',
@@ -664,7 +664,7 @@ export const fetchViewerHistory = async ({
   pageSize: number
 }): Promise<ViewerHistory> => {
   const query = playsQuery({ ...filters, extra: { page, page_size: pageSize } })
-  const data = await readMonitor({
+  const data = await monitor.read({
     path: `/plays/users/${accountId}/history?${query}`,
     is: isViewerHistory,
     what: 'viewer history response',
@@ -687,7 +687,7 @@ export const fetchTopTitles = async ({
   limit: number
 }): Promise<TopTitles> => {
   const query = playsQuery({ ...filters, extra: { metric, limit } })
-  const data = await readMonitor({
+  const data = await monitor.read({
     path: `/plays/top?${query}`,
     is: isTopTitles,
     what: 'top titles response',
@@ -712,7 +712,7 @@ export const fetchTitleHistory = async ({
   pageSize: number
 }): Promise<TitleHistory> => {
   const query = playsQuery({ ...filters, extra: { key: titleKey, page, page_size: pageSize } })
-  const data = await readMonitor({
+  const data = await monitor.read({
     path: `/plays/title?${query}`,
     is: isTitleHistory,
     what: 'title history response',
@@ -737,7 +737,7 @@ export const fetchNeverPlayed = ({
   q: string
 }): Promise<NeverPlayed> => {
   const extra: QueryExtra = { page, page_size: pageSize, ...(q.length > 0 ? { q } : {}) }
-  return readMonitor({
+  return monitor.read({
     path: `/plays/never-played?${playsQuery({ ...filters, extra })}`,
     is: isNeverPlayed,
     what: 'never-played response',
@@ -745,4 +745,4 @@ export const fetchNeverPlayed = ({
 }
 
 export const fetchPlaySync = (): Promise<PlaySync> =>
-  readMonitor({ path: '/plays/sync', is: isPlaySync, what: 'sync status' })
+  monitor.read({ path: '/plays/sync', is: isPlaySync, what: 'sync status' })
