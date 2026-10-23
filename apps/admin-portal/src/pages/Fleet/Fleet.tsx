@@ -4,13 +4,7 @@ import { AdminLayout } from '@/components/AdminLayout/AdminLayout'
 import { chartHeight } from '@/components/Chart/chartFrame'
 import { AsyncSection, errorMessage, Section } from '@/components/AsyncSection/AsyncSection'
 import { ViewTabs } from '@/components/ViewTabs/ViewTabs'
-import {
-  fetchFleet,
-  fetchIncidents,
-  fetchMetricHistory,
-  historyMinutes,
-  toHostSummary,
-} from '@/lib/fleetApi'
+import { fetchFleet, fetchIncidents, fetchMetricHistory, historyMinutes } from '@/lib/fleetApi'
 import { HostCard } from '@/pages/Fleet/HostCard'
 import { METRIC_COPY } from '@/pages/Fleet/metricCopy'
 import { MetricChart } from '@/pages/Fleet/MetricChart'
@@ -186,7 +180,7 @@ const FleetInner = () => {
               <ul className={styles.grid}>
                 {data.hosts.map((host, index) => (
                   <li key={host.name} className={styles.gridItem}>
-                    <HostCard summary={toHostSummary(host)} className={seriesClass(index)} />
+                    <HostCard host={host} className={seriesClass(index)} />
                   </li>
                 ))}
               </ul>

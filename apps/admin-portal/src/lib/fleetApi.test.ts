@@ -10,7 +10,6 @@ import {
   formatBytes,
   type MetricHistory,
   type MetricKind,
-  toHostSummary,
 } from '@/lib/fleetApi'
 
 // The monitor authorizes every read off the Supabase session now, so stub the
@@ -91,71 +90,6 @@ test('formatAge names the coarsest whole unit', () => {
 
 test('formatAge reports an absent age as unknown rather than zero', () => {
   expect(formatAge(null)).toBe('unknown')
-})
-
-test('toHostSummary carries the status the monitor decided', () => {
-  expect(toHostSummary({ ...host, status: 'unknown' }).status).toBe('unknown')
-  expect(toHostSummary({ ...host, status: 'warn' }).status).toBe('warn')
-})
-
-test('toHostSummary keeps a never-measured uptime null instead of a perfect score', () => {
-  expect(toHostSummary({ ...host, uptime_percent_24h: null }).uptimePercent).toBeNull()
-})
-
-test('toHostSummary carries per-metric staleness separately from the host status', () => {
-  const summary = toHostSummary({
-    ...host,
-    metrics_stale: true,
-    stalest_family: 'temp',
-    stalest_family_age_seconds: 7200,
-  })
-
-  // a host whose fast tier is current but whose slow tier died is not unhealthy
-  expect(summary.status).toBe('ok')
-  expect(summary.metricsStale).toBe(true)
-  expect(summary.stalestFamily).toBe('temp')
-  expect(summary.stalestFamilyAgeSeconds).toBe(7200)
-})
-
-test('toHostSummary renames the container fields without reinterpreting them', () => {
-  const summary = toHostSummary({
-    ...host,
-    containers: [
-      { name: 'plex', up: true, healthy: true, has_healthcheck: true },
-      { name: 'radarr', up: false, healthy: false, has_healthcheck: false },
-    ],
-  })
-
-  expect(summary.containers).toEqual([
-    { name: 'plex', up: true, healthy: true, hasHealthcheck: true },
-    { name: 'radarr', up: false, healthy: false, hasHealthcheck: false },
-  ])
-})
-
-test('toHostSummary passes an absent reading through as absent', () => {
-  const summary = toHostSummary({
-    ...host,
-    cores: null,
-    load_per_core: null,
-    memory_percent: null,
-    disk_percent: null,
-    disk_available_bytes: null,
-    containers: [],
-  })
-
-  expect(summary.cores).toBeNull()
-  expect(summary.loadPerCore).toBeNull()
-  expect(summary.memoryPercent).toBeNull()
-  expect(summary.diskPercent).toBeNull()
-  expect(summary.diskAvailableBytes).toBeNull()
-  expect(summary.containers).toEqual([])
-})
-
-test('toHostSummary carries the volume free space and the mount it describes', () => {
-  const summary = toHostSummary(host)
-
-  expect(summary.diskAvailableBytes).toBe(3_040_000_000_000)
-  expect(summary.diskMount).toBe('/volume1')
 })
 
 test('fetchFleet requests /fleet and returns the validated payload', async () => {

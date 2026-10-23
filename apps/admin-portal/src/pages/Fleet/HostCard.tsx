@@ -4,14 +4,14 @@ import { IconTile, type IconTileTone } from '@/components/IconTile/IconTile'
 import {
   formatAge,
   formatBytes,
-  type ContainerSummary,
+  type FleetContainer,
+  type FleetHost,
   type HostStatus,
-  type HostSummary,
 } from '@/lib/fleetApi'
 import styles from '@/pages/Fleet/HostCard.module.scss'
 
 type HostCardProps = {
-  readonly summary: HostSummary
+  readonly host: FleetHost
   /** The series class binding this host to its CPU-chart colour; the card
       border and header band wear it so card and line read as the same host at
       a glance. */
@@ -72,9 +72,9 @@ const familyLabel = (family: string): string => FAMILY_LABEL[family] ?? family
  * unhealthy" would assert one failed. Most containers on this fleet declare no
  * healthcheck at all, so this is the common case, not the edge one.
  */
-const containerLabel = (container: ContainerSummary): string => {
+const containerLabel = (container: FleetContainer): string => {
   if (!container.up) return 'Down'
-  if (!container.hasHealthcheck) return 'Up'
+  if (!container.has_healthcheck) return 'Up'
   return container.healthy ? 'Up, healthy' : 'Up, unhealthy'
 }
 
@@ -85,7 +85,7 @@ const containerLabel = (container: ContainerSummary): string => {
  * deliberately running nothing. Down containers are counted into the summary
  * so shutting the section hides the names, never the problem.
  */
-const containerTally = (containers: readonly ContainerSummary[]): string => {
+const containerTally = (containers: readonly FleetContainer[]): string => {
   if (containers.length === 0) return 'not collected'
   const down = containers.filter((container) => !container.up).length
   return down > 0 ? `${containers.length}, ${down} down` : `${containers.length} up`
@@ -224,29 +224,29 @@ const Stat = ({ label, icon, reading, meterPercent }: StatProps) => (
   </div>
 )
 
-export const HostCard = ({ summary, className }: HostCardProps) => {
+export const HostCard = ({ host, className }: HostCardProps) => {
   // A never-collected host is already unqualified-proof: its label is the
   // absence itself. Only a collected host can carry a stale present tense.
-  const staleStatus = summary.status !== 'unknown' && summary.metricsStale
-  const label = STATUS_LABEL[summary.status]
-  const mark = STATUS_MARK[summary.status]
+  const staleStatus = host.status !== 'unknown' && host.metrics_stale
+  const label = STATUS_LABEL[host.status]
+  const mark = STATUS_MARK[host.status]
   // One text node, not a word plus a decorative span: the qualification has to
   // be part of the status itself, not something a reader can visually skip.
   const statusText = label === null ? null : `${label}${staleStatus ? STALE_STATUS_SUFFIX : ''}`
   // The core count is observed, not assumed, so it is worth showing: it is
   // what the load figure above it was divided by.
   const coreContext =
-    summary.cores === null ? '' : `${summary.cores} ${summary.cores === 1 ? 'core' : 'cores'}`
-  const hasFooter = summary.hasGpu || summary.hasDocker
+    host.cores === null ? '' : `${host.cores} ${host.cores === 1 ? 'core' : 'cores'}`
+  const hasFooter = host.has_gpu || host.has_docker
 
   return (
     <article
       className={className ? `${styles.card} ${className}` : styles.card}
-      data-status={summary.status}
+      data-status={host.status}
     >
       <header className={styles.header}>
-        <h3 className={styles.name}>{summary.name}</h3>
-        <p className={styles.ip}>{summary.ip}</p>
+        <h3 className={styles.name}>{host.name}</h3>
+        <p className={styles.ip}>{host.ip}</p>
         {/* status is stated in text, never by color alone: the tile restates
           the word beside it and is hidden from the accessibility tree */}
         {!!statusText && (
@@ -261,7 +261,7 @@ export const HostCard = ({ summary, className }: HostCardProps) => {
         {/* not "nothing has ever been recorded": after retention prunes a
           host's samples at 7 days this state is reached again, and the
           stronger claim would then be false */}
-        {summary.status === 'unknown' && (
+        {host.status === 'unknown' && (
           <Note>No current readings for this host. Every reading below is absent, not zero.</Note>
         )}
 
@@ -270,7 +270,7 @@ export const HostCard = ({ summary, className }: HostCardProps) => {
             {/* the age is absent when nothing reported inside the monitor's age
               window, or when a clock step left a reading stamped ahead of now;
               "unknown old" would be worse than saying it cannot be dated */}
-            {summary.stalestFamilyAgeSeconds === null || summary.stalestFamily === null ? (
+            {host.stalest_family_age_seconds === null || host.stalest_family === null ? (
               'Stale readings: nothing on this host has reported recently enough to date these values.'
             ) : (
               <>
@@ -280,8 +280,8 @@ export const HostCard = ({ summary, className }: HostCardProps) => {
                   behind "Disk and temperature refresh every 15 minutes" while
                   both were seven minutes old and a dead VPN counter was the
                   stale one. */}
-                Stale readings: {familyLabel(summary.stalestFamily)} has not reported for{' '}
-                {formatAge(summary.stalestFamilyAgeSeconds)}. Anything below that comes from it is
+                Stale readings: {familyLabel(host.stalest_family)} has not reported for{' '}
+                {formatAge(host.stalest_family_age_seconds)}. Anything below that comes from it is
                 history, not the present.
               </>
             )}
@@ -298,27 +298,27 @@ export const HostCard = ({ summary, className }: HostCardProps) => {
             label="Memory"
             icon="memory"
             reading={usageReading({
-              percent: summary.memoryPercent,
-              total: summary.memoryTotalBytes,
+              percent: host.memory_percent,
+              total: host.memory_total_bytes,
             })}
-            meterPercent={summary.memoryPercent}
+            meterPercent={host.memory_percent}
           />
           <Stat
             label="Disk"
             icon="disk"
             reading={diskReading({
-              percent: summary.diskPercent,
-              total: summary.diskTotalBytes,
-              available: summary.diskAvailableBytes,
-              mount: summary.diskMount,
+              percent: host.disk_percent,
+              total: host.disk_total_bytes,
+              available: host.disk_available_bytes,
+              mount: host.disk_mount,
             })}
-            meterPercent={summary.diskPercent}
+            meterPercent={host.disk_percent}
           />
           <Stat
             label="Load / core"
             icon="gauge"
             reading={{
-              value: summary.loadPerCore === null ? '--' : summary.loadPerCore.toFixed(2),
+              value: host.load_per_core === null ? '--' : host.load_per_core.toFixed(2),
               context: coreContext,
             }}
             meterPercent={null}
@@ -328,7 +328,7 @@ export const HostCard = ({ summary, className }: HostCardProps) => {
             icon="pulse"
             // never measured is unknown, never a perfect score
             reading={{
-              value: summary.uptimePercent === null ? 'Unknown' : `${summary.uptimePercent}%`,
+              value: host.uptime_percent_24h === null ? 'Unknown' : `${host.uptime_percent_24h}%`,
               context: 'last 24 hours',
             }}
             meterPercent={null}
@@ -343,7 +343,7 @@ export const HostCard = ({ summary, className }: HostCardProps) => {
         across the row. */}
       {!!hasFooter && (
         <footer className={styles.footer}>
-          {!!summary.hasGpu && (
+          {!!host.has_gpu && (
             <p className={styles.meta}>
               <IconTile name="gpu" tone="muted" size="sm" />
               <span className={styles.metaLabel}>GPU</span>
@@ -351,7 +351,7 @@ export const HostCard = ({ summary, className }: HostCardProps) => {
             </p>
           )}
 
-          {!!summary.hasDocker && (
+          {!!host.has_docker && (
             <details className={styles.containers}>
               {/* The summary carries the count and the down tally, so collapsing
                 hides the roster but never the finding: a host with something
@@ -359,14 +359,14 @@ export const HostCard = ({ summary, className }: HostCardProps) => {
               <summary className={styles.containersSummary}>
                 <IconTile name="box" tone="muted" size="sm" />
                 <span className={styles.metaLabel}>Containers</span>
-                <span className={styles.metaValue}>{containerTally(summary.containers)}</span>
+                <span className={styles.metaValue}>{containerTally(host.containers)}</span>
                 {/* drawn rather than left to the native marker, which
                   `display: grid` takes away from a summary */}
                 <Icon name="chevron" size={12} strokeWidth={2} className={styles.chevron} />
               </summary>
-              {summary.containers.length > 0 ? (
+              {host.containers.length > 0 ? (
                 <ul className={styles.containerList}>
-                  {summary.containers.map((container) => (
+                  {host.containers.map((container) => (
                     <li key={container.name} className={styles.container}>
                       <span className={styles.containerName}>{container.name}</span>
                       <span className={styles.containerState}>{containerLabel(container)}</span>

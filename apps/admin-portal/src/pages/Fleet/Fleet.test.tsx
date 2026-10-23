@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, expect, test, vi } from '@/test/vi'
-import type { FleetHost, HostSummary } from '@/lib/fleetApi'
+import type { FleetHost } from '@/lib/fleetApi'
 import { Fleet } from '@/pages/Fleet/Fleet'
 import { HostCard } from '@/pages/Fleet/HostCard'
 import { useAuthStore } from '@/stores/authStore'
@@ -13,25 +13,27 @@ import {
   useFleetPrefsStore,
 } from '@/stores/fleetPrefsStore'
 
-const summary: HostSummary = {
+// What a card is rendered from: one /fleet host, read as the wire sends it.
+const card: FleetHost = {
   name: 'vermithor',
   ip: '192.0.2.3',
+  has_gpu: true,
+  has_docker: true,
+  collected: true,
   status: 'warn',
-  hasGpu: true,
-  hasDocker: true,
   cores: 4,
-  loadPerCore: 0.12,
-  memoryPercent: 29,
-  memoryTotalBytes: 16_642_768_896,
-  diskPercent: 99,
-  diskTotalBytes: 104_258_640_805_888,
-  diskAvailableBytes: 1_099_511_627_776,
-  diskMount: '/volume1',
-  uptimePercent: 100,
-  metricsStale: false,
-  stalestFamily: 'disk',
-  stalestFamilyAgeSeconds: 12,
-  containers: [{ name: 'sonarr', up: true, healthy: true, hasHealthcheck: true }],
+  load_per_core: 0.12,
+  memory_percent: 29,
+  memory_total_bytes: 16_642_768_896,
+  disk_percent: 99,
+  disk_total_bytes: 104_258_640_805_888,
+  disk_available_bytes: 1_099_511_627_776,
+  disk_mount: '/volume1',
+  containers: [{ name: 'sonarr', up: true, healthy: true, has_healthcheck: true }],
+  metrics_stale: false,
+  stalest_family: 'disk',
+  stalest_family_age_seconds: 12,
+  uptime_percent_24h: 100,
 }
 
 const host: FleetHost = {
@@ -160,7 +162,7 @@ test('Fleet grows the chart to its tall height on the toggle, and shrinks it bac
 })
 
 test('HostCard names the host and its status in text, not by color alone', () => {
-  render(<HostCard summary={{ ...summary, status: 'ok' }} />)
+  render(<HostCard host={{ ...card, status: 'ok' }} />)
 
   expect(screen.getByRole('heading', { name: 'vermithor' })).toBeInTheDocument()
   expect(screen.getByText('Healthy')).toBeInTheDocument()
@@ -169,7 +171,7 @@ test('HostCard names the host and its status in text, not by color alone', () =>
 // A warn host prints no status word at all: the finding is the disk and load
 // figures the monitor judged, not a phrase summarising them over the name.
 test('HostCard prints no status line on a warn host', () => {
-  render(<HostCard summary={summary} />)
+  render(<HostCard host={card} />)
 
   expect(screen.getByRole('heading', { name: 'vermithor' })).toBeInTheDocument()
   expect(screen.queryByText(/Needs attention/)).toBeNull()
@@ -179,19 +181,19 @@ test('HostCard prints no status line on a warn host', () => {
 test('HostCard renders an uncollected host as unknown with no fabricated numbers', () => {
   render(
     <HostCard
-      summary={{
-        ...summary,
+      host={{
+        ...card,
         status: 'unknown',
-        loadPerCore: null,
-        memoryPercent: null,
-        memoryTotalBytes: null,
-        diskPercent: null,
-        diskTotalBytes: null,
-        diskAvailableBytes: null,
-        uptimePercent: null,
-        metricsStale: true,
-        stalestFamily: null,
-        stalestFamilyAgeSeconds: null,
+        load_per_core: null,
+        memory_percent: null,
+        memory_total_bytes: null,
+        disk_percent: null,
+        disk_total_bytes: null,
+        disk_available_bytes: null,
+        uptime_percent_24h: null,
+        metrics_stale: true,
+        stalest_family: null,
+        stalest_family_age_seconds: null,
         containers: [],
       }}
     />,
@@ -205,7 +207,7 @@ test('HostCard renders an uncollected host as unknown with no fabricated numbers
 })
 
 test('HostCard reports an unmeasured 24h uptime as unknown rather than a score', () => {
-  render(<HostCard summary={{ ...summary, uptimePercent: null }} />)
+  render(<HostCard host={{ ...card, uptime_percent_24h: null }} />)
 
   expect(screen.getByText('Unknown')).toBeInTheDocument()
   expect(screen.queryByText('100%')).toBeNull()
@@ -217,12 +219,12 @@ test('HostCard names the family that fell silent rather than blaming the slow ti
   // minutes old and a dead VPN counter was the stale reading
   render(
     <HostCard
-      summary={{
-        ...summary,
+      host={{
+        ...card,
         status: 'ok',
-        metricsStale: true,
-        stalestFamily: 'temp',
-        stalestFamilyAgeSeconds: 604_800,
+        metrics_stale: true,
+        stalest_family: 'temp',
+        stalest_family_age_seconds: 604_800,
       }}
     />,
   )
@@ -236,12 +238,12 @@ test('HostCard names the family that fell silent rather than blaming the slow ti
 test('HostCard falls back to the raw family name it was not taught a word for', () => {
   render(
     <HostCard
-      summary={{
-        ...summary,
+      host={{
+        ...card,
         status: 'ok',
-        metricsStale: true,
-        stalestFamily: 'cpu2',
-        stalestFamilyAgeSeconds: 3600,
+        metrics_stale: true,
+        stalest_family: 'cpu2',
+        stalest_family_age_seconds: 3600,
       }}
     />,
   )
@@ -254,12 +256,12 @@ test('HostCard says stale readings cannot be dated rather than "unknown old"', (
   // and when a clock step left a reading stamped ahead of now
   render(
     <HostCard
-      summary={{
-        ...summary,
+      host={{
+        ...card,
         status: 'ok',
-        metricsStale: true,
-        stalestFamily: null,
-        stalestFamilyAgeSeconds: null,
+        metrics_stale: true,
+        stalest_family: null,
+        stalest_family_age_seconds: null,
       }}
     />,
   )
@@ -274,12 +276,12 @@ test('HostCard says stale readings cannot be dated rather than "unknown old"', (
 test('HostCard never presents an unqualified ok status when metrics are stale', () => {
   render(
     <HostCard
-      summary={{
-        ...summary,
+      host={{
+        ...card,
         status: 'ok',
-        metricsStale: true,
-        stalestFamily: 'disk',
-        stalestFamilyAgeSeconds: 604_800,
+        metrics_stale: true,
+        stalest_family: 'disk',
+        stalest_family_age_seconds: 604_800,
       }}
     />,
   )
@@ -289,14 +291,14 @@ test('HostCard never presents an unqualified ok status when metrics are stale', 
 })
 
 test('HostCard leaves the status unqualified when every metric is fresh', () => {
-  render(<HostCard summary={{ ...summary, status: 'ok', metricsStale: false }} />)
+  render(<HostCard host={{ ...card, status: 'ok', metrics_stale: false }} />)
 
   expect(screen.getByText('Healthy')).toBeInTheDocument()
   expect(screen.queryByText(/as of the last reading/)).toBeNull()
 })
 
 test('HostCard omits the gpu row on a host with no render node', () => {
-  render(<HostCard summary={{ ...summary, hasGpu: false }} />)
+  render(<HostCard host={{ ...card, has_gpu: false }} />)
 
   expect(screen.queryByText('GPU')).toBeNull()
 })
@@ -304,11 +306,11 @@ test('HostCard omits the gpu row on a host with no render node', () => {
 test('HostCard lists containers with their state in text', () => {
   render(
     <HostCard
-      summary={{
-        ...summary,
+      host={{
+        ...card,
         containers: [
-          { name: 'sonarr', up: true, healthy: true, hasHealthcheck: true },
-          { name: 'radarr', up: false, healthy: false, hasHealthcheck: false },
+          { name: 'sonarr', up: true, healthy: true, has_healthcheck: true },
+          { name: 'radarr', up: false, healthy: false, has_healthcheck: false },
         ],
       }}
     />,
@@ -324,9 +326,9 @@ test('HostCard claims no health for a container that declares no healthcheck', (
   // asserts a check that never ran, "Up, unhealthy" asserts one that failed
   render(
     <HostCard
-      summary={{
-        ...summary,
-        containers: [{ name: 'sabnzbd', up: true, healthy: false, hasHealthcheck: false }],
+      host={{
+        ...card,
+        containers: [{ name: 'sabnzbd', up: true, healthy: false, has_healthcheck: false }],
       }}
     />,
   )
@@ -338,9 +340,9 @@ test('HostCard claims no health for a container that declares no healthcheck', (
 test('HostCard names a failing healthcheck as unhealthy', () => {
   render(
     <HostCard
-      summary={{
-        ...summary,
-        containers: [{ name: 'plex', up: true, healthy: false, hasHealthcheck: true }],
+      host={{
+        ...card,
+        containers: [{ name: 'plex', up: true, healthy: false, has_healthcheck: true }],
       }}
     />,
   )
@@ -349,13 +351,13 @@ test('HostCard names a failing healthcheck as unhealthy', () => {
 })
 
 test('HostCard reads absent container data as not collected, never as no containers', () => {
-  render(<HostCard summary={{ ...summary, containers: [] }} />)
+  render(<HostCard host={{ ...card, containers: [] }} />)
 
   expect(screen.getByText(/Container data not collected/)).toBeInTheDocument()
 })
 
 test('HostCard omits the container section on a host with no docker', () => {
-  render(<HostCard summary={{ ...summary, hasDocker: false, containers: [] }} />)
+  render(<HostCard host={{ ...card, has_docker: false, containers: [] }} />)
 
   expect(screen.queryByRole('heading', { name: 'Containers' })).toBeNull()
 })
@@ -581,7 +583,7 @@ const meterUnder = (label: string): Element | null => {
 }
 
 test('HostCard draws the disk reading as a bar the number beside it already states', () => {
-  const { container } = render(<HostCard summary={{ ...summary, diskPercent: 96 }} />)
+  const { container } = render(<HostCard host={{ ...card, disk_percent: 96 }} />)
 
   // the figure and its denominator are separate nodes so the number can carry
   // the weight and the qualifier can step back
@@ -594,7 +596,7 @@ test('HostCard draws the disk reading as a bar the number beside it already stat
 })
 
 test('HostCard prints the free space beside the volume it describes', () => {
-  render(<HostCard summary={summary} />)
+  render(<HostCard host={card} />)
 
   // "how much room is left" is what an operator does arithmetic for, so the
   // card does it: the monitor's own byte reading, never the rounded percentage
@@ -606,7 +608,7 @@ test('HostCard prints the free space beside the volume it describes', () => {
 test('HostCard claims no free space where the monitor reported none', () => {
   // absent is absent: a figure derived from the rounded percentage would
   // claim a precision the monitor never reported
-  render(<HostCard summary={{ ...summary, diskAvailableBytes: null }} />)
+  render(<HostCard host={{ ...card, disk_available_bytes: null }} />)
 
   expect(screen.queryByText(/free/)).toBeNull()
   // the rest of the reading still stands
@@ -617,14 +619,14 @@ test('HostCard claims no free space where the monitor reported none', () => {
 // The same treatment for both capacity readings: a percentage with a bar under
 // it on one row and a bare percentage on the next reads as an accident.
 test('HostCard draws the memory reading as a bar as well', () => {
-  render(<HostCard summary={{ ...summary, memoryPercent: 29 }} />)
+  render(<HostCard host={{ ...card, memory_percent: 29 }} />)
 
   expect(meterUnder('Memory')).toHaveStyle({ width: '29%' })
 })
 
 test('HostCard draws no disk bar where there is no disk reading', () => {
   // an absent reading is absent, not a bar sitting at zero
-  render(<HostCard summary={{ ...summary, diskPercent: null, diskTotalBytes: null }} />)
+  render(<HostCard host={{ ...card, disk_percent: null, disk_total_bytes: null }} />)
 
   expect(meterUnder('Disk')).toBeNull()
 })
@@ -632,7 +634,7 @@ test('HostCard draws no disk bar where there is no disk reading', () => {
 // Load has no ceiling this card could honestly draw a bar against, and a full
 // bar under every host's 100% uptime would carry no information at all.
 test('HostCard draws no bar under the readings that have no scale', () => {
-  render(<HostCard summary={summary} />)
+  render(<HostCard host={card} />)
 
   expect(meterUnder('Load / core')).toBeNull()
   expect(meterUnder('Uptime')).toBeNull()
@@ -645,7 +647,7 @@ const tileBeside = (label: string): Element | null =>
   screen.getByText(label).parentElement?.querySelector('.tile') ?? null
 
 test('HostCard sets a hidden tile in the host colour beside every reading', () => {
-  render(<HostCard summary={summary} />)
+  render(<HostCard host={card} />)
 
   const tiles = ['Memory', 'Disk', 'Load / core', 'Uptime'].map(tileBeside)
   expect(tiles.map((tile) => tile?.getAttribute('aria-hidden'))).toEqual([
@@ -658,7 +660,7 @@ test('HostCard sets a hidden tile in the host colour beside every reading', () =
 })
 
 test('HostCard marks a healthy status with a tile the word beside it already states', () => {
-  render(<HostCard summary={{ ...summary, status: 'ok' }} />)
+  render(<HostCard host={{ ...card, status: 'ok' }} />)
 
   const tile = screen.getByText('Healthy').closest('p')?.querySelector('.tile')
   expect(tile).toHaveAttribute('aria-hidden', 'true')
@@ -668,7 +670,7 @@ test('HostCard marks a healthy status with a tile the word beside it already sta
 // Never collected is an absence, not a health: its tile must not borrow the
 // healthy tone and let a reader's eye file the card as fine.
 test('HostCard marks an uncollected status in the muted tone, not the healthy one', () => {
-  render(<HostCard summary={{ ...summary, status: 'unknown' }} />)
+  render(<HostCard host={{ ...card, status: 'unknown' }} />)
 
   const tile = screen.getByText('Not collected').closest('p')?.querySelector('.tile')
   expect(tile).toHaveClass('muted')
@@ -676,7 +678,7 @@ test('HostCard marks an uncollected status in the muted tone, not the healthy on
 })
 
 test('HostCard leads each inventory row with a hidden tile and keeps the label in text', () => {
-  render(<HostCard summary={summary} />)
+  render(<HostCard host={card} />)
 
   expect(tileBeside('GPU')).toHaveClass('muted')
   expect(tileBeside('GPU')).toHaveAttribute('aria-hidden', 'true')
