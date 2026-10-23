@@ -9,7 +9,7 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "docker build -f apps/stripe-bridge/Dockerfile -t stripe-bridge .",
+        "command": "docker build -f server.Dockerfile --build-arg APP=stripe-bridge --build-arg PORT=8000 --build-arg DB_ENV=MAP_DB_PATH --build-arg DB_FILE=bridge.db -t stripe-bridge .",
         "cwd": "{workspaceRoot}"
       }
     },
