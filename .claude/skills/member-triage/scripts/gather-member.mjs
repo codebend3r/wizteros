@@ -17,24 +17,18 @@
 // `.env` is gitignored, so whether one exists is a property of the working copy,
 // not of the repo: use it when it is there, otherwise pass whichever file holds
 // the three values locally, or export them for the command.
-import { execFile, execFileSync } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
-import { promisify } from 'node:util'
-
-const execFileAsync = promisify(execFile)
+import {
+  nasHost,
+  ssh,
+  stripeGet as stripeRead,
+  stripeList as stripeWalk,
+  wizarrGet,
+} from '../../_shared/ops.mjs'
 
 const { STRIPE_API_KEY, WIZARR_BASE_URL, WIZARR_API_KEY } = process.env
 
 const EMAIL = (process.argv[2] ?? '').trim()
 const WIZARR = (WIZARR_BASE_URL ?? '').replace(/\/+$/, '')
-/** The NAS ssh target: WZ_NAS_HOST, else what scripts/nas-host.sh builds from the repo's .env. */
-const nasHost = () =>
-  process.env.WZ_NAS_HOST ||
-  execFileSync(
-    fileURLToPath(new URL('../../../../scripts/nas-host.sh', import.meta.url)),
-    ['meleys'],
-    { encoding: 'utf8' },
-  ).trim()
 const DOCKER = '/usr/local/bin/docker' // the NOPASSWD sudoers rule matches this literal path
 const SERVICE = 'stripe-bridge'
 // Parsed to a number before it reaches the remote command line: this is the one
@@ -88,34 +82,11 @@ const money = (invoice) =>
 
 // ─── Stripe ───────────────────────────────────────────────────────────────────
 
-const stripeGet = async (path, params) => {
-  const query = new URLSearchParams(params).toString()
-  const res = await fetch(`https://api.stripe.com/v1/${path}?${query}`, {
-    headers: { Authorization: `Bearer ${STRIPE_API_KEY}` },
-    signal: AbortSignal.timeout(30_000),
-  })
-  // Status only. An error body can echo the request back, and the key must
-  // never reach stdout or a stack trace.
-  if (!res.ok) {
-    throw new Error(`Stripe GET /v1/${path} responded ${res.status}`)
-  }
-  return res.json()
-}
+const stripeGet = (path, params) => stripeRead({ key: STRIPE_API_KEY, path, params })
 
 // Stripe caps a page at 100 objects, so anything that can plausibly exceed that
 // (a long-lived customer's subscription history) has to walk has_more.
-const stripeList = async (path, params) => {
-  const collect = async (acc, startingAfter) => {
-    const page = await stripeGet(path, {
-      ...params,
-      limit: '100',
-      ...(startingAfter ? { starting_after: startingAfter } : {}),
-    })
-    const rows = [...acc, ...(page.data ?? [])]
-    return page.has_more && rows.length > acc.length ? collect(rows, rows.at(-1).id) : rows
-  }
-  return collect([], null)
-}
+const stripeList = (path, params) => stripeWalk({ key: STRIPE_API_KEY, path, params })
 
 // Stripe moved current_period_end off the subscription and onto its items in
 // the 2025 API versions; read both so the dossier works on either account.
@@ -162,18 +133,9 @@ const stripeSection = async () => {
 
 // ─── Wizarr ───────────────────────────────────────────────────────────────────
 
-const wz = async (path) => {
-  const res = await fetch(`${WIZARR}${path}`, {
-    headers: { 'X-API-Key': WIZARR_API_KEY, 'Content-Type': 'application/json' },
-    // /api/users reconciles with every Plex server on each call and routinely
-    // takes ~15s (see wizarr.py), so it needs a generous ceiling.
-    signal: AbortSignal.timeout(60_000),
-  })
-  if (!res.ok) {
-    throw new Error(`Wizarr GET ${path} responded ${res.status}`)
-  }
-  return res.json()
-}
+// /api/users reconciles with every Plex server on each call and routinely
+// takes ~15s (see wizarr.py), so it gets the shared generous ceiling.
+const wz = (path) => wizarrGet({ base: WIZARR, key: WIZARR_API_KEY, path })
 
 const wizarrSection = async ({ inviteCode }) => {
   const users = ((await wz(`/api/users?email=${encodeURIComponent(EMAIL)}`)).users ?? []).filter(
@@ -225,17 +187,6 @@ const wizarrSection = async ({ inviteCode }) => {
 
 // ─── The NAS: bridge store and container logs ─────────────────────────────────
 
-// One-shot SSH only. The command is a single argv element, so it never passes
-// through a local shell, and a bare local `cd` would hit the Mac's zoxide alias.
-const ssh = async (command) => {
-  const { stdout } = await execFileAsync(
-    'ssh',
-    ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', nasHost(), command],
-    { maxBuffer: 16 * 1024 * 1024 },
-  )
-  return stdout
-}
-
 // SELECT-only, against a connection opened read-only so the process could not
 // write even by accident. Shipped base64 so the program survives ssh
 // re-parsing the remote command through the login shell. better-sqlite3 is
@@ -256,10 +207,11 @@ console.log(JSON.stringify({
 
 const readStore = async () => {
   const encoded = Buffer.from(storeProgram, 'utf8').toString('base64')
-  const out = await ssh(
-    `sudo -n ${DOCKER} exec ${SERVICE} node -e ` +
+  const out = await ssh({
+    command:
+      `sudo -n ${DOCKER} exec ${SERVICE} node -e ` +
       `"eval(Buffer.from('${encoded}', 'base64').toString())"`,
-  )
+  })
   return JSON.parse(out)
 }
 
@@ -300,7 +252,9 @@ const ALARMS = /\[TIER_SCOPE_ALARM\]|no libraries resolved|unknown tier|allowlis
 const logsSection = async () => {
   // Tail on the NAS, filter here: no remote quoting of the address, and the
   // same fetched window feeds both the member pass and the alarm pass.
-  const lines = (await ssh(`sudo -n ${DOCKER} logs --tail ${LOG_TAIL} ${SERVICE} 2>&1`)).split('\n')
+  const lines = (
+    await ssh({ command: `sudo -n ${DOCKER} logs --tail ${LOG_TAIL} ${SERVICE} 2>&1` })
+  ).split('\n')
   const needle = EMAIL.toLowerCase()
   const mine = lines.filter((line) => line.toLowerCase().includes(needle))
   bullet(mine.length ? `mentioning ${EMAIL}:` : `mentioning ${EMAIL}: ${NONE}`)
@@ -330,7 +284,7 @@ const main = async () => {
 
   // Read the store first (it is fast, and its invite code is what lets the
   // Wizarr section find the member's invitation), then print in reading order.
-  const nasUp = await ssh('true').then(
+  const nasUp = await ssh({ command: 'true' }).then(
     () => true,
     () => false,
   )

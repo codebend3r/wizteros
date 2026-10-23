@@ -17,23 +17,11 @@
 // `.env` is gitignored, so whether one exists is a property of the working copy,
 // not of the repo: use it when it is there, otherwise pass whichever file holds
 // the values locally, or export them for the command.
-import { execFile, execFileSync } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
-import { promisify } from 'node:util'
-
-const execFileAsync = promisify(execFile)
+import { nasHost, ssh, wizarrGet } from '../../_shared/ops.mjs'
 
 const { WIZARR_BASE_URL, WIZARR_API_KEY } = process.env
 
 const WIZARR = (WIZARR_BASE_URL ?? '').replace(/\/+$/, '')
-/** The NAS ssh target: WZ_NAS_HOST, else what scripts/nas-host.sh builds from the repo's .env. */
-const nasHost = () =>
-  process.env.WZ_NAS_HOST ||
-  execFileSync(
-    fileURLToPath(new URL('../../../../scripts/nas-host.sh', import.meta.url)),
-    ['meleys'],
-    { encoding: 'utf8' },
-  ).trim()
 const DOCKER = '/usr/local/bin/docker' // the NOPASSWD sudoers rule matches this literal path
 const SERVICE = 'stripe-bridge'
 const HOUR = 3_600_000
@@ -55,11 +43,7 @@ const say = (line = '') => console.log(line)
 const bullet = (line) => say(`      ${line}`)
 const heading = (title) => say(`\n── ${title} ${'─'.repeat(Math.max(0, 66 - title.length))}`)
 
-const wz = async (path) => {
-  const r = await fetch(`${WIZARR}${path}`, { headers: { 'X-API-Key': WIZARR_API_KEY } })
-  if (!r.ok) throw new Error(`GET ${path} -> ${r.status}`)
-  return r.json()
-}
+const wz = (path) => wizarrGet({ base: WIZARR, key: WIZARR_API_KEY, path })
 
 // Wizarr emits naive ISO strings that are really UTC; without the suffix the
 // JS parser would read them as local time and skew every age by the offset.
@@ -79,15 +63,6 @@ const ago = (date, now) => {
 
 // ─── The NAS: which codes the bridge minted ──────────────────────────────────
 
-const ssh = async (command) => {
-  const { stdout } = await execFileAsync(
-    'ssh',
-    ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', nasHost(), command],
-    { maxBuffer: 8 * 1024 * 1024 },
-  )
-  return stdout
-}
-
 // SELECT-only, against a connection opened read-only so the process could not
 // write even by accident. Shipped base64 so the program survives ssh
 // re-parsing the remote command through the login shell. better-sqlite3 is
@@ -102,10 +77,11 @@ console.log(JSON.stringify({ baselines: rows }))
 
 const readStore = async () => {
   const encoded = Buffer.from(storeProgram, 'utf8').toString('base64')
-  const out = await ssh(
-    `sudo -n ${DOCKER} exec ${SERVICE} node -e ` +
+  const out = await ssh({
+    command:
+      `sudo -n ${DOCKER} exec ${SERVICE} node -e ` +
       `"eval(Buffer.from('${encoded}', 'base64').toString())"`,
-  )
+  })
   return JSON.parse(out).baselines
 }
 
