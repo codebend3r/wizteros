@@ -166,9 +166,14 @@ const restoreAccess = async ({
   bridge: Bridge
   email: string
   customerId: string | null
-  tier: string | null
+  tier: Tier | null
 }): Promise<void> => {
-  const resolved = normalizeTier(tier)
+  // Stripe metadata is the only tier normalized from free text; a member the
+  // bridge holds no known tier for is restored at the entry tier.
+  if (tier === null) {
+    log.warn(`no known tier recorded for ${email}; restoring access at bronze`)
+  }
+  const resolved = tier ?? 'bronze'
   const scope = await resolveTierScope({
     bridge,
     tier: resolved,
@@ -442,7 +447,7 @@ const onInvoicePaid: EventHandler = async ({ bridge, obj }) => {
   // Paid, but nothing to extend. Never leave this as a log line: the
   // member is locked out right now and only a new invite fixes it.
   const row = bridge.store.customerRow({ email })
-  await restoreAccess({ bridge, email, customerId, tier: row ? row.tier : null })
+  await restoreAccess({ bridge, email, customerId, tier: row?.tier ?? null })
 }
 
 /**

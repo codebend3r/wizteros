@@ -31,10 +31,14 @@ export const MEMBERS_SNAPSHOT = Symbol('MEMBERS_SNAPSHOT')
  * tier-derived access rather than failing.
  */
 export const fetchUpstream = async (bridge: Bridge): Promise<Upstream> => {
-  const users = await bridge.wizarr.listUsers()
-  const libraries = await bridge.wizarr.listLibraries()
-  const invitations = await bridge.wizarr.listInvitations()
-  return { users, libraries, invitations, plex_access: await plexAccessOrNull(bridge) }
+  // Independent reads, so the fast ones do not queue behind the ~15s users list.
+  const [users, libraries, invitations, plexAccess] = await Promise.all([
+    bridge.wizarr.listUsers(),
+    bridge.wizarr.listLibraries(),
+    bridge.wizarr.listInvitations(),
+    plexAccessOrNull(bridge),
+  ])
+  return { users, libraries, invitations, plex_access: plexAccess }
 }
 
 /** Every account's live plex.tv share, or null without a token or when plex.tv fails. */

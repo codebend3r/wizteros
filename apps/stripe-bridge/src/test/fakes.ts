@@ -56,6 +56,18 @@ export const recordsUnder = ({
   ids: readonly number[]
 }): WizarrUser[] => ids.map((id) => ({ id, email }))
 
+/** A users list that answers only when the test says so, like a ~15s Wizarr. */
+export const slowUsers = (): { users: Promise<WizarrUser[]>; release: () => void } => {
+  const answers: ((users: WizarrUser[]) => void)[] = []
+  const users = new Promise<WizarrUser[]>((resolve) => {
+    answers.push(resolve)
+  })
+  return {
+    users,
+    release: () => answers.forEach((answer) => answer([{ id: 1, email: 'a@x.com' }])),
+  }
+}
+
 /** A subscription with the fields the bridge reads; override what a test is about. */
 export const subscription = (fields: Partial<StripeSubscription> = {}): StripeSubscription => ({
   id: 'sub_1',

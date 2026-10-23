@@ -2,8 +2,8 @@ import { Logger } from '@nestjs/common'
 import { httpError, stackOf } from '@wizteros/server-common'
 import type { Upstream } from '@/admin/membersSnapshot.js'
 import { PlexUnavailable } from '@/clients/plex.js'
-import { assembleMembers, memberFromCustomer, withOverrides, withPlexAccess } from '@/roster.js'
-import type { Bridge, Member, PlexShares, WizarrInvitation } from '@/types.js'
+import { assembleMembers, type Finishing, finishMember, memberFromCustomer } from '@/roster.js'
+import type { Bridge, Member, PlexAccess, PlexShares, WizarrInvitation } from '@/types.js'
 
 // What the admin GET routes answer, over a Bridge. A refusal is thrown as the
 // HTTP error the route answers with, since these exist for the portal's routes
@@ -11,13 +11,18 @@ import type { Bridge, Member, PlexShares, WizarrInvitation } from '@/types.js'
 
 const log = new Logger('bridge.admin')
 
-/** Stamp each member with the admin overrides the store holds. */
-const stamped = ({ bridge, members }: { bridge: Bridge; members: readonly Member[] }): Member[] =>
-  withOverrides({
-    members,
-    tags: bridge.store.allMemberTags(),
-    downloads: bridge.store.allMemberDownloads(),
-  })
+/** What finishes every row: a plex.tv share when there is one, and the store's overrides. */
+const finishingFor = ({
+  bridge,
+  access,
+}: {
+  bridge: Bridge
+  access: PlexAccess | null
+}): Finishing => ({
+  access,
+  tags: bridge.store.allMemberTags(),
+  downloads: bridge.store.allMemberDownloads(),
+})
 
 /**
  * Every member: Wizarr users AND Stripe subscribers who haven't joined yet.
@@ -36,14 +41,14 @@ export const listMembers = ({
   bridge: Bridge
   upstream: Upstream
 }): Member[] => {
-  const members = assembleMembers({
+  return assembleMembers({
     users: upstream.users,
     libraries: upstream.libraries,
     invitations: upstream.invitations,
     customers: bridge.store.allCustomerRows(),
     links: bridge.store.allMemberLinks(),
+    finishing: finishingFor({ bridge, access: upstream.plex_access }),
   })
-  return stamped({ bridge, members: withPlexAccess({ members, access: upstream.plex_access }) })
 }
 
 /**
@@ -94,22 +99,25 @@ export const getMember = async ({
   email: string
 }): Promise<Member> => {
   const customers = bridge.store.allCustomerRows()
-  const libraries = await bridge.wizarr.listLibraries()
-  const users = await bridge.wizarr.listUsers()
-  // Best effort: a Wizarr that will not list invitations costs the member
-  // page its Stripe-email row, not the page itself.
-  const invitations = await bridge.wizarr
-    .listInvitations()
-    .catch((error: unknown): WizarrInvitation[] => {
+  // Three independent reads, so none waits behind the ~15s users list.
+  const [libraries, users, invitations] = await Promise.all([
+    bridge.wizarr.listLibraries(),
+    bridge.wizarr.listUsers(),
+    // Best effort: a Wizarr that will not list invitations costs the member
+    // page its Stripe-email row, not the page itself.
+    bridge.wizarr.listInvitations().catch((error: unknown): WizarrInvitation[] => {
       log.error(`could not read invitations while resolving ${email}`, stackOf(error))
       return []
-    })
+    }),
+  ])
+  const finishing = finishingFor({ bridge, access: null })
   const members = assembleMembers({
     users,
     libraries,
     invitations,
     customers,
     links: bridge.store.allMemberLinks(),
+    finishing,
   })
   const wanted = email.toLowerCase()
   const listed = members.find((m) => m.email.toLowerCase() === wanted)
@@ -117,12 +125,14 @@ export const getMember = async ({
   // list on purpose, but asking for it by name still has to answer.
   const row = customers.get(wanted)
   const found =
-    listed ?? (row === undefined ? undefined : memberFromCustomer({ email, row, libraries }))
+    listed ??
+    (row === undefined
+      ? undefined
+      : finishMember({ member: memberFromCustomer({ email, row, libraries }), finishing }))
   if (found === undefined) {
     throw httpError({ status: 404, detail: 'no member for that email' })
   }
-  const [member] = stamped({ bridge, members: [found] })
-  return withStripeCustomer({ bridge, member: member ?? found })
+  return withStripeCustomer({ bridge, member: found })
 }
 
 /** The email's actual plex.tv share per server — covers uninvited legacy shares too. */
