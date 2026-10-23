@@ -1,24 +1,87 @@
+import {
+  guardOf,
+  type HostCount,
+  type KindCount,
+  type NeverPlayed,
+  type NeverPlayedHostCount,
+  type NeverPlayedKind,
+  type NeverPlayedQualityCount,
+  type NeverPlayedRow,
+  neverPlayedSchema,
+  type NeverPlayedSummary,
+  type PlayHistory,
+  type PlayHistoryRow,
+  playHistorySchema,
+  type PlayKind,
+  playKindSchema,
+  type PlayQuality,
+  playQualitySchema,
+  type PlaysOverview,
+  playsOverviewSchema,
+  type PlaysTotals,
+  type PlaySync,
+  playSyncSchema,
+  type PlaySyncServer,
+  type PlaysWindow,
+  type PlayUser,
+  type PlayUsers,
+  playUsersSchema,
+  type QualityCount,
+  type Timeline,
+  type TimelineBucket,
+  type TimelinePoint,
+  type TitleHistory,
+  type TitleHistoryRow,
+  titleHistorySchema,
+  type TopMetric,
+  topMetricSchema,
+  type TopTitle,
+  type TopTitles,
+  topTitlesSchema,
+  type TopViewer,
+  type ViewerHistory,
+  type ViewerHistoryRow,
+  viewerHistorySchema,
+} from '@wizteros/wire'
 import { monitor } from '@/lib/fleetApi'
-import { isNumberMap, isNumberOrNull, isRecord, isStringArray, isStringOrNull } from '@/lib/guards'
 
-/** The three things a completed play can be: the rule Plex's own ledger and
-    Tautulli both keep. Anything else the server logged (a clip, a photo) never
-    reaches this page. */
-export type PlayKind = 'movie' | 'episode' | 'track'
-
-/** The buckets video is grouped into. `other` folds SD and unknown together;
-    audio has no quality at all and is left out of any quality breakdown. */
-export type PlayQuality = '4k' | '1080p' | '720p' | 'other'
-
-/** The two rankings the titles table can be sorted by. */
-export type TopMetric = 'plays' | 'rewatches'
-
-/** How the timeline was bucketed by the monitor, picked from the window. */
-export type TimelineBucket = 'day' | 'week' | 'month'
-
-/** What a never-played row stands for: movies are items, TV is grouped to
-    the show, audio to the album. */
-export type NeverPlayedKind = 'movie' | 'show' | 'album'
+// The response types are the wire contract's, in libs/wire, where the monitor's
+// own route tests check every body against the same schemas this module reads
+// them with. The words the toolbar offers live with the page, in
+// pages/Plays/playsToolbar.ts.
+export type {
+  HostCount,
+  KindCount,
+  NeverPlayed,
+  NeverPlayedHostCount,
+  NeverPlayedKind,
+  NeverPlayedQualityCount,
+  NeverPlayedRow,
+  NeverPlayedSummary,
+  PlayHistory,
+  PlayHistoryRow,
+  PlayKind,
+  PlayQuality,
+  PlaysOverview,
+  PlaysTotals,
+  PlaySync,
+  PlaySyncServer,
+  PlaysWindow,
+  PlayUser,
+  PlayUsers,
+  QualityCount,
+  Timeline,
+  TimelineBucket,
+  TimelinePoint,
+  TitleHistory,
+  TitleHistoryRow,
+  TopMetric,
+  TopTitle,
+  TopTitles,
+  TopViewer,
+  ViewerHistory,
+  ViewerHistoryRow,
+}
 
 /** An empty string means "any", on both the type and the quality axis. */
 export type KindFilter = PlayKind | ''
@@ -33,53 +96,9 @@ export type PlaysFilters = {
   readonly quality: QualityFilter
 }
 
-/** How far back a view looks, narrowest first, all time last. `prose` is the
-    span as it reads mid-sentence, and `slug` is how the range is written in
-    the address bar: `days=0` would read as no window at all, where `all` says
-    what it means. */
-export const PLAY_RANGES = [
-  { days: 7, slug: '7d', label: '7 days', prose: '7 days' },
-  { days: 30, slug: '30d', label: '30 days', prose: '30 days' },
-  { days: 90, slug: '90d', label: '90 days', prose: '90 days' },
-  { days: 365, slug: '1y', label: '1 year', prose: 'year' },
-  { days: 0, slug: 'all', label: 'All time', prose: 'all time' },
-] as const
+export const isPlayKind = guardOf(playKindSchema)
 
-/** The range a view opens on: a year, wide enough that a page opened cold
-    says something, narrow enough not to ask the monitor for everything. Taken
-    from the list rather than restated, so the default cannot name a range the
-    toolbar does not offer. */
-export const DEFAULT_PLAY_RANGE = PLAY_RANGES[3]
-
-export const PLAY_KINDS = [
-  { kind: '', label: 'All types' },
-  { kind: 'movie', label: 'Movies' },
-  { kind: 'episode', label: 'TV' },
-  { kind: 'track', label: 'Audio' },
-] as const
-
-export const PLAY_QUALITIES = [
-  { quality: '', label: 'All' },
-  { quality: '4k', label: '4K' },
-  { quality: '1080p', label: '1080p' },
-  { quality: '720p', label: '720p' },
-  { quality: 'other', label: 'Other' },
-] as const
-
-/** A range as it reads mid-sentence. Falls back to the raw count for a value
-    that is not a range, which only the store's guards should ever let through. */
-export const rangeProse = (days: number): string =>
-  PLAY_RANGES.find((range) => range.days === days)?.prose ?? `${days} days`
-
-/** The window as a phrase: "over the last year", or "across all time". */
-export const windowProse = (days: number): string =>
-  days === 0 ? 'across all time' : `over the last ${rangeProse(days)}`
-
-export const isPlayKind = (value: unknown): value is PlayKind =>
-  value === 'movie' || value === 'episode' || value === 'track'
-
-export const isPlayQuality = (value: unknown): value is PlayQuality =>
-  value === '4k' || value === '1080p' || value === '720p' || value === 'other'
+export const isPlayQuality = guardOf(playQualitySchema)
 
 export const isKindFilter = (value: unknown): value is KindFilter =>
   value === '' || isPlayKind(value)
@@ -87,507 +106,16 @@ export const isKindFilter = (value: unknown): value is KindFilter =>
 export const isQualityFilter = (value: unknown): value is QualityFilter =>
   value === '' || isPlayQuality(value)
 
-export const isTopMetric = (value: unknown): value is TopMetric =>
-  value === 'plays' || value === 'rewatches'
+export const isTopMetric = guardOf(topMetricSchema)
 
-const isTimelineBucket = (value: unknown): value is TimelineBucket =>
-  value === 'day' || value === 'week' || value === 'month'
-
-const isNeverPlayedKind = (value: unknown): value is NeverPlayedKind =>
-  value === 'movie' || value === 'show' || value === 'album'
-
-/** The window the monitor actually answered for, echoed back so a response
-    can never be mistaken for another filter's. */
-export type PlaysWindow = {
-  readonly days: number
-  readonly since: string | null
-  readonly host: string | null
-  readonly kind: string | null
-  readonly quality: string | null
-}
-
-export type PlaysTotals = {
-  readonly plays: number
-  readonly viewers: number
-  readonly titles: number
-  /** Summed item durations of every completed play, the closest thing a
-      ledger of completions has to hours watched. */
-  readonly watch_ms: number
-}
-
-export type KindCount = {
-  readonly kind: PlayKind
-  readonly plays: number
-}
-
-export type QualityCount = {
-  readonly quality: PlayQuality
-  readonly plays: number
-}
-
-/** One server's share. Hosts arrive in the monitor's config order, the same
-    order `/fleet` uses, so position binds a server to its colour here too. */
-export type HostCount = {
-  readonly host: string
-  readonly friendly_name: string | null
-  readonly plays: number
-}
-
-export type TimelinePoint = {
-  /** The bucket's first day as YYYY-MM-DD. */
-  readonly start: string
-  readonly plays: number
-  /** Plays per host inside the bucket; a host with none is absent. */
-  readonly hosts: Readonly<Record<string, number>>
-}
-
-export type Timeline = {
-  readonly bucket: TimelineBucket
-  readonly points: readonly TimelinePoint[]
-}
-
-export type TopViewer = {
-  readonly account_id: number
-  readonly name: string
-  readonly plays: number
-}
-
-/** One ranked title. A movie is itself; TV is the show; audio is the album
-    with the artist as `context`. `items` is how many distinct episodes or
-    tracks were played, and `rewatches` counts the same viewer completing the
-    same item again, never a viewer moving on to the next episode. */
-export type TopTitle = {
-  readonly key: string
-  readonly kind: PlayKind
-  readonly title: string
-  readonly context: string | null
-  readonly year: number | null
-  readonly quality: string | null
-  readonly plays: number
-  readonly viewers: number
-  readonly items: number
-  readonly rewatches: number
-  readonly top_rewatcher: TopViewer | null
-  readonly last_viewed_at: string
-  readonly hosts: readonly string[]
-  readonly thumb: string | null
-}
-
-export type PlaysOverview = {
-  readonly window: PlaysWindow
-  readonly totals: PlaysTotals
-  readonly by_kind: readonly KindCount[]
-  readonly by_quality: readonly QualityCount[]
-  readonly by_host: readonly HostCount[]
-  readonly timeline: Timeline
-  readonly top_viewers: readonly TopViewer[]
-  readonly top_titles: readonly TopTitle[]
-}
-
-export type PlayUser = {
-  readonly account_id: number
-  readonly name: string
-  readonly thumb: string | null
-  readonly plays: number
-  readonly movies: number
-  readonly episodes: number
-  readonly tracks: number
-  readonly hosts: readonly string[]
-  readonly last_viewed_at: string | null
-  readonly top_title: string | null
-}
-
-export type PlayUsers = {
-  readonly users: readonly PlayUser[]
-}
-
-export type ViewerHistoryRow = {
-  readonly viewed_at: string
-  readonly host: string
-  readonly kind: PlayKind
-  /** The title this play is ranked under, so the row can open that title's
-      own history without the page rebuilding the key from the columns. */
-  readonly group_key: string
-  readonly title: string
-  readonly parent_title: string | null
-  readonly grandparent_title: string | null
-  readonly index: number | null
-  readonly parent_index: number | null
-  readonly year: number | null
-  readonly quality: string | null
-  readonly device: string | null
-  readonly library: string | null
-  readonly duration_ms: number | null
-}
-
-export type ViewerHistory = {
-  readonly account_id: number
-  readonly name: string
-  readonly total: number
-  readonly page: number
-  readonly page_size: number
-  readonly rows: readonly ViewerHistoryRow[]
-}
-
-/** One completed play anywhere in the fleet: a viewer's row with who
-    finished it beside it, since nothing around the table names anyone. */
-export type PlayHistoryRow = ViewerHistoryRow & {
-  readonly account_id: number
-  readonly viewer: string
-}
-
-/** Every completed play under the filters, newest first, a page at a time. */
-export type PlayHistory = {
-  readonly total: number
-  readonly page: number
-  readonly page_size: number
-  readonly rows: readonly PlayHistoryRow[]
-}
-
-export type TopTitles = {
-  readonly metric: TopMetric
-  readonly titles: readonly TopTitle[]
-}
-
-/** One completion under a title, named by who finished it. `title` is the
-    item, not the group: the episode, the track, the film. */
-export type TitleHistoryRow = {
-  readonly viewed_at: string
-  readonly host: string
-  readonly kind: PlayKind
-  readonly account_id: number
-  readonly viewer: string
-  readonly title: string
-  readonly index: number | null
-  readonly parent_index: number | null
-  readonly year: number | null
-  readonly quality: string | null
-  readonly device: string | null
-  readonly library: string | null
-  readonly duration_ms: number | null
-}
-
-/** Every completed play of one title, with the figures that scope them.
- *
- * `kind` is null and `title` empty only for a key nothing in the ledger
- * answers to, which is a link older than the library it names. The monitor
- * names the title from outside the window when the window holds no play, so
- * a narrowed filter leaves the page named rather than blank. */
-export type TitleHistory = {
-  readonly key: string
-  readonly kind: PlayKind | null
-  readonly title: string
-  readonly context: string | null
-  readonly year: number | null
-  readonly quality: string | null
-  readonly viewers: number
-  readonly items: number
-  readonly rewatches: number
-  readonly first_viewed_at: string | null
-  readonly last_viewed_at: string | null
-  readonly hosts: readonly string[]
-  readonly total: number
-  readonly page: number
-  readonly page_size: number
-  readonly rows: readonly TitleHistoryRow[]
-}
-
-export type NeverPlayedQualityCount = {
-  readonly quality: string
-  readonly count: number
-}
-
-export type NeverPlayedHostCount = {
-  readonly host: string
-  readonly count: number
-}
-
-export type NeverPlayedSummary = {
-  readonly movies: number
-  readonly shows: number
-  readonly albums: number
-  /** Movies only: a show or an album has no single resolution. */
-  readonly by_quality: readonly NeverPlayedQualityCount[]
-  readonly by_host: readonly NeverPlayedHostCount[]
-}
-
-export type NeverPlayedRow = {
-  readonly key: string
-  readonly host: string
-  readonly kind: NeverPlayedKind
-  readonly title: string
-  readonly context: string | null
-  readonly year: number | null
-  readonly quality: string | null
-  readonly library: string | null
-  readonly added_at: string | null
-  /** Episodes in the show or tracks on the album; 1 for a movie. */
-  readonly items: number
-  readonly thumb: string | null
-}
-
-export type NeverPlayed = {
-  readonly summary: NeverPlayedSummary
-  readonly total: number
-  readonly page: number
-  readonly page_size: number
-  readonly rows: readonly NeverPlayedRow[]
-}
-
-/** One server's sync state. `reachable` is the last history pass's outcome;
-    `history_since` is the oldest play the ledger holds for it. */
-export type PlaySyncServer = {
-  readonly host: string
-  readonly friendly_name: string | null
-  readonly plex_url: string
-  readonly reachable: boolean
-  readonly history_synced_at: string | null
-  readonly library_synced_at: string | null
-  readonly history_since: string | null
-  readonly plays: number
-  readonly items: number
-  readonly last_error: string | null
-}
-
-export type PlaySync = {
-  readonly lookback_days: number
-  readonly servers: readonly PlaySyncServer[]
-}
-
-const isPlaysWindow = (value: unknown): value is PlaysWindow =>
-  isRecord(value) &&
-  typeof value.days === 'number' &&
-  isStringOrNull(value.since) &&
-  isStringOrNull(value.host) &&
-  isStringOrNull(value.kind) &&
-  isStringOrNull(value.quality)
-
-const isPlaysTotals = (value: unknown): value is PlaysTotals =>
-  isRecord(value) &&
-  typeof value.plays === 'number' &&
-  typeof value.viewers === 'number' &&
-  typeof value.titles === 'number' &&
-  typeof value.watch_ms === 'number'
-
-const isKindCount = (value: unknown): value is KindCount =>
-  isRecord(value) && isPlayKind(value.kind) && typeof value.plays === 'number'
-
-const isQualityCount = (value: unknown): value is QualityCount =>
-  isRecord(value) && isPlayQuality(value.quality) && typeof value.plays === 'number'
-
-const isHostCount = (value: unknown): value is HostCount =>
-  isRecord(value) &&
-  typeof value.host === 'string' &&
-  isStringOrNull(value.friendly_name) &&
-  typeof value.plays === 'number'
-
-const isTimelinePoint = (value: unknown): value is TimelinePoint =>
-  isRecord(value) &&
-  typeof value.start === 'string' &&
-  typeof value.plays === 'number' &&
-  isNumberMap(value.hosts)
-
-const isTimeline = (value: unknown): value is Timeline =>
-  isRecord(value) &&
-  isTimelineBucket(value.bucket) &&
-  Array.isArray(value.points) &&
-  value.points.every(isTimelinePoint)
-
-const isTopViewer = (value: unknown): value is TopViewer =>
-  isRecord(value) &&
-  typeof value.account_id === 'number' &&
-  typeof value.name === 'string' &&
-  typeof value.plays === 'number'
-
-const isTopTitle = (value: unknown): value is TopTitle =>
-  isRecord(value) &&
-  typeof value.key === 'string' &&
-  isPlayKind(value.kind) &&
-  typeof value.title === 'string' &&
-  isStringOrNull(value.context) &&
-  isNumberOrNull(value.year) &&
-  isStringOrNull(value.quality) &&
-  typeof value.plays === 'number' &&
-  typeof value.viewers === 'number' &&
-  typeof value.items === 'number' &&
-  typeof value.rewatches === 'number' &&
-  (value.top_rewatcher === null || isTopViewer(value.top_rewatcher)) &&
-  typeof value.last_viewed_at === 'string' &&
-  isStringArray(value.hosts) &&
-  isStringOrNull(value.thumb)
-
-const isPlaysOverview = (value: unknown): value is PlaysOverview =>
-  isRecord(value) &&
-  isPlaysWindow(value.window) &&
-  isPlaysTotals(value.totals) &&
-  Array.isArray(value.by_kind) &&
-  value.by_kind.every(isKindCount) &&
-  Array.isArray(value.by_quality) &&
-  value.by_quality.every(isQualityCount) &&
-  Array.isArray(value.by_host) &&
-  value.by_host.every(isHostCount) &&
-  isTimeline(value.timeline) &&
-  Array.isArray(value.top_viewers) &&
-  value.top_viewers.every(isTopViewer) &&
-  Array.isArray(value.top_titles) &&
-  value.top_titles.every(isTopTitle)
-
-const isPlayUser = (value: unknown): value is PlayUser =>
-  isRecord(value) &&
-  typeof value.account_id === 'number' &&
-  typeof value.name === 'string' &&
-  isStringOrNull(value.thumb) &&
-  typeof value.plays === 'number' &&
-  typeof value.movies === 'number' &&
-  typeof value.episodes === 'number' &&
-  typeof value.tracks === 'number' &&
-  isStringArray(value.hosts) &&
-  isStringOrNull(value.last_viewed_at) &&
-  isStringOrNull(value.top_title)
-
-const isPlayUsers = (value: unknown): value is PlayUsers =>
-  isRecord(value) && Array.isArray(value.users) && value.users.every(isPlayUser)
-
-const isViewerHistoryRow = (value: unknown): value is ViewerHistoryRow =>
-  isRecord(value) &&
-  typeof value.viewed_at === 'string' &&
-  typeof value.host === 'string' &&
-  isPlayKind(value.kind) &&
-  typeof value.group_key === 'string' &&
-  typeof value.title === 'string' &&
-  isStringOrNull(value.parent_title) &&
-  isStringOrNull(value.grandparent_title) &&
-  isNumberOrNull(value.index) &&
-  isNumberOrNull(value.parent_index) &&
-  isNumberOrNull(value.year) &&
-  isStringOrNull(value.quality) &&
-  isStringOrNull(value.device) &&
-  isStringOrNull(value.library) &&
-  isNumberOrNull(value.duration_ms)
-
-const isViewerHistory = (value: unknown): value is ViewerHistory =>
-  isRecord(value) &&
-  typeof value.account_id === 'number' &&
-  typeof value.name === 'string' &&
-  typeof value.total === 'number' &&
-  typeof value.page === 'number' &&
-  typeof value.page_size === 'number' &&
-  Array.isArray(value.rows) &&
-  value.rows.every(isViewerHistoryRow)
-
-const isPlayHistoryRow = (value: unknown): value is PlayHistoryRow =>
-  isRecord(value) &&
-  typeof value.account_id === 'number' &&
-  typeof value.viewer === 'string' &&
-  isViewerHistoryRow(value)
-
-const isPlayHistory = (value: unknown): value is PlayHistory =>
-  isRecord(value) &&
-  typeof value.total === 'number' &&
-  typeof value.page === 'number' &&
-  typeof value.page_size === 'number' &&
-  Array.isArray(value.rows) &&
-  value.rows.every(isPlayHistoryRow)
-
-const isTopTitles = (value: unknown): value is TopTitles =>
-  isRecord(value) &&
-  isTopMetric(value.metric) &&
-  Array.isArray(value.titles) &&
-  value.titles.every(isTopTitle)
-
-const isTitleHistoryRow = (value: unknown): value is TitleHistoryRow =>
-  isRecord(value) &&
-  typeof value.viewed_at === 'string' &&
-  typeof value.host === 'string' &&
-  isPlayKind(value.kind) &&
-  typeof value.account_id === 'number' &&
-  typeof value.viewer === 'string' &&
-  typeof value.title === 'string' &&
-  isNumberOrNull(value.index) &&
-  isNumberOrNull(value.parent_index) &&
-  isNumberOrNull(value.year) &&
-  isStringOrNull(value.quality) &&
-  isStringOrNull(value.device) &&
-  isStringOrNull(value.library) &&
-  isNumberOrNull(value.duration_ms)
-
-const isTitleHistory = (value: unknown): value is TitleHistory =>
-  isRecord(value) &&
-  typeof value.key === 'string' &&
-  (value.kind === null || isPlayKind(value.kind)) &&
-  typeof value.title === 'string' &&
-  isStringOrNull(value.context) &&
-  isNumberOrNull(value.year) &&
-  isStringOrNull(value.quality) &&
-  typeof value.viewers === 'number' &&
-  typeof value.items === 'number' &&
-  typeof value.rewatches === 'number' &&
-  isStringOrNull(value.first_viewed_at) &&
-  isStringOrNull(value.last_viewed_at) &&
-  isStringArray(value.hosts) &&
-  typeof value.total === 'number' &&
-  typeof value.page === 'number' &&
-  typeof value.page_size === 'number' &&
-  Array.isArray(value.rows) &&
-  value.rows.every(isTitleHistoryRow)
-
-const isNeverPlayedQualityCount = (value: unknown): value is NeverPlayedQualityCount =>
-  isRecord(value) && typeof value.quality === 'string' && typeof value.count === 'number'
-
-const isNeverPlayedHostCount = (value: unknown): value is NeverPlayedHostCount =>
-  isRecord(value) && typeof value.host === 'string' && typeof value.count === 'number'
-
-const isNeverPlayedSummary = (value: unknown): value is NeverPlayedSummary =>
-  isRecord(value) &&
-  typeof value.movies === 'number' &&
-  typeof value.shows === 'number' &&
-  typeof value.albums === 'number' &&
-  Array.isArray(value.by_quality) &&
-  value.by_quality.every(isNeverPlayedQualityCount) &&
-  Array.isArray(value.by_host) &&
-  value.by_host.every(isNeverPlayedHostCount)
-
-const isNeverPlayedRow = (value: unknown): value is NeverPlayedRow =>
-  isRecord(value) &&
-  typeof value.key === 'string' &&
-  typeof value.host === 'string' &&
-  isNeverPlayedKind(value.kind) &&
-  typeof value.title === 'string' &&
-  isStringOrNull(value.context) &&
-  isNumberOrNull(value.year) &&
-  isStringOrNull(value.quality) &&
-  isStringOrNull(value.library) &&
-  isStringOrNull(value.added_at) &&
-  typeof value.items === 'number' &&
-  isStringOrNull(value.thumb)
-
-const isNeverPlayed = (value: unknown): value is NeverPlayed =>
-  isRecord(value) &&
-  isNeverPlayedSummary(value.summary) &&
-  typeof value.total === 'number' &&
-  typeof value.page === 'number' &&
-  typeof value.page_size === 'number' &&
-  Array.isArray(value.rows) &&
-  value.rows.every(isNeverPlayedRow)
-
-const isPlaySyncServer = (value: unknown): value is PlaySyncServer =>
-  isRecord(value) &&
-  typeof value.host === 'string' &&
-  isStringOrNull(value.friendly_name) &&
-  typeof value.plex_url === 'string' &&
-  typeof value.reachable === 'boolean' &&
-  isStringOrNull(value.history_synced_at) &&
-  isStringOrNull(value.library_synced_at) &&
-  isStringOrNull(value.history_since) &&
-  typeof value.plays === 'number' &&
-  typeof value.items === 'number' &&
-  isStringOrNull(value.last_error)
-
-const isPlaySync = (value: unknown): value is PlaySync =>
-  isRecord(value) &&
-  typeof value.lookback_days === 'number' &&
-  Array.isArray(value.servers) &&
-  value.servers.every(isPlaySyncServer)
+const isPlaysOverview = guardOf(playsOverviewSchema)
+const isPlayUsers = guardOf(playUsersSchema)
+const isPlayHistory = guardOf(playHistorySchema)
+const isViewerHistory = guardOf(viewerHistorySchema)
+const isTopTitles = guardOf(topTitlesSchema)
+const isTitleHistory = guardOf(titleHistorySchema)
+const isNeverPlayed = guardOf(neverPlayedSchema)
+const isPlaySync = guardOf(playSyncSchema)
 
 /** Extra parameters a single read adds past the shared filters: a page, a
     metric, a search term. */

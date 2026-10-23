@@ -1,11 +1,11 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import {
   fetchTitleHistory,
-  windowProse,
   type PlaysFilters,
   type TitleHistory as TitleHistoryPage,
   type TitleHistoryRow,
 } from '@/lib/playsApi'
+import { windowProse } from '@/pages/Plays/playsToolbar'
 import { AsyncSection } from '@/components/AsyncSection/AsyncSection'
 import { PagedTable } from '@/pages/Plays/Pager'
 import { KIND_LABEL } from '@/pages/Plays/playsCopy'

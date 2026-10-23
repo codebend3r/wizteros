@@ -7,19 +7,19 @@ import { session } from '@/db.js'
 import * as plays from '@/plays/index.js'
 import type { Kind, MediaItem, PlayEntry, Quality } from '@/probes/plex.js'
 import { appPastTheGate } from '@/test/apiApp.js'
+import { bodyOf } from '@/test/body.js'
 import { removeTempDirs, tempDbPath } from '@/test/support.js'
-import {
-  bodyOf,
-  isNeverPlayed,
-  isPlayHistory,
-  isPlaySync,
-  isPlaysOverview,
-  isPlayUsers,
-  isTitleHistory,
-  isTopTitles,
-  isViewerHistory,
-} from '@/test/wire.js'
 import { epochSeconds } from '@wizteros/server-common'
+import {
+  neverPlayedSchema,
+  playHistorySchema,
+  playSyncSchema,
+  playUsersSchema,
+  playsOverviewSchema,
+  titleHistorySchema,
+  topTitlesSchema,
+  viewerHistorySchema,
+} from '@wizteros/wire'
 
 const T0 = new Date(Date.UTC(2026, 8, 18, 12, 0, 0))
 const NOW = epochSeconds(T0)
@@ -183,19 +183,19 @@ describe('the play history API', () => {
   const get = (url: string) => app.inject({ method: 'GET', url })
 
   const overview = async (query = '') =>
-    bodyOf({ answer: await get(`/plays/overview${query}`), is: isPlaysOverview })
+    bodyOf({ answer: await get(`/plays/overview${query}`), schema: playsOverviewSchema })
 
   const history = async (query = '') =>
-    bodyOf({ answer: await get(`/plays/history${query}`), is: isPlayHistory })
+    bodyOf({ answer: await get(`/plays/history${query}`), schema: playHistorySchema })
 
   const viewerHistory = async (url: string) =>
-    bodyOf({ answer: await get(url), is: isViewerHistory })
+    bodyOf({ answer: await get(url), schema: viewerHistorySchema })
 
   const titleHistory = async (query: string) =>
-    bodyOf({ answer: await get(`/plays/title?${query}`), is: isTitleHistory })
+    bodyOf({ answer: await get(`/plays/title?${query}`), schema: titleHistorySchema })
 
   const neverPlayed = async (query = '') =>
-    bodyOf({ answer: await get(`/plays/never-played${query}`), is: isNeverPlayed })
+    bodyOf({ answer: await get(`/plays/never-played${query}`), schema: neverPlayedSchema })
 
   it('answers the overview with zero-filled buckets in config host order', async () => {
     seed(db)
@@ -275,7 +275,7 @@ describe('the play history API', () => {
   it("lists the users and pages one viewer's history", async () => {
     seed(db)
 
-    const { users } = bodyOf({ answer: await get('/plays/users'), is: isPlayUsers })
+    const { users } = bodyOf({ answer: await get('/plays/users'), schema: playUsersSchema })
     expect(
       users.map((user) => [user.account_id, user.name, user.plays, user.movies, user.episodes]),
     ).toEqual([
@@ -365,7 +365,7 @@ describe('the play history API', () => {
 
     const top = bodyOf({
       answer: await get('/plays/top?metric=plays&limit=5&days=0'),
-      is: isTopTitles,
+      schema: topTitlesSchema,
     })
     expect(top.metric).toBe('plays')
     expect(top.titles.map((title) => title.title)).toEqual(['Heat', 'Better Call Saul'])
@@ -386,7 +386,7 @@ describe('the play history API', () => {
 
     const rewatched = bodyOf({
       answer: await get('/plays/top?metric=rewatches&days=0'),
-      is: isTopTitles,
+      schema: topTitlesSchema,
     })
     expect(rewatched.metric).toBe('rewatches')
     expect(rewatched.titles.map((title) => title.title)).toEqual(['Heat'])
@@ -481,7 +481,7 @@ describe('the play history API', () => {
     seed(db)
     vi.stubEnv('FM_PLEX_LOOKBACK_DAYS', '730')
 
-    const body = bodyOf({ answer: await get('/plays/sync'), is: isPlaySync })
+    const body = bodyOf({ answer: await get('/plays/sync'), schema: playSyncSchema })
 
     expect(body.lookback_days).toBe(730)
     expect(body.servers.map((server) => server.host)).toEqual(PLEX_HOSTS)
@@ -517,15 +517,17 @@ describe('the play history API', () => {
     // first boot: the tables exist and nothing is in them, and every route
     // still answers rather than tripping over a missing row
     expect((await overview()).totals.plays).toBe(0)
-    expect(bodyOf({ answer: await get('/plays/users'), is: isPlayUsers })).toEqual({ users: [] })
+    expect(bodyOf({ answer: await get('/plays/users'), schema: playUsersSchema })).toEqual({
+      users: [],
+    })
     expect(await history()).toEqual({ total: 0, page: 1, page_size: 50, rows: [] })
-    expect(bodyOf({ answer: await get('/plays/top'), is: isTopTitles })).toEqual({
+    expect(bodyOf({ answer: await get('/plays/top'), schema: topTitlesSchema })).toEqual({
       metric: 'plays',
       titles: [],
     })
     expect((await titleHistory('key=movie:heat:1995')).total).toBe(0)
     expect((await neverPlayed()).total).toBe(0)
-    const sync = bodyOf({ answer: await get('/plays/sync'), is: isPlaySync })
+    const sync = bodyOf({ answer: await get('/plays/sync'), schema: playSyncSchema })
     expect(sync.servers.every((server) => !server.reachable)).toBe(true)
   })
 

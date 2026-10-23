@@ -1,10 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import {
-  fetchPlayHistory,
-  fetchPlaysOverview,
-  windowProse,
-  type PlaysFilters,
-} from '@/lib/playsApi'
+import { fetchPlayHistory, fetchPlaysOverview, type PlaysFilters } from '@/lib/playsApi'
+import { windowProse } from '@/pages/Plays/playsToolbar'
 import { seriesClass } from '@/pages/Fleet/seriesPalette'
 import { AsyncSection } from '@/components/AsyncSection/AsyncSection'
 import { BreakdownList } from '@/pages/Plays/BreakdownList'

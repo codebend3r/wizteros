@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { fetchNeverPlayed, rangeProse, type PlaysFilters } from '@/lib/playsApi'
+import { fetchNeverPlayed, type PlaysFilters } from '@/lib/playsApi'
+import { rangeProse } from '@/pages/Plays/playsToolbar'
 import { AsyncSection } from '@/components/AsyncSection/AsyncSection'
 import { BreakdownList } from '@/pages/Plays/BreakdownList'
 import { PagedTable } from '@/pages/Plays/Pager'

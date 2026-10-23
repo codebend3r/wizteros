@@ -1,14 +1,13 @@
 import { useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
-  DEFAULT_PLAY_RANGE,
   isKindFilter,
   isQualityFilter,
-  PLAY_RANGES,
   type KindFilter,
   type PlaysFilters,
   type QualityFilter,
 } from '@/lib/playsApi'
+import { DEFAULT_PLAY_RANGE, PLAY_RANGES } from '@/pages/Plays/playsToolbar'
 
 /** The five views, in the order the tab strip offers them. Overview leads
     because it is the summary; never played trails because it is the one

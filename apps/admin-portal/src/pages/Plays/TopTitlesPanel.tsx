@@ -1,11 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import {
-  fetchTopTitles,
-  windowProse,
-  type PlaysFilters,
-  type TopMetric,
-  type TopTitle,
-} from '@/lib/playsApi'
+import { fetchTopTitles, type PlaysFilters, type TopMetric, type TopTitle } from '@/lib/playsApi'
+import { windowProse } from '@/pages/Plays/playsToolbar'
 import { AsyncSection } from '@/components/AsyncSection/AsyncSection'
 import { TAB_COPY } from '@/pages/Plays/playsCopy'
 import { formatCount, formatDateTime, qualityLabel, titleWithYear } from '@/pages/Plays/playsFormat'

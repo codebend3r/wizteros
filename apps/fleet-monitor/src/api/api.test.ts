@@ -17,19 +17,34 @@ import { type CheckResult, checkResult, record } from '@/incidents.js'
 import type { Sample } from '@/probes/types.js'
 import { COVERAGE_GAP_SECONDS, metricAges, writeHeartbeat, writeSamples } from '@/store.js'
 import { appPastTheGate } from '@/test/apiApp.js'
+import { bodyOf } from '@/test/body.js'
 import { removeTempDirs, tempDbPath } from '@/test/support.js'
-import {
-  bodyOf,
-  type FleetHost,
-  type FleetResponse,
-  isFleetResponse,
-  isHealth,
-  isIncidentFeed,
-  isMetricHistory,
-  type MetricHistory,
-  type MetricPoint,
-} from '@/test/wire.js'
 import { addSeconds } from '@wizteros/server-common'
+import {
+  fleetHostSchema,
+  fleetResponseSchema,
+  healthSchema,
+  incidentFeedSchema,
+  type MetricHistory,
+  metricHistorySchema,
+  type MetricPoint,
+  type Wire,
+} from '@wizteros/wire'
+import { z } from 'zod'
+
+// A host also carries the raw `metrics` map, which the portal does not read
+// and the Python tests asserted on, so these tests check it on top of the
+// shared schema rather than the schema growing a field no reader has.
+const fleetHostWithMetricsSchema = fleetHostSchema.extend({
+  metrics: z.record(z.string(), z.number()),
+})
+
+const fleetWithMetricsSchema = fleetResponseSchema.extend({
+  hosts: z.array(fleetHostWithMetricsSchema),
+})
+
+type FleetHost = Wire<typeof fleetHostWithMetricsSchema>
+type FleetResponse = Wire<typeof fleetWithMetricsSchema>
 
 const HOUR = 3600
 const DAY = 24 * HOUR
@@ -160,10 +175,10 @@ describe('the fleet API', () => {
     app.inject({ method: 'GET', url, headers })
 
   const fleet = async (): Promise<FleetResponse> =>
-    bodyOf({ answer: await get('/fleet'), is: isFleetResponse })
+    bodyOf({ answer: await get('/fleet'), schema: fleetWithMetricsSchema })
 
   const history = async (url: string): Promise<MetricHistory> =>
-    bodyOf({ answer: await get(url), is: isMetricHistory })
+    bodyOf({ answer: await get(url), schema: metricHistorySchema })
 
   it('answers cross-origin requests', async () => {
     // The portal is served from a different origin than this API everywhere
@@ -188,7 +203,7 @@ describe('the fleet API', () => {
   })
 
   it('reports stale health when there is no heartbeat', async () => {
-    const body = bodyOf({ answer: await get('/health'), is: isHealth })
+    const body = bodyOf({ answer: await get('/health'), schema: healthSchema })
 
     expect(body.stale).toBe(true)
     expect(body.heartbeat_age_seconds).toBeNull()
@@ -196,7 +211,7 @@ describe('the fleet API', () => {
 
   it('reports fresh health right after a heartbeat', async () => {
     writeHeartbeatTo({ path: db, at: new Date() })
-    const body = bodyOf({ answer: await get('/health'), is: isHealth })
+    const body = bodyOf({ answer: await get('/health'), schema: healthSchema })
 
     expect(body.stale).toBe(false)
     expect(body.heartbeat_age_seconds).toBeLessThan(5)
@@ -205,7 +220,7 @@ describe('the fleet API', () => {
   it('reports stale health after three missed ticks', async () => {
     writeHeartbeatTo({ path: db, at: addSeconds({ at: new Date(), seconds: -200 }) })
 
-    expect(bodyOf({ answer: await get('/health'), is: isHealth }).stale).toBe(true)
+    expect(bodyOf({ answer: await get('/health'), schema: healthSchema }).stale).toBe(true)
   })
 
   it('answers a wrong method on a known route with 405, as FastAPI did', async () => {
@@ -535,7 +550,7 @@ describe('the fleet API', () => {
       samples: [gauge('load.1m', 0.1)],
     })
 
-    const health = bodyOf({ answer: await get('/health'), is: isHealth })
+    const health = bodyOf({ answer: await get('/health'), schema: healthSchema })
     expect(health.stale).toBe(true)
     expect(health.heartbeat_age_seconds).toBeNull()
 
@@ -567,7 +582,7 @@ describe('the fleet API', () => {
         at: addSeconds({ at: now, seconds: offset }),
       }),
     )
-    const body = bodyOf({ answer: await get('/incidents?hours=24'), is: isIncidentFeed })
+    const body = bodyOf({ answer: await get('/incidents?hours=24'), schema: incidentFeedSchema })
 
     expect(body.open.map((incident) => incident.target)).toEqual(['host:caraxes'])
     expect(body.recent).toHaveLength(1)
