@@ -205,4 +205,6 @@ Everything else here is convention, and the import-alias rule in particular has 
 
 Repo-scoped skills live in `.claude/skills/`. Prefer them over improvising: `commiter` and `pr-creator` for the conventions above, `version-bumper` and `deploy-nas` for shipping, `nas-state-backup` before touching live NAS state, `copy-compliance` for user-facing copy. The README lists all of them. CI runs on GitHub Actions and uses Nx Cloud only while the Hobby plan still accepts runs (`scripts/ci/nx-cloud.sh` probes it and otherwise sets `NX_NO_CLOUD=true`, and reruns without it if it fails mid-run), so watch a PR's checks with `gh pr checks <pr> --watch` or a run with `gh run watch <run-id>`.
 
+Skill scripts take the NAS host, one-shot `ssh`, Stripe list paging and the Wizarr GET from `.claude/skills/_shared/ops.mjs` rather than carrying their own copies; its tests run in `test:tooling`.
+
 Repo-scoped subagents live in `.claude/agents/`: `wizteros-reviewer` reviews a diff, branch, or PR against the conventions here that the toolchain does not enforce.

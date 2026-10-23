@@ -1,19 +1,11 @@
 import { execFileSync } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { nasHost, stripeList as stripeWalk, wizarrGet as wizarrRead } from '../../_shared/ops.mjs'
 
 const REQUIRED = ['STRIPE_API_KEY', 'WIZARR_BASE_URL', 'WIZARR_API_KEY']
 const PAYING = new Set(['active', 'trialing'])
-/** The NAS ssh target: WZ_NAS_HOST, else what scripts/nas-host.sh builds from the repo's .env. */
-const nasHost = () =>
-  process.env.WZ_NAS_HOST ||
-  execFileSync(
-    fileURLToPath(new URL('../../../../scripts/nas-host.sh', import.meta.url)),
-    ['meleys'],
-    { encoding: 'utf8' },
-  ).trim()
 const NAS_PATH = process.env.WZ_NAS_PATH || '/volume1/docker/stripe-bridge'
 const SSH_OPTS = '-o BatchMode=yes -o ConnectTimeout=10'
 const WIZARR_TIMEOUT_MS = 60_000
@@ -31,25 +23,16 @@ export const requireConfig = ({ env = process.env } = {}) => {
   }
 }
 
-const stripeList = async ({ config, startingAfter = null, acc = [] }) => {
+const stripeList = ({ config }) =>
   /** Page through every subscription, customer expanded inline. */
-  const params = new URLSearchParams({ limit: '100', status: 'all' })
-  params.append('expand[]', 'data.customer')
-  if (startingAfter) {
-    params.set('starting_after', startingAfter)
-  }
-  const res = await fetch(`https://api.stripe.com/v1/subscriptions?${params}`, {
-    headers: { Authorization: `Bearer ${config.stripeKey}` },
+  stripeWalk({
+    key: config.stripeKey,
+    path: 'subscriptions',
+    params: [
+      ['status', 'all'],
+      ['expand[]', 'data.customer'],
+    ],
   })
-  if (!res.ok) {
-    throw new Error(`stripe GET /v1/subscriptions -> ${res.status}`)
-  }
-  const page = await res.json()
-  const next = [...acc, ...page.data]
-  return page.has_more && page.data.length
-    ? stripeList({ config, startingAfter: page.data.at(-1).id, acc: next })
-    : next
-}
 
 export const stripeByEmail = ({ subs }) =>
   /**
@@ -88,17 +71,18 @@ export const wizarrList = ({ body, key, path }) => {
   return value
 }
 
-const wizarrGet = async ({ config, path, key }) => {
+const wizarrGet = async ({ config, path, key }) =>
   /** One Wizarr GET with the long timeout /api/users needs, unwrapped to a plain list. */
-  const res = await fetch(`${config.wizarrBase}${path}`, {
-    headers: { 'X-API-Key': config.wizarrKey },
-    signal: AbortSignal.timeout(WIZARR_TIMEOUT_MS),
+  wizarrList({
+    body: await wizarrRead({
+      base: config.wizarrBase,
+      key: config.wizarrKey,
+      path,
+      timeoutMs: WIZARR_TIMEOUT_MS,
+    }),
+    key,
+    path,
   })
-  if (!res.ok) {
-    throw new Error(`wizarr GET ${path} -> ${res.status}`)
-  }
-  return wizarrList({ body: await res.json(), key, path })
-}
 
 export const peopleFrom = ({ users }) =>
   /**
