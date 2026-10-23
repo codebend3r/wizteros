@@ -5,20 +5,13 @@ export {
   type AdminAuthOptions,
   SupabaseAdminGuard,
 } from './adminAuth.js'
-export { type CorsOptions, starletteCors } from './cors.js'
-export { detailBody, HttpDetailFilter, httpError } from './httpDetail.js'
-export { starletteMethodNotAllowed } from './methodNotAllowed.js'
+export { fastApiCompat } from './fastApiCompat.js'
+export { httpError } from './httpDetail.js'
 export { stackOf } from './errors.js'
 export { isRecord } from './records.js'
 export { parseInteger } from './numbers.js'
 export { parseEmailAllowlist, parseList, requireEnv, trimTrailingSlashes } from './env.js'
-export {
-  openSqlite,
-  type SqliteDatabase,
-  type SqliteFileOptions,
-  type SqliteMode,
-  withSqlite,
-} from './sqlite.js'
+export { openSqlite, type SqliteDatabase, type SqliteMode, withSqlite } from './sqlite.js'
 export { asRow, asRows, fields, flag, isRow, type Row } from './rows.js'
 export {
   addDays,

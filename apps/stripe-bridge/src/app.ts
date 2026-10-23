@@ -1,12 +1,6 @@
-import { HttpAdapterHost, NestFactory } from '@nestjs/core'
+import { NestFactory } from '@nestjs/core'
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify'
-import {
-  fastApiValidationPipe,
-  HttpDetailFilter,
-  requireEnv,
-  starletteCors,
-  starletteMethodNotAllowed,
-} from '@wizteros/server-common'
+import { fastApiCompat, requireEnv } from '@wizteros/server-common'
 import { AppModule } from '@/appModule.js'
 import { adminAllowedOrigins, REQUIRED_ENV } from '@/config.js'
 
@@ -20,17 +14,14 @@ import { adminAllowedOrigins, REQUIRED_ENV } from '@/config.js'
 export const configureApp = (app: NestFastifyApplication): NestFastifyApplication => {
   // Only the configured portal origins may call the admin routes from a
   // browser, and only with the two headers the portal sends.
-  app.enableCors(
-    starletteCors({
+  return fastApiCompat({
+    app,
+    cors: {
       origin: adminAllowedOrigins(),
       methods: ['GET', 'POST'],
       headers: ['Authorization', 'Content-Type'],
-    }),
-  )
-  app.useGlobalFilters(new HttpDetailFilter(app.get(HttpAdapterHost)))
-  app.useGlobalPipes(fastApiValidationPipe())
-  starletteMethodNotAllowed(app)
-  return app
+    },
+  })
 }
 
 /**
