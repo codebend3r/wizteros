@@ -3,6 +3,7 @@ import { addDays, httpError, isoformat, parseIso, stackOf } from '@wizteros/serv
 import { z } from 'zod'
 import { issueInvite, liveScope, rescopeRecords, TierScopeEmpty } from '@/invites.js'
 import { eachInOrder, mapInOrder } from '@/sequence.js'
+import { memberLinkConflict } from '@/memberLinks.js'
 import { isBanned, isMemberTag, type MemberTag } from '@/standing.js'
 import { isTier, type Tier } from '@/tiers.js'
 import { everyRecord, type Identity, type IdentitySnapshot, recordsAt } from '@/identity.js'
@@ -129,17 +130,13 @@ export const linkAddress = ({
   if (!stripeEmail) {
     throw httpError({ status: 400, detail: 'stripe_email is required' })
   }
-  if (plexEmail === stripeEmail) {
-    throw httpError({ status: 400, detail: 'an address cannot link to itself' })
-  }
-  // Chains would make "whose row is this" depend on resolution order, and the
-  // shape they describe (A pays for B, B pays for C) is not a real one.
-  const payer = plexEmail ? bridge.store.allMemberLinks().get(plexEmail) : undefined
-  if (plexEmail && payer !== undefined) {
-    throw httpError({
-      status: 400,
-      detail: `${plexEmail} already pays under ${payer}; unlink it first`,
-    })
+  const conflict = memberLinkConflict({
+    links: bridge.store.allMemberLinks(),
+    stripeEmail,
+    plexEmail,
+  })
+  if (conflict) {
+    throw httpError({ status: 400, detail: conflict })
   }
   bridge.store.setMemberLink({ stripeEmail, plexEmail })
   if (plexEmail) {
