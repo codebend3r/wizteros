@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common'
 import { eachInOrder } from '@/sequence.js'
+import type { InviteOperation } from '@/store/invites.js'
 import { resolveTierAccess, staleRecordIds, type Tier, withoutStale } from '@/tiers.js'
 import type {
   Bridge,
@@ -128,14 +129,14 @@ export const inviteUrl = ({ settings, code }: { settings: Settings; code: string
 
 /**
  * An invite issued to a member: its code, the link they open, what it grants,
- * and whether that link already reached them (only ever true for a checkout
- * whose earlier delivery went out before it failed).
+ * and whether that operation's link already reached them on an earlier delivery.
  */
 export type IssuedInvite = Readonly<{
   code: string
   url: string
   scope: TierScope
   emailed: boolean
+  operation: InviteOperation | null
 }>
 
 /**
@@ -145,13 +146,10 @@ export type IssuedInvite = Readonly<{
  * invite is pending and what restarts their grace clock: keyed by the Stripe
  * customer when there is one, else by the address alone.
  *
- * A checkout passes its session id. Everything after the invite can throw (a
- * slow Wizarr write, SMTP), a throw leaves the Stripe event unmarked, and the
- * retry runs the whole handler again; the session -> invite binding is what
- * hands that retry the invite already minted, rather than a second invite and
- * a second link in the member's inbox. A completed checkout also settles
- * whatever payment failed on the previous cycle, in the same write as the
- * pending row, so the two never disagree.
+ * Webhook callers name the issuance operation: a checkout session or recovery
+ * invoice. A later delivery reuses its recorded invite even under a new event
+ * id. A completed checkout also settles the previous payment failure in the
+ * same write as the pending row.
  */
 export const issueInvite = async ({
   bridge,
@@ -160,7 +158,7 @@ export const issueInvite = async ({
   scope,
   customerId = null,
   allowDownloads = null,
-  sessionId = null,
+  operation = null,
   settlesPayment = false,
 }: {
   bridge: Bridge
@@ -169,10 +167,10 @@ export const issueInvite = async ({
   scope: TierScope
   customerId?: string | null
   allowDownloads?: boolean | null
-  sessionId?: string | null
+  operation?: InviteOperation | null
   settlesPayment?: boolean
 }): Promise<IssuedInvite> => {
-  const issued = sessionId ? bridge.store.getSessionInvite({ sessionId }) : null
+  const issued = operation ? bridge.store.getInviteIssuance({ operation }) : null
   const code = issued
     ? issued.invite_code
     : (
@@ -185,9 +183,11 @@ export const issueInvite = async ({
         })
       ).code
   if (issued) {
-    log.log(`checkout ${sessionId} already has invite ${code}; reusing it`)
-  } else if (sessionId) {
-    bridge.store.recordSessionInvite({ sessionId, inviteCode: code })
+    log.log(
+      `${operation?.kind ?? 'issuance'} ${operation?.id ?? ''} already has invite ${code}; reusing it`,
+    )
+  } else if (operation) {
+    bridge.store.recordInviteIssuance({ operation, inviteCode: code })
   }
   bridge.store.transaction((store) => {
     if (customerId) {
@@ -204,7 +204,24 @@ export const issueInvite = async ({
     url: inviteUrl({ settings: bridge.settings, code }),
     scope,
     emailed: issued?.emailed ?? false,
+    operation,
   }
+}
+
+/** Send an issued link once per recorded operation; SMTP failure leaves it retryable. */
+export const deliverInvite = async ({
+  bridge,
+  email,
+  invite,
+}: {
+  bridge: Bridge
+  email: string
+  invite: IssuedInvite
+}): Promise<boolean> => {
+  if (invite.emailed) return false
+  await bridge.mailer.sendInvite({ to: email, inviteUrl: invite.url })
+  if (invite.operation) bridge.store.markInviteEmailed({ operation: invite.operation })
+  return true
 }
 
 /** What re-scoping a member's records did: the ids disabled, and the records left standing. */

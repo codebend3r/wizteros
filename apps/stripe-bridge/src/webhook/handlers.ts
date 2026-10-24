@@ -9,7 +9,7 @@ import {
   signup,
 } from '@/alerts.js'
 import { retireDuplicates } from '@/duplicates.js'
-import { issueInvite, liveScope, rescopeRecords, TierScopeEmpty } from '@/invites.js'
+import { deliverInvite, issueInvite, liveScope, rescopeRecords, TierScopeEmpty } from '@/invites.js'
 import type { Identity, IdentitySnapshot } from '@/identity.js'
 import {
   accessLine,
@@ -58,7 +58,7 @@ const nested = ({ obj, key }: { obj: StripeObject; key: string }): StripeObject 
  */
 const requiredText = ({ obj, key }: { obj: StripeObject; key: string }): string => {
   const value = obj[key]
-  if (typeof value !== 'string') {
+  if (typeof value !== 'string' || value === '') {
     throw new TypeError(`the Stripe object carries no ${key}: ${JSON.stringify(value)}`)
   }
   return value
@@ -162,11 +162,13 @@ const restoreAccess = async ({
   email,
   customerId,
   tier,
+  invoiceId,
 }: {
   bridge: Bridge
   email: string
   customerId: string | null
   tier: Tier | null
+  invoiceId: string
 }): Promise<void> => {
   // Stripe metadata is the only tier normalized from free text; a member the
   // bridge holds no known tier for is restored at the entry tier.
@@ -179,9 +181,16 @@ const restoreAccess = async ({
     tier: resolved,
     context: `access recovery for ${email}`,
   })
-  const { code, url } = await issueInvite({ bridge, email, tier: resolved, scope, customerId })
-  await bridge.mailer.sendInvite({ to: email, inviteUrl: url })
-  log.error(`payment for ${email} found no records; reissued ${resolved} invite ${code}`)
+  const invite = await issueInvite({
+    bridge,
+    email,
+    tier: resolved,
+    scope,
+    customerId,
+    operation: { kind: 'recovery', id: invoiceId },
+  })
+  if (!(await deliverInvite({ bridge, email, invite }))) return
+  log.error(`payment for ${email} found no records; reissued ${resolved} invite ${invite.code}`)
   bridge.store.recordEvent({
     email,
     action: 'Access restored',
@@ -341,21 +350,18 @@ const onCheckoutCompleted: EventHandler = async ({ bridge, obj }) => {
     context: `checkout ${sessionId ?? 'with no id'}`,
   })
   // A Stripe retry of this session gets back the invite already minted.
-  const { url, emailed } = await issueInvite({
+  const invite = await issueInvite({
     bridge,
     email,
     tier,
     scope: access,
     customerId,
-    sessionId,
+    operation: sessionId ? { kind: 'checkout', id: sessionId } : null,
     settlesPayment: true,
   })
-  if (!emailed) {
-    await bridge.mailer.sendInvite({ to: email, inviteUrl: url })
+  const { url } = invite
+  if (await deliverInvite({ bridge, email, invite })) {
     log.log(`sent invite to ${email}`)
-    if (sessionId) {
-      bridge.store.markSessionInviteEmailed({ sessionId })
-    }
     bridge.store.recordEvent({
       email,
       action: 'Signed up',
@@ -447,7 +453,13 @@ const onInvoicePaid: EventHandler = async ({ bridge, obj }) => {
   // Paid, but nothing to extend. Never leave this as a log line: the
   // member is locked out right now and only a new invite fixes it.
   const row = bridge.store.customerRow({ email })
-  await restoreAccess({ bridge, email, customerId, tier: row?.tier ?? null })
+  await restoreAccess({
+    bridge,
+    email,
+    customerId,
+    tier: row?.tier ?? null,
+    invoiceId: requiredText({ obj, key: 'id' }),
+  })
 }
 
 /**

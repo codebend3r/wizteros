@@ -86,6 +86,7 @@ export const checkout = ({ id, session }: { id: string; session: Record<string, 
 
 export const invoicePaid = ({
   id,
+  invoiceId = `in_${id}`,
   customer,
   email,
   billingReason = 'subscription_cycle',
@@ -94,10 +95,13 @@ export const invoicePaid = ({
   customer: string
   email: string
   billingReason?: string
+  invoiceId?: string
 }) => ({
   type: 'invoice.paid',
   id,
-  data: { object: { customer, customer_email: email, billing_reason: billingReason } },
+  data: {
+    object: { id: invoiceId, customer, customer_email: email, billing_reason: billingReason },
+  },
 })
 
 export const paymentFailed = ({
