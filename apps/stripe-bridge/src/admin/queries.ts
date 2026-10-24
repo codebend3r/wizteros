@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common'
 import { httpError, stackOf } from '@wizteros/server-common'
 import type { Upstream } from '@/admin/membersSnapshot.js'
 import { PlexUnavailable } from '@/clients/plex.js'
+import { identityFor } from '@/identity.js'
 import { assembleMembers, type Finishing, finishMember, memberFromCustomer } from '@/roster.js'
 import type { Bridge, Member, PlexAccess, PlexShares, WizarrInvitation } from '@/types.js'
 
@@ -111,12 +112,13 @@ export const getMember = async ({
     }),
   ])
   const finishing = finishingFor({ bridge, access: null })
+  const links = bridge.store.allMemberLinks()
   const members = assembleMembers({
     users,
     libraries,
     invitations,
     customers,
-    links: bridge.store.allMemberLinks(),
+    links,
     finishing,
   })
   const wanted = email.toLowerCase()
@@ -128,7 +130,24 @@ export const getMember = async ({
     listed ??
     (row === undefined
       ? undefined
-      : finishMember({ member: memberFromCustomer({ email, row, libraries }), finishing }))
+      : finishMember({
+          member: memberFromCustomer({ email, row, libraries }),
+          finishing,
+          addresses: identityFor({
+            snapshot: {
+              users,
+              invitations,
+              links,
+              invites: new Map(
+                [...customers].flatMap(([address, customer]) =>
+                  customer.invite_code ? [[address, customer.invite_code] as const] : [],
+                ),
+              ),
+            },
+            email,
+            inviteCode: row.invite_code,
+          }).addresses,
+        }))
   if (found === undefined) {
     throw httpError({ status: 404, detail: 'no member for that email' })
   }

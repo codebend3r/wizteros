@@ -23,6 +23,8 @@ export type IdentitySnapshot = Readonly<{
 export type IdentityVia = 'email' | 'link' | 'invite' | 'none'
 
 export type Identity = Readonly<{
+  /** Canonical Plex address, following the stated or redeemed link when known. */
+  primaryAddress: string | null
   /**
    * Every lowercased address of the person: the one asked about, the Plex
    * account that redeemed their invite, and both halves of any link, whether
@@ -36,7 +38,7 @@ export type Identity = Readonly<{
 }>
 
 /** A record's email lowercased, '' when it has none. */
-const emailOf = (user: WizarrUser): string => (user.email ?? '').toLowerCase()
+const emailOf = (user: WizarrUser): string => (user.email ?? '').trim().toLowerCase()
 
 /** Every record under one lowercased address. */
 export const recordsAt = ({
@@ -56,7 +58,9 @@ const redeemerOf = ({
   inviteCode: string | null
 }): WizarrUser | null => {
   const invitation = inviteCode
-    ? snapshot.invitations.find((row) => row.code === inviteCode)
+    ? snapshot.invitations.find(
+        (row) => (row.code ?? '').toLowerCase() === inviteCode.toLowerCase(),
+      )
     : undefined
   return invitation ? redeemerRecord({ invitation, users: snapshot.users }) : null
 }
@@ -161,22 +165,32 @@ export const identityFor = ({
   email: string | null
   inviteCode: string | null
 }): Identity => {
-  const address = email ? email.toLowerCase() : null
+  const address = email ? email.trim().toLowerCase() : null
   const redeemer = redeemerOf({ snapshot, inviteCode })
   const redeemerAddress = redeemer ? emailOf(redeemer) : ''
   const seeds = [address ?? '', redeemerAddress].filter((seed) => seed !== '')
   // A stated link outranks the one a redemption implies for the same payer.
-  const links = new Map([...impliedLinks(snapshot), ...snapshot.links])
+  const links = new Map([
+    ...impliedLinks(snapshot),
+    ...[...snapshot.links].filter(([, destination]) => !!destination),
+  ])
+  const seed = address ?? (redeemerAddress || null)
+  const primaryAddress = seed === null ? null : (links.get(seed) ?? seed)
   const addresses = linkedTo({ links, seeds })
   const byEmail = address ? recordsAt({ users: snapshot.users, address }) : []
   if (byEmail.length > 0) {
-    return { addresses, records: byEmail, via: 'email' }
+    return { primaryAddress, addresses, records: byEmail, via: 'email' }
   }
   const linked = address ? snapshot.links.get(address) : undefined
   const byLink = linked ? recordsAt({ users: snapshot.users, address: linked }) : []
   if (byLink.length > 0) {
-    return { addresses, records: byLink, via: 'link' }
+    return { primaryAddress, addresses, records: byLink, via: 'link' }
   }
   const byInvite = redeemerRecords({ users: snapshot.users, redeemer })
-  return { addresses, records: byInvite, via: byInvite.length > 0 ? 'invite' : 'none' }
+  return {
+    primaryAddress,
+    addresses,
+    records: byInvite,
+    via: byInvite.length > 0 ? 'invite' : 'none',
+  }
 }

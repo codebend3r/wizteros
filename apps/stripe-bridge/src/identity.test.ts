@@ -104,6 +104,7 @@ describe('identityFor', () => {
     const unredeemed = snapshot({ invitations: [{ id: 1, code: 'abc', used_by: null }] })
     const gone = snapshot({ invitations: [{ id: 1, code: 'abc', used_by: '<User 999>' }] })
     expect(identityFor({ snapshot: unredeemed, email: 'new@x.com', inviteCode: 'abc' })).toEqual({
+      primaryAddress: 'new@x.com',
       addresses: new Set(['new@x.com']),
       records: [],
       via: 'none',
