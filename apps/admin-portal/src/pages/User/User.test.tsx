@@ -265,7 +265,9 @@ test('copies the member email to the clipboard instead of a send-email link', as
 
 test('hard resets the tier in place and reflects it in the details', async () => {
   const user = userEvent.setup()
-  vi.mocked(fetchMember).mockResolvedValue(member)
+  vi.mocked(fetchMember)
+    .mockResolvedValueOnce(member)
+    .mockResolvedValue({ ...member, tier: 'silver' })
   vi.mocked(resetTier).mockResolvedValue({ email: 'max@y.com', tier: 'silver' })
   renderUser({ email: 'max@y.com' })
 
@@ -356,6 +358,7 @@ test('sets the expiry optimistically with a spinner while in flight', async () =
   expect(screen.getByText(new Date(pickedIso).toLocaleString())).toBeInTheDocument()
   expect(screen.getByRole('status', { name: 'Updating expiry' })).toBeInTheDocument()
 
+  vi.mocked(fetchMember).mockResolvedValue({ ...member, expires: pickedIso })
   settle({ updated: 1, expires: pickedIso })
   await waitForElementToBeRemoved(() => screen.queryByRole('status', { name: 'Updating expiry' }))
   expect(screen.getByText(new Date(pickedIso).toLocaleString())).toBeInTheDocument()
@@ -398,7 +401,9 @@ test('cancelling the expiry confirmation leaves the expiry untouched', async () 
 
 test('sets never expire through the confirm modal and clears the expiry row', async () => {
   const user = userEvent.setup()
-  vi.mocked(fetchMember).mockResolvedValue(member)
+  vi.mocked(fetchMember)
+    .mockResolvedValueOnce(member)
+    .mockResolvedValue({ ...member, expires: null })
   vi.mocked(resetExpiry).mockResolvedValue({ updated: 2, expires: null })
   renderUser({ email: 'max@y.com' })
 
@@ -449,7 +454,9 @@ test('cancels the Stripe subscription through the confirm modal', async () => {
 
 test('bans the member through the confirm modal and shows what was revoked', async () => {
   const user = userEvent.setup()
-  vi.mocked(fetchMember).mockResolvedValue(member)
+  vi.mocked(fetchMember)
+    .mockResolvedValueOnce(member)
+    .mockResolvedValue({ ...member, tag: 'banned' })
   vi.mocked(banMember).mockResolvedValue({
     billing_status: 'scheduled',
     email: 'max@y.com',
@@ -507,7 +514,9 @@ test('shows an error when the subscription cancellation fails', async () => {
 
 test('tags the member VIP and reflects it in the status and tag rows', async () => {
   const user = userEvent.setup()
-  vi.mocked(fetchMember).mockResolvedValue(member)
+  vi.mocked(fetchMember)
+    .mockResolvedValueOnce(member)
+    .mockResolvedValue({ ...member, tag: 'vip' })
   vi.mocked(setMemberTag).mockResolvedValue({ email: 'max@y.com', tag: 'vip' })
   renderUser({ email: 'max@y.com' })
 
@@ -524,7 +533,9 @@ test('tags the member VIP and reflects it in the status and tag rows', async () 
 
 test('clears a tag and returns to the derived status', async () => {
   const user = userEvent.setup()
-  vi.mocked(fetchMember).mockResolvedValue({ ...member, tag: 'vip' })
+  vi.mocked(fetchMember)
+    .mockResolvedValueOnce({ ...member, tag: 'vip' })
+    .mockResolvedValue(member)
   vi.mocked(setMemberTag).mockResolvedValue({ email: 'max@y.com', tag: null })
   renderUser({ email: 'max@y.com' })
 
@@ -646,6 +657,7 @@ test('toggles downloads off through the confirm modal, optimistically', async ()
   // optimistic: the row flips before the bridge replies
   expect(screen.getByText('❌')).toBeInTheDocument()
 
+  vi.mocked(fetchMember).mockResolvedValue({ ...member, downloads: false })
   settle({ email: 'max@y.com', downloads: false })
   await waitFor(() => expect(screen.getByText('❌')).toBeInTheDocument())
   expect(screen.queryByText('✅')).not.toBeInTheDocument()
