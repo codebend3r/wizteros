@@ -2,13 +2,21 @@ import { Logger } from '@nestjs/common'
 import { addDays, httpError, isoformat, parseIso, stackOf } from '@wizteros/server-common'
 import { z } from 'zod'
 import { issueInvite, liveScope, rescopeRecords, TierScopeEmpty } from '@/invites.js'
-import { eachInOrder, mapInOrder } from '@/sequence.js'
+import { eachInOrder } from '@/sequence.js'
+import {
+  banBillingLine,
+  banBillingOutcome,
+  cancelAtOf,
+  flagSubscriptions,
+} from '@/admin/billing.js'
+import type { BanResult } from '@wizteros/wire'
+export type { BanResult } from '@wizteros/wire'
 import { memberLinkConflict } from '@/memberLinks.js'
 import { isBanned, isMemberTag, type MemberTag } from '@/standing.js'
 import { isTier, type Tier } from '@/tiers.js'
 import { everyRecord, type Identity, type IdentitySnapshot, recordsAt } from '@/identity.js'
 import { identitySnapshot, personAt, snapshotOver, standingOf, storedSnapshot } from '@/members.js'
-import type { Bridge, StripeSubscription } from '@/types.js'
+import type { Bridge } from '@/types.js'
 
 // What each admin POST does once its body is read, over a Bridge. A refusal
 // is thrown as the HTTP error the route answers with: these exist for the
@@ -22,12 +30,6 @@ export type TagResult = Readonly<{ email: string; tag: MemberTag | null }>
 export type DownloadsResult = Readonly<{ email: string; downloads: boolean }>
 export type LinkResult = Readonly<{ stripe_email: string; plex_email: string | null }>
 export type CancelResult = Readonly<{ email: string; canceled: number; cancel_at: string | null }>
-export type BanResult = Readonly<{
-  email: string
-  disabled: number
-  canceled: number
-  cancel_at: string | null
-}>
 export type ExpiryResult = Readonly<{ updated: number; expires: string | null }>
 export type TierResult = Readonly<{ email: string; tier: Tier }>
 export type ReissueResult = Readonly<{
@@ -160,74 +162,10 @@ export const linkAddress = ({
   return { stripe_email: stripeEmail, plex_email: plexEmail }
 }
 
-type Flagged = Readonly<{
-  /** Whether any Stripe customer answers for the email. */
-  found: boolean
-  /** Subscriptions this call flagged, as Stripe returned them. */
-  flagged: readonly StripeSubscription[]
-  /** Subscriptions that were flagged already and were left alone. */
-  already: readonly StripeSubscription[]
-}>
-
-/**
- * The latest period end among the flagged subscriptions, as an ISO stamp; null
- * when none of them carries a cancel_at.
- */
-export const cancelAtOf = (subscriptions: readonly StripeSubscription[]): string | null => {
-  const latest = subscriptions.reduce((max, sub) => Math.max(max, sub.cancel_at ?? 0), 0)
-  return latest ? isoformat(new Date(latest * 1000)) : null
-}
-
 /** The person's addresses with the one asked about first, then the rest in order. */
 const addressesOf = ({ email, identity }: { email: string; identity: Identity }): string[] => {
   const asked = email.toLowerCase()
   return [asked, ...[...identity.addresses].filter((address) => address !== asked).toSorted()]
-}
-
-/**
- * Flag every live Stripe subscription a person holds to cancel at period end.
- *
- * Answers whether a customer exists, what was newly flagged, and what was
- * flagged already. Every address of the person is looked up, since the one
- * the admin acted on is usually the Plex account and Stripe bills another.
- * Customer ids come from the bridge's own mapping first, falling back to a
- * live Stripe email lookup for an address the mapping does not know.
- * Subscriptions already flagged are left alone. Nothing here throws for an
- * unknown email or an email with no subscription: the caller decides whether
- * that is an error. Every Stripe call goes out one at a time, in order.
- */
-const flagSubscriptions = async ({
-  bridge,
-  addresses,
-}: {
-  bridge: Bridge
-  addresses: readonly string[]
-}): Promise<Flagged> => {
-  const perAddress = await mapInOrder({
-    items: addresses,
-    run: async (address) => {
-      const mapped = bridge.store.customerIdsForEmail({ email: address })
-      return mapped.length > 0 ? mapped : bridge.stripe.customerIdsForEmail(address)
-    },
-  })
-  const customerIds = [...new Set(perAddress.flat())]
-  const perCustomer = await mapInOrder({
-    items: customerIds,
-    run: async (customerId) => {
-      const subscriptions = await bridge.stripe.subscriptionsFor(customerId)
-      const already = subscriptions.filter((sub) => sub.cancel_at_period_end)
-      const flagged = await mapInOrder({
-        items: subscriptions.filter((sub) => !sub.cancel_at_period_end),
-        run: (sub) => bridge.stripe.cancelAtPeriodEnd(sub.id),
-      })
-      return { flagged, already }
-    },
-  })
-  return {
-    found: customerIds.length > 0,
-    flagged: perCustomer.flatMap(({ flagged }) => flagged),
-    already: perCustomer.flatMap(({ already }) => already),
-  }
 }
 
 /**
@@ -255,10 +193,16 @@ export const cancelSubscription = async ({
 }): Promise<CancelResult> => {
   const snapshot = seen ? snapshotOver({ bridge, seen }) : storedSnapshot(bridge)
   const identity = personAt({ snapshot, email })
-  const { found, flagged, already } = await flagSubscriptions({
+  const { found, flagged, already, failures } = await flagSubscriptions({
     bridge,
     addresses: addressesOf({ email, identity }),
   })
+  if (failures > 0) {
+    throw httpError({
+      status: 502,
+      detail: 'some cancellations failed; check remaining subscriptions in Stripe',
+    })
+  }
   if (!found) {
     throw httpError({ status: 404, detail: 'no stripe customer for that email' })
   }
@@ -304,32 +248,18 @@ export const banMember = async ({
   const ids = everyRecord({ snapshot, identity }).map((user) => user.id)
   await eachInOrder({ items: ids, run: (id) => bridge.wizarr.disableUser(id) })
   const addresses = addressesOf({ email, identity })
-  const billing = await flagSubscriptions({ bridge, addresses }).then(
-    ({ flagged }) => {
-      const cancelAt = cancelAtOf(flagged)
-      return {
-        flagged,
-        cancelAt,
-        line: cancelAt ? `billing stops ${cancelAt.slice(0, 10)}` : 'no subscription to cancel',
-      }
-    },
-    (error: unknown) => {
-      log.error(`ban: could not flag subscriptions for ${email}`, stackOf(error))
-      return {
-        flagged: [],
-        cancelAt: null,
-        line: 'could not reach Stripe, cancel the subscription by hand',
-      }
-    },
-  )
+  const billing = banBillingOutcome(await flagSubscriptions({ bridge, addresses }))
   const revoked =
     ids.length > 0 ? `${ids.length} server record(s) disabled` : 'no server records to disable'
-  bridge.store.recordEvent({ email, action: 'Banned', detail: `${revoked}; ${billing.line}` })
+  bridge.store.recordEvent({
+    email,
+    action: 'Banned',
+    detail: `${revoked}; ${banBillingLine(billing)}`,
+  })
   return {
     email,
     disabled: ids.length,
-    canceled: billing.flagged.length,
-    cancel_at: billing.cancelAt,
+    ...billing,
   }
 }
 

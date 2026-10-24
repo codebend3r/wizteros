@@ -25,6 +25,7 @@ import {
   type MemberSnapshot,
 } from '@/lib/memberQueries'
 import type { MemberActionRunners, PendingAction } from '@/pages/User/pendingAction'
+import { formatBanNotice } from '@/pages/User/banNotice'
 
 type OptimisticArgs<TVariables, TData> = {
   email: string
@@ -192,11 +193,7 @@ export const useMemberActions = ({ email }: { email: string }) => {
     mutationFn: () => banMember({ email }),
     onSuccess: (result) => {
       patchMember({ queryClient, email, patch: (row) => ({ ...row, tag: 'banned' }) })
-      const records = `${result.disabled} server record${result.disabled === 1 ? '' : 's'} disabled`
-      const billing = result.cancel_at
-        ? `billing stops ${new Date(result.cancel_at).toLocaleDateString()}.`
-        : 'no subscription to cancel.'
-      setBanNotice(`Banned. ${records}; ${billing}`)
+      setBanNotice(formatBanNotice(result))
       void queryClient.invalidateQueries({ queryKey: memberKeys.events(email) })
     },
     onError: () => setActionError('Could not ban the member.'),

@@ -3,3 +3,4 @@
 export { guardOf, type Immutable, type Wire } from './guard.js'
 export * from './fleet.js'
 export * from './plays.js'
+export * from './bridge.js'
