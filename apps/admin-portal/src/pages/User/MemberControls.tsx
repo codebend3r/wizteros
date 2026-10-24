@@ -128,7 +128,7 @@ export const MemberControls = ({
           <button
             className={styles.controlButton}
             type="submit"
-            disabled={!expiryValid || actions.expiry.isPending}
+            disabled={!expiryValid || actions.expiry.isPending || actions.neverExpire.isPending}
           >
             Set expiry
           </button>

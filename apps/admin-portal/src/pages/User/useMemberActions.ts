@@ -16,9 +16,10 @@ import {
   type ResetExpiryResult,
   type SetDownloadsResult,
 } from '@/lib/adminApi'
-import { TIER_DOWNLOADS } from '@/lib/inviteRules'
 import {
   memberKeys,
+  MEMBERS_QUERY_KEY,
+  invalidateMember,
   patchMember,
   restoreMember,
   snapshotMember,
@@ -32,6 +33,8 @@ type OptimisticArgs<TVariables, TData> = {
   mutationFn: (variables: TVariables) => Promise<TData>
   /** The change to show at once, before the bridge has answered. */
   patch: (input: { row: Member; variables: TVariables }) => Member
+  /** Revert only the fields this mutation owns, not another action's changes. */
+  rollback: (input: { row: Member; previous: Member }) => Member
   /** The bridge's canonical version of the same change, when it can differ. */
   settle?: (input: { row: Member; data: TData }) => Member
   /** Run once the bridge has confirmed, for a draft that can now be dropped. */
@@ -50,6 +53,7 @@ const useOptimisticMemberMutation = <TVariables, TData>({
   email,
   mutationFn,
   patch,
+  rollback,
   settle,
   onSettled = () => undefined,
   errorMessage,
@@ -58,7 +62,11 @@ const useOptimisticMemberMutation = <TVariables, TData>({
   const queryClient = useQueryClient()
   return useMutation<TData, Error, TVariables, MemberSnapshot>({
     mutationFn,
-    onMutate: (variables) => {
+    onMutate: async (variables) => {
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: memberKeys.member(email) }),
+        queryClient.cancelQueries({ queryKey: MEMBERS_QUERY_KEY }),
+      ])
       const snapshot = snapshotMember({ queryClient, email })
       patchMember({ queryClient, email, patch: (row) => patch({ row, variables }) })
       return snapshot
@@ -67,13 +75,14 @@ const useOptimisticMemberMutation = <TVariables, TData>({
       if (settle) {
         patchMember({ queryClient, email, patch: (row) => settle({ row, data }) })
       }
-      void queryClient.invalidateQueries({ queryKey: memberKeys.events(email) })
+      void invalidateMember({ queryClient, email })
       onSettled()
     },
     onError: (_cause, _variables, context) => {
       if (context) {
-        restoreMember({ queryClient, email, snapshot: context })
+        restoreMember({ queryClient, email, snapshot: context, restore: rollback })
       }
+      void invalidateMember({ queryClient, email })
       onFailure(errorMessage)
     },
   })
@@ -101,20 +110,17 @@ export const useMemberActions = ({ email }: { email: string }) => {
     mutationFn: (tier: PaidTier) => reissueInvite({ email, tier }),
     onSuccess: (result, tier) => {
       setInviteResult(result)
-      // Existing access survives the invite window now, so keep expiry and
-      // servers as they are — only the tier, downloads, and the freshly
-      // restarted grace clock change until the member redeems.
+      // Only the tier is confirmed by this response. Downloads overrides,
+      // entitlement and actual sharing are reconciled from the server.
       patchMember({
         queryClient,
         email,
         patch: (row) => ({
           ...row,
           tier,
-          downloads: TIER_DOWNLOADS[tier],
-          invited_at: new Date().toISOString(),
         }),
       })
-      void queryClient.invalidateQueries({ queryKey: memberKeys.events(email) })
+      void invalidateMember({ queryClient, email })
       setPending(null)
     },
     onError: () => {
@@ -126,12 +132,8 @@ export const useMemberActions = ({ email }: { email: string }) => {
   const hardReset = useMutation({
     mutationFn: (tier: PaidTier) => resetTier({ email, tier }),
     onSuccess: (_result, tier) => {
-      patchMember({
-        queryClient,
-        email,
-        patch: (row) => ({ ...row, tier, downloads: TIER_DOWNLOADS[tier] }),
-      })
-      void queryClient.invalidateQueries({ queryKey: memberKeys.events(email) })
+      patchMember({ queryClient, email, patch: (row) => ({ ...row, tier }) })
+      void invalidateMember({ queryClient, email })
     },
     onError: () => setActionError('Could not reset tier.'),
   })
@@ -139,7 +141,8 @@ export const useMemberActions = ({ email }: { email: string }) => {
   const expiry = useOptimisticMemberMutation<string, ResetExpiryResult>({
     email,
     mutationFn: (expiresAt) => resetExpiry({ email, expiresAt }),
-    patch: ({ row, variables }) => ({ ...row, expires: variables, subscribed: true }),
+    patch: ({ row, variables }) => ({ ...row, expires: variables }),
+    rollback: ({ row, previous }) => ({ ...row, expires: previous.expires }),
     // Settle on the bridge's canonical value in case it normalized ours.
     settle: ({ row, data }) => ({ ...row, expires: data.expires }),
     onSettled: () => setExpiryDraft(null),
@@ -150,9 +153,9 @@ export const useMemberActions = ({ email }: { email: string }) => {
   const neverExpire = useOptimisticMemberMutation<void, ResetExpiryResult>({
     email,
     mutationFn: () => resetExpiry({ email }),
-    // A cleared expiry reads back as "—": the bridge derives subscribed from
-    // the expiry, so both flip together.
-    patch: ({ row }) => ({ ...row, expires: null, subscribed: false }),
+    // Expiry is independent of billing; clearing it cannot cancel a subscription.
+    patch: ({ row }) => ({ ...row, expires: null }),
+    rollback: ({ row, previous }) => ({ ...row, expires: previous.expires }),
     onSettled: () => setExpiryDraft(null),
     errorMessage: 'Could not clear expiry.',
     onFailure: setActionError,
@@ -162,6 +165,7 @@ export const useMemberActions = ({ email }: { email: string }) => {
     email,
     mutationFn: (allow) => setMemberDownloads({ email, allow }),
     patch: ({ row, variables }) => ({ ...row, downloads: variables }),
+    rollback: ({ row, previous }) => ({ ...row, downloads: previous.downloads }),
     settle: ({ row, data }) => ({ ...row, downloads: data.downloads }),
     errorMessage: 'Could not toggle allow downloads for this user.',
     onFailure: setActionError,
@@ -171,7 +175,7 @@ export const useMemberActions = ({ email }: { email: string }) => {
     mutationFn: (next: MemberTag | null) => setMemberTag({ email, tag: next }),
     onSuccess: (result) => {
       patchMember({ queryClient, email, patch: (row) => ({ ...row, tag: result.tag }) })
-      void queryClient.invalidateQueries({ queryKey: memberKeys.events(email) })
+      void invalidateMember({ queryClient, email })
     },
     onError: () => setActionError('Could not change the tag.'),
   })
@@ -184,7 +188,7 @@ export const useMemberActions = ({ email }: { email: string }) => {
           ? `Cancellation scheduled — access ends ${new Date(result.cancel_at).toLocaleString()}.`
           : 'Cancellation scheduled.',
       )
-      void queryClient.invalidateQueries({ queryKey: memberKeys.events(email) })
+      void invalidateMember({ queryClient, email })
     },
     onError: () => setActionError('Could not cancel the subscription.'),
   })
@@ -194,9 +198,13 @@ export const useMemberActions = ({ email }: { email: string }) => {
     onSuccess: (result) => {
       patchMember({ queryClient, email, patch: (row) => ({ ...row, tag: 'banned' }) })
       setBanNotice(formatBanNotice(result))
-      void queryClient.invalidateQueries({ queryKey: memberKeys.events(email) })
+      void invalidateMember({ queryClient, email })
     },
-    onError: () => setActionError('Could not ban the member.'),
+    onError: () => {
+      // Revocation may have partially completed before the request failed.
+      void invalidateMember({ queryClient, email })
+      setActionError('Could not ban the member.')
+    },
   })
 
   const notes = useMutation({

@@ -58,7 +58,7 @@ export const patchMember = ({ queryClient, email, patch, insert }: PatchMemberAr
 
 export type MemberSnapshot = {
   member: Member | null | undefined
-  members: Member[] | undefined
+  listedMember: Member | undefined
 }
 
 /** Both cached shapes as they stand, for an optimistic patch to roll back to. */
@@ -70,19 +70,51 @@ export const snapshotMember = ({
   email: string
 }): MemberSnapshot => ({
   member: queryClient.getQueryData<Member | null>(memberKeys.member(email)),
-  members: queryClient.getQueryData<Member[]>(MEMBERS_QUERY_KEY),
+  listedMember:
+    queryClient
+      .getQueryData<Member[]>(MEMBERS_QUERY_KEY)
+      ?.find((row) => row.email.toLowerCase() === email.toLowerCase()) ?? undefined,
 })
 
-/** Put a snapshot back after the write it was taken for failed. */
+/** Restore only the mutation's owned fields, preserving other members and concurrent edits. */
 export const restoreMember = ({
   queryClient,
   email,
   snapshot,
+  restore,
 }: {
   queryClient: QueryClient
   email: string
   snapshot: MemberSnapshot
+  restore: (input: { row: Member; previous: Member }) => Member
 }): void => {
-  queryClient.setQueryData(memberKeys.member(email), snapshot.member)
-  queryClient.setQueryData(MEMBERS_QUERY_KEY, snapshot.members)
+  const { member, listedMember } = snapshot
+  queryClient.setQueryData<Member | null>(memberKeys.member(email), (row) =>
+    row && member ? restore({ row, previous: member }) : row,
+  )
+  queryClient.setQueryData<Member[]>(
+    MEMBERS_QUERY_KEY,
+    (rows) =>
+      rows?.map((row) =>
+        row.email.toLowerCase() === email.toLowerCase() && listedMember
+          ? restore({ row, previous: listedMember })
+          : row,
+      ) ?? rows,
+  )
+}
+
+/** Server-derived fields are reconciled after writes; the list reloads when next viewed. */
+export const invalidateMember = async ({
+  queryClient,
+  email,
+}: {
+  queryClient: QueryClient
+  email: string
+}): Promise<void> => {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: memberKeys.member(email) }),
+    queryClient.invalidateQueries({ queryKey: memberKeys.plexAccess(email) }),
+    queryClient.invalidateQueries({ queryKey: memberKeys.events(email) }),
+    queryClient.invalidateQueries({ queryKey: MEMBERS_QUERY_KEY, refetchType: 'none' }),
+  ])
 }
