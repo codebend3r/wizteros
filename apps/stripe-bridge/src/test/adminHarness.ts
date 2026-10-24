@@ -5,6 +5,7 @@
 
 import type { NestFastifyApplication } from '@nestjs/platform-fastify'
 import { vi } from 'vitest'
+import { banResultSchema, guardOf } from '@wizteros/wire'
 import { AdminModule } from '@/admin/adminModule.js'
 import { MEMBERS_SNAPSHOT, type MembersSnapshot } from '@/admin/membersSnapshot.js'
 import { asBridge, type FakeBridge, fakeBridge, TEST_SETTINGS } from '@/test/fakes.js'
@@ -60,12 +61,7 @@ export type CancelSubscriptionResult = { email: string; canceled: number; cancel
 export type SetTagResult = { email: string; tag: MemberTag | null }
 export type LinkAddressResult = { stripe_email: string; plex_email: string | null }
 export type SetDownloadsResult = { email: string; downloads: boolean }
-export type BanResult = {
-  email: string
-  disabled: number
-  canceled: number
-  cancel_at: string | null
-}
+export type { BanResult } from '@wizteros/wire'
 
 export const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === 'string')
@@ -208,12 +204,7 @@ export const isLinkAddressResult = (value: unknown): value is LinkAddressResult 
 export const isSetDownloadsResult = (value: unknown): value is SetDownloadsResult =>
   isRecord(value) && typeof value.email === 'string' && typeof value.downloads === 'boolean'
 
-export const isBanResult = (value: unknown): value is BanResult =>
-  isRecord(value) &&
-  typeof value.email === 'string' &&
-  typeof value.disabled === 'number' &&
-  typeof value.canceled === 'number' &&
-  (typeof value.cancel_at === 'string' || value.cancel_at === null)
+export const isBanResult = guardOf(banResultSchema)
 
 /** What `inject` answers with, as far as reading a body goes. */
 export type Answer = Readonly<{ statusCode: number; body: string }>

@@ -1,3 +1,5 @@
+import { banResultSchema, guardOf, type BanResult } from '@wizteros/wire'
+export type { BanResult } from '@wizteros/wire'
 import { isRecord } from '@/lib/guards'
 import { createClient, NotFoundError } from '@/lib/http'
 
@@ -100,15 +102,6 @@ export type LinkAddressResult = {
 export type SetDownloadsResult = {
   email: string
   downloads: boolean
-}
-
-export type BanResult = {
-  email: string
-  /** Wizarr records disabled on the spot. */
-  disabled: number
-  /** Stripe subscriptions flagged to cancel at period end. */
-  canceled: number
-  cancel_at: string | null
 }
 
 const bridge = createClient({
@@ -313,12 +306,7 @@ export const fetchPlexAccess = ({ email }: { email: string }): Promise<PlexAcces
     what: 'plex-access response',
   })
 
-const isBanResult = (value: unknown): value is BanResult =>
-  isRecord(value) &&
-  typeof value.email === 'string' &&
-  typeof value.disabled === 'number' &&
-  typeof value.canceled === 'number' &&
-  (typeof value.cancel_at === 'string' || value.cancel_at === null)
+const isBanResult = guardOf(banResultSchema)
 
 /** The whole action log across every member, newest first. */
 export const fetchAllEvents = (): Promise<MemberEvent[]> =>

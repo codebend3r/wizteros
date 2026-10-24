@@ -451,6 +451,7 @@ test('bans the member through the confirm modal and shows what was revoked', asy
   const user = userEvent.setup()
   vi.mocked(fetchMember).mockResolvedValue(member)
   vi.mocked(banMember).mockResolvedValue({
+    billing_status: 'scheduled',
     email: 'max@y.com',
     disabled: 2,
     canceled: 1,

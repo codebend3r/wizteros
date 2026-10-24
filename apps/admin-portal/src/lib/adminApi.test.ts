@@ -330,6 +330,7 @@ test('banMember posts the email and returns what was revoked', async () => {
     headers: { get: () => 'application/json' },
     json: async () => ({
       email: 'a@x.com',
+      billing_status: 'scheduled',
       disabled: 2,
       canceled: 1,
       cancel_at: '2026-09-21T00:00:00+00:00',
@@ -339,6 +340,7 @@ test('banMember posts the email and returns what was revoked', async () => {
   const result = await banMember({ email: 'a@x.com' })
   expect(result).toEqual({
     email: 'a@x.com',
+    billing_status: 'scheduled',
     disabled: 2,
     canceled: 1,
     cancel_at: '2026-09-21T00:00:00+00:00',

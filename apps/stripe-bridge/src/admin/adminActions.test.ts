@@ -618,6 +618,7 @@ describe('POST /admin/ban', () => {
 
     expect(result).toEqual({
       email: 'A@X.com',
+      billing_status: 'scheduled',
       disabled: 2,
       canceled: 1,
       cancel_at: '2026-09-21T14:13:20+00:00',
@@ -640,7 +641,13 @@ describe('POST /admin/ban', () => {
 
     const result = await ban({ h, email: 'gone@x.com' })
 
-    expect(result).toEqual({ email: 'gone@x.com', disabled: 0, canceled: 0, cancel_at: null })
+    expect(result).toEqual({
+      email: 'gone@x.com',
+      disabled: 0,
+      canceled: 0,
+      cancel_at: null,
+      billing_status: 'absent',
+    })
     expect(h.bridge.store.getMemberTag({ email: 'gone@x.com' })).toBe('banned')
     expect(h.bridge.store.eventsForEmail({ email: 'gone@x.com' })[0]?.detail).toBe(
       'no server records to disable; no subscription to cancel',
@@ -702,6 +709,7 @@ describe('acting on a person who pays under another address', () => {
     expect(h.bridge.stripe.cancelAtPeriodEnd).toHaveBeenCalledExactlyOnceWith('sub_pays')
     expect(result).toEqual({
       email: 'watches@x.com',
+      billing_status: 'scheduled',
       disabled: 3,
       canceled: 1,
       cancel_at: '2026-09-21T14:13:20+00:00',
