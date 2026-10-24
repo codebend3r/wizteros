@@ -5,10 +5,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   assembleMembers,
-  customerByPlexEmail,
   dedupeMembers,
   memberFromCustomer,
-  plexEmailByInvite,
   withOverrides,
   withPlexAccess,
 } from '@/roster.js'
@@ -28,53 +26,17 @@ const row = (fields: Partial<CustomerRow> = {}): CustomerRow => ({
   ...fields,
 })
 
-describe('plexEmailByInvite', () => {
-  it('keys redeemed invites by lowercased code and drops the unresolved', () => {
-    const users = [{ id: 3, username: 'nora', email: 'Nora@X.com' }]
-    const found = plexEmailByInvite({
-      invitations: [
-        { id: 1, code: 'INV1', used_by: '<User 3>' },
-        { id: 2, code: 'INV2', used_by: null },
-        { id: 3, code: null, used_by: '<User 3>' },
-      ],
-      users,
-    })
-    expect(found).toEqual(new Map([['inv1', 'nora@x.com']]))
-  })
-})
-
-describe('customerByPlexEmail', () => {
-  it('prefers a manual link, and treats an empty one as no link', () => {
-    const customers = new Map([
-      ['pays@x.com', row({ invite_code: 'INV1' })],
-      ['other@x.com', row({ invite_code: 'INV2' })],
-    ])
-    const linked = customerByPlexEmail({
-      customers,
-      plexEmailByInvite: new Map([
-        ['inv1', 'redeemer@x.com'],
-        ['inv2', 'watches@x.com'],
-      ]),
-      manualLinks: new Map([
-        ['pays@x.com', 'stated@x.com'],
-        ['other@x.com', ''],
-      ]),
-    })
-    expect([...linked.keys()]).toEqual(['stated@x.com', 'watches@x.com'])
-    expect(linked.get('stated@x.com')?.manual_link ?? null).toBe(true)
-    expect(linked.get('watches@x.com')?.manual_link ?? null).toBe(false)
-  })
-
-  it('leaves out a customer resolving to its own address', () => {
-    const linked = customerByPlexEmail({
-      customers: new Map([['a@x.com', row({ invite_code: 'INV1' })]]),
-      plexEmailByInvite: new Map([['inv1', 'a@x.com']]),
-    })
-    expect(linked.size).toBe(0)
-  })
-})
-
 describe('dedupeMembers', () => {
+  it('keeps username-only local accounts without inventing an email', () => {
+    const members = dedupeMembers({
+      users: [{ id: 9, username: 'local', email: null, server: 'Meleys' }],
+      customers: new Map(),
+      libraries: LIBRARIES,
+    })
+    expect(members).toHaveLength(1)
+    expect(members[0]).toMatchObject({ email: '', member: 'local', servers: ['Meleys'] })
+  })
+
   it("keeps the first record's name, sorts servers, and skips a keyless record", () => {
     const [person, ...rest] = dedupeMembers({
       users: [
@@ -160,6 +122,72 @@ describe('withPlexAccess and withOverrides', () => {
 })
 
 describe('assembleMembers', () => {
+  it.each([false, true])(
+    'keeps all payers in one identity independent of insertion order (%s)',
+    (reverse) => {
+      const customers = [
+        ['first@x.com', row({ customer_id: 'cus_first', subscribed: false })],
+        ['second@x.com', row({ customer_id: 'cus_second', tier: 'gold' })],
+      ] as const
+      const members = assembleMembers({
+        users: [{ id: 3, username: 'nora', email: 'nora@x.com', server: 'Meleys' }],
+        libraries: LIBRARIES,
+        invitations: [],
+        customers: new Map(reverse ? customers.toReversed() : customers),
+        links: new Map([
+          ['first@x.com', 'nora@x.com'],
+          ['second@x.com', 'nora@x.com'],
+        ]),
+        finishing: {
+          access: null,
+          tags: new Map([['first@x.com', 'banned']]),
+          downloads: new Map(),
+        },
+      })
+      expect(members).toHaveLength(1)
+      expect(members[0]).toMatchObject({
+        email: 'nora@x.com',
+        tag: 'banned',
+        stripe_email: 'second@x.com',
+        tier: 'gold',
+      })
+    },
+  )
+
+  it('collapses manually linked pending accounts before either redeems', () => {
+    const members = assembleMembers({
+      users: [],
+      libraries: LIBRARIES,
+      invitations: [],
+      customers: new Map([
+        ['first@x.com', row()],
+        ['second@x.com', row()],
+      ]),
+      links: new Map([
+        ['first@x.com', 'nora@x.com'],
+        ['second@x.com', 'nora@x.com'],
+      ]),
+    })
+    expect(members).toHaveLength(1)
+    expect(members[0]?.email ?? null).toBe('nora@x.com')
+  })
+
+  it('uses canonical redeemed links with case-insensitive codes and manual precedence', () => {
+    const members = assembleMembers({
+      users: [
+        { id: 1, username: 'nora', email: 'nora@x.com' },
+        { id: 2, username: 'other', email: 'other@x.com' },
+      ],
+      libraries: LIBRARIES,
+      invitations: [{ id: 1, code: 'INV1', used_by: '<User 2>' }],
+      customers: new Map([['payer@x.com', row({ invite_code: 'inv1' })]]),
+      links: new Map([['payer@x.com', 'nora@x.com']]),
+    })
+    expect(members).toHaveLength(2)
+    expect(members.find((m) => m.email === 'nora@x.com')?.stripe_email ?? null).toBe('payer@x.com')
+    expect(members.find((m) => m.email === 'other@x.com')?.stripe_email ?? null).toBeNull()
+  })
+
   it('unions a pending customer and leaves out one claimed as a stripe address', () => {
     const members = assembleMembers({
       users: [{ id: 3, username: 'nora', email: 'nora@x.com', server: 'Meleys' }],
