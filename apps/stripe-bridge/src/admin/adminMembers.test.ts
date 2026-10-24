@@ -548,6 +548,17 @@ describe('POST /admin/link-address', () => {
     expect(answer.json()).toEqual({ detail: 'b@x.com already pays under c@x.com; unlink it first' })
   })
 
+  it('refuses extending a destination into a payer without changing the links', async () => {
+    const h = await harness()
+    h.bridge.store.setMemberLink({ stripeEmail: 'a@x.com', plexEmail: 'b@x.com' })
+    const answer = await linkAddress({
+      h,
+      body: { stripe_email: 'b@x.com', plex_email: 'c@x.com' },
+    })
+    expect(answer.statusCode).toBe(400)
+    expect(h.bridge.store.allMemberLinks()).toEqual(new Map([['a@x.com', 'b@x.com']]))
+  })
+
   it('records both sides', async () => {
     const h = await harness()
     const answer = await linkAddress({
