@@ -47,8 +47,9 @@ CREATE TABLE IF NOT EXISTS event_log (
 )
 `
 
-// One row per checkout session, written the moment its invite exists. A Stripe
-// retry of the same session reads this instead of minting a second invite.
+// Legacy table name retained for compatibility. Keys are raw checkout session
+// ids or invoice:<id> for renewal recovery, written as soon as an invite exists.
+// Neither retry path may replace a durable binding.
 const SESSION_INVITES = `
 CREATE TABLE IF NOT EXISTS session_invites (
     session_id  TEXT PRIMARY KEY,

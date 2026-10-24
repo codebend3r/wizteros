@@ -43,6 +43,37 @@ describe('store', () => {
     expect(store.customerRow({ email: 'odd@x.com' })?.tier).toBeNull()
   })
 
+  it('preserves legacy checkout bindings and separates recovery operations across restarts', () => {
+    const path = tempDbPath()
+    const store = openStore(path)
+    store.init()
+    execute({
+      path,
+      sql: [
+        "INSERT INTO session_invites (session_id, invite_code, emailed) VALUES ('cs_1', 'legacy', 1)",
+      ],
+    })
+    const checkout = { kind: 'checkout', id: 'cs_1' } as const
+    const recovery = { kind: 'recovery', id: 'cs_1' } as const
+    expect(store.getInviteIssuance({ operation: checkout })).toEqual({
+      invite_code: 'legacy',
+      emailed: true,
+    })
+    store.recordInviteIssuance({ operation: recovery, inviteCode: 'recovered' })
+    store.recordInviteIssuance({ operation: recovery, inviteCode: 'must-not-replace' })
+    store.markInviteEmailed({ operation: recovery })
+    const reopened = openStore(path)
+    reopened.init()
+    expect(reopened.getInviteIssuance({ operation: checkout })).toEqual({
+      invite_code: 'legacy',
+      emailed: true,
+    })
+    expect(reopened.getInviteIssuance({ operation: recovery })).toEqual({
+      invite_code: 'recovered',
+      emailed: true,
+    })
+  })
+
   it('upserts and gets', () => {
     const store = freshStore()
 
