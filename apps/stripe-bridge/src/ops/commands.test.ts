@@ -155,10 +155,17 @@ describe('the ops CLI cannot write', () => {
       ],
       ['markEventProcessed', () => events.markEventProcessed({ eventId: 'evt_1' })],
       [
-        'recordSessionInvite',
-        () => invites.recordSessionInvite({ sessionId: 'cs_1', inviteCode: 'z' }),
+        'recordInviteIssuance',
+        () =>
+          invites.recordInviteIssuance({
+            operation: { kind: 'checkout', id: 'cs_1' },
+            inviteCode: 'z',
+          }),
       ],
-      ['markSessionInviteEmailed', () => invites.markSessionInviteEmailed({ sessionId: 'cs_1' })],
+      [
+        'markInviteEmailed',
+        () => invites.markInviteEmailed({ operation: { kind: 'checkout', id: 'cs_1' } }),
+      ],
       [
         'recordBaselineInvite',
         () =>

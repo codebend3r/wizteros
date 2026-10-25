@@ -80,11 +80,11 @@ describe('issueInvite', () => {
       email: 'a@x.com',
       tier,
       scope: SCOPE,
-      sessionId: 'cs_1',
+      operation: { kind: 'checkout', id: 'cs_1' } as const,
     }
 
     const first = await issueInvite({ ...args, customerId: 'cus_1' })
-    fake.store.markSessionInviteEmailed({ sessionId: 'cs_1' })
+    fake.store.markInviteEmailed({ operation: { kind: 'checkout', id: 'cs_1' } })
     const retry = await issueInvite({ ...args, customerId: 'cus_1' })
 
     expect(fake.wizarr.createInvite).toHaveBeenCalledOnce()

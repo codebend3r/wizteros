@@ -1,12 +1,14 @@
 import { asRow, asRows, fields, isoformat } from '@wizteros/server-common'
 import type { Units } from '@/store/units.js'
 
-// The invites the bridge minted and has to remember: which checkout session
-// each member invite belongs to, and which shareable baseline invites are its
-// own to reap.
+// Durable bindings for invite issuance and ownership of baseline invites.
+// The legacy session_invites table is kept so existing checkout bindings
+// survive upgrades unchanged; recovery keys use a separate namespace.
 
-/** The invite already issued for a checkout session. */
-export type SessionInvite = Readonly<{ invite_code: string; emailed: boolean }>
+export type InviteOperation = Readonly<{ kind: 'checkout' | 'recovery'; id: string }>
+export type InviteIssuance = Readonly<{ invite_code: string; emailed: boolean }>
+const operationKey = ({ kind, id }: InviteOperation): string =>
+  kind === 'checkout' ? id : `invoice:${id}`
 
 /** One baseline invite this system minted. */
 export type BaselineInvite = Readonly<{
@@ -18,17 +20,17 @@ export type BaselineInvite = Readonly<{
 
 export const inviteStore = ({ read, write }: Units) => ({
   /**
-   * The invite already issued for a checkout session, or null if there is none.
+   * The invite already issued for an operation, or null if there is none.
    *
    * Returns { invite_code, emailed } so a retry can tell "invite exists and
    * the member has the link" from "invite exists but the email never went out".
    */
-  getSessionInvite: ({ sessionId }: { sessionId: string }): SessionInvite | null => {
+  getInviteIssuance: ({ operation }: { operation: InviteOperation }): InviteIssuance | null => {
     const row = read((connection) =>
       asRow(
         connection
           .prepare('SELECT invite_code, emailed FROM session_invites WHERE session_id = ?')
-          .get(sessionId),
+          .get(operationKey(operation)),
       ),
     )
     return row
@@ -37,16 +39,15 @@ export const inviteStore = ({ read, write }: Units) => ({
   },
 
   /**
-   * Bind a checkout session to the invite just created for it (not yet emailed).
-   *
-   * Written immediately after createInvite so that a crash anywhere later in
-   * the handler can never cost the member a second invite on Stripe's retry.
+   * Bind an operation to the invite just created for it (not yet emailed).
+   * Once recorded, a binding cannot be overwritten on a later retry.
+   * A crash between remote creation and this write is still not atomic.
    */
-  recordSessionInvite: ({
-    sessionId,
+  recordInviteIssuance: ({
+    operation,
     inviteCode,
   }: {
-    sessionId: string
+    operation: InviteOperation
     inviteCode: string
   }): void => {
     write((connection) =>
@@ -54,19 +55,19 @@ export const inviteStore = ({ read, write }: Units) => ({
         .prepare(
           `
             INSERT INTO session_invites (session_id, invite_code, emailed) VALUES (?, ?, 0)
-            ON CONFLICT(session_id) DO UPDATE SET invite_code = excluded.invite_code
+            ON CONFLICT(session_id) DO NOTHING
             `,
         )
-        .run(sessionId, inviteCode),
+        .run(operationKey(operation), inviteCode),
     )
   },
 
-  /** Record that the session's invite link actually reached the member. */
-  markSessionInviteEmailed: ({ sessionId }: { sessionId: string }): void => {
+  /** Record successful delivery of the operation's invite link. */
+  markInviteEmailed: ({ operation }: { operation: InviteOperation }): void => {
     write((connection) =>
       connection
         .prepare('UPDATE session_invites SET emailed = 1 WHERE session_id = ?')
-        .run(sessionId),
+        .run(operationKey(operation)),
     )
   },
 
