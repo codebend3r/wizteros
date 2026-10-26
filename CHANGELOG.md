@@ -12,6 +12,21 @@ the version recorded in the tree at that commit. That was not always true; the
 history was rewritten on 2026-08-08 to make it so. See
 [The 2026-08-08 history rewrite](#the-2026-08-08-history-rewrite).
 
+## v0.5.1 (2026-10-25)
+
+- Apply subscription tier rules across eligible, non-retired NAS servers,
+  keeping Caraxes and private libraries excluded
+- Reject identity links that would create chains or cycles, and build the
+  member roster from canonical identities while retaining every payer
+- Preserve billing cancellation outcomes when banning a member, and show
+  actionable notices when individual Stripe cancellations fail
+- Reconcile portal member actions with server state and keep optimistic
+  rollbacks from overwriting unrelated changes
+- Reuse recovery invitations after email delivery failures instead of
+  minting another invitation when the same invoice is retried
+- Deploy note: deploy the bridge before the updated portal so its billing
+  outcome responses are available. The NAS requires a separate deployment
+
 ## v0.4.4 (2026-10-20)
 
 - Read a member's ban and VIP standing across every address they use. Tags
