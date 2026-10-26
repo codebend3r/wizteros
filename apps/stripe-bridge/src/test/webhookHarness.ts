@@ -11,8 +11,7 @@ import { handleEvent } from '@/webhook/handlers.js'
 // every test: a checkout now mails the admin, and nothing here may reach a
 // real SMTP host. No plex.tv by default: the library list is trusted as given.
 
-// Every tier shares from Meleys alone; the trailing Vermithor entry is a
-// retired server's "(switch to Meleys)" mirror and must never reach an invite.
+// Tier rules apply across Meleys and Vermithor; private libraries stay excluded.
 export const FIXTURE_LIBRARIES: readonly WizarrLibrary[] = [
   { id: 17, name: '05. TV Shows', server_id: 2, server_name: 'Meleys', enabled: true },
   { id: 20, name: '04. 4K Family Movies', server_id: 2, server_name: 'Meleys', enabled: true },
@@ -21,7 +20,7 @@ export const FIXTURE_LIBRARIES: readonly WizarrLibrary[] = [
   { id: 37, name: '99. Tutorials', server_id: 2, server_name: 'Meleys', enabled: true },
   {
     id: 41,
-    name: '01. TV Shows (switch to Meleys)',
+    name: 'TV Shows',
     server_id: 1,
     server_name: 'Vermithor',
     enabled: true,

@@ -9,6 +9,7 @@ Stripe checkout → webhook → stripe-bridge → Wizarr → Plex
 ## Contents
 
 - [Structure](#structure)
+- [Subscription access](#subscription-access)
 - [Tech stack](#tech-stack)
 - [Getting started](#getting-started)
 - [Development](#development)
@@ -57,6 +58,26 @@ Two things that are easy to get wrong:
 
 - Bridge modules import through the `@/` alias with a `.js` extension (`@/store/openStore.js`), never relative; `nest build` rewrites the alias in `dist`.
 - Web imports use the `@/` alias, never parent-relative `../`. Same-directory `./` imports are fine.
+
+## Subscription access
+
+Every tier applies its library rules across Meleys, Vermithor, Vhagar and Syrax.
+Caraxes is excluded from every tier. Disabled libraries and private `9X.` libraries
+are never shared.
+
+| Tier   | Libraries                                                      | Downloads |
+| ------ | -------------------------------------------------------------- | --------- |
+| Bronze | All eligible libraries except titles starting with `4K`        | No        |
+| Silver | All eligible libraries, including `4K`                         | No        |
+| Gold   | All eligible libraries, including `4K`                         | Yes       |
+| Youth  | Family Movies, 4K Family Movies and Kid Shows wherever present | Yes       |
+
+An invite includes only servers with libraries eligible for its tier. Legacy numeric
+ordering prefixes are stripped before matching titles. Rules live in
+`apps/stripe-bridge/src/tiers.ts` and apply to checkout, renewal/recovery, admin reissue
+and baseline invites. After a Plex rename, refresh Wizarr's cached library names,
+then refresh the recorded test snapshot with `bun run refresh:libraries`.
+Existing shares and already-issued invites are not rewritten by a rule change.
 
 ## Tech stack
 

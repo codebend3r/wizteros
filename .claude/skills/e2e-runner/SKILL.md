@@ -105,17 +105,17 @@ Per tier, in order `bronze, silver, gold, youth`:
    checkout that 500s on SMTP still leaves one, and it must reach the cleanup. No new invite
    after a good POST records the failure "`<tier>`: bridge created no invite" and moves on.
 3. Asserts, hard: `invite.server_names` sorted and joined equals the servers of the tier's
-   expected libraries (step 4's mirror). That is `SHARE_SERVER` (env override, default
-   **Meleys**) for bronze, silver and youth, and every server Wizarr lists libraries for except
-   `RETIRED_SERVERS` (env override, default **Caraxes**) for gold, the one fleet-wide tier.
+   expected libraries (step 4's mirror). Every tier spans the fleet except
+   `RETIRED_SERVERS` (env override, default **Caraxes**), but only servers with libraries
+   eligible for that tier belong in its invite.
 4. Asserts, only when Wizarr actually returned `specific_libraries` ids (it usually returns
    `[]`, and the script says so): the resolved library names equal a JS-side mirror of the tier
    rules, computed independently of `tiers.ts` so a bug in one is not mirrored by the other.
    The mirror is: enabled libraries on a non-retired server whose name does not match `^9\d\.`.
-   Gold takes all of those; the rest keep only the share server's, then youth is the allowlist
-   `03. Family Movies`, `04. 4K Family Movies`, `14. Kid Shows`, bronze is everything without
-   "4k" in the name, and silver is everything. Differences are reported as `missing:` and
-   `unexpected:`.
+   Silver and gold take all of those. Youth matches the titles `Family Movies`,
+   `4K Family Movies`, and `Kid Shows`; bronze excludes titles starting with `4K`.
+   Legacy numeric ordering prefixes are stripped before matching. Differences are
+   reported as `missing:` and `unexpected:`.
 5. Asserts, also only over returned ids: bronze was granted no 4K library, and no tier was
    granted a `9X.` private library.
 6. **Downloads is printed, never asserted.** `EXPECT_DOWNLOADS` (`bronze:false, silver:false,
@@ -214,8 +214,8 @@ next retest minting and mailing a fresh `cs_e2e` invite.
     the script reports "bridge not reachable" rather than the real cause. Check `docker logs`.
   - Optional, with defaults: `ACCESS_DURATION` (35, read by both the script and the bridge),
     `INVITE_EXPIRES_DAYS` (14 in code, 7 in `.env.example`), `BRIDGE_URL`
-    (`http://localhost:8000`), `SHARE_SERVER` (`Meleys`) and `RETIRED_SERVERS` (`Caraxes`,
-    comma-separated), both tiers script only; `tiers.ts` hardcodes its own and ignores the env.
+    (`http://localhost:8000`) and `RETIRED_SERVERS` (`Caraxes`, comma-separated, tiers
+    script only; `tiers.ts` hardcodes its own and ignores the env).
 - **Docker running** and port 8000 free. Every `bun run ...` alias works from any directory in the
   repo: the Docker targets pin `cwd: {workspaceRoot}` (`bridge:up` bind-mounts
   `$PWD/apps/stripe-bridge/data`) and the inferred script targets always run from
@@ -282,7 +282,7 @@ bun run bridge:down       # ALWAYS, pass or fail
 | `FAIL`, expiry present but outside the 2 day window             | The window length drifted                                                                                 | `ACCESS_DURATION` in `.env` versus the container's env, then `access_expiry_iso`                                                                                                                                                                                                                          |
 | `POST checkout(<tier>) -> 500` in tiers                         | That tier cannot issue an invite at all; real checkouts for it raise and Stripe retries forever           | `tiers.ts` against the live library names. This is the exact failure the tier scope alarm exists for. Also possible: the SMTP relay refused the `@invalid.test` recipient                                                                                                                                 |
 | "`<tier>`: bridge created no invite"                            | The webhook was accepted but no invite reached Wizarr                                                     | `createInvite` in the bridge's Wizarr client and the `/api/invitations` response shape                                                                                                                                                                                                                    |
-| "servers X != Y"                                                | The invite was scoped to the wrong servers, so a redeemer gets a retired server's copy or nothing         | `SHARE_SERVER`, `RETIRED_SERVERS` and `isOnShareServer` in `tiers.ts`, and the scope's `server_ids`. A server added to or retired from the fleet moves gold's expected list with it                                                                                                                       |
+| "servers X != Y"                                                | The invite was scoped to the wrong servers, so a redeemer gets a retired server's copy or nothing         | `RETIRED_SERVERS`, `shareableLibraries` in `tiers.ts`, and the scope's `server_ids`. Every tier derives its servers from its eligible fleet libraries                                                                                                                                                     |
 | "missing: ..." / "unexpected: ..."                              | The tier rules and the real server disagree about library names                                           | Compare `tiers.ts` with the live list. If a Plex library was renamed, `bun run refresh:libraries` and fix `tiers.ts` to match the new names, never the reverse. If `tiers.ts` rules were changed deliberately, the script's independent mirror (`expectedLibraries`) is now stale and needs the same edit |
 | "bronze granted a 4K library" / "granted a private 9X. library" | A scoping leak: paying members see libraries their tier does not include                                  | `tiers._is_4k`, `_is_private`, `_shareable_libraries`. Highest severity on this list; stop and fix before anything ships                                                                                                                                                                                  |
 | `WARN could not delete invite`                                  | A redeemable test invite is loose in live Wizarr                                                          | Delete it by code (see the cleanup table)                                                                                                                                                                                                                                                                 |

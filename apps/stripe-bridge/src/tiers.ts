@@ -12,22 +12,13 @@ const log = new Logger('bridge')
 // server. Name-only and deliberately server-agnostic (see isPrivate).
 export const PRIVATE_NAME_RE = /^9\d\./
 
-// The Plex server the paid-entry tiers share from. Meleys carries a copy of
-// every library worth sharing, so bronze, silver and youth resolve here alone.
-export const SHARE_SERVER = 'Meleys'
-
-// The servers every tier below gold shares from. A set rather than the bare
-// name so the entry rule reads the same shape as gold's.
-export const ENTRY_SHARE_SERVERS: ReadonlySet<string> = new Set([SHARE_SERVER])
-
 // Retired outright: no tier may resolve a library here and no member may keep a
 // record on it. Listed separately from the per-tier rules so widening a tier can
-// never quietly readmit it, and it is the ONLY thing holding gold back.
+// never quietly readmit it.
 export const RETIRED_SERVERS: ReadonlySet<string> = new Set(['Caraxes'])
 
-// Youth allowlist, matched on library title alone — every shareable library is
-// on SHARE_SERVER, so the server half of the key added nothing but a second
-// way to drift out of date. The titles are the actual Plex library names with
+// Youth allowlist, matched on library title alone across the fleet.
+// The titles are the actual Plex library names with
 // the "NN. " ordering prefix stripped; they do not follow the tier's branding.
 //
 // Matching the title rather than the full name is deliberate. The prefixes are
@@ -67,18 +58,13 @@ export type TierWants = (rule: { tier: Tier; library: WizarrLibrary }) => boolea
 export const libraryTitle = (library: Pick<WizarrLibrary, 'name'>): string =>
   (library.name ?? '').replace(LIBRARY_PREFIX_RE, '')
 
-/** Case-insensitive '4K' match on the library name. */
-const is4k = (library: WizarrLibrary): boolean => (library.name ?? '').toLowerCase().includes('4k')
+/** A 4K library's title starts with '4K'; tolerate legacy ordering prefixes. */
+const is4k = (library: WizarrLibrary): boolean => libraryTitle(library).startsWith('4K')
 
 /** What one tier grants. */
 type TierRule = Readonly<{
   /** Whether its members may download. */
   downloads: boolean
-  /**
-   * Where it shares from: 'fleet' is every server the fleet has except the
-   * retired ones, 'entry' is ENTRY_SHARE_SERVERS alone.
-   */
-  shares: 'fleet' | 'entry'
   /** The library titles it is limited to, or null when its rule is not a list. */
   titles: ReadonlySet<string> | null
   /** Whether its rule includes a library, before the server and private filters. */
@@ -94,47 +80,21 @@ const limitedTo = (titles: ReadonlySet<string>): Pick<TierRule, 'titles' | 'want
 const everything = (): boolean => true
 
 const TIER_RULES: Readonly<Record<Tier, TierRule>> = {
-  bronze: { downloads: false, shares: 'entry', titles: null, wants: (library) => !is4k(library) },
-  silver: { downloads: false, shares: 'entry', titles: null, wants: everything },
-  gold: { downloads: true, shares: 'fleet', titles: null, wants: everything },
-  youth: { downloads: true, shares: 'entry', ...limitedTo(YOUTH_LIBRARY_TITLES) },
+  bronze: { downloads: false, titles: null, wants: (library) => !is4k(library) },
+  silver: { downloads: false, titles: null, wants: everything },
+  gold: { downloads: true, titles: null, wants: everything },
+  youth: { downloads: true, ...limitedTo(YOUTH_LIBRARY_TITLES) },
 }
 
 /** Whether a tier's members may download. */
 export const tierDownloads = (tier: Tier): boolean => TIER_RULES[tier].downloads
 
-/**
- * The Plex servers a tier may share from, retired servers already removed.
- *
- * Gold is every server the fleet has except the retired ones, so its answer
- * is read off the library list rather than declared: a NAS added to the fleet
- * is in gold's scope the moment Wizarr lists its libraries, with no code
- * change and no chance of the constant drifting behind the hardware. That
- * makes gold the one denylisted tier, which is why RETIRED_SERVERS is the
- * thing to edit to hold a server back, never a per-tier set. Every other tier
- * stays an exact allowlist match against ENTRY_SHARE_SERVERS.
- */
-export const tierShareServers = ({
-  tier,
-  libraries,
-}: {
-  tier: Tier
-  libraries: readonly WizarrLibrary[]
-}): ReadonlySet<string> => {
-  const wanted =
-    TIER_RULES[tier].shares === 'fleet'
-      ? libraries.flatMap((lib) => (lib.server_name ? [lib.server_name] : []))
-      : [...ENTRY_SHARE_SERVERS]
-  return new Set(wanted.filter((server) => !RETIRED_SERVERS.has(server)))
-}
-
-/** Every server some tier may share from: the only ones an invite can name. */
+/** Every fleet server except retired ones; each tier applies its library rule. */
 export const allShareServers = ({
   libraries,
 }: {
   libraries: readonly WizarrLibrary[]
-}): ReadonlySet<string> =>
-  new Set(TIERS.flatMap((tier) => [...tierShareServers({ tier, libraries })]))
+}): ReadonlySet<string> => new Set(libraries.filter(isOnShareServer).map((lib) => lib.server_name))
 
 /** A stored tier mapped through the legacy aliases; null when it names no tier. */
 export const canonicalTier = (raw: string | null): Tier | null => {
@@ -162,23 +122,11 @@ export const normalizeTier = (raw: unknown): Tier => {
 export const isPrivate = (library: Pick<WizarrLibrary, 'name'>): boolean =>
   PRIVATE_NAME_RE.test(library.name ?? '')
 
-/**
- * Whether a library sits on a server this tier is allowed to share from.
- *
- * A missing or null server_name fails closed on every tier, and a retired
- * server is refused before the tier is even consulted, so neither a rename
- * nor a widened tier can leak a retired box's copy.
- *
- * A fleet tier needs no allowlist membership beyond that: anything not
- * retired is in scope. Reading it off the library row rather than off
- * tierShareServers keeps this a per-library test with no need to thread the
- * whole list down here.
- */
-const isOnShareServer = ({ library, tier }: { library: WizarrLibrary; tier: Tier }): boolean => {
-  const server = library.server_name
-  if (!server || RETIRED_SERVERS.has(server)) return false
-  return TIER_RULES[tier].shares === 'fleet' || ENTRY_SHARE_SERVERS.has(server)
-}
+/** A missing server name or retired server fails closed for every tier. */
+const isOnShareServer = (
+  library: WizarrLibrary,
+): library is WizarrLibrary & { server_name: string } =>
+  !!library.server_name && !RETIRED_SERVERS.has(library.server_name)
 
 /** Whether a tier's rules include a library (before the server/private filters). */
 export const tierWants: TierWants = ({ tier, library }) => TIER_RULES[tier].wants(library)
@@ -202,7 +150,7 @@ export const shareableLibraries = ({
 }): WizarrLibrary[] =>
   libraries
     .filter((library) => !!library.enabled && wants({ tier, library }))
-    .filter((library) => isOnShareServer({ library, tier }) && !isPrivate(library))
+    .filter((library) => isOnShareServer(library) && !isPrivate(library))
 
 /** The allowlisted titles a tier's shareable libraries do not cover, sorted. */
 const missingTitles = ({
@@ -219,8 +167,7 @@ const missingTitles = ({
 /**
  * Shareable library names a tier grants, grouped by server name.
  *
- * Keyed by server for the admin UI's per-server breakdown: one entry for the
- * entry tiers, one per fleet server for gold. Derived from the tier rules
+ * Keyed by server for the admin UI's per-server breakdown. Derived from the tier rules
  * (what invites are scoped to), not read back from Plex — Wizarr's users API
  * doesn't expose per-user libraries.
  */
@@ -257,7 +204,7 @@ export const resolveTierAccess = ({
   const shareable = shareableLibraries({ tier, libraries, wants })
   const missing = missingTitles({ tier, shareable })
   if (missing.length > 0) {
-    log.error(`${tier} allowlist mismatch on ${SHARE_SERVER}; missing ${missing.join(', ')}`)
+    log.error(`${tier} allowlist mismatch across the fleet; missing ${missing.join(', ')}`)
   }
   return {
     library_ids: shareable.map((lib) => lib.id),
@@ -287,7 +234,7 @@ export const tierScopeProblems = ({
     TIERS.flatMap((tier): [string, string][] => {
       const shareable = shareableLibraries({ tier, libraries })
       if (shareable.length === 0) {
-        const servers = [...tierShareServers({ tier, libraries })].toSorted().join(', ')
+        const servers = [...allShareServers({ libraries })].toSorted().join(', ')
         return [
           [
             tier,
@@ -297,7 +244,7 @@ export const tierScopeProblems = ({
       }
       const missing = missingTitles({ tier, shareable })
       return missing.length > 0
-        ? [[tier, `allowlist entries missing from ${SHARE_SERVER}: ${missing.join(', ')}`]]
+        ? [[tier, `allowlist entries missing across the fleet: ${missing.join(', ')}`]]
         : []
     }),
   )
@@ -330,12 +277,11 @@ export const staleLibraries = ({
   live: LiveSections | null
 }): StaleLibrary[] => {
   if (live == null || Object.keys(live).length === 0) return []
-  const shareable = allShareServers({ libraries })
   return libraries.flatMap((lib): StaleLibrary[] => {
     const server = lib.server_name
     const sections = server != null && Object.hasOwn(live, server) ? live[server] : undefined
     const externalId = lib.external_id
-    if (!lib.enabled || server == null || !shareable.has(server)) return []
+    if (!lib.enabled || !isOnShareServer(lib)) return []
     if (sections === undefined || externalId == null || externalId === '' || externalId === 0) {
       return []
     }
@@ -422,7 +368,7 @@ export const libraryCacheProblems = ({
  * and the caller falls back to disable-first (fail closed on stale access).
  *
  * A member holding a record on a server their new tier does not cover (a
- * Caraxes record, or a fleet record under an entry tier) therefore returns
+ * Caraxes record, or a server with no libraries matching their tier) therefore returns
  * the full set: that disable-and-re-join IS the migration onto the covered
  * servers, at the cost of an access gap between the disable and the member
  * redeeming their invite.

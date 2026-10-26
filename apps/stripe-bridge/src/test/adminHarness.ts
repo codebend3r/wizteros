@@ -268,15 +268,14 @@ export const PLEX_SHARES: PlexAccess = {
   },
 }
 
-// Reissue scope comes from the share server alone; the Vermithor row is a
-// retired mirror that must never widen an invite.
+// Reissue applies the tier's library rule across Meleys and Vermithor.
 export const FIXTURE_LIBRARIES: WizarrLibrary[] = [
   { id: 17, name: '05. TV Shows', server_id: 2, server_name: 'Meleys', enabled: true },
   { id: 20, name: '04. 4K Family Movies', server_id: 2, server_name: 'Meleys', enabled: true },
   { id: 37, name: '99. Tutorials', server_id: 2, server_name: 'Meleys', enabled: true },
   {
     id: 41,
-    name: '01. TV Shows (switch to Meleys)',
+    name: 'TV Shows',
     server_id: 1,
     server_name: 'Vermithor',
     enabled: true,

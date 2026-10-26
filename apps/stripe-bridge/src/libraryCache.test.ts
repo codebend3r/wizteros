@@ -165,7 +165,7 @@ describe('withoutStale', () => {
       tier: 'bronze',
       libraries: withoutStale({ libraries: CACHE, live: LIVE }),
     })
-    expect(scope.library_ids).toEqual([23])
+    expect(scope.library_ids).toEqual([23, 9])
   })
 
   it('dropping a stale row is logged with the remedy', () => {

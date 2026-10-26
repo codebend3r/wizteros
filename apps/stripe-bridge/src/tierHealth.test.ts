@@ -67,24 +67,12 @@ describe('tierScopeProblems', () => {
     expect(new Set(Object.keys(problems))).toEqual(new Set(TIERS))
   })
 
-  it('the share server vanishing reports every entry tier', () => {
-    // Meleys renamed or dropped out of Wizarr -> nothing the entry tiers are
-    // pinned to is shareable any more, and all three alarm.
+  it('all tiers follow fleet libraries through a server rename', () => {
     const moved = movedOffTheShareServer()
-    const problems = tierScopeProblems({ libraries: moved })
-    expect(new Set(Object.keys(problems))).toEqual(new Set(TIERS.filter((tier) => tier !== 'gold')))
-  })
-
-  it('gold follows the fleet through a rename instead of alarming', () => {
-    // The other half of making gold a denylist: it is not pinned to a name, so
-    // a renamed server keeps resolving rather than emptying the tier. Gold only
-    // alarms when there is genuinely nothing left to share, which is what
-    // "an empty library list reports every tier" covers.
-    const moved = movedOffTheShareServer()
-    expect(tierScopeProblems({ libraries: moved })).not.toHaveProperty('gold')
-    expect(resolveTierAccess({ tier: 'gold', libraries: moved }).server_names).toEqual([
-      'Somewhere Else',
-    ])
+    expect(tierScopeProblems({ libraries: moved })).toEqual({})
+    TIERS.forEach((tier) => {
+      expect(resolveTierAccess({ tier, libraries: moved }).server_names).toEqual(['Somewhere Else'])
+    })
   })
 
   it('problems are keyed by tier with readable reasons', () => {

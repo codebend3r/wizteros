@@ -17,6 +17,7 @@
 // `.env` is gitignored, so whether one exists is a property of the working copy,
 // not of the repo: use it when it is there, otherwise pass whichever file holds
 // the values locally, or export them for the command.
+import assert from 'node:assert/strict'
 import { bridgeOps, nasHost, wizarrGet } from '../../_shared/ops.mjs'
 
 const { WIZARR_BASE_URL, WIZARR_API_KEY } = process.env
@@ -24,18 +25,29 @@ const { WIZARR_BASE_URL, WIZARR_API_KEY } = process.env
 const WIZARR = (WIZARR_BASE_URL ?? '').replace(/\/+$/, '')
 const HOUR = 3_600_000
 
-// Mirrors tiers.py: every tier resolves to this one server, and the others are
-// retired from signups. A baseline invite naming any other server is a finding.
-const SHARE_SERVER = 'Meleys'
+// Independently derive the servers covered by each tier's eligible libraries.
+export const expectedServers = ({ tier, libraries }) => {
+  assert(Array.isArray(libraries), 'Wizarr did not return a libraries array')
+  const youthTitles = new Set(['Family Movies', '4K Family Movies', 'Kid Shows'])
+  const eligible = libraries.filter((lib) => {
+    if (
+      !lib.enabled ||
+      !lib.server_name ||
+      lib.server_name === 'Caraxes' ||
+      /^9\d\./.test(lib.name)
+    )
+      return false
+    const title = (lib.name ?? '').replace(/^\d+\.\s*/, '')
+    if (tier === 'bronze') return !title.startsWith('4K')
+    if (tier === 'youth') return youthTitles.has(title)
+    return true
+  })
+  return [...new Set(eligible.map((lib) => lib.server_name))].toSorted()
+}
 const TIERS = ['bronze', 'gold', 'silver', 'youth']
 // A baseline is stale once it is older than one rotation plus a margin: past
 // that the 03:00 loop has demonstrably not run.
 const STALE_AFTER_HOURS = 26
-
-if (!WIZARR || !WIZARR_API_KEY) {
-  console.error('Missing WIZARR_BASE_URL / WIZARR_API_KEY')
-  process.exit(2)
-}
 
 const say = (line = '') => console.log(line)
 const bullet = (line) => say(`      ${line}`)
@@ -68,11 +80,15 @@ const readStore = async () => (await bridgeOps({ args: ['baselines'] })).baselin
 // ─── Report ──────────────────────────────────────────────────────────────────
 
 const main = async () => {
+  if (!WIZARR || !WIZARR_API_KEY) throw new Error('Missing WIZARR_BASE_URL / WIZARR_API_KEY')
   const now = new Date()
   say('Invitation audit')
   say(`  wizarr ${WIZARR}   nas ${nasHost()}   ${now.toISOString().slice(0, 16)}Z`)
 
-  const invitations = await wz('/api/invitations').then((d) => d.invitations ?? [])
+  const [invitations, libraries] = await Promise.all([
+    wz('/api/invitations').then((d) => d.invitations ?? []),
+    wz('/api/libraries').then((d) => d.libraries),
+  ])
 
   const owned = await readStore().catch((cause) => {
     say(`\n  bridge store unavailable: ${cause.message}`)
@@ -106,10 +122,11 @@ const main = async () => {
       say(`  ${tier.padEnd(8)} none live`)
       continue
     }
+    const expected = expectedServers({ tier, libraries })
     for (const { inv, row, expires } of live) {
       const servers = [...(inv.server_names ?? [])].sort()
       const created = asDate(row.created_at)
-      const scopeOk = servers.length === 1 && servers[0] === SHARE_SERVER
+      const scopeOk = expected.length > 0 && servers.join('\n') === expected.join('\n')
       const flags = []
       if (!expires) {
         flags.push('NO EXPIRY')
@@ -118,7 +135,7 @@ const main = async () => {
       if (!scopeOk) {
         flags.push(`SCOPE ${servers.join(',')}`)
         findings.push(
-          `Baseline ${inv.code} (${tier}) grants ${servers.join(', ')} — only ${SHARE_SERVER} is allowed`,
+          `Baseline ${inv.code} (${tier}) grants ${servers.join(', ')} — expected ${expected.join(', ')}`,
         )
       }
       say(
@@ -173,7 +190,9 @@ const main = async () => {
   process.exitCode = findings.length ? 1 : 0
 }
 
-main().catch((cause) => {
-  console.error(`audit failed: ${cause.message}`)
-  process.exit(2)
-})
+if (import.meta.main) {
+  main().catch((cause) => {
+    console.error(`audit failed: ${cause.message}`)
+    process.exit(2)
+  })
+}

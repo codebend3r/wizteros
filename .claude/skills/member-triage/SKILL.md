@@ -196,13 +196,14 @@ defaulting to bronze` and the member silently lands on bronze. Legacy `kids` map
 
 **(b) The library set is wrong for the tier.** This is the tier-scope alarm pattern and
 it is never a per-member problem. The dossier's alarm pass shows `tier scope check:
-<tier> -> ...` or `youth allowlist mismatch on Meleys; missing [...]`.
-`apps/stripe-bridge/src/tiers.ts` matches Plex library **names**: youth is a
-three-name allowlist, bronze is everything without "4k" in the name, silver and gold take
-everything, only libraries Wizarr reports as `enabled` count, and every tier is filtered
-to `SHARE_SERVER` (Meleys) with `9X.` libraries stripped last and independently.
+<tier> -> ...` or `youth allowlist mismatch across the fleet; missing [...]`.
+`apps/stripe-bridge/src/tiers.ts` matches Plex library **titles**, stripping legacy
+numeric ordering prefixes: youth allows Family Movies, 4K Family Movies and Kid Shows;
+bronze excludes titles starting with `4K`; silver and gold take everything. Every tier
+spans the fleet except Caraxes. Only enabled libraries count, and `9X.` private libraries
+are stripped independently of the tier rules.
 
-Point at the tier definitions, not the member. Rename back on Plex or update `tiers.py`,
+Point at the tier definitions, not the member. Refresh Wizarr's cached names or update `tiers.ts`,
 then `bun run refresh:libraries`, `bun run test:bridge`, deploy, and only then reissue
 the affected members. An invite already carries the library ids it was created with and
 will not improve on its own.
@@ -356,7 +357,7 @@ dropped library only comes back on the next invite after the rescan.
 | Schedule a cancel at period end                                             | `/user` **Cancel subscription**                                                        | `POST /admin/cancel-subscription` |
 | Confirm webhook delivery, fix a customer email, add `metadata.tier`, refund | Stripe dashboard                                                                       | none                              |
 | Delete a stale invitation, inspect a record                                 | Wizarr API with `X-API-Key`, or the Wizarr UI                                          | `/api/invitations`, `/api/users`  |
-| Fix a tier's library set                                                    | `tiers.py` plus the Plex library names, then deploy                                    | none                              |
+| Fix a tier's library set                                                    | `tiers.ts` plus Wizarr's cached Plex library names, then deploy                        | none                              |
 | Refresh Wizarr's library-name cache after a Plex rename                     | Wizarr UI, Media Servers, **Scan libraries** (or `scripts/rescan-wizarr-libraries.py`) | none (session-only route)         |
 
 ## Reporting back
