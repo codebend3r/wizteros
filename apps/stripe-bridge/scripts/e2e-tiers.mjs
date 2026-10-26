@@ -25,7 +25,6 @@ const { WIZARR_BASE_URL, WIZARR_API_KEY, STRIPE_WEBHOOK_SECRET } = process.env
 
 const BRIDGE = process.env.BRIDGE_URL || 'http://localhost:8000'
 const WIZARR = (WIZARR_BASE_URL || '').replace(/\/+$/, '')
-const SHARE_SERVER = process.env.SHARE_SERVER || 'Meleys'
 // No Plex account has this address, so find_users_by_email returns nothing and
 // the disable-first path can never touch a real member's records.
 const EMAIL = `e2e-tiers-${Date.now()}@invalid.test`
@@ -93,8 +92,7 @@ async function libraries() {
   return (await r.json()).libraries ?? []
 }
 
-// Servers no tier may share from. Gold is the one fleet-wide tier: it takes
-// every other server Wizarr lists libraries for.
+// Every tier applies its library rule across the fleet except retired servers.
 const RETIRED_SERVERS = new Set(
   (process.env.RETIRED_SERVERS || 'Caraxes')
     .split(',')
@@ -117,22 +115,20 @@ function expectedLibraries({ tier, libs }) {
     (l) =>
       l.enabled && l.server_name && !RETIRED_SERVERS.has(l.server_name) && !/^9\d\./.test(l.name),
   )
-  if (tier === 'gold') return shareable
-  const onShare = shareable.filter((l) => l.server_name === SHARE_SERVER)
   if (tier === 'youth') {
     const allow = new Set(['Family Movies', '4K Family Movies', 'Kid Shows'])
-    return onShare.filter((l) => allow.has(libraryTitle(l.name)))
+    return shareable.filter((l) => allow.has(libraryTitle(l.name)))
   }
   if (tier === 'bronze') {
-    return onShare.filter((l) => !l.name.toLowerCase().includes('4k'))
+    return shareable.filter((l) => !libraryTitle(l.name).startsWith('4K'))
   }
-  return onShare
+  return shareable
 }
 
 const EXPECT_DOWNLOADS = { bronze: false, silver: false, gold: true, youth: true }
 
 async function main() {
-  console.log(`E2E tier signup check  (share server=${SHARE_SERVER}, email=${EMAIL})`)
+  console.log(`E2E tier signup check  (fleet-wide, email=${EMAIL})`)
   const libs = await libraries()
   const byId = new Map(libs.map((l) => [l.id, l]))
   const before = new Set((await invitations()).map((i) => i.code))
@@ -216,7 +212,7 @@ async function checkTier({ tier, libs, byId, before, created, failures }) {
     if (missing.length) problems.push(`missing: ${missing.join(', ')}`)
     if (extra.length) problems.push(`unexpected: ${extra.join(', ')}`)
   }
-  if (tier === 'bronze' && gotNames.some((n) => n.toLowerCase().includes('4k'))) {
+  if (tier === 'bronze' && gotNames.some((n) => libraryTitle(n).startsWith('4K'))) {
     problems.push('bronze granted a 4K library')
   }
   if (gotNames.some((n) => /^9\d\./.test(n))) problems.push('granted a private 9X. library')

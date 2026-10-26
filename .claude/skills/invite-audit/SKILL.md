@@ -47,13 +47,13 @@ Treat that as "audit did not run", not "audit found nothing".
 
 ## The rules being checked
 
-| Rule                         | Why                                                     |
-| ---------------------------- | ------------------------------------------------------- |
-| Four tiers always live       | bronze, gold, silver, youth each need a redeemable link |
-| Every baseline has an expiry | a leaked link that never expires is redeemable forever  |
-| Scope is `Meleys` alone      | `tiers.py` retires the other servers from signups       |
-| Downloads follow the tier    | only gold and youth may download                        |
-| Newest baseline < 26h old    | proves the 03:00 rotation is still running              |
+| Rule                                   | Why                                                                                                                  |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Four tiers always live                 | bronze, gold, silver, youth each need a redeemable link                                                              |
+| Every baseline has an expiry           | a leaked link that never expires is redeemable forever                                                               |
+| Scope follows eligible fleet libraries | Every tier spans the fleet except Caraxes; Bronze excludes `4K` title prefixes, Youth uses its family/kids allowlist |
+| Downloads follow the tier              | only gold and youth may download                                                                                     |
+| Newest baseline < 26h old              | proves the 03:00 rotation is still running                                                                           |
 
 Scope is judged on `server_names`, **never** `specific_libraries`. Wizarr's invitation
 serializer reports `specific_libraries: []` even for a correctly scoped invite, so
@@ -71,7 +71,7 @@ means minting failed for that tier specifically — not that rotation is down.
   `no libraries resolved`. A Plex library rename narrows or empties a tier, and
   `tier_scope_problems` then refuses to mint rather than issue an empty invite.
   This is the same root cause as case 4 in `member-triage`, and it breaks checkouts
-  too, so fix it there: correct the library name on Plex or update `tiers.py`, run
+  too, so fix it there: refresh Wizarr's cached names or update `tiers.ts`, run
   `bun run refresh:libraries` and `bun run test:bridge`, then deploy.
 - **Wizarr rejected the create.** A traceback under `baseline: minting <tier> failed`.
   Usually auth or a Wizarr upgrade changing the payload.
@@ -101,8 +101,8 @@ retired servers.
 This is the expected finding on any stack that ran before the rotation existed. The
 four original baseline invites (`1PYO3B8VPQ`, `F30UFPPXOV`, `KYJZKJRGVZ`,
 `VPWG3JK2PS`, minted 2026-07-16) are exactly this: never-expiring, and scoped to
-Vermithor, Vhagar, Caraxes, and Syrax — servers `tiers.py` says "must never be granted
-again". Anyone redeeming one gets access the tier rules forbid.
+Vermithor, Vhagar, Caraxes, and Syrax. Caraxes remains excluded by `tiers.ts`;
+anyone redeeming a link that includes it gets access the tier rules forbid.
 
 **Remedy.** Delete them in the Wizarr UI once the rotation has produced its
 replacements — confirm four tiers show live first, then delete. **The audit will never
@@ -124,28 +124,29 @@ usually across all four at once.
 **Remedy.** `bun run deploy:nas` (or the `deploy-nas` skill), then confirm with
 `GET /version`. Netlify does not carry the bridge; the NAS only updates when told.
 
-## Case 5: a baseline grants more than Meleys
+## Case 5: a baseline's servers differ from its tier's current scope
 
-**Dossier.** `[SCOPE Meleys,Syrax,Vermithor]` on a bridge-minted code.
+**Dossier.** `[SCOPE ...]` on a bridge-minted code, with the expected servers in findings.
 
-This should be impossible: the rotation derives scope from
-`tiers.resolve_tier_access`, which filters to `SHARE_SERVER`. Seeing it on a
-bridge-minted invite means either someone edited the invite in Wizarr, or
-`SHARE_SERVER` changed without the retired-server comment being revisited.
+Every tier spans the fleet except Caraxes, but only servers with eligible libraries
+belong in its invite. Bronze excludes titles starting with `4K`; Youth includes only
+Family Movies, 4K Family Movies and Kid Shows. A 4K-only server therefore belongs in
+Silver and Gold, not Bronze. The audit derives this from the current Wizarr library list.
 
-**Remedy.** Read `tiers.py:9-14` first and decide which is true. If a server is being
-un-retired that is a tier-rules change with tests behind it, not an invite fix.
+**Remedy.** Check `apps/stripe-bridge/src/tiers.ts`, Wizarr's cached library names,
+and the deployed bridge version. Old baselines keep their original scope until they
+rotate and expire; a code change does not rewrite existing links.
 
 ## Where each remedy happens
 
-| Remedy                       | Where                                                                   |
-| ---------------------------- | ----------------------------------------------------------------------- |
-| Fix a tier's library set     | `tiers.py` + Plex library names, then `refresh:libraries`, test, deploy |
-| Ship the rotation to the NAS | `bun run deploy:nas`, confirm `GET /version`                            |
-| Force a rotation now         | restart the bridge container and wait for 03:00, or wait a day          |
-| Delete a stray invite        | Wizarr UI, by hand, after confirming replacements exist                 |
-| Change the rotation hour     | `BASELINE_ROTATE_HOUR` in the NAS `.env`, then rebuild                  |
-| Change the link lifetime     | `BASELINE_EXPIRES_DAYS` (default 2), same                               |
+| Remedy                       | Where                                                                                   |
+| ---------------------------- | --------------------------------------------------------------------------------------- |
+| Fix a tier's library set     | `tiers.ts` + Wizarr's cached Plex library names, then `refresh:libraries`, test, deploy |
+| Ship the rotation to the NAS | `bun run deploy:nas`, confirm `GET /version`                                            |
+| Force a rotation now         | restart the bridge container and wait for 03:00, or wait a day                          |
+| Delete a stray invite        | Wizarr UI, by hand, after confirming replacements exist                                 |
+| Change the rotation hour     | `BASELINE_ROTATE_HOUR` in the NAS `.env`, then rebuild                                  |
+| Change the link lifetime     | `BASELINE_EXPIRES_DAYS` (default 2), same                                               |
 
 ## Reporting back
 

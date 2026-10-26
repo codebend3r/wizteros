@@ -41,10 +41,10 @@ describe('checkout.session.completed', () => {
       }),
     )
     expect(h.bridge.wizarr.createInvite).toHaveBeenCalledExactlyOnceWith({
-      serverIds: [2],
+      serverIds: [1, 2],
       expiresInDays: 14,
       duration: '35',
-      libraryIds: [17, 20, 22, 24],
+      libraryIds: [17, 20, 22, 24, 41],
       allowDownloads: false,
     })
     expect(h.bridge.mailer.sendInvite).toHaveBeenCalledExactlyOnceWith({
@@ -63,6 +63,43 @@ describe('checkout.session.completed', () => {
     expect(events[0]?.action).toBe('Signed up')
     expect(events[0]?.detail).toContain('silver')
   })
+
+  it.each([
+    { tier: 'bronze', libraryIds: [1, 3], serverIds: [1, 5], allowDownloads: false },
+    { tier: 'silver', libraryIds: [1, 2, 3, 4], serverIds: [1, 2, 3, 5], allowDownloads: false },
+    { tier: 'gold', libraryIds: [1, 2, 3, 4], serverIds: [1, 2, 3, 5], allowDownloads: true },
+    { tier: 'youth', libraryIds: [1, 2], serverIds: [1, 2], allowDownloads: true },
+  ])(
+    'new $tier signup mints its fleet-wide scope',
+    async ({ tier, libraryIds, serverIds, allowDownloads }) => {
+      h.wizarrMints('fleet')
+      h.bridge.wizarr.listLibraries.mockResolvedValue([
+        { id: 1, name: 'Kid Shows', server_id: 1, server_name: 'Vermithor', enabled: true },
+        { id: 2, name: '4K Family Movies', server_id: 2, server_name: 'Meleys', enabled: true },
+        { id: 3, name: 'Movies in 4K', server_id: 5, server_name: 'Syrax', enabled: true },
+        { id: 4, name: '4K Movies', server_id: 3, server_name: 'Vhagar', enabled: true },
+        { id: 5, name: 'Family Movies', server_id: 4, server_name: 'Caraxes', enabled: true },
+      ])
+      await h.handle(
+        checkout({
+          id: `evt_fleet_${tier}`,
+          session: {
+            id: `cs_fleet_${tier}`,
+            customer: 'cus_fleet',
+            customer_details: { email: 'new@x.com' },
+            metadata: { tier },
+          },
+        }),
+      )
+      expect(h.bridge.wizarr.createInvite).toHaveBeenCalledExactlyOnceWith({
+        serverIds,
+        libraryIds,
+        allowDownloads,
+        expiresInDays: 14,
+        duration: '35',
+      })
+    },
+  )
 
   it('an existing member keeps access when their servers are covered', async () => {
     // Redeeming re-scopes the share in place on the share server, so a member
@@ -243,10 +280,10 @@ describe('checkout.session.completed', () => {
     )
     // bronze: no 4K library, downloads off (kid shows is not 4K, so it's included)
     expect(h.bridge.wizarr.createInvite).toHaveBeenCalledExactlyOnceWith({
-      serverIds: [2],
+      serverIds: [1, 2],
       expiresInDays: 14,
       duration: '35',
-      libraryIds: [17, 22, 24],
+      libraryIds: [17, 22, 24, 41],
       allowDownloads: false,
     })
   })

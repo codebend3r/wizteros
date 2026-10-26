@@ -106,10 +106,10 @@ describe('invoice.paid', () => {
     )
     // re-invited at the tier they pay for, and told about it
     expect(h.bridge.wizarr.createInvite).toHaveBeenCalledExactlyOnceWith({
-      serverIds: [2],
+      serverIds: [1, 2],
       expiresInDays: 14,
       duration: '35',
-      libraryIds: [17, 22, 24],
+      libraryIds: [17, 22, 24, 41],
       allowDownloads: false,
     })
     expect(h.bridge.mailer.sendInvite).toHaveBeenCalledExactlyOnceWith({

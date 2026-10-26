@@ -303,13 +303,13 @@ describe('POST /admin/reissue-invite', () => {
     const out = await reissue({ h, body: { email: 'a@x.com', tier: 'silver' } })
 
     expect(h.bridge.wizarr.disableUser).not.toHaveBeenCalled() // redeeming re-scopes in place
-    // private 99. and the retired Vermithor mirror excluded -> ids 17 + 20
+    // Private 99. stays excluded; Vermithor now joins the fleet-wide scope.
     expect(h.bridge.wizarr.createInvite).toHaveBeenCalledTimes(1)
     expect(h.bridge.wizarr.createInvite).toHaveBeenCalledWith({
-      serverIds: [2],
+      serverIds: [1, 2],
       expiresInDays: 14,
       duration: '35',
-      libraryIds: [17, 20],
+      libraryIds: [17, 20, 41],
       allowDownloads: false,
     })
     expect(out.disabled).toBe(0)
