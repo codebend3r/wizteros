@@ -1,8 +1,8 @@
-import { COLLAPSED_CHART_HEIGHT } from '@/components/Chart/chartFrame'
 import { Spinner } from '@/components/Spinner/Spinner'
 import { chartCaption, type MetricCopy } from '@/pages/Fleet/metricCopy'
 import { rangeProse } from '@/stores/fleetPrefsStore'
 import chrome from '@/components/Chart/chart.module.scss'
+import frame from '@/pages/Fleet/MetricChart.module.scss'
 import styles from '@/pages/Fleet/MetricChartSkeleton.module.scss'
 
 type MetricChartSkeletonProps = {
@@ -12,8 +12,6 @@ type MetricChartSkeletonProps = {
       reserves the height it will actually take. Empty until the fleet query
       answers, which is the one case the row can still reflow. */
   readonly hostNames: readonly string[]
-  /** The height the chart it stands in for will be drawn at. */
-  readonly height?: number
 }
 
 /** The chart's own shape, held while its readings load.
@@ -29,16 +27,14 @@ export const MetricChartSkeleton = ({
   copy,
   windowMinutes,
   hostNames,
-  height = COLLAPSED_CHART_HEIGHT,
 }: MetricChartSkeletonProps) => (
-  <div className={chrome.chart}>
+  <div className={`${chrome.chart} ${frame.frame}`}>
     <p className={chrome.caption}>{chartCaption({ copy, windowMinutes })}</p>
 
-    <div className={`${chrome.plotWrap} ${chrome.plotWrapPadded}`}>
-      {/* the height is the chart's own number, in pixels, because the chart is
-        drawn at a pixel height: a stylesheet copy would be a second place for
-        it to drift */}
-      <div className={styles.plot} style={{ height: `${height}px` }}>
+    {/* the chart's own frame and plot box, from the chart's own stylesheet:
+      one rule sizes both, so they cannot drift a pixel apart */}
+    <div className={`${chrome.plotWrap} ${chrome.plotWrapPadded} ${frame.plot}`}>
+      <div className={styles.plot}>
         <p className={styles.status} role="status">
           <Spinner />
           Loading {copy.reading} readings for the last {rangeProse(windowMinutes)}.

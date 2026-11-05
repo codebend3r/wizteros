@@ -1,8 +1,9 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { AdminGate } from '@/components/AdminGate/AdminGate'
 import { AdminLayout } from '@/components/AdminLayout/AdminLayout'
-import { chartHeight } from '@/components/Chart/chartFrame'
 import { AsyncSection, errorMessage, Section } from '@/components/AsyncSection/AsyncSection'
+import { FullscreenModal } from '@/components/FullscreenModal/FullscreenModal'
 import { ViewTabs } from '@/components/ViewTabs/ViewTabs'
 import { fetchFleet, fetchIncidents, fetchMetricHistory, historyMinutes } from '@/lib/fleetApi'
 import { HostCard } from '@/pages/Fleet/HostCard'
@@ -11,6 +12,7 @@ import { MetricChart } from '@/pages/Fleet/MetricChart'
 import { MetricChartSkeleton } from '@/pages/Fleet/MetricChartSkeleton'
 import { RangePicker } from '@/pages/Fleet/RangePicker'
 import { seriesClass } from '@/pages/Fleet/seriesPalette'
+import { StorageChart } from '@/pages/Fleet/StorageChart'
 import { UpdateRateSlider } from '@/pages/Fleet/UpdateRateSlider'
 import { CHART_KINDS, useFleetPrefsStore } from '@/stores/fleetPrefsStore'
 import styles from '@/pages/Fleet/Fleet.module.scss'
@@ -54,12 +56,9 @@ const FleetInner = () => {
   const setRangeMinutes = useFleetPrefsStore((state) => state.setRangeMinutes)
   const chartKind = useFleetPrefsStore((state) => state.chartKind)
   const setChartKind = useFleetPrefsStore((state) => state.setChartKind)
-  const chartExpanded = useFleetPrefsStore((state) => state.chartExpanded)
-  const setChartExpanded = useFleetPrefsStore((state) => state.setChartExpanded)
-  // One number for the chart and its placeholder both, so a toggle mid-load
-  // cannot leave the two at different heights and jump the page when the
-  // readings land.
-  const plotHeight = chartHeight({ expanded: chartExpanded })
+  // Not persisted, unlike the knobs above: a full-screen view that reopened by
+  // itself on the next visit would cover the page before anyone asked for it.
+  const [fullscreen, setFullscreen] = useState(false)
   // One query, for the chart on screen. Four charts polling at once cost four
   // requests an interval for three answers nobody was looking at, and at the
   // fastest stop that is forty a second against a NAS behind a Funnel.
@@ -69,9 +68,13 @@ const FleetInner = () => {
   // while a week reloads.
   const chart = useQuery({
     queryKey: ['fleet-metric', chartKind, rangeMinutes],
-    // a minute more than the frame, so the reading just before its left edge
-    // comes along and the line can be drawn in from the edge
-    queryFn: () => fetchMetricHistory({ kind: chartKind, minutes: historyMinutes(rangeMinutes) }),
+    // a lead-in past the frame, so the reading just before its left edge comes
+    // along and the line can be drawn in from the edge
+    queryFn: () =>
+      fetchMetricHistory({
+        kind: chartKind,
+        minutes: historyMinutes({ windowMinutes: rangeMinutes, kind: chartKind }),
+      }),
     refetchInterval: chartIntervalMs,
   })
   const chartCopy = METRIC_COPY[chartKind]
@@ -79,6 +82,45 @@ const FleetInner = () => {
   // placeholder can name the hosts its legend row will list, so that row takes
   // the height it will still take once the readings land.
   const hostNames = fleet.data?.hosts.map((host) => host.name) ?? []
+
+  // One panel, drawn twice: in the tab, and full screen. Nothing about it
+  // changes between the two; the container is what decides how tall the chart
+  // stands. Both read the one query, so opening the full-screen view costs no
+  // request of its own.
+  const chartPanel = (
+    <div className={styles.panel}>
+      {/* Inside the panel rather than above the strip: the failure
+              belongs to the tab that is showing, and a notice over the tabs
+              reads as the whole section being down. */}
+      {!!chart.isError && (
+        <p className={styles.alert} role="alert">
+          {`${errorMessage({ error: chart.error })} No ${chartCopy.reading} history is available.`}
+        </p>
+      )}
+      {!!chart.data && (
+        <MetricChart
+          // remounted per kind on purpose: percentages and throughputs
+          // share no scale, and Recharts' own per-chart state - the
+          // active tooltip index, the keyboard cursor - would otherwise
+          // point into the new tab at a moment picked in the old one
+          key={chartKind}
+          hosts={chart.data.hosts}
+          // the chosen range, not the payload's window: the payload
+          // carries a lead-in the frame must not widen to show
+          windowMinutes={rangeMinutes}
+          unit={chart.data.unit}
+          copy={chartCopy}
+        />
+      )}
+      {/* No data for this tab and range yet, and no error to explain
+              why: hold the chart's shape rather than collapsing the page and
+              pushing everything below it up for a moment. A cached kind or
+              range paints straight from cache and never lands here. */}
+      {!chart.data && !chart.isError && (
+        <MetricChartSkeleton copy={chartCopy} windowMinutes={rangeMinutes} hostNames={hostNames} />
+      )}
+    </div>
+  )
 
   return (
     <AdminLayout showHardRefresh={false}>
@@ -114,8 +156,8 @@ const FleetInner = () => {
           <UpdateRateSlider intervalMs={chartIntervalMs} onChange={setChartIntervalMs} />
         </div>
 
-        {/* One section for all four, because only one is on screen: a heading
-          per chart would leave three headings pointing at nothing. The tab
+        {/* One section for all five, because only one is on screen: a heading
+          per chart would leave four headings pointing at nothing. The tab
           strip is what names the choice, and the panel is what changes. */}
         <Section id="fleet-charts" title="Charts">
           <ViewTabs
@@ -124,48 +166,41 @@ const FleetInner = () => {
             onSelect={setChartKind}
             label="Fleet charts"
             action={{
-              label: chartExpanded ? 'Collapse chart' : 'Expand chart',
-              icon: chartExpanded ? 'collapse' : 'expand',
-              onClick: () => setChartExpanded(!chartExpanded),
+              label: 'Expand chart to full screen',
+              icon: 'expand',
+              onClick: () => setFullscreen(true),
             }}
           >
-            {/* Inside the panel rather than above the strip: the failure
-              belongs to the tab that is showing, and a notice over the tabs
-              reads as the whole section being down. */}
-            {!!chart.isError && (
-              <p className={styles.alert} role="alert">
-                {`${errorMessage({ error: chart.error })} No ${chartCopy.reading} history is available.`}
-              </p>
-            )}
-            {!!chart.data && (
-              <MetricChart
-                // remounted per kind on purpose: percentages and throughputs
-                // share no scale, and Recharts' own per-chart state - the
-                // active tooltip index, the keyboard cursor - would otherwise
-                // point into the new tab at a moment picked in the old one
-                key={chartKind}
-                hosts={chart.data.hosts}
-                // the chosen range, not the payload's window: the payload
-                // carries a lead-in minute the frame must not widen to show
-                windowMinutes={rangeMinutes}
-                unit={chart.data.unit}
-                copy={chartCopy}
-                height={plotHeight}
-              />
-            )}
-            {/* No data for this tab and range yet, and no error to explain
-              why: hold the chart's shape rather than collapsing the page and
-              pushing everything below it up for a moment. A cached kind or
-              range paints straight from cache and never lands here. */}
-            {!chart.data && !chart.isError && (
-              <MetricChartSkeleton
-                copy={chartCopy}
-                windowMinutes={rangeMinutes}
-                hostNames={hostNames}
-                height={plotHeight}
-              />
-            )}
+            {chartPanel}
           </ViewTabs>
+        </Section>
+
+        {fullscreen && (
+          <FullscreenModal
+            title={`${chartCopy.title}, all hosts`}
+            onClose={() => setFullscreen(false)}
+            // the range is the one knob worth having full screen: the view is
+            // for reading a longer stretch in detail
+            tools={<RangePicker minutes={rangeMinutes} onChange={setRangeMinutes} />}
+          >
+            {chartPanel}
+          </FullscreenModal>
+        )}
+
+        {/* Fed by the fleet query the host cards poll, so it costs no request
+          of its own and is never further out of date than the cards below.
+          That query's loading and failure are reported once, in full, by the
+          Hosts section; this one only says why it has nothing to draw. */}
+        <Section id="fleet-storage" title="Storage">
+          {fleet.data ? (
+            <StorageChart hosts={fleet.data.hosts} />
+          ) : (
+            <p className={styles.muted}>
+              {fleet.isError
+                ? 'No disk usage is available while the fleet status cannot be read.'
+                : 'Loading disk usage.'}
+            </p>
+          )}
         </Section>
 
         <AsyncSection

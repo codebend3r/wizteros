@@ -44,6 +44,11 @@ const LABEL_CHAR_PX = 7.5
     the label's end and the plot. */
 const AXIS_PAD_PX = 12
 
+/** Room for the widest of an axis's labels, whatever they name: numbers on a
+    value axis, or the categories down a bar chart's side. */
+export const labelAxisWidth = (labels: readonly string[]): number =>
+  Math.ceil(Math.max(...labels.map((label) => label.length)) * LABEL_CHAR_PX + AXIS_PAD_PX)
+
 /** Room for the widest label the axis will draw, so Recharts never wraps one
     onto a second line. It breaks a label at its space once the text outgrows
     the axis, and "100.0" over "MB/s" reads as two ticks where there is one. */
@@ -53,5 +58,4 @@ export const axisWidthFor = ({
 }: {
   ticks: readonly number[]
   format: (value: number) => string
-}): number =>
-  Math.ceil(Math.max(...ticks.map((tick) => format(tick).length)) * LABEL_CHAR_PX + AXIS_PAD_PX)
+}): number => labelAxisWidth(ticks.map(format))

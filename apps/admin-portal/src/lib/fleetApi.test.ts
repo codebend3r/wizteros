@@ -176,10 +176,21 @@ test.each(['cpu', 'memory', 'gpu', 'network'] as const)(
 // The frame's first reading can sit a collector tick past its left edge; the
 // minute before the frame is what lets the line be drawn in from the edge.
 test('historyMinutes asks for a minute beyond the frame, up to the monitor ceiling', () => {
-  expect(historyMinutes(15)).toBe(16)
-  expect(historyMinutes(60)).toBe(61)
+  expect(historyMinutes({ windowMinutes: 15, kind: 'cpu' })).toBe(16)
+  expect(historyMinutes({ windowMinutes: 60, kind: 'network' })).toBe(61)
   // a week is the ceiling: one minute more would be refused, not served
-  expect(historyMinutes(MAX_HISTORY_MINUTES)).toBe(MAX_HISTORY_MINUTES)
+  expect(historyMinutes({ windowMinutes: MAX_HISTORY_MINUTES, kind: 'cpu' })).toBe(
+    MAX_HISTORY_MINUTES,
+  )
+})
+
+test('historyMinutes reaches two slow ticks back for disk, up to the monitor ceiling', () => {
+  // read every fifteen minutes, so a minute of lead-in would leave a 15 minute
+  // frame with one reading and no cadence to carry it forward by
+  expect(historyMinutes({ windowMinutes: 15, kind: 'disk' })).toBe(46)
+  expect(historyMinutes({ windowMinutes: MAX_HISTORY_MINUTES, kind: 'disk' })).toBe(
+    MAX_HISTORY_MINUTES,
+  )
 })
 
 test('fetchMetricHistory rejects a payload that is not a history', async () => {

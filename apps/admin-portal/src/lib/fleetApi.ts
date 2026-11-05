@@ -92,14 +92,30 @@ export const MAX_HISTORY_MINUTES = 10_080
  *
  * The frame is [now - window, now], and the first reading inside it can sit a
  * whole collector tick past the left edge, so a line that began there left a
- * strip of empty plot before it. One minute covers two ticks plus clock skew
- * between the monitor and the browser: the reading before the edge arrives
- * with the rest, and the line is drawn in from it.
+ * strip of empty plot before it. One minute covers two vitals ticks plus clock
+ * skew between the monitor and the browser: the reading before the edge
+ * arrives with the rest, and the line is drawn in from it.
+ *
+ * Disk is read on the collector's slow tier, once every fifteen minutes, so a
+ * minute would leave a short range holding one reading or none. Its lead-in
+ * covers two slow ticks and the skew minute, which hands the chart the two
+ * readings it needs to infer a cadence and carry the line onto the present.
  */
-export const HISTORY_LEAD_IN_MINUTES = 1
+export const HISTORY_LEAD_IN_MINUTES: Readonly<Record<MetricKind, number>> = {
+  cpu: 1,
+  memory: 1,
+  gpu: 1,
+  network: 1,
+  disk: 31,
+}
 
-export const historyMinutes = (windowMinutes: number): number =>
-  Math.min(windowMinutes + HISTORY_LEAD_IN_MINUTES, MAX_HISTORY_MINUTES)
+export const historyMinutes = ({
+  windowMinutes,
+  kind,
+}: {
+  windowMinutes: number
+  kind: MetricKind
+}): number => Math.min(windowMinutes + HISTORY_LEAD_IN_MINUTES[kind], MAX_HISTORY_MINUTES)
 
 export const fetchMetricHistory = async ({
   kind,

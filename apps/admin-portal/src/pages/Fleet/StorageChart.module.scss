@@ -1,0 +1,15 @@
+// The free part of every bar, and its key in the legend and tooltip: muted
+// text mixed into the surface, so the used share in each host's colour is the
+// ink the eye lands on while the free remainder still clears 3:1 against the
+// plot and the bar's full length stays legible.
+.free {
+  --mark-color: color-mix(in srgb, var(--color-muted) 65%, var(--color-surface));
+}
+
+// The used share in words past the end of each bar. Text colour rather than
+// muted, because this is the reading itself rather than an axis label.
+.barLabel {
+  fill: var(--color-text);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+}

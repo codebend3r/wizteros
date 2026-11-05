@@ -58,6 +58,22 @@
   background: var(--color-surface);
 }
 
+// The chart tab's contents: the notice for a failed query, then the chart.
+// The chart's row takes whatever height the container gives the panel, which
+// on the page is none (so the chart's own floor) and full screen is the rest
+// of the screen. A notice gets a row of its own above the chart only when
+// both are showing, so no empty track and gap ever sit over the chart.
+.panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: var(--space-2);
+
+  &:has(> .alert + *) {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+}
+
 .muted {
   color: var(--color-muted);
   font-size: var(--font-size-sm);

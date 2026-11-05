@@ -10,7 +10,7 @@ const TABS = CHART_KINDS.map((id) => ({
   icon: METRIC_COPY[id].icon,
 }))
 
-const renderTabs = (action?: { label: string; icon: 'expand' | 'collapse'; onClick: () => void }) =>
+const renderTabs = (action?: { label: string; icon: 'expand'; onClick: () => void }) =>
   render(
     <ViewTabs tabs={TABS} active="cpu" onSelect={vi.fn()} label="Fleet charts" action={action}>
       <p>panel</p>
@@ -23,7 +23,7 @@ test('ViewTabs draws a hidden icon in every tab without changing the tab name', 
   renderTabs()
 
   const tabs = screen.getAllByRole('tab')
-  expect(tabs.map((tab) => tab.textContent)).toEqual(['CPU', 'Memory', 'Network', 'GPU'])
+  expect(tabs.map((tab) => tab.textContent)).toEqual(['CPU', 'Memory', 'Network', 'Disk', 'GPU'])
   expect(tabs.every((tab) => tab.querySelector('svg[aria-hidden="true"]') !== null)).toBe(true)
 })
 

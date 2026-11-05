@@ -50,7 +50,13 @@ const HOUR = 3600
 const DAY = 24 * HOUR
 const GB = 1024 ** 3
 
-const HISTORY_ROUTES = ['/fleet/cpu', '/fleet/memory', '/fleet/gpu', '/fleet/network']
+const HISTORY_ROUTES = [
+  '/fleet/cpu',
+  '/fleet/memory',
+  '/fleet/gpu',
+  '/fleet/network',
+  '/fleet/disk',
+]
 
 const gauge = (metric: string, value: number): Sample => ({ metric, value })
 
@@ -805,6 +811,27 @@ describe('the fleet API', () => {
     expect(values(byName.vermithor)).toEqual([40.0])
     // meleys has no render node at all, permanently: empty, never zero
     expect(byName.meleys).toEqual([])
+  })
+
+  it('reports free disk percent on the disk route', async () => {
+    writeSamplesTo({
+      path: db,
+      target: 'host:meleys',
+      at: addSeconds({ at: new Date(), seconds: -30 }),
+      samples: [
+        gauge('disk.volume1.total_bytes', 40.0 * GB),
+        gauge('disk.volume1.available_bytes', 10.0 * GB),
+      ],
+    })
+
+    const payload = await history('/fleet/disk')
+
+    expect(payload.kind).toBe('disk')
+    expect(payload.unit).toBe('percent')
+    const byName = pointsByName(payload)
+    expect(values(byName.meleys)).toEqual([25.0])
+    // a host that reported no disk gauges has no points, not zeros
+    expect(byName.vermithor).toEqual([])
   })
 
   it('sums every interface on the network route', async () => {

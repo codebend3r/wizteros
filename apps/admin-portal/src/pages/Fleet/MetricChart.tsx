@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { CartesianGrid, Line, LineChart, Tooltip, XAxis, YAxis } from 'recharts'
 import { ChartLegend } from '@/components/Chart/ChartLegend'
-import { CHART_MARGIN, COLLAPSED_CHART_HEIGHT } from '@/components/Chart/chartFrame'
+import { CHART_MARGIN } from '@/components/Chart/chartFrame'
 import { ChartTooltip, type ChartKeyRow } from '@/components/Chart/ChartTooltip'
+import { useMeasuredBox } from '@/components/Chart/useMeasuredBox'
 import type { ChartScale } from '@/components/Chart/chartScale'
 import type { MetricHostSeries, MetricUnit } from '@/lib/fleetApi'
 import { chartCaption, type MetricCopy } from '@/pages/Fleet/metricCopy'
@@ -24,7 +25,6 @@ import {
   tickCap,
   TIME_LABEL_PX,
 } from '@/pages/Fleet/timeAxis'
-import { useMeasuredWidth } from '@/lib/useMeasuredWidth'
 import { rangeProse } from '@/stores/fleetPrefsStore'
 import chrome from '@/components/Chart/chart.module.scss'
 import styles from '@/pages/Fleet/MetricChart.module.scss'
@@ -36,9 +36,6 @@ type MetricChartProps = {
       formatting. Comes from the same response as the numbers. */
   readonly unit: MetricUnit
   readonly copy: MetricCopy
-  /** The plot's height in pixels. The page's own toggle picks it, and hands
-      the same number to the placeholder that stands in for this chart. */
-  readonly height?: number
   /** The clock, injectable so tests can pin the frame. */
   readonly now?: () => number
 }
@@ -121,10 +118,12 @@ export const MetricChart = ({
   windowMinutes,
   unit,
   copy,
-  height = COLLAPSED_CHART_HEIGHT,
   now = readClock,
 }: MetricChartProps) => {
-  const { ref, width } = useMeasuredWidth()
+  // The stylesheet sizes the plot box, never the chart inside it: a floor on
+  // the page, and whatever height is left in a container that has some to
+  // give, such as the full-screen view. The chart is drawn to what is measured.
+  const { ref, width, height } = useMeasuredBox()
 
   const plots = useMemo(() => toPlots(hosts), [hosts])
   const span = windowMinutes * 60_000
@@ -167,10 +166,13 @@ export const MetricChart = ({
       : null
 
   return (
-    <div className={chrome.chart}>
-      <p className={chrome.caption}>{chartCaption({ copy, windowMinutes })}</p>
-
-      {ageLabel !== null && <p className={styles.freshness}>Newest reading {ageLabel} ago.</p>}
+    <div className={`${chrome.chart} ${styles.frame}`}>
+      {/* one block for the prose above the plot, so the frame has a fixed three
+        rows to divide whether or not the freshness line is showing */}
+      <div className={styles.head}>
+        <p className={chrome.caption}>{chartCaption({ copy, windowMinutes })}</p>
+        {ageLabel !== null && <p className={styles.freshness}>Newest reading {ageLabel} ago.</p>}
+      </div>
 
       {ticks.length === 0 ? (
         <p className={chrome.empty}>
@@ -178,7 +180,7 @@ export const MetricChart = ({
           the collector ticks.
         </p>
       ) : (
-        <div className={`${chrome.plotWrap} ${chrome.plotWrapPadded}`} ref={ref}>
+        <div className={`${chrome.plotWrap} ${chrome.plotWrapPadded} ${styles.plot}`} ref={ref}>
           <LineChart
             width={width}
             height={height}

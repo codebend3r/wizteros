@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, expect, test, vi } from '@/test/vi'
@@ -75,7 +75,7 @@ const renderFleet = () => {
 
 // One chart per kind, so an empty history has to be answerable for each of
 // them; the kind has to match the route or the fetcher refuses the payload.
-const CHART_KINDS = ['cpu', 'memory', 'gpu', 'network'] as const
+const CHART_KINDS = ['cpu', 'memory', 'gpu', 'network', 'disk'] as const
 
 const emptyHistory = (kind: string) => ({
   kind,
@@ -121,12 +121,11 @@ afterEach(() => {
     // the selected tab is persisted too, so a test that switched charts would
     // otherwise hand the next one a GPU panel
     chartKind: DEFAULT_CHART_KIND,
-    chartExpanded: false,
   })
   localStorage.removeItem('wz-fleet-prefs')
 })
 
-test('Fleet grows the chart to its tall height on the toggle, and shrinks it back', async () => {
+test('Fleet opens the chart full screen, and gives focus back to the button on close', async () => {
   stubFleetFetch({
     fleet: { collected_at: '2026-08-15T00:00:00+00:00', stale: false, hosts: [host] },
     incidents: { open: [], recent: [] },
@@ -148,17 +147,99 @@ test('Fleet grows the chart to its tall height on the toggle, and shrinks it bac
   const { container } = renderFleet()
   await screen.findByRole('img', { name: /CPU by host over the last hour/ })
 
-  // collapsed is the default: the short box keeps the host cards on screen
+  // the tab keeps its short box, so the host cards stay on screen beneath it
   expect(container.querySelector('.recharts-surface')).toHaveAttribute('height', '240')
+  expect(screen.queryByRole('dialog')).toBeNull()
 
-  fireEvent.click(screen.getByRole('button', { name: 'Expand chart' }))
+  const expand = screen.getByRole('button', { name: 'Expand chart to full screen' })
+  expand.focus()
+  fireEvent.click(expand)
 
-  expect(container.querySelector('.recharts-surface')).toHaveAttribute('height', '600')
-  expect(useFleetPrefsStore.getState().chartExpanded).toBe(true)
+  const dialog = screen.getByRole('dialog', { name: 'CPU, all hosts' })
+  // a native modal, which is what makes the page behind it inert
+  expect(dialog.tagName).toBe('DIALOG')
+  expect(dialog).toHaveAttribute('open')
+  // the same chart, drawn to the box the screen leaves it; the test DOM
+  // measures nothing, so here that is the unmeasured fallback
+  expect(dialog.querySelector('.recharts-surface')).toHaveAttribute('height', '240')
+  // focus moves in on open
+  const close = screen.getByRole('button', { name: 'Close full screen' })
+  expect(close).toHaveFocus()
+  // the range can be changed without leaving the full-screen view
+  expect(within(dialog).getByRole('button', { name: '1 hour' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
 
-  fireEvent.click(screen.getByRole('button', { name: 'Collapse chart' }))
+  // Escape reaches a native modal dialog as a cancel
+  fireEvent(dialog, new Event('cancel', { cancelable: true }))
 
-  expect(container.querySelector('.recharts-surface')).toHaveAttribute('height', '240')
+  expect(screen.queryByRole('dialog')).toBeNull()
+  expect(expand).toHaveFocus()
+})
+
+test('Fleet closes the full-screen chart from its close button', async () => {
+  stubFleetFetch({
+    fleet: { collected_at: '2026-08-15T00:00:00+00:00', stale: false, hosts: [host] },
+    incidents: { open: [], recent: [] },
+  })
+  renderFleet()
+  await screen.findByText(/No CPU readings/)
+
+  fireEvent.click(screen.getByRole('button', { name: 'Expand chart to full screen' }))
+  expect(document.body.style.overflow).toBe('hidden')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Close full screen' }))
+
+  expect(screen.queryByRole('dialog')).toBeNull()
+  // the page behind scrolls again once the view is gone
+  expect(document.body.style.overflow).toBe('')
+})
+
+test('Fleet draws each host volume as a bar, with its used share in words', async () => {
+  stubFleetFetch({
+    fleet: {
+      collected_at: '2026-08-15T00:00:00+00:00',
+      stale: false,
+      hosts: [
+        host,
+        {
+          ...host,
+          name: 'meleys',
+          disk_total_bytes: 4 * 1024 ** 4,
+          disk_available_bytes: 1024 ** 4,
+        },
+        { ...host, name: 'caraxes', disk_total_bytes: null, disk_available_bytes: null },
+      ],
+    },
+    incidents: { open: [], recent: [] },
+  })
+  renderFleet()
+
+  const chart = await screen.findByRole('img', { name: 'Disk space used and free by host' })
+  const section = chart.closest('section')
+  if (section === null) throw new Error('Expected the storage chart inside its section')
+  expect(within(section).getByRole('heading', { name: 'Storage' })).toBeInTheDocument()
+  // one bar per host that reported a disk, with the share stated as text
+  expect(within(section).getByText('62% used')).toBeInTheDocument()
+  expect(within(section).getByText('75% used')).toBeInTheDocument()
+  expect(within(section).getByText('3.0 TB of 4.0 TB used, 1.0 TB free')).toBeInTheDocument()
+  // a host with no disk reading gets no bar, and says why in the legend
+  expect(within(section).getByText('no disk reading')).toBeInTheDocument()
+})
+
+test('Fleet says so when no host has reported a disk yet', async () => {
+  stubFleetFetch({
+    fleet: {
+      collected_at: '2026-08-15T00:00:00+00:00',
+      stale: false,
+      hosts: [{ ...host, disk_total_bytes: null, disk_available_bytes: null }],
+    },
+    incidents: { open: [], recent: [] },
+  })
+  renderFleet()
+
+  expect(await screen.findByText(/No host has reported a disk reading yet/)).toBeInTheDocument()
 })
 
 test('HostCard names the host and its status in text, not by color alone', () => {
@@ -728,7 +809,7 @@ test('Fleet offers one tab per chart and shows only the selected one', async () 
   renderFleet()
 
   const tabs = await screen.findAllByRole('tab')
-  expect(tabs.map((tab) => tab.textContent)).toEqual(['CPU', 'Memory', 'Network', 'GPU'])
+  expect(tabs.map((tab) => tab.textContent)).toEqual(['CPU', 'Memory', 'Network', 'Disk', 'GPU'])
   // exactly one selected, and exactly one panel: the chart nobody is looking at
   // is the chart whose query never runs
   expect(tabs.filter((tab) => tab.getAttribute('aria-selected') === 'true')).toHaveLength(1)

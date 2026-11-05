@@ -5,6 +5,7 @@ import type { Sample } from '@/probes/types.js'
 import {
   FAMILIES,
   MAX_POINTS,
+  diskAvailableSeries,
   downsample,
   fleetHistory,
   gpuLoadSeries,
@@ -37,6 +38,47 @@ describe('FAMILIES', () => {
     Object.entries(FAMILIES).forEach(([key, family]) => {
       expect(key).toBe(family.kind)
     })
+  })
+})
+
+// --- disk --------------------------------------------------------------
+
+describe('diskAvailableSeries', () => {
+  it('reports available over total as a percentage', () => {
+    const points = diskAvailableSeries({
+      'disk.volume1.total_bytes': [
+        [at(0), 40 * GB],
+        [at(300), 40 * GB],
+      ],
+      'disk.volume1.available_bytes': [
+        [at(0), 10 * GB],
+        [at(300), 4 * GB],
+      ],
+    })
+
+    expect(points).toEqual([
+      [at(0), 25],
+      [at(300), 10],
+    ])
+  })
+
+  it('drops a moment it cannot judge', () => {
+    const points = diskAvailableSeries({
+      'disk.volume1.total_bytes': [
+        [at(0), 0],
+        [at(300), 40 * GB],
+        [at(600), 40 * GB],
+        [at(900), 40 * GB],
+      ],
+      'disk.volume1.available_bytes': [
+        [at(0), 0],
+        [at(300), 41 * GB],
+        [at(900), 20 * GB],
+      ],
+    })
+
+    // a zero total, free space past the volume, and a total read alone
+    expect(points).toEqual([[at(900), 50]])
   })
 })
 
@@ -341,7 +383,7 @@ describe('fleetHistory', () => {
     // one colour per host position, bound on the cards from /fleet and on every
     // chart from these; a kind disagreeing would recolour a whole chart
     const names = fleetHosts().map((host) => host.name)
-    const kinds = ['cpu', 'memory', 'gpu', 'network'] as const
+    const kinds = ['cpu', 'memory', 'gpu', 'network', 'disk'] as const
 
     kinds.forEach((kind) => {
       const view = fleetHistory({ connection: db, kind, minutes: 60, now: NOW })
@@ -458,8 +500,8 @@ describe('fleetHistory', () => {
 
   it('refuses a kind no family carries', () => {
     // the Python dict lookup raised KeyError here
-    expect(() => fleetHistory({ connection: db, kind: 'disk', minutes: 60, now: NOW })).toThrow(
-      RangeError,
-    )
+    expect(() =>
+      fleetHistory({ connection: db, kind: 'temperature', minutes: 60, now: NOW }),
+    ).toThrow(RangeError)
   })
 })

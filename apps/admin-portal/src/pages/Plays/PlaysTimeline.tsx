@@ -4,7 +4,7 @@ import { CHART_MARGIN, COLLAPSED_CHART_HEIGHT } from '@/components/Chart/chartFr
 import { ChartTooltip, type ChartKeyRow } from '@/components/Chart/ChartTooltip'
 import { type HostCount, type Timeline } from '@/lib/playsApi'
 import { windowProse } from '@/pages/Plays/playsToolbar'
-import { useMeasuredWidth } from '@/lib/useMeasuredWidth'
+import { useMeasuredBox } from '@/components/Chart/useMeasuredBox'
 import { seriesClass } from '@/pages/Fleet/seriesPalette'
 import { bucketLabel, formatCount } from '@/pages/Plays/playsFormat'
 import styles from '@/components/Chart/chart.module.scss'
@@ -91,7 +91,7 @@ const TimelineTooltip = ({ timeline, hosts, active, label }: TimelineTooltipProp
  * seven bars a day wide and a year twelve a month wide, on one axis.
  */
 export const PlaysTimeline = ({ timeline, hosts, days }: PlaysTimelineProps) => {
-  const { ref, width } = useMeasuredWidth()
+  const { ref, width } = useMeasuredBox()
   const rows = toRows({ timeline, hosts })
   const caption = `Completed plays per ${timeline.bucket}, stacked by server, ${windowProse(days)}.`
 

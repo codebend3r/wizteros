@@ -1,0 +1,99 @@
+// The whole viewport, opaque: a full-screen view has nothing behind it worth
+// seeing through a scrim. The size limits and centring margin the browser
+// gives a modal dialog are reset so it covers the screen edge to edge. dvh
+// rather than vh, so a phone's collapsing address bar never pushes the bottom
+// of the chart off screen.
+.dialog {
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+
+  // only while open: a class on a closed dialog must never override the
+  // browser's display: none and draw it on the page
+  &[open] {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: var(--space-3);
+  }
+
+  @media (max-width: 48rem) {
+    padding: var(--space-2);
+
+    &[open] {
+      gap: var(--space-2);
+    }
+  }
+}
+
+// Title, the view's own controls, and the way out, in one row; on a phone the
+// controls drop under the title and the close button keeps its corner.
+.header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas: 'title tools close';
+  align-items: center;
+  gap: var(--space-2);
+
+  @media (max-width: 48rem) {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'title close'
+      'tools tools';
+  }
+}
+
+.title {
+  grid-area: title;
+  font-family: var(--font-display);
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.tools {
+  grid-area: tools;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+// The same square, 44px icon button as the expand action that opened this, so
+// the way in and the way out read as one control.
+.close {
+  grid-area: close;
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  color: var(--color-text);
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--color-accent);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+
+// Whatever height the header leaves. A view taller than that, such as a chart
+// at its floor height on a landscape phone, scrolls here rather than pushing
+// the header off screen.
+.body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  overflow-y: auto;
+}

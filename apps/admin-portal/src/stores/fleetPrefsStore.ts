@@ -30,9 +30,10 @@ export const CPU_RANGES = [
 export const DEFAULT_RANGE_MINUTES = 60
 
 /** One tab per chart, in the order they are offered. CPU leads because it is
-    the one that moves; GPU trails because three of the five boxes can never
-    answer it. */
-export const CHART_KINDS = ['cpu', 'memory', 'network', 'gpu'] as const
+    the one that moves; disk sits after the live families because it is read
+    every fifteen minutes rather than every tick; GPU trails because three of
+    the five boxes can never answer it. */
+export const CHART_KINDS = ['cpu', 'memory', 'network', 'disk', 'gpu'] as const
 
 export const DEFAULT_CHART_KIND: MetricKind = 'cpu'
 
@@ -61,10 +62,6 @@ type FleetPrefsState = {
       one request per interval however many charts exist. */
   readonly chartKind: MetricKind
   readonly setChartKind: (kind: MetricKind) => void
-  /** Whether the chart stands at its tall height. Collapsed by default: the
-      short box keeps the host cards on screen beneath it. */
-  readonly chartExpanded: boolean
-  readonly setChartExpanded: (expanded: boolean) => void
 }
 
 /** The fleet page's own knobs, persisted so a refresh keeps them.
@@ -85,8 +82,6 @@ export const useFleetPrefsStore = create<FleetPrefsState>()(
         set({ rangeMinutes: isRange(minutes) ? minutes : DEFAULT_RANGE_MINUTES }),
       chartKind: DEFAULT_CHART_KIND,
       setChartKind: (kind) => set({ chartKind: isChartKind(kind) ? kind : DEFAULT_CHART_KIND }),
-      chartExpanded: false,
-      setChartExpanded: (expanded) => set({ chartExpanded: expanded }),
     }),
     {
       name: 'wz-fleet-prefs',
@@ -99,10 +94,6 @@ export const useFleetPrefsStore = create<FleetPrefsState>()(
             : current.updateIntervalMs,
           rangeMinutes: isRange(stored.rangeMinutes) ? stored.rangeMinutes : current.rangeMinutes,
           chartKind: isChartKind(stored.chartKind) ? stored.chartKind : current.chartKind,
-          chartExpanded:
-            typeof stored.chartExpanded === 'boolean'
-              ? stored.chartExpanded
-              : current.chartExpanded,
         }
       },
     },
