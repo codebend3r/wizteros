@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { Wire } from './guard.js'
 
-// The fleet monitor's routes: /health, /fleet, the four metric histories and
+// The fleet monitor's routes: /health, /fleet, the five metric histories and
 // /incidents. Every timestamp is a string here because the wire carries
 // Pydantic's ISO form; the monitor's own views hold Dates until json.ts
 // writes them out.
@@ -74,9 +74,9 @@ export const fleetResponseSchema = z.object({
   hosts: z.array(fleetHostSchema),
 })
 
-/** Which history a response carries. One route each, all four the same shape
+/** Which history a response carries. One route each, all five the same shape
     on the wire. */
-export const metricKindSchema = z.enum(['cpu', 'memory', 'gpu', 'network'])
+export const metricKindSchema = z.enum(['cpu', 'memory', 'gpu', 'network', 'disk'])
 
 /** What the numbers mean. A chart cannot pick a y-axis without it: a percent
     runs against a fixed 0-100, a throughput against a ceiling derived from

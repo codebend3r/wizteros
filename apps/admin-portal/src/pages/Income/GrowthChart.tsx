@@ -2,7 +2,7 @@ import { Area, CartesianGrid, ComposedChart, Line, Tooltip, XAxis, YAxis } from 
 import { COLLAPSED_CHART_HEIGHT } from '@/components/Chart/chartFrame'
 import { ChartTooltip } from '@/components/Chart/ChartTooltip'
 import { formatMoney, monthLabel, type IncomeMonth } from '@/lib/income'
-import { useMeasuredWidth } from '@/lib/useMeasuredWidth'
+import { useMeasuredBox } from '@/components/Chart/useMeasuredBox'
 import { moneyScale } from '@/pages/Income/moneyScale'
 import chrome from '@/components/Chart/chart.module.scss'
 import styles from '@/pages/Income/chart.module.scss'
@@ -111,7 +111,7 @@ const GrowthTooltip = ({ months, active, label }: TooltipProps) => {
 
 /** Monthly income, month by month, as one line with a wash under it. */
 export const GrowthChart = ({ months }: GrowthChartProps) => {
-  const { ref, width } = useMeasuredWidth()
+  const { ref, width } = useMeasuredBox()
   const noted = months.some((row) => row.outages > 0)
   const scale = moneyScale({
     peak: months.reduce((max, row) => Math.max(max, row.income), 0),

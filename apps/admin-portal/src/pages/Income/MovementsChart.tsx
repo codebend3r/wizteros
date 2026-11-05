@@ -3,7 +3,7 @@ import { ChartLegend } from '@/components/Chart/ChartLegend'
 import { CHART_MARGIN, COLLAPSED_CHART_HEIGHT } from '@/components/Chart/chartFrame'
 import { ChartTooltip } from '@/components/Chart/ChartTooltip'
 import { monthLabel, type IncomeMonth } from '@/lib/income'
-import { useMeasuredWidth } from '@/lib/useMeasuredWidth'
+import { useMeasuredBox } from '@/components/Chart/useMeasuredBox'
 import { moneyScale, signed } from '@/pages/Income/moneyScale'
 import chrome from '@/components/Chart/chart.module.scss'
 import styles from '@/pages/Income/chart.module.scss'
@@ -66,7 +66,7 @@ const MovementsTooltip = ({ rows, active, label }: TooltipProps) => {
 /** What each month gained and lost: signups and upgrades stacked up from the
     baseline, downgrades and cancellations stacked down from it. */
 export const MovementsChart = ({ months }: MovementsChartProps) => {
-  const { ref, width } = useMeasuredWidth()
+  const { ref, width } = useMeasuredBox()
   const rows = months.map(toRow)
   const reach = rows.reduce(
     (max, row) => Math.max(max, row.signups + row.upgrades, -(row.downgrades + row.churn)),

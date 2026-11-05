@@ -1,3 +1,10 @@
+// The caption and, once the collector is late, the freshness line under it.
+.head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-1);
+}
+
 // Counts up at the page's own update cadence: the one element that visibly
 // moves exactly as fast as the chosen rate. Everything else this chart wears
 // is the shared chart chrome.
@@ -5,4 +12,26 @@
   color: var(--color-muted);
   font-size: var(--font-size-sm);
   font-variant-numeric: tabular-nums;
+}
+
+// The prose and the legend size to themselves and the plot takes the row
+// between them. On the page nothing hands the frame a height, so the row is
+// just the plot's floor; in a container with height to give, such as the
+// full-screen view, the frame stretches and the plot takes all of the rest.
+// The placeholder wears this frame too, so it holds the same box.
+.frame {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+// Sized by the stylesheet alone, never by the chart drawn inside it: that is
+// what lets the box be measured and the chart drawn to it without either
+// chasing the other. The floor is the chart's 15rem plus the padded plot
+// wrap's padding and border.
+.plot {
+  contain: size;
+
+  // one row that fills the box, so whatever sits inside takes its full height
+  grid-template-rows: minmax(0, 1fr);
+  min-height: calc(15rem + 2 * var(--space-2) + 2px);
+  overflow: hidden;
 }

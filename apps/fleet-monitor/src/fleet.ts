@@ -14,7 +14,12 @@ import type { Connection } from '@/db.js'
 import { observedRun, uptimePercent } from '@/incidents.js'
 import { type ContainerView, fromSamples } from '@/probes/docker.js'
 import { pythonRound } from '@/pythonMath.js'
-import { MEMORY_AVAILABLE_METRIC, MEMORY_TOTAL_METRIC } from '@/series.js'
+import {
+  DISK_AVAILABLE_METRIC,
+  DISK_TOTAL_METRIC,
+  MEMORY_AVAILABLE_METRIC,
+  MEMORY_TOTAL_METRIC,
+} from '@/series.js'
 import { lastHeartbeat, latest, metricAges } from '@/store.js'
 import { addSeconds, secondsBetween } from '@wizteros/server-common'
 
@@ -54,12 +59,10 @@ export const LOAD_WARN_PER_CORE = 1
 // free-space figure, and the SPA must not hardcode which volume it is looking
 // at.
 //
-// The memory keys are read from the series module rather than restated here:
-// the card and the memory chart must never disagree about which gauge means
-// "used".
+// The memory keys and the disk byte gauges are read from the series module
+// rather than restated here: the card and the charts must never disagree about
+// which gauge means "used" or "free".
 export const DISK_PERCENT_METRIC = 'disk.volume1.used_percent'
-export const DISK_TOTAL_METRIC = 'disk.volume1.total_bytes'
-export const DISK_AVAILABLE_METRIC = 'disk.volume1.available_bytes'
 export const DISK_MOUNT = '/volume1'
 
 // /proc/stat emits one row per cpu, so the core count is observed every tick

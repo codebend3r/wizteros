@@ -5,6 +5,7 @@ export type IconName =
   | 'box'
   | 'check'
   | 'chevron'
+  | 'close'
   | 'collapse'
   | 'cpu'
   | 'disk'
@@ -39,6 +40,7 @@ const GLYPHS: Record<IconName, ReactElement> = {
     </>
   ),
   chevron: <path d="M4 6l4 4 4-4" />,
+  close: <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" />,
   collapse: <path d="M6.5 2.5v4h-4M9.5 13.5v-4h4M6.5 6.5l-4-4M9.5 9.5l4 4" />,
   cpu: (
     <>

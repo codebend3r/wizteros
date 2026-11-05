@@ -142,6 +142,12 @@ export class FleetController {
     return metricHistory({ kind: 'network', minutes: query.minutes })
   }
 
+  /** Free space on the watched volume per host, as a percent of its size. */
+  @Get('fleet/disk')
+  disk(@Query({ schema: HistoryQuery }) query: z.infer<typeof HistoryQuery>): MetricHistoryView {
+    return metricHistory({ kind: 'disk', minutes: query.minutes })
+  }
+
   @Get('incidents')
   incidents(@Query({ schema: IncidentQuery }) query: z.infer<typeof IncidentQuery>): IncidentFeed {
     const since = addSeconds({ at: new Date(), seconds: -query.hours * 3600 })

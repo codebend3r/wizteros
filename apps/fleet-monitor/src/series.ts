@@ -36,6 +36,13 @@ export const MEMORY_AVAILABLE_METRIC = 'mem.available_bytes'
 // has to say so rather than print it as utilization.
 export const GPU_RATIO_METRIC = 'gpu.freq_ratio'
 
+// The watched volume's size and free space, from the collector's one
+// `df -Pk /volume1`. Slow tier, so a few readings an hour rather than one a
+// tick. fleet.ts reads the same two keys for the host card, which is why they
+// live here and are imported there.
+export const DISK_TOTAL_METRIC = 'disk.volume1.total_bytes'
+export const DISK_AVAILABLE_METRIC = 'disk.volume1.available_bytes'
+
 // Every per-interface byte counter probes.proc kept: loopback, tunnels, the
 // docker bridges and the veth pairs are already dropped there, so what remains
 // is the physical NICs. Measured 2026-08-26: meleys has eth0/eth1/eth2,
@@ -45,7 +52,7 @@ export const NETWORK_PREFIX = 'net.'
 
 export type Unit = 'percent' | 'bytes_per_second'
 
-export type Kind = 'cpu' | 'memory' | 'gpu' | 'network'
+export type Kind = 'cpu' | 'memory' | 'gpu' | 'network' | 'disk'
 
 /**
  * One chartable metric family: what to read, and how to reduce it.
@@ -69,26 +76,48 @@ const byInstant = (points: Series): ReadonlyMap<number, readonly [Date, number]>
   new Map(points.map((point) => [point[0].getTime(), point] as const))
 
 /**
- * Used memory as a percentage, per tick.
+ * Two gauges read together, a size and how much of it is free, as one share
+ * per reading.
  *
- * Both gauges come from one /proc/meminfo read, so they share a timestamp; a
- * moment carrying only one of them cannot be judged and is dropped rather
- * than paired with a neighbouring reading. A total of zero is not a full
- * machine, it is a bad read, and goes the same way.
+ * Both come from one read (one /proc/meminfo, one df row), so they share a
+ * timestamp. A moment carrying only one of them cannot be judged and is
+ * dropped rather than paired with a neighbouring reading; so is a size of
+ * zero, which is a bad read rather than a full machine, and a free figure
+ * outside the size.
  */
-export const memoryUsedSeries = (seriesByMetric: Readonly<Record<string, Series>>): Series => {
-  const totals = byInstant(seriesByMetric[MEMORY_TOTAL_METRIC] ?? [])
-  const available = byInstant(seriesByMetric[MEMORY_AVAILABLE_METRIC] ?? [])
+const shareSeries = ({
+  seriesByMetric,
+  totalMetric,
+  freeMetric,
+  share,
+}: {
+  seriesByMetric: Readonly<Record<string, Series>>
+  totalMetric: string
+  freeMetric: string
+  /** The share to report, as a fraction of the total. */
+  share: (reading: { total: number; free: number }) => number
+}): Series => {
+  const totals = byInstant(seriesByMetric[totalMetric] ?? [])
+  const frees = byInstant(seriesByMetric[freeMetric] ?? [])
   return [...totals.entries()]
     .toSorted(([left], [right]) => left - right)
     .flatMap(([instant, [at, total]]): Series => {
-      const free = available.get(instant)?.[1] ?? null
+      const free = frees.get(instant)?.[1] ?? null
       if (!(total > 0) || free === null || !(free >= 0 && free <= total)) {
         return []
       }
-      return [[at, pythonRound({ value: ((total - free) / total) * 100, digits: 1 })]]
+      return [[at, pythonRound({ value: share({ total, free }) * 100, digits: 1 })]]
     })
 }
+
+/** Used memory as a percentage, per tick, judged against MemAvailable. */
+export const memoryUsedSeries = (seriesByMetric: Readonly<Record<string, Series>>): Series =>
+  shareSeries({
+    seriesByMetric,
+    totalMetric: MEMORY_TOTAL_METRIC,
+    freeMetric: MEMORY_AVAILABLE_METRIC,
+    share: ({ total, free }) => (total - free) / total,
+  })
 
 /**
  * The GPU's frequency share of its own ceiling, as a percentage.
@@ -138,6 +167,21 @@ export const networkThroughputSeries = (
     .map(([, [at, total]]) => [at, pythonRound({ value: total, digits: 1 })] as const)
 }
 
+/**
+ * Free space on the watched volume as a percentage of its size, per reading.
+ *
+ * Available over total, which is what a reader can still write: df's own
+ * capacity figure is used over used-plus-available, and the blocks the
+ * filesystem reserves for root fall out of it, so the two do not sum to 100.
+ */
+export const diskAvailableSeries = (seriesByMetric: Readonly<Record<string, Series>>): Series =>
+  shareSeries({
+    seriesByMetric,
+    totalMetric: DISK_TOTAL_METRIC,
+    freeMetric: DISK_AVAILABLE_METRIC,
+    share: ({ total, free }) => free / total,
+  })
+
 export const FAMILIES: Readonly<Record<Kind, Family>> = {
   cpu: {
     kind: 'cpu',
@@ -167,9 +211,16 @@ export const FAMILIES: Readonly<Record<Kind, Family>> = {
     prefix: NETWORK_PREFIX,
     derive: networkThroughputSeries,
   },
+  disk: {
+    kind: 'disk',
+    unit: 'percent',
+    metrics: [DISK_TOTAL_METRIC, DISK_AVAILABLE_METRIC],
+    prefix: '',
+    derive: diskAvailableSeries,
+  },
 }
 
-const KINDS: readonly Kind[] = ['cpu', 'memory', 'gpu', 'network']
+const KINDS: readonly Kind[] = ['cpu', 'memory', 'gpu', 'network', 'disk']
 
 const isKind = (value: string): value is Kind => KINDS.some((kind) => kind === value)
 

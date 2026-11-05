@@ -3,8 +3,7 @@
 // because anything that differs here is a pixel the page moves by when the
 // readings land. Only what the placeholder alone needs lives below.
 
-// Height comes from the component, which reads the same constant the chart is
-// drawn at. Everything else about the box is styled here.
+// Fills the chart's plot box, whose height the chart's own stylesheet sets.
 .plot {
   display: grid;
   place-items: center;

@@ -4,7 +4,7 @@ import { rangeProse } from '@/stores/fleetPrefsStore'
 
 /** The words one chart needs that the other three do not.
  *
- * Everything the four charts say in common lives in the component; this is
+ * Everything the charts say in common lives in the component; this is
  * only what differs.
  */
 export type MetricCopy = {
@@ -36,6 +36,12 @@ export const METRIC_COPY: Record<MetricKind, MetricCopy> = {
     icon: 'gpu',
     measure: 'Intel iGPU frequency as a share of its own ceiling, per host',
     reading: 'GPU',
+  },
+  disk: {
+    title: 'Disk',
+    icon: 'disk',
+    measure: "Free space on each host's watched volume as a percent of its size",
+    reading: 'disk',
   },
   network: {
     title: 'Network',

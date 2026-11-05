@@ -29,6 +29,6 @@ describe('metricHistorySchema', () => {
   })
 
   it('refuses a kind no route serves', () => {
-    expect(isMetricHistory({ ...history, kind: 'disk' })).toBe(false)
+    expect(isMetricHistory({ ...history, kind: 'temperature' })).toBe(false)
   })
 })
