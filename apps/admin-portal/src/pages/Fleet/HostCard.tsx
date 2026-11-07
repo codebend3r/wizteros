@@ -1,8 +1,9 @@
-import type { ReactNode } from 'react'
+import { useId, type ReactNode } from 'react'
 import { Icon, type IconName } from '@/components/Icon/Icon'
 import { IconTile, type IconTileTone } from '@/components/IconTile/IconTile'
 import {
   formatAge,
+  dsmUrl,
   formatBytes,
   type FleetContainer,
   type FleetHost,
@@ -18,34 +19,34 @@ type HostCardProps = {
   readonly className?: string
 }
 
-// null is "print no status line", not "no status": a warn host states its case
-// through the disk and load figures below and the stale note beside them,
-// which are the readings the monitor judged, rather than through a summary
-// word sitting over them.
+/* null is "print no status line", not "no status": a warn host states its case
+   through the disk and load figures below and the stale note beside them,
+   which are the readings the monitor judged, rather than through a summary
+   word sitting over them. */
 const STATUS_LABEL: Record<HostStatus, string | null> = {
   ok: 'Healthy',
   warn: null,
   unknown: 'Not collected',
 }
 
-// The tile beside the status word. Never collected is an absence, not a
-// health, so it wears the muted tone: a green tile on it would let a reader's
-// eye file the card as fine before the word beside it said otherwise.
+/* The tile beside the status word. Never collected is an absence, not a
+   health, so it wears the muted tone: a green tile on it would let a reader's
+   eye file the card as fine before the word beside it said otherwise. */
 const STATUS_MARK: Record<HostStatus, { name: IconName; tone: IconTileTone } | null> = {
   ok: { name: 'check', tone: 'ok' },
   warn: null,
   unknown: { name: 'help', tone: 'muted' },
 }
 
-// The status word is computed from disk and load, and disk is a slow-tier
-// metric: on a host whose slow probe died it is as frozen as the numbers under
-// it. Say so in the word itself, so the most prominent text on the card cannot
-// assert the present tense while the note below scopes only the readings.
+/* The status word is computed from disk and load, and disk is a slow-tier
+   metric: on a host whose slow probe died it is as frozen as the numbers under
+   it. Say so in the word itself, so the most prominent text on the card cannot
+   assert the present tense while the note below scopes only the readings. */
 const STALE_STATUS_SUFFIX = ' as of the last reading'
 
-// The monitor names the family that fell silent in its own metric namespace.
-// These are the same words a reader already sees on the card, so the note
-// reads as English rather than as a key out of the database.
+/* The monitor names the family that fell silent in its own metric namespace.
+   These are the same words a reader already sees on the card, so the note
+   reads as English rather than as a key out of the database. */
 const FAMILY_LABEL: Record<string, string> = {
   container: 'container state',
   cpu: 'CPU',
@@ -145,8 +146,8 @@ const diskReading = ({
   const base = usageReading({ percent, total })
   return {
     ...base,
-    // the mount names which volume the total describes, so it goes wherever
-    // the total does
+    /* the mount names which volume the total describes, so it goes wherever
+       the total does */
     ...(base.context.length > 0 && { scopeName: mount }),
     ...(percent !== null && available !== null && { finding: `${formatBytes(available)} free` }),
   }
@@ -225,19 +226,20 @@ const Stat = ({ label, icon, reading, meterPercent }: StatProps) => (
 )
 
 export const HostCard = ({ host, className }: HostCardProps) => {
-  // A never-collected host is already unqualified-proof: its label is the
-  // absence itself. Only a collected host can carry a stale present tense.
+  /* A never-collected host is already unqualified-proof: its label is the
+     absence itself. Only a collected host can carry a stale present tense. */
   const staleStatus = host.status !== 'unknown' && host.metrics_stale
   const label = STATUS_LABEL[host.status]
   const mark = STATUS_MARK[host.status]
-  // One text node, not a word plus a decorative span: the qualification has to
-  // be part of the status itself, not something a reader can visually skip.
+  /* One text node, not a word plus a decorative span: the qualification has to
+     be part of the status itself, not something a reader can visually skip. */
   const statusText = label === null ? null : `${label}${staleStatus ? STALE_STATUS_SUFFIX : ''}`
-  // The core count is observed, not assumed, so it is worth showing: it is
-  // what the load figure above it was divided by.
+  /* The core count is observed, not assumed, so it is worth showing: it is
+     what the load figure above it was divided by. */
   const coreContext =
     host.cores === null ? '' : `${host.cores} ${host.cores === 1 ? 'core' : 'cores'}`
   const hasFooter = host.has_gpu || host.has_docker
+  const dsmHintId = useId()
 
   return (
     <article
@@ -245,7 +247,27 @@ export const HostCard = ({ host, className }: HostCardProps) => {
       data-status={host.status}
     >
       <header className={styles.header}>
-        <h3 className={styles.name}>{host.name}</h3>
+        <h3 className={styles.name}>
+          {/* The whole card is the link: the anchor's overlay stretches over the
+            card, so a click anywhere opens DSM, while the name stays the one
+            focusable, announced element. The containers disclosure sits above
+            the overlay and keeps its own click. */}
+          <a
+            className={styles.dsmLink}
+            href={dsmUrl({ ip: host.ip })}
+            target="_blank"
+            rel="noopener noreferrer"
+            /* a description rather than part of the name, so the heading and
+               the link are both still called just the host's name */
+            aria-describedby={dsmHintId}
+          >
+            {host.name}
+            <Icon name="external" size={14} className={styles.dsmMark} />
+          </a>
+        </h3>
+        <span id={dsmHintId} className={styles.srOnly}>
+          Opens DiskStation Manager in a new tab
+        </span>
         <p className={styles.ip}>{host.ip}</p>
         {/* status is stated in text, never by color alone: the tile restates
           the word beside it and is hidden from the accessibility tree */}

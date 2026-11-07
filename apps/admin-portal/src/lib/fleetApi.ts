@@ -17,9 +17,9 @@ import {
 } from '@wizteros/wire'
 import { createClient } from '@/lib/http'
 
-// The response types are the wire contract's, in libs/wire, where the monitor's
-// own route tests check every body against the same schemas this module reads
-// them with.
+/* The response types are the wire contract's, in libs/wire, where the monitor's
+   own route tests check every body against the same schemas this module reads
+   them with. */
 export type {
   FleetContainer,
   FleetHost,
@@ -48,8 +48,8 @@ const AGE_UNITS = [
 
 export const formatBytes = (value: number | null): string => {
   if (value === null || !Number.isFinite(value)) return '--'
-  // log2/10, not log(v)/log(1024): the latter comes back 2.9999999999999996 for
-  // exactly 1024 ** 3, which floors to the wrong unit and renders "1024.0 MB"
+  /* log2/10, not log(v)/log(1024): the latter comes back 2.9999999999999996 for
+     exactly 1024 ** 3, which floors to the wrong unit and renders "1024.0 MB" */
   const index = Math.min(
     UNITS.length - 1,
     Math.max(0, Math.floor(Math.log2(Math.max(value, 1)) / 10)),
@@ -62,6 +62,15 @@ export const plural = ({ count, unit }: { count: number; unit: string }): string
 
 /** A metric age in words. "unknown" for an absent age, because a host that was
     never measured has no age at all, and rendering it as 0 would read as fresh. */
+/* DiskStation Manager's own port. Every box answers on both 5000 (http) and
+   5001 (https, self-signed), checked 2026-11-07; the plain port opens straight
+   to the login page instead of behind a certificate warning, and DSM encrypts
+   the password itself before it leaves the browser. */
+const DSM_PORT = 5000
+
+/** A host's DSM login page, which its card on the Fleet page links to. */
+export const dsmUrl = ({ ip }: { ip: string }): string => `http://${ip}:${DSM_PORT}/`
+
 export const formatAge = (seconds: number | null): string => {
   if (seconds === null || !Number.isFinite(seconds) || seconds < 0) return 'unknown'
   const unit = AGE_UNITS.find((candidate) => seconds >= candidate.seconds)
@@ -129,8 +138,8 @@ export const fetchMetricHistory = async ({
     is: isMetricHistory,
     what: `${kind} history response`,
   })
-  // A response that answered for a different family would paint one chart with
-  // another's numbers, silently and plausibly.
+  /* A response that answered for a different family would paint one chart with
+     another's numbers, silently and plausibly. */
   if (data.kind !== kind) {
     throw new Error(`Asked the fleet monitor for ${kind} history and got ${data.kind}`)
   }

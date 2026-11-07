@@ -1,16 +1,16 @@
-// Every chartable history the dashboard draws, as one shape.
-//
-// Four questions, four different pieces of arithmetic: CPU busy comes out of
-// jiffy counters, memory out of two gauges read against each other, GPU out of a
-// frequency ratio, network out of byte counters. The page draws all four the same
-// way, so they leave here as the same thing: a per-host series of (moment,
-// value), plus a unit naming what the numbers mean.
-//
-// The derivations live here rather than in the browser for the same reason the
-// host judgments do: they need to know what the collector collects. Which volume
-// is watched, which meminfo keys carry the truth about used memory, that a GPU
-// frequency is a load proxy and not a utilization percent: none of that is
-// knowable a wire away.
+/* Every chartable history the dashboard draws, as one shape.
+
+   Four questions, four different pieces of arithmetic: CPU busy comes out of
+   jiffy counters, memory out of two gauges read against each other, GPU out of a
+   frequency ratio, network out of byte counters. The page draws all four the same
+   way, so they leave here as the same thing: a per-host series of (moment,
+   value), plus a unit naming what the numbers mean.
+
+   The derivations live here rather than in the browser for the same reason the
+   host judgments do: they need to know what the collector collects. Which volume
+   is watched, which meminfo keys carry the truth about used memory, that a GPU
+   frequency is a load proxy and not a utilization percent: none of that is
+   knowable a wire away. */
 
 import { fleetHosts } from '@/config.js'
 import { METRICS as CPU_METRICS, busySeries } from '@/cpu.js'
@@ -19,35 +19,35 @@ import { metricSeries, metricSeriesPrefix, rateSeries, type Series } from '@/sto
 import { addSeconds, secondsBetween } from '@wizteros/server-common'
 import { floorDivide, pythonRound, pythonSum } from '@/pythonMath.js'
 
-// A series carries one point per collector tick, so a long window is thousands
-// of them per host: a week at the vitals cadence is 20k points no chart can draw
-// and no browser wants to parse. Anything longer than this is bucketed down.
+/* A series carries one point per collector tick, so a long window is thousands
+   of them per host: a week at the vitals cadence is 20k points no chart can draw
+   and no browser wants to parse. Anything longer than this is bucketed down. */
 export const MAX_POINTS = 720
 
-// Memory is judged against MemAvailable rather than MemFree: free excludes
-// reclaimable page cache, and on these boxes that reads as 95% used on an idle
-// machine. Both keys are what probes.proc writes, named from there.
+/* Memory is judged against MemAvailable rather than MemFree: free excludes
+   reclaimable page cache, and on these boxes that reads as 95% used on an idle
+   machine. Both keys are what probes.proc writes, named from there. */
 export const MEMORY_TOTAL_METRIC = 'mem.total_bytes'
 export const MEMORY_AVAILABLE_METRIC = 'mem.available_bytes'
 
-// The i915 actual-frequency share of the card's ceiling. DSM ships no
-// intel_gpu_top and does not expose the i915 perf interface, so a true busy
-// percentage is not obtainable on this fleet; this is a load proxy and the page
-// has to say so rather than print it as utilization.
+/* The i915 actual-frequency share of the card's ceiling. DSM ships no
+   intel_gpu_top and does not expose the i915 perf interface, so a true busy
+   percentage is not obtainable on this fleet; this is a load proxy and the page
+   has to say so rather than print it as utilization. */
 export const GPU_RATIO_METRIC = 'gpu.freq_ratio'
 
-// The watched volume's size and free space, from the collector's one
-// `df -Pk /volume1`. Slow tier, so a few readings an hour rather than one a
-// tick. fleet.ts reads the same two keys for the host card, which is why they
-// live here and are imported there.
+/* The watched volume's size and free space, from the collector's one
+   `df -Pk /volume1`. Slow tier, so a few readings an hour rather than one a
+   tick. fleet.ts reads the same two keys for the host card, which is why they
+   live here and are imported there. */
 export const DISK_TOTAL_METRIC = 'disk.volume1.total_bytes'
 export const DISK_AVAILABLE_METRIC = 'disk.volume1.available_bytes'
 
-// Every per-interface byte counter probes.proc kept: loopback, tunnels, the
-// docker bridges and the veth pairs are already dropped there, so what remains
-// is the physical NICs. Measured 2026-08-26: meleys has eth0/eth1/eth2,
-// vermithor and vhagar eth0/eth1, and none of the five runs a bond, so summing
-// every interface cannot double-count a bond against its own members.
+/* Every per-interface byte counter probes.proc kept: loopback, tunnels, the
+   docker bridges and the veth pairs are already dropped there, so what remains
+   is the physical NICs. Measured 2026-08-26: meleys has eth0/eth1/eth2,
+   vermithor and vhagar eth0/eth1, and none of the five runs a bond, so summing
+   every interface cannot double-count a bond against its own members. */
 export const NETWORK_PREFIX = 'net.'
 
 export type Unit = 'percent' | 'bytes_per_second'
@@ -69,9 +69,9 @@ export type Family = Readonly<{
   derive: (seriesByMetric: Readonly<Record<string, Series>>) => Series
 }>
 
-// A series keyed by its instants rather than its Dates, since two Dates for the
-// same moment are different Map keys. A repeated instant keeps its last
-// reading, as dict() does.
+/* A series keyed by its instants rather than its Dates, since two Dates for the
+   same moment are different Map keys. A repeated instant keeps its last
+   reading, as dict() does. */
 const byInstant = (points: Series): ReadonlyMap<number, readonly [Date, number]> =>
   new Map(points.map((point) => [point[0].getTime(), point] as const))
 
@@ -90,12 +90,15 @@ const shareSeries = ({
   totalMetric,
   freeMetric,
   share,
+  digits = 1,
 }: {
   seriesByMetric: Readonly<Record<string, Series>>
   totalMetric: string
   freeMetric: string
   /** The share to report, as a fraction of the total. */
   share: (reading: { total: number; free: number }) => number
+  /** Decimal places the percentage keeps. */
+  digits?: number
 }): Series => {
   const totals = byInstant(seriesByMetric[totalMetric] ?? [])
   const frees = byInstant(seriesByMetric[freeMetric] ?? [])
@@ -106,7 +109,7 @@ const shareSeries = ({
       if (!(total > 0) || free === null || !(free >= 0 && free <= total)) {
         return []
       }
-      return [[at, pythonRound({ value: share({ total, free }) * 100, digits: 1 })]]
+      return [[at, pythonRound({ value: share({ total, free }) * 100, digits })]]
     })
 }
 
@@ -151,9 +154,9 @@ export const gpuLoadSeries = (seriesByMetric: Readonly<Record<string, Series>>):
 export const networkThroughputSeries = (
   seriesByMetric: Readonly<Record<string, Series>>,
 ): Series => {
-  // keyed by the instant, as in memoryUsedSeries, and summed interface by
-  // interface in the order the store handed them over, so the float additions
-  // happen in the order Python made them
+  /* keyed by the instant, as in memoryUsedSeries, and summed interface by
+     interface in the order the store handed them over, so the float additions
+     happen in the order Python made them */
   const totals = Object.values(seriesByMetric).reduce(
     (summed, points) =>
       rateSeries(points).reduce((running, [at, value]) => {
@@ -168,18 +171,24 @@ export const networkThroughputSeries = (
 }
 
 /**
- * Free space on the watched volume as a percentage of its size, per reading.
+ * Used space on the watched volume as a percentage of its size, per reading.
  *
- * Available over total, which is what a reader can still write: df's own
- * capacity figure is used over used-plus-available, and the blocks the
- * filesystem reserves for root fall out of it, so the two do not sum to 100.
+ * Size less available over size, which counts the blocks the filesystem
+ * reserves for root as used: they are space nobody else can write to. df's own
+ * capacity figure divides by used-plus-available instead and rounds up to a
+ * whole percent, which is why the host card can read a point higher.
+ *
+ * Two decimals rather than memory's one. A tenth of a percent of an 80 TB
+ * volume is 80 GB, so at one decimal a day of downloads barely moved the line;
+ * at two it moves in steps of about 8 GB.
  */
-export const diskAvailableSeries = (seriesByMetric: Readonly<Record<string, Series>>): Series =>
+export const diskUsedSeries = (seriesByMetric: Readonly<Record<string, Series>>): Series =>
   shareSeries({
     seriesByMetric,
     totalMetric: DISK_TOTAL_METRIC,
     freeMetric: DISK_AVAILABLE_METRIC,
-    share: ({ total, free }) => free / total,
+    share: ({ total, free }) => (total - free) / total,
+    digits: 2,
   })
 
 export const FAMILIES: Readonly<Record<Kind, Family>> = {
@@ -216,7 +225,7 @@ export const FAMILIES: Readonly<Record<Kind, Family>> = {
     unit: 'percent',
     metrics: [DISK_TOTAL_METRIC, DISK_AVAILABLE_METRIC],
     prefix: '',
-    derive: diskAvailableSeries,
+    derive: diskUsedSeries,
   },
 }
 

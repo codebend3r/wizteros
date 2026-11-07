@@ -1,11 +1,11 @@
-// The fleet routes over HTTP: /health, /fleet, the four histories and
-// /incidents, driven through `inject` against the app main.ts serves.
-//
-// What the /fleet body means is pinned case by case in src/fleet.test.ts,
-// directly on fleetView; the cases here are the same ones through the route,
-// which is what the Python suite tested. The eight Python tests on the pure
-// helpers (core_count, host_state, memory_used_percent) never touched a route
-// and live in src/fleet.test.ts alone.
+/* The fleet routes over HTTP: /health, /fleet, the four histories and
+   /incidents, driven through `inject` against the app main.ts serves.
+
+   What the /fleet body means is pinned case by case in src/fleet.test.ts,
+   directly on fleetView; the cases here are the same ones through the route,
+   which is what the Python suite tested. The eight Python tests on the pure
+   helpers (core_count, host_state, memory_used_percent) never touched a route
+   and live in src/fleet.test.ts alone. */
 
 import { existsSync } from 'node:fs'
 import type { NestFastifyApplication } from '@nestjs/platform-fastify'
@@ -32,9 +32,9 @@ import {
 } from '@wizteros/wire'
 import { z } from 'zod'
 
-// A host also carries the raw `metrics` map, which the portal does not read
-// and the Python tests asserted on, so these tests check it on top of the
-// shared schema rather than the schema growing a field no reader has.
+/* A host also carries the raw `metrics` map, which the portal does not read
+   and the Python tests asserted on, so these tests check it on top of the
+   shared schema rather than the schema growing a field no reader has. */
 const fleetHostWithMetricsSchema = fleetHostSchema.extend({
   metrics: z.record(z.string(), z.number()),
 })
@@ -62,9 +62,9 @@ const gauge = (metric: string, value: number): Sample => ({ metric, value })
 
 const counter = (metric: string, value: number): Sample => ({ metric, value })
 
-// One session per write, the same way a collector round opens one. store and
-// incidents take a connection, and the API under test opens its own, so a
-// test seeding state has to commit through a session of its own.
+/* One session per write, the same way a collector round opens one. store and
+   incidents take a connection, and the API under test opens its own, so a
+   test seeding state has to commit through a session of its own. */
 const writeSamplesTo = ({
   path,
   target,
@@ -187,11 +187,11 @@ describe('the fleet API', () => {
     bodyOf({ answer: await get(url), schema: metricHistorySchema })
 
   it('answers cross-origin requests', async () => {
-    // The portal is served from a different origin than this API everywhere
-    // it runs: the Vite dev server in development, the deployed portal
-    // against vermithor:8010 in production. Without CORS headers the browser
-    // discards the response and the /fleet page reports "Failed to fetch"
-    // against a perfectly healthy API.
+    /* The portal is served from a different origin than this API everywhere
+       it runs: the Vite dev server in development, the deployed portal
+       against vermithor:8010 in production. Without CORS headers the browser
+       discards the response and the /fleet page reports "Failed to fetch"
+       against a perfectly healthy API. */
     const response = await get('/fleet', { origin: 'http://localhost:5173' })
     expect(response.statusCode).toBe(200)
     expect(response.headers['access-control-allow-origin']).toBe('*')
@@ -278,9 +278,9 @@ describe('the fleet API', () => {
     const body = await fleet()
     const caraxes = hostNamed(body, 'caraxes')
 
-    // the collector is alive and the fast tier is current, so the fleet-wide
-    // heartbeat flag reads fresh; only the per-host metric age catches the
-    // slow tier that died six hours ago behind it
+    /* the collector is alive and the fast tier is current, so the fleet-wide
+       heartbeat flag reads fresh; only the per-host metric age catches the
+       slow tier that died six hours ago behind it */
     expect(body.stale).toBe(false)
     expect(caraxes.collected).toBe(true)
     expect(caraxes.metrics_stale).toBe(true)
@@ -288,12 +288,12 @@ describe('the fleet API', () => {
   })
 
   it('never reports a reading it cannot date', async () => {
-    // the slow tier (disk, temperatures) died a week ago while the fast tier
-    // kept reporting. Samples live seven days and the age window is a day, so
-    // the disk reading outlived the only thing that could date it: it dropped
-    // out of metric_ages, `metrics_stale` went false on the strength of the
-    // fresh load reading, and the card printed a bare "Healthy" over a
-    // seven-day-old disk number with no stale note anywhere.
+    /* the slow tier (disk, temperatures) died a week ago while the fast tier
+       kept reporting. Samples live seven days and the age window is a day, so
+       the disk reading outlived the only thing that could date it: it dropped
+       out of metric_ages, `metrics_stale` went false on the strength of the
+       fresh load reading, and the card printed a bare "Healthy" over a
+       seven-day-old disk number with no stale note anywhere. */
     const now = new Date()
     writeHeartbeatTo({ path: db, at: now })
     writeSamplesTo({ path: db, target: 'host:caraxes', at: now, samples: [gauge('load.1m', 0.1)] })
@@ -314,10 +314,10 @@ describe('the fleet API', () => {
   })
 
   it('dates every reading it reports', async () => {
-    // the invariant behind the case above, stated directly: `metrics` and the
-    // age computation must always describe the same set. A metric visible to
-    // one and invisible to the other is a value on the page with no age
-    // accounted for anywhere.
+    /* the invariant behind the case above, stated directly: `metrics` and the
+       age computation must always describe the same set. A metric visible to
+       one and invisible to the other is a value on the page with no age
+       accounted for anywhere. */
     const now = new Date()
     writeHeartbeatTo({ path: db, at: now })
     const offsets: readonly (readonly [number, string])[] = [
@@ -346,9 +346,9 @@ describe('the fleet API', () => {
   })
 
   it('stops reporting a container removed days ago as up', async () => {
-    // same mechanism, different surface: container.<name>.up is a sample like
-    // any other, so a container removed more than a day ago kept its last "1"
-    // and the card kept rendering it "Up" indefinitely
+    /* same mechanism, different surface: container.<name>.up is a sample like
+       any other, so a container removed more than a day ago kept its last "1"
+       and the card kept rendering it "Up" indefinitely */
     const now = new Date()
     writeHeartbeatTo({ path: db, at: now })
     writeSamplesTo({ path: db, target: 'host:meleys', at: now, samples: [gauge('load.1m', 0.2)] })
@@ -364,9 +364,9 @@ describe('the fleet API', () => {
   })
 
   it('marks a host whose every reading aged out as not collected', async () => {
-    // rows exist for this host, all of them older than the age window. That
-    // is neither fresh nor never-collected, and the card's "no current
-    // readings" copy is written for exactly this: not collected *now*.
+    /* rows exist for this host, all of them older than the age window. That
+       is neither fresh nor never-collected, and the card's "no current
+       readings" copy is written for exactly this: not collected *now*. */
     const now = new Date()
     writeHeartbeatTo({ path: db, at: now })
     writeSamplesTo({
@@ -392,9 +392,9 @@ describe('the fleet API', () => {
   })
 
   it('drops a metric source that stopped producing', async () => {
-    // a veth renamed by a container restart is written once and never again.
-    // Counted forever it pins metrics_stale true on a healthy docker host and
-    // walks stalest_family_age_seconds up to seven days.
+    /* a veth renamed by a container restart is written once and never again.
+       Counted forever it pins metrics_stale true on a healthy docker host and
+       walks stalest_family_age_seconds up to seven days. */
     const now = new Date()
     writeHeartbeatTo({ path: db, at: now })
     writeSamplesTo({
@@ -416,11 +416,11 @@ describe('the fleet API', () => {
   })
 
   it('ignores a vanished source beside a live sibling', async () => {
-    // meleys, 2026-08-26: DSM brought up a VPN tun1000 for one hour, and its
-    // two counters froze when it went away. The age window is a day and the
-    // stale band is 45 minutes, so under a plain `min` over every metric those
-    // two dead readings reported the host stale for the next 23 hours while
-    // net.eth0.* beside them updated every 30 seconds.
+    /* meleys, 2026-08-26: DSM brought up a VPN tun1000 for one hour, and its
+       two counters froze when it went away. The age window is a day and the
+       stale band is 45 minutes, so under a plain `min` over every metric those
+       two dead readings reported the host stale for the next 23 hours while
+       net.eth0.* beside them updated every 30 seconds. */
     const now = new Date()
     writeHeartbeatTo({ path: db, at: now })
     writeSamplesTo({
@@ -437,19 +437,19 @@ describe('the fleet API', () => {
     })
     const meleys = hostNamed(await fleet(), 'meleys')
 
-    // the family is reporting, so the host is not stale on the strength of
-    // one source that went away inside it
+    /* the family is reporting, so the host is not stale on the strength of
+       one source that went away inside it */
     expect(meleys.metrics_stale).toBe(false)
     expect(meleys.stalest_family_age_seconds).toBeLessThan(60)
-    // and the dead counter is still a reading the monitor will hand back: it
-    // is excluded from the staleness judgment, not hidden
+    /* and the dead counter is still a reading the monitor will hand back: it
+       is excluded from the staleness judgment, not hidden */
     expect(meleys.metrics['net.tun1000.rx_bytes']).toBe(900.0)
   })
 
   it('still flags a family that went silent whole', async () => {
-    // the other half of the same rule. Ignoring a vanished source must not
-    // ignore a probe that stopped: when every metric under `disk` is old, no
-    // sibling is left to vouch for it and the host is stale.
+    /* the other half of the same rule. Ignoring a vanished source must not
+       ignore a probe that stopped: when every metric under `disk` is old, no
+       sibling is left to vouch for it and the host is stale. */
     const now = new Date()
     writeHeartbeatTo({ path: db, at: now })
     writeSamplesTo({
@@ -466,8 +466,8 @@ describe('the fleet API', () => {
   })
 
   it('names the family that fell silent', async () => {
-    // the page prints this word. Without it the card blamed disk and
-    // temperature whatever had actually stopped.
+    /* the page prints this word. Without it the card blamed disk and
+       temperature whatever had actually stopped. */
     const now = new Date()
     writeHeartbeatTo({ path: db, at: now })
     writeSamplesTo({
@@ -483,10 +483,10 @@ describe('the fleet API', () => {
   })
 
   it('reports no uptime for a window the collector did not watch', async () => {
-    // the collector has been up for one round. Nothing observed the other 24
-    // hours, and an empty incident history over unwatched hours is not proof
-    // of uptime, so the honest answer is null, which the card reads as
-    // "Unknown" rather than a perfect score.
+    /* the collector has been up for one round. Nothing observed the other 24
+       hours, and an empty incident history over unwatched hours is not proof
+       of uptime, so the honest answer is null, which the card reads as
+       "Unknown" rather than a perfect score. */
     const now = new Date()
     writeHeartbeatTo({ path: db, at: now })
     writeSamplesTo({ path: db, target: 'host:caraxes', at: now, samples: [gauge('load.1m', 0.1)] })
@@ -502,9 +502,9 @@ describe('the fleet API', () => {
     // the collector ticking across the window, which on its own is not enough
     writeHeartbeatTo({ path: db, at: dayAndAnHourAgo })
     writeHeartbeatTo({ path: db, at: now })
-    // and the host itself checked across that run, not merely the collector
-    // ticking beside it. A round that recorded no check for this host
-    // observed the fleet, not the host.
+    /* and the host itself checked across that run, not merely the collector
+       ticking beside it. A round that recorded no check for this host
+       observed the fleet, not the host. */
     watched({ db, target: 'host:caraxes', since: dayAndAnHourAgo, until: now, gap: 2 * DAY })
     writeSamplesTo({ path: db, target: 'host:caraxes', at: now, samples: [gauge('load.1m', 0.1)] })
     const caraxes = hostNamed(await fleet(), 'caraxes')
@@ -513,17 +513,17 @@ describe('the fleet API', () => {
   })
 
   it('reports no uptime for a host the collector stopped checking', async () => {
-    // a persistent spawn_error: ssh cannot be started, so no host check is
-    // recorded, while the collector keeps ticking and the docker endpoints
-    // beside it keep recording failures. The collector-wide coverage mark ran
-    // on unbroken through hours in which not one host was observed, and
-    // scored them a flawless 100%.
+    /* a persistent spawn_error: ssh cannot be started, so no host check is
+       recorded, while the collector keeps ticking and the docker endpoints
+       beside it keep recording failures. The collector-wide coverage mark ran
+       on unbroken through hours in which not one host was observed, and
+       scored them a flawless 100%. */
     const now = new Date()
     const sixHoursAgo = addSeconds({ at: now, seconds: -6 * HOUR })
     writeHeartbeatTo({ path: db, at: addSeconds({ at: now, seconds: -25 * HOUR }) })
     writeHeartbeatTo({ path: db, at: now })
-    // checks for this host stop six hours ago; its readings are still inside
-    // the age window, so the card is still showing numbers
+    /* checks for this host stop six hours ago; its readings are still inside
+       the age window, so the card is still showing numbers */
     watched({
       db,
       target: 'host:caraxes',
@@ -544,9 +544,9 @@ describe('the fleet API', () => {
   })
 
   it('never reads a future timestamp as fresh', async () => {
-    // a clock that stepped backwards leaves rows stamped ahead of now. A
-    // negative age clears every staleness threshold, so the page would show
-    // frozen values and affirmatively call them current.
+    /* a clock that stepped backwards leaves rows stamped ahead of now. A
+       negative age clears every staleness threshold, so the page would show
+       frozen values and affirmatively call them current. */
     const ahead = addSeconds({ at: new Date(), seconds: 6 * HOUR })
     writeHeartbeatTo({ path: db, at: ahead })
     writeSamplesTo({
@@ -572,8 +572,8 @@ describe('the fleet API', () => {
   })
 
   it('rejects a negative incident window', async () => {
-    // bounded above but not below: an extreme negative still overflowed the
-    // timedelta into an unhandled 500 instead of a client error
+    /* bounded above but not below: an extreme negative still overflowed the
+       timedelta into an unhandled 500 instead of a client error */
     expect((await get('/incidents?hours=-999999999999999999')).statusCode).toBe(422)
     expect((await get('/incidents?hours=0')).statusCode).toBe(422)
   })
@@ -642,9 +642,9 @@ describe('the fleet API', () => {
   })
 
   it('reports the volume free space and its mount', async () => {
-    // the card prints "{free} free" beside "/volume1 · of {total}", and both
-    // facts belong to the monitor: the SPA must not hardcode which volume the
-    // collector watches, nor derive free space from a rounded percentage
+    /* the card prints "{free} free" beside "/volume1 · of {total}", and both
+       facts belong to the monitor: the SPA must not hardcode which volume the
+       collector watches, nor derive free space from a rounded percentage */
     const now = new Date()
     writeHeartbeatTo({ path: db, at: now })
     writeSamplesTo({
@@ -665,8 +665,8 @@ describe('the fleet API', () => {
   })
 
   it('reports absent free space as absent', async () => {
-    // a host that has not reported the reading, or was never collected at
-    // all, carries null rather than a number invented from the percentage
+    /* a host that has not reported the reading, or was never collected at
+       all, carries null rather than a number invented from the percentage */
     const now = new Date()
     writeHeartbeatTo({ path: db, at: now })
     writeSamplesTo({
@@ -734,8 +734,8 @@ describe('the fleet API', () => {
   })
 
   it('lists cpu hosts in the same order as /fleet', async () => {
-    // the portal binds one color per host by array position, on the cards
-    // from /fleet and on the chart from here; the two must never disagree
+    /* the portal binds one color per host by array position, on the cards
+       from /fleet and on the chart from here; the two must never disagree */
     const fleetNames = (await fleet()).hosts.map((host) => host.name)
     const cpuNames = (await history('/fleet/cpu')).hosts.map((host) => host.name)
 
@@ -771,8 +771,8 @@ describe('the fleet API', () => {
   })
 
   it('accepts a week of cpu and refuses more', async () => {
-    // raw samples live seven days, so a week is the widest window that can be
-    // answered with readings rather than with silence
+    /* raw samples live seven days, so a week is the widest window that can be
+       answered with readings rather than with silence */
     expect((await get('/fleet/cpu?minutes=10080')).statusCode).toBe(200)
     expect((await get('/fleet/cpu?minutes=10081')).statusCode).toBe(422)
   })
@@ -813,7 +813,7 @@ describe('the fleet API', () => {
     expect(byName.meleys).toEqual([])
   })
 
-  it('reports free disk percent on the disk route', async () => {
+  it('reports used disk percent on the disk route', async () => {
     writeSamplesTo({
       path: db,
       target: 'host:meleys',
@@ -829,7 +829,7 @@ describe('the fleet API', () => {
     expect(payload.kind).toBe('disk')
     expect(payload.unit).toBe('percent')
     const byName = pointsByName(payload)
-    expect(values(byName.meleys)).toEqual([25.0])
+    expect(values(byName.meleys)).toEqual([75.0])
     // a host that reported no disk gauges has no points, not zeros
     expect(byName.vermithor).toEqual([])
   })
@@ -857,8 +857,8 @@ describe('the fleet API', () => {
   })
 
   it('reads only this target and only net metrics on the network route', async () => {
-    // the prefix read is a range scan over the metric column, so a
-    // neighbouring family (or another host's counters) must not fall inside it
+    /* the prefix read is a range scan over the metric column, so a
+       neighbouring family (or another host's counters) must not fall inside it */
     const now = new Date()
     const ticks: readonly (readonly [number, number])[] = [
       [40, 0.0],
@@ -891,8 +891,8 @@ describe('the fleet API', () => {
   })
 
   it('lists hosts in the same order as /fleet on every history route', async () => {
-    // one colour per host position, bound on the cards from /fleet and on
-    // every chart from these; a route disagreeing would recolour a whole chart
+    /* one colour per host position, bound on the cards from /fleet and on
+       every chart from these; a route disagreeing would recolour a whole chart */
     const fleetNames = (await fleet()).hosts.map((host) => host.name)
 
     const routes = await Promise.all(
@@ -905,8 +905,8 @@ describe('the fleet API', () => {
   })
 
   it('shares one window contract on every history route', async () => {
-    // the page drives all four from one range picker, so a route with its own
-    // floor or ceiling would fail only at the extremes of that control
+    /* the page drives all four from one range picker, so a route with its own
+       floor or ceiling would fail only at the extremes of that control */
     const routes = await Promise.all(
       HISTORY_ROUTES.map(async (path) => ({
         path,
@@ -932,11 +932,11 @@ describe('the fleet API on a fresh volume', () => {
   })
 
   it('creates its own schema on startup', async () => {
-    // every other test in this file creates the schema itself, which masks
-    // whether anything in the API ever did. Opening a SQLite file happily
-    // creates an empty one, so against a fresh FM_DB_PATH the first query
-    // raised "no such table: heartbeat" and answered 500. Starting the app is
-    // exactly what is under test.
+    /* every other test in this file creates the schema itself, which masks
+       whether anything in the API ever did. Opening a SQLite file happily
+       creates an empty one, so against a fresh FM_DB_PATH the first query
+       raised "no such table: heartbeat" and answered 500. Starting the app is
+       exactly what is under test. */
     const db = tempDbPath()
     expect(existsSync(db)).toBe(false)
     vi.stubEnv('FM_DB_PATH', db)

@@ -1,12 +1,15 @@
 import { axisWidthFor, quarterTicks, type ChartScale } from '@/components/Chart/chartScale'
 import { formatBytes, type MetricUnit } from '@/lib/fleetApi'
 
-// Ceilings worth landing on. 2.5 earns its place between 2 and 5: without it a
-// 2.4 MB/s peak rounds all the way up to 5 and spends the chart's whole top
-// half empty.
+/* Ceilings worth landing on. 2.5 earns its place between 2 and 5: without it a
+   2.4 MB/s peak rounds all the way up to 5 and spends the chart's whole top
+   half empty. */
 const NICE_STEPS = [1, 2, 2.5, 5, 10] as const
 
-const formatPercent = (value: number): string => `${value}%`
+/** A percentage to at most two decimals, trailing zeros dropped: the axis lands
+    on round steps and prints "90%", while a tooltip over a disk reading still
+    shows the "89.21%" it was given. */
+const formatPercent = (value: number): string => `${Number(value.toFixed(2))}%`
 
 /** Bytes per second in words. Zero is "0", not "0.0 B/s": an axis origin needs
     no unit, and the long form crowds the label off the plot. */
@@ -44,8 +47,9 @@ export const niceCeiling = (peak: number): number => {
 }
 
 /** A metric family's y axis. A percent runs against a fixed 0-100 whatever the
-    readings do; a throughput has no natural ceiling at all and takes one from
-    the readings in view. */
+    readings do, so a line's height is the share itself and a full disk looks
+    full; a throughput has no natural ceiling at all and takes one from the
+    busiest reading in view. */
 export const metricScale = ({ unit, peak }: { unit: MetricUnit; peak: number }): ChartScale => {
   const percent = unit === 'percent'
   const max = percent ? 100 : niceCeiling(peak)

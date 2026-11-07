@@ -181,6 +181,8 @@ Everything else here is convention, and the import-alias rule in particular has 
 - Prefer short-circuit (`&&`) over a ternary when the else branch is `null` or `undefined`, especially in React rendering. Do: `{isActive && <Badge />}`. Don't: `{isActive ? <Badge /> : null}`. Guard the condition so it is a real boolean (`!!count && ...`), never a bare number that could render `0`.
 - Prefer optional chaining (`?.`). When optional chaining is used, ALWAYS pair it with nullish coalescing (`??`) to supply a fallback.
 - Prefer a single configurable object parameter over multiple positional parameters so argument order doesn't matter. Don't: `doSomething(foo, bar, hello)`. Do: `doSomething({ foo, bar, hello })`.
+- A comment that fits on one line uses `//`. A comment that spans more than one line uses one block, `/* ... */`, or `/** ... */` when it documents an export, a type or one of its fields. Never stack `//` lines into a paragraph, and never wrap a one-line comment in `/* */`.
+- Exceptions: comments inside JSX stay `{/* ... */}`, since JSX has no `//`; a trailing comment after code on the same line is always `//`; and a `/** ... */` doc comment that fits on one line stays as it is, because editors only show `/** */` comments on hover.
 
 ## Accessibility
 

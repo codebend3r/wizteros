@@ -17,12 +17,12 @@ import { UpdateRateSlider } from '@/pages/Fleet/UpdateRateSlider'
 import { CHART_KINDS, useFleetPrefsStore } from '@/stores/fleetPrefsStore'
 import styles from '@/pages/Fleet/Fleet.module.scss'
 
-// One vitals tick. Anything slower and the page lags the collector it reports.
-// The chart queries' cadence is user-set through the slider instead: polling
-// faster than a tick buys display latency (a fresh tick shows within the
-// chosen interval), never extra data. It does not set a chart's own rate -
-// the frame advances once a second whatever the slider says, carrying each
-// host's newest reading onto the present in between.
+/* One vitals tick. Anything slower and the page lags the collector it reports.
+   The chart queries' cadence is user-set through the slider instead: polling
+   faster than a tick buys display latency (a fresh tick shows within the
+   chosen interval), never extra data. It does not set a chart's own rate -
+   the frame advances once a second whatever the slider says, carrying each
+   host's newest reading onto the present in between. */
 const REFETCH_MS = 30_000
 const INCIDENT_HOURS = 24
 
@@ -56,20 +56,22 @@ const FleetInner = () => {
   const setRangeMinutes = useFleetPrefsStore((state) => state.setRangeMinutes)
   const chartKind = useFleetPrefsStore((state) => state.chartKind)
   const setChartKind = useFleetPrefsStore((state) => state.setChartKind)
-  // Not persisted, unlike the knobs above: a full-screen view that reopened by
-  // itself on the next visit would cover the page before anyone asked for it.
+  const hiddenHosts = useFleetPrefsStore((state) => state.hiddenHosts[chartKind])
+  const toggleHost = useFleetPrefsStore((state) => state.toggleHost)
+  /* Not persisted, unlike the knobs above: a full-screen view that reopened by
+     itself on the next visit would cover the page before anyone asked for it. */
   const [fullscreen, setFullscreen] = useState(false)
-  // One query, for the chart on screen. Four charts polling at once cost four
-  // requests an interval for three answers nobody was looking at, and at the
-  // fastest stop that is forty a second against a NAS behind a Funnel.
-  //
-  // Kind and range are both in the key, so switching tabs or ranges back to
-  // something already fetched paints from cache instead of emptying the chart
-  // while a week reloads.
+  /* One query, for the chart on screen. Four charts polling at once cost four
+     requests an interval for three answers nobody was looking at, and at the
+     fastest stop that is forty a second against a NAS behind a Funnel.
+
+     Kind and range are both in the key, so switching tabs or ranges back to
+     something already fetched paints from cache instead of emptying the chart
+     while a week reloads. */
   const chart = useQuery({
     queryKey: ['fleet-metric', chartKind, rangeMinutes],
-    // a lead-in past the frame, so the reading just before its left edge comes
-    // along and the line can be drawn in from the edge
+    /* a lead-in past the frame, so the reading just before its left edge comes
+       along and the line can be drawn in from the edge */
     queryFn: () =>
       fetchMetricHistory({
         kind: chartKind,
@@ -78,15 +80,15 @@ const FleetInner = () => {
     refetchInterval: chartIntervalMs,
   })
   const chartCopy = METRIC_COPY[chartKind]
-  // Known from the fleet query, which is not the one being switched: the
-  // placeholder can name the hosts its legend row will list, so that row takes
-  // the height it will still take once the readings land.
+  /* Known from the fleet query, which is not the one being switched: the
+     placeholder can name the hosts its legend row will list, so that row takes
+     the height it will still take once the readings land. */
   const hostNames = fleet.data?.hosts.map((host) => host.name) ?? []
 
-  // One panel, drawn twice: in the tab, and full screen. Nothing about it
-  // changes between the two; the container is what decides how tall the chart
-  // stands. Both read the one query, so opening the full-screen view costs no
-  // request of its own.
+  /* One panel, drawn twice: in the tab, and full screen. Nothing about it
+     changes between the two; the container is what decides how tall the chart
+     stands. Both read the one query, so opening the full-screen view costs no
+     request of its own. */
   const chartPanel = (
     <div className={styles.panel}>
       {/* Inside the panel rather than above the strip: the failure
@@ -99,17 +101,21 @@ const FleetInner = () => {
       )}
       {!!chart.data && (
         <MetricChart
-          // remounted per kind on purpose: percentages and throughputs
-          // share no scale, and Recharts' own per-chart state - the
-          // active tooltip index, the keyboard cursor - would otherwise
-          // point into the new tab at a moment picked in the old one
+          /* remounted per kind on purpose: percentages and throughputs
+             share no scale, and Recharts' own per-chart state - the
+             active tooltip index, the keyboard cursor - would otherwise
+             point into the new tab at a moment picked in the old one */
           key={chartKind}
           hosts={chart.data.hosts}
-          // the chosen range, not the payload's window: the payload
-          // carries a lead-in the frame must not widen to show
+          /* the chosen range, not the payload's window: the payload
+             carries a lead-in the frame must not widen to show */
           windowMinutes={rangeMinutes}
           unit={chart.data.unit}
           copy={chartCopy}
+          toggle={{
+            hidden: hiddenHosts,
+            onToggle: (name) => toggleHost({ kind: chartKind, name }),
+          }}
         />
       )}
       {/* No data for this tab and range yet, and no error to explain
@@ -179,8 +185,8 @@ const FleetInner = () => {
           <FullscreenModal
             title={`${chartCopy.title}, all hosts`}
             onClose={() => setFullscreen(false)}
-            // the range is the one knob worth having full screen: the view is
-            // for reading a longer stretch in detail
+            /* the range is the one knob worth having full screen: the view is
+               for reading a longer stretch in detail */
             tools={<RangePicker minutes={rangeMinutes} onChange={setRangeMinutes} />}
           >
             {chartPanel}

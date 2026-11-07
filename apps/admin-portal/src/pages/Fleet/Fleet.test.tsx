@@ -58,9 +58,9 @@ const host: FleetHost = {
   uptime_percent_24h: 100,
 }
 
-// AdminLayout brings the header, sidebar and footer, so the page needs a
-// router; the gate is dormant while Supabase is unconfigured, as in every
-// other page suite.
+/* AdminLayout brings the header, sidebar and footer, so the page needs a
+   router; the gate is dormant while Supabase is unconfigured, as in every
+   other page suite. */
 const renderFleet = () => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   useAuthStore.setState({ enabled: false })
@@ -73,8 +73,8 @@ const renderFleet = () => {
   )
 }
 
-// One chart per kind, so an empty history has to be answerable for each of
-// them; the kind has to match the route or the fetcher refuses the payload.
+/* One chart per kind, so an empty history has to be answerable for each of
+   them; the kind has to match the route or the fetcher refuses the payload. */
 const CHART_KINDS = ['cpu', 'memory', 'gpu', 'network', 'disk'] as const
 
 const emptyHistory = (kind: string) => ({
@@ -84,10 +84,10 @@ const emptyHistory = (kind: string) => ({
   hosts: [],
 })
 
-// Every query goes through the same window.fetch, so route the stub by path
-// rather than by call order; the chart routes must be tested before their
-// /fleet prefix. `cpu` overrides only the CPU history: the other three stay
-// empty, which keeps a test about one chart from having to describe four.
+/* Every query goes through the same window.fetch, so route the stub by path
+   rather than by call order; the chart routes must be tested before their
+   /fleet prefix. `cpu` overrides only the CPU history: the other three stay
+   empty, which keeps a test about one chart from having to describe four. */
 const stubFleetFetch = ({
   fleet,
   incidents,
@@ -118,8 +118,8 @@ afterEach(() => {
   useFleetPrefsStore.setState({
     rangeMinutes: DEFAULT_RANGE_MINUTES,
     updateIntervalMs: DEFAULT_UPDATE_INTERVAL_MS,
-    // the selected tab is persisted too, so a test that switched charts would
-    // otherwise hand the next one a GPU panel
+    /* the selected tab is persisted too, so a test that switched charts would
+       otherwise hand the next one a GPU panel */
     chartKind: DEFAULT_CHART_KIND,
   })
   localStorage.removeItem('wz-fleet-prefs')
@@ -159,8 +159,8 @@ test('Fleet opens the chart full screen, and gives focus back to the button on c
   // a native modal, which is what makes the page behind it inert
   expect(dialog.tagName).toBe('DIALOG')
   expect(dialog).toHaveAttribute('open')
-  // the same chart, drawn to the box the screen leaves it; the test DOM
-  // measures nothing, so here that is the unmeasured fallback
+  /* the same chart, drawn to the box the screen leaves it; the test DOM
+     measures nothing, so here that is the unmeasured fallback */
   expect(dialog.querySelector('.recharts-surface')).toHaveAttribute('height', '240')
   // focus moves in on open
   const close = screen.getByRole('button', { name: 'Close full screen' })
@@ -249,8 +249,17 @@ test('HostCard names the host and its status in text, not by color alone', () =>
   expect(screen.getByText('Healthy')).toBeInTheDocument()
 })
 
-// A warn host prints no status word at all: the finding is the disk and load
-// figures the monitor judged, not a phrase summarising them over the name.
+test('HostCard opens its DSM login page in a new tab', () => {
+  render(<HostCard host={{ ...card, status: 'ok' }} />)
+
+  const link = screen.getByRole('link', { name: 'vermithor' })
+  expect(link).toHaveAttribute('href', `http://${card.ip}:5000/`)
+  expect(link).toHaveAttribute('target', '_blank')
+  expect(link).toHaveAccessibleDescription('Opens DiskStation Manager in a new tab')
+})
+
+/* A warn host prints no status word at all: the finding is the disk and load
+   figures the monitor judged, not a phrase summarising them over the name. */
 test('HostCard prints no status line on a warn host', () => {
   render(<HostCard host={card} />)
 
@@ -295,9 +304,9 @@ test('HostCard reports an unmeasured 24h uptime as unknown rather than a score',
 })
 
 test('HostCard names the family that fell silent rather than blaming the slow tier', () => {
-  // it used to print "Disk and temperature refresh every 15 minutes" whatever
-  // had actually stopped, which read as a lie on meleys: both were seven
-  // minutes old and a dead VPN counter was the stale reading
+  /* it used to print "Disk and temperature refresh every 15 minutes" whatever
+     had actually stopped, which read as a lie on meleys: both were seven
+     minutes old and a dead VPN counter was the stale reading */
   render(
     <HostCard
       host={{
@@ -314,8 +323,8 @@ test('HostCard names the family that fell silent rather than blaming the slow ti
   expect(screen.queryByText(/Disk and temperature refresh every 15 minutes/)).toBeNull()
 })
 
-// The monitor grows metrics faster than the label map does, and a family with
-// no friendly name is still a truthful answer to what stopped reporting.
+/* The monitor grows metrics faster than the label map does, and a family with
+   no friendly name is still a truthful answer to what stopped reporting. */
 test('HostCard falls back to the raw family name it was not taught a word for', () => {
   render(
     <HostCard
@@ -333,8 +342,8 @@ test('HostCard falls back to the raw family name it was not taught a word for', 
 })
 
 test('HostCard says stale readings cannot be dated rather than "unknown old"', () => {
-  // the monitor sends a null age when nothing reported inside its age window,
-  // and when a clock step left a reading stamped ahead of now
+  /* the monitor sends a null age when nothing reported inside its age window,
+     and when a clock step left a reading stamped ahead of now */
   render(
     <HostCard
       host={{
@@ -351,9 +360,9 @@ test('HostCard says stale readings cannot be dated rather than "unknown old"', (
   expect(screen.queryByText(/unknown old/)).toBeNull()
 })
 
-// The status word is derived from disk, which is itself a slow-tier metric: on
-// a host whose slow probe died it is as frozen as the numbers under it. The
-// most prominent text on the card must not claim the present tense.
+/* The status word is derived from disk, which is itself a slow-tier metric: on
+   a host whose slow probe died it is as frozen as the numbers under it. The
+   most prominent text on the card must not claim the present tense. */
 test('HostCard never presents an unqualified ok status when metrics are stale', () => {
   render(
     <HostCard
@@ -403,8 +412,8 @@ test('HostCard lists containers with their state in text', () => {
 })
 
 test('HostCard claims no health for a container that declares no healthcheck', () => {
-  // "no healthcheck configured" is neither a pass nor a failure: "Up, healthy"
-  // asserts a check that never ran, "Up, unhealthy" asserts one that failed
+  /* "no healthcheck configured" is neither a pass nor a failure: "Up, healthy"
+     asserts a check that never ran, "Up, unhealthy" asserts one that failed */
   render(
     <HostCard
       host={{
@@ -506,9 +515,9 @@ test('Fleet reports an unreachable monitor instead of an empty fleet', async () 
   expect(await screen.findByText(/No host state is available/)).toBeInTheDocument()
 })
 
-// requestJson composes a message naming the variable; collapsing every failure
-// into one fixed string loses the only diagnostic the page has, and misreads a
-// monitor that answered fine as one that could not be reached.
+/* requestJson composes a message naming the variable; collapsing every failure
+   into one fixed string loses the only diagnostic the page has, and misreads a
+   monitor that answered fine as one that could not be reached. */
 test('Fleet surfaces the configuration diagnostic rather than a fixed message', async () => {
   vi.stubGlobal(
     'fetch',
@@ -560,8 +569,8 @@ test('Fleet binds each card to the chart colour of the same host position', asyn
 
   const first = await screen.findByRole('heading', { name: 'vermithor' })
   const second = screen.getByRole('heading', { name: 'caraxes' })
-  // both surfaces derive the class from array position, and the monitor
-  // guarantees /fleet and /fleet/cpu agree on order
+  /* both surfaces derive the class from array position, and the monitor
+     guarantees /fleet and /fleet/cpu agree on order */
   expect(first.closest('article')).toHaveClass('series1')
   expect(second.closest('article')).toHaveClass('series2')
 })
@@ -577,8 +586,8 @@ test('Fleet renders the selected chart in its tab panel once the payload lands',
       hosts: [
         {
           name: 'vermithor',
-          // recent stamps: the chart's frame is the last hour ending now, and
-          // readings outside it are not drawn
+          /* recent stamps: the chart's frame is the last hour ending now, and
+             readings outside it are not drawn */
           points: [
             { at: new Date(Date.now() - 60_000).toISOString(), value: 12.5 },
             { at: new Date(Date.now() - 30_000).toISOString(), value: 37.5 },
@@ -595,8 +604,8 @@ test('Fleet renders the selected chart in its tab panel once the payload lands',
 })
 
 test('Fleet keeps the update-rate control reachable while the CPU query fails', async () => {
-  // the slider tunes the polling the failing query does, so it must never
-  // disappear behind the error it could help recover from
+  /* the slider tunes the polling the failing query does, so it must never
+     disappear behind the error it could help recover from */
   vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')))
   renderFleet()
 
@@ -655,9 +664,9 @@ test('Fleet lists open incidents by target and reason', async () => {
   expect(screen.getByText('timeout')).toBeInTheDocument()
 })
 
-// The card carries a meter per capacity reading, so this one is found through
-// its own label rather than by position: picking the first .meterFill on the
-// card would silently start asserting against memory.
+/* The card carries a meter per capacity reading, so this one is found through
+   its own label rather than by position: picking the first .meterFill on the
+   card would silently start asserting against memory. */
 const meterUnder = (label: string): Element | null => {
   const cell = screen.getByText(label).parentElement
   return cell === null ? null : cell.querySelector('.meterFill')
@@ -666,12 +675,12 @@ const meterUnder = (label: string): Element | null => {
 test('HostCard draws the disk reading as a bar the number beside it already states', () => {
   const { container } = render(<HostCard host={{ ...card, disk_percent: 96 }} />)
 
-  // the figure and its denominator are separate nodes so the number can carry
-  // the weight and the qualifier can step back
+  /* the figure and its denominator are separate nodes so the number can carry
+     the weight and the qualifier can step back */
   expect(screen.getByText('96%')).toBeInTheDocument()
   expect(screen.getByText(/of 94\.8 TB/)).toBeInTheDocument()
-  // the bar is a second reading of that one fact, so it stays out of the
-  // accessibility tree rather than repeating the number there
+  /* the bar is a second reading of that one fact, so it stays out of the
+     accessibility tree rather than repeating the number there */
   expect(meterUnder('Disk')).toHaveStyle({ width: '96%' })
   expect(container.querySelector('.meter')).toHaveAttribute('aria-hidden', 'true')
 })
@@ -679,16 +688,16 @@ test('HostCard draws the disk reading as a bar the number beside it already stat
 test('HostCard prints the free space beside the volume it describes', () => {
   render(<HostCard host={card} />)
 
-  // "how much room is left" is what an operator does arithmetic for, so the
-  // card does it: the monitor's own byte reading, never the rounded percentage
+  /* "how much room is left" is what an operator does arithmetic for, so the
+     card does it: the monitor's own byte reading, never the rounded percentage */
   expect(screen.getByText('1.0 TB free')).toBeInTheDocument()
   // the mount names which volume the figures describe
   expect(screen.getByText('/volume1')).toBeInTheDocument()
 })
 
 test('HostCard claims no free space where the monitor reported none', () => {
-  // absent is absent: a figure derived from the rounded percentage would
-  // claim a precision the monitor never reported
+  /* absent is absent: a figure derived from the rounded percentage would
+     claim a precision the monitor never reported */
   render(<HostCard host={{ ...card, disk_available_bytes: null }} />)
 
   expect(screen.queryByText(/free/)).toBeNull()
@@ -697,8 +706,8 @@ test('HostCard claims no free space where the monitor reported none', () => {
   expect(screen.getByText(/of 94\.8 TB/)).toBeInTheDocument()
 })
 
-// The same treatment for both capacity readings: a percentage with a bar under
-// it on one row and a bare percentage on the next reads as an accident.
+/* The same treatment for both capacity readings: a percentage with a bar under
+   it on one row and a bare percentage on the next reads as an accident. */
 test('HostCard draws the memory reading as a bar as well', () => {
   render(<HostCard host={{ ...card, memory_percent: 29 }} />)
 
@@ -712,8 +721,8 @@ test('HostCard draws no disk bar where there is no disk reading', () => {
   expect(meterUnder('Disk')).toBeNull()
 })
 
-// Load has no ceiling this card could honestly draw a bar against, and a full
-// bar under every host's 100% uptime would carry no information at all.
+/* Load has no ceiling this card could honestly draw a bar against, and a full
+   bar under every host's 100% uptime would carry no information at all. */
 test('HostCard draws no bar under the readings that have no scale', () => {
   render(<HostCard host={card} />)
 
@@ -721,9 +730,9 @@ test('HostCard draws no bar under the readings that have no scale', () => {
   expect(meterUnder('Uptime')).toBeNull()
 })
 
-// The tile beside a reading wears the host's chart colour, which the card
-// border already states, and stands for the label beside it, which the label
-// already states: it is a second reading of two facts, so it is hidden whole.
+/* The tile beside a reading wears the host's chart colour, which the card
+   border already states, and stands for the label beside it, which the label
+   already states: it is a second reading of two facts, so it is hidden whole. */
 const tileBeside = (label: string): Element | null =>
   screen.getByText(label).parentElement?.querySelector('.tile') ?? null
 
@@ -748,8 +757,8 @@ test('HostCard marks a healthy status with a tile the word beside it already sta
   expect(tile).toHaveClass('ok')
 })
 
-// Never collected is an absence, not a health: its tile must not borrow the
-// healthy tone and let a reader's eye file the card as fine.
+/* Never collected is an absence, not a health: its tile must not borrow the
+   healthy tone and let a reader's eye file the card as fine. */
 test('HostCard marks an uncollected status in the muted tone, not the healthy one', () => {
   render(<HostCard host={{ ...card, status: 'unknown' }} />)
 
@@ -768,11 +777,11 @@ test('HostCard leads each inventory row with a hidden tile and keeps the label i
 })
 
 test('Fleet asks the monitor for the chosen range, and marks it on the picker', async () => {
-  // the picker's own suite covers the click reaching onChange; what this one
-  // pins is the other half - a chosen range reaching the query, not the
-  // hardcoded hour the page used to ask for
-  // the slowest poll stop too, so the page's own refetch clock cannot fire
-  // mid-test and make this about timing rather than about the range
+  /* the picker's own suite covers the click reaching onChange; what this one
+     pins is the other half - a chosen range reaching the query, not the
+     hardcoded hour the page used to ask for
+     the slowest poll stop too, so the page's own refetch clock cannot fire
+     mid-test and make this about timing rather than about the range */
   useFleetPrefsStore.setState({ rangeMinutes: 10_080, updateIntervalMs: 10_000 })
   stubFleetFetch({
     fleet: { collected_at: '2026-08-15T00:00:00+00:00', stale: false, hosts: [host] },
@@ -780,12 +789,12 @@ test('Fleet asks the monitor for the chosen range, and marks it on the picker', 
   })
   renderFleet()
 
-  // the CPU query's own result, not the section heading: that heading renders
-  // while all three queries are still in flight, so waiting on it waits for
-  // nothing
+  /* the CPU query's own result, not the section heading: that heading renders
+     while all three queries are still in flight, so waiting on it waits for
+     nothing */
   await screen.findByText(/No CPU readings in the last week/)
-  // a week is the monitor's ceiling, so the lead-in minute every other range
-  // asks for is clamped away here rather than refused
+  /* a week is the monitor's ceiling, so the lead-in minute every other range
+     asks for is clamped away here rather than refused */
   expect(globalThis.fetch).toHaveBeenCalledWith('/fleet/cpu?minutes=10080', expect.anything())
   expect(screen.getByRole('button', { name: '1 week' })).toHaveAttribute('aria-pressed', 'true')
 })
@@ -810,8 +819,8 @@ test('Fleet offers one tab per chart and shows only the selected one', async () 
 
   const tabs = await screen.findAllByRole('tab')
   expect(tabs.map((tab) => tab.textContent)).toEqual(['CPU', 'Memory', 'Network', 'Disk', 'GPU'])
-  // exactly one selected, and exactly one panel: the chart nobody is looking at
-  // is the chart whose query never runs
+  /* exactly one selected, and exactly one panel: the chart nobody is looking at
+     is the chart whose query never runs */
   expect(tabs.filter((tab) => tab.getAttribute('aria-selected') === 'true')).toHaveLength(1)
   expect(screen.getAllByRole('tabpanel')).toHaveLength(1)
   expect(screen.getByText(/No CPU readings/)).toBeInTheDocument()
@@ -847,8 +856,8 @@ test('Fleet moves between chart tabs with the arrow keys, wrapping at the ends',
   renderFleet()
   await screen.findAllByRole('tab')
 
-  // keys land on the focused tab, the way they do in a browser: the strip
-  // itself is not focusable in this pattern
+  /* keys land on the focused tab, the way they do in a browser: the strip
+     itself is not focusable in this pattern */
   const selected = (): HTMLElement => {
     const tabs = screen.getAllByRole('tab')
     const tab = tabs.find((entry) => entry.getAttribute('aria-selected') === 'true') ?? tabs[0]
@@ -870,9 +879,9 @@ test('Fleet moves between chart tabs with the arrow keys, wrapping at the ends',
   expect(screen.getByRole('tab', { name: 'CPU' })).toHaveAttribute('aria-selected', 'true')
 })
 
-// Every kind and every range is its own query key, so most presses land on a
-// payload that is not in cache. The panel used to empty for that moment, which
-// dropped the chart's ~300px and jumped everything below it up the page.
+/* Every kind and every range is its own query key, so most presses land on a
+   payload that is not in cache. The panel used to empty for that moment, which
+   dropped the chart's ~300px and jumped everything below it up the page. */
 const stubStalledChart = ({ stalled }: { stalled: string }) =>
   vi.stubGlobal(
     'fetch',
@@ -893,8 +902,8 @@ test('Fleet holds the chart shape while its first payload is in flight', async (
   stubStalledChart({ stalled: 'cpu' })
   renderFleet()
 
-  // the caption is knowable before any reading is, so it stands in the same
-  // words and the same space rather than being replaced by a one-line notice
+  /* the caption is knowable before any reading is, so it stands in the same
+     words and the same space rather than being replaced by a one-line notice */
   expect(
     await screen.findByText(/Aggregate CPU busy percent per host over the last hour/),
   ).toBeInTheDocument()
@@ -916,8 +925,8 @@ test('Fleet keeps the chart shape while an uncached tab loads', async () => {
   ).toBeInTheDocument()
 })
 
-// A spinner over a chart that already failed reads as a request still running,
-// and the error beneath it as history. Only one of the two can be true.
+/* A spinner over a chart that already failed reads as a request still running,
+   and the error beneath it as history. Only one of the two can be true. */
 test('Fleet drops the chart placeholder once the history request fails', async () => {
   vi.stubGlobal(
     'fetch',

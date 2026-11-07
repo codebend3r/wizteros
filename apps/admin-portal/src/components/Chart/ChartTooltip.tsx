@@ -1,3 +1,4 @@
+import { classNames } from '@/components/Chart/classNames'
 import styles from '@/components/Chart/chart.module.scss'
 
 /** Which mark a series is drawn with, so its key in the tooltip and the legend
@@ -28,9 +29,7 @@ type ChartTooltipProps = {
 
 /** One series' key: the colour it is drawn in, in the shape it is drawn as. */
 export const swatchClass = ({ mark, tint }: { mark: ChartMark; tint?: string }): string =>
-  [styles.swatch, mark === 'line' ? styles.swatchLine : '', tint ?? '']
-    .filter((part) => part.length > 0)
-    .join(' ')
+  classNames([styles.swatch, mark === 'line' && styles.swatchLine, tint])
 
 /** Every series' reading at the inspected point on a chart.
  *
@@ -39,8 +38,8 @@ export const swatchClass = ({ mark, tint }: { mark: ChartMark; tint?: string }):
  * chart's own formatter instead of raw.
  */
 export const ChartTooltip = ({ title, rows, total, mark = 'square' }: ChartTooltipProps) => {
-  // A chart whose series carry no mark of their own gets no swatch column at
-  // all, rather than one blank indenting every value it holds.
+  /* A chart whose series carry no mark of their own gets no swatch column at
+     all, rather than one blank indenting every value it holds. */
   const keyed = rows.some((row) => row.swatchClass !== undefined)
   const rowClass = keyed ? styles.tooltipRow : `${styles.tooltipRow} ${styles.tooltipRowPlain}`
 

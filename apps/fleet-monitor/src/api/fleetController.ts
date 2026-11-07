@@ -9,23 +9,23 @@ import { history, type Incident, openIncidents } from '@/incidents.js'
 import { fleetHistory, type Kind, type MetricHistoryView } from '@/series.js'
 import { lastHeartbeat } from '@/store.js'
 
-// Liveness, the fleet, its charts and its incidents. Every route opens one
-// session for its whole response, and in `read` mode: the API never writes the
-// main database, so a request must never make the collector wait for the
-// write lock.
+/* Liveness, the fleet, its charts and its incidents. Every route opens one
+   session for its whole response, and in `read` mode: the API never writes the
+   main database, so a request must never make the collector wait for the
+   write lock. */
 
-// Generous but bounded, well under what a Date can represent. Without a cap
-// an absurd `hours` value overflowed the C int Python's `timedelta` builds
-// from and turned into an unhandled 500 instead of a client error.
+/* Generous but bounded, well under what a Date can represent. Without a cap
+   an absurd `hours` value overflowed the C int Python's `timedelta` builds
+   from and turned into an unhandled 500 instead of a client error. */
 export const MAX_INCIDENT_HOURS = 24 * 365 * 5
 
-// The history window every chart shares. The floor is one vitals tick past
-// nothing (a counter-derived series yields no delta from a single reading, so
-// anything shorter cannot answer); the ceiling is seven days, which is how
-// long raw samples live before store.prune takes them, so asking for more
-// could only ever answer with less. Windows past a few hours carry more ticks
-// than a chart can draw, so the series is bucketed on the way out rather than
-// the window being refused.
+/* The history window every chart shares. The floor is one vitals tick past
+   nothing (a counter-derived series yields no delta from a single reading, so
+   anything shorter cannot answer); the ceiling is seven days, which is how
+   long raw samples live before store.prune takes them, so asking for more
+   could only ever answer with less. Windows past a few hours carry more ticks
+   than a chart can draw, so the series is bucketed on the way out rather than
+   the window being refused. */
 export const DEFAULT_HISTORY_MINUTES = 60
 export const MAX_HISTORY_MINUTES = 7 * 24 * 60
 
@@ -142,7 +142,7 @@ export class FleetController {
     return metricHistory({ kind: 'network', minutes: query.minutes })
   }
 
-  /** Free space on the watched volume per host, as a percent of its size. */
+  /** Used space on the watched volume per host, as a percent of its size. */
   @Get('fleet/disk')
   disk(@Query({ schema: HistoryQuery }) query: z.infer<typeof HistoryQuery>): MetricHistoryView {
     return metricHistory({ kind: 'disk', minutes: query.minutes })

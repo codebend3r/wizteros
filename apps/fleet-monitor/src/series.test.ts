@@ -5,7 +5,7 @@ import type { Sample } from '@/probes/types.js'
 import {
   FAMILIES,
   MAX_POINTS,
-  diskAvailableSeries,
+  diskUsedSeries,
   downsample,
   fleetHistory,
   gpuLoadSeries,
@@ -25,16 +25,16 @@ const at = (seconds: number): Date => addSeconds({ at: T0, seconds })
 
 describe('FAMILIES', () => {
   it('declares either names or a prefix for every family', () => {
-    // a family with neither would read nothing and draw an empty chart with no
-    // error anywhere; with both, the prefix silently wins in history
+    /* a family with neither would read nothing and draw an empty chart with no
+       error anywhere; with both, the prefix silently wins in history */
     Object.values(FAMILIES).forEach((family) => {
       expect(family.metrics.length > 0, family.kind).not.toBe(!!family.prefix)
     })
   })
 
   it('keys each family by the kind it carries', () => {
-    // the kind travels to the browser on every response, so a key that
-    // disagreed with it would label one chart with another's name
+    /* the kind travels to the browser on every response, so a key that
+       disagreed with it would label one chart with another's name */
     Object.entries(FAMILIES).forEach(([key, family]) => {
       expect(key).toBe(family.kind)
     })
@@ -43,9 +43,9 @@ describe('FAMILIES', () => {
 
 // --- disk --------------------------------------------------------------
 
-describe('diskAvailableSeries', () => {
-  it('reports available over total as a percentage', () => {
-    const points = diskAvailableSeries({
+describe('diskUsedSeries', () => {
+  it('reports size less available over size as a percentage', () => {
+    const points = diskUsedSeries({
       'disk.volume1.total_bytes': [
         [at(0), 40 * GB],
         [at(300), 40 * GB],
@@ -57,13 +57,22 @@ describe('diskAvailableSeries', () => {
     })
 
     expect(points).toEqual([
-      [at(0), 25],
-      [at(300), 10],
+      [at(0), 75],
+      [at(300), 90],
     ])
   })
 
+  it('keeps two decimals, so a few gigabytes on a large volume still move the line', () => {
+    const points = diskUsedSeries({
+      'disk.volume1.total_bytes': [[at(0), 1000 * GB]],
+      'disk.volume1.available_bytes': [[at(0), 123.4 * GB]],
+    })
+
+    expect(points).toEqual([[at(0), 87.66]])
+  })
+
   it('drops a moment it cannot judge', () => {
-    const points = diskAvailableSeries({
+    const points = diskUsedSeries({
       'disk.volume1.total_bytes': [
         [at(0), 0],
         [at(300), 40 * GB],
@@ -73,12 +82,12 @@ describe('diskAvailableSeries', () => {
       'disk.volume1.available_bytes': [
         [at(0), 0],
         [at(300), 41 * GB],
-        [at(900), 20 * GB],
+        [at(900), 30 * GB],
       ],
     })
 
     // a zero total, free space past the volume, and a total read alone
-    expect(points).toEqual([[at(900), 50]])
+    expect(points).toEqual([[at(900), 25]])
   })
 })
 
@@ -104,8 +113,8 @@ describe('memoryUsedSeries', () => {
   })
 
   it('drops a moment missing either gauge', () => {
-    // both come from one /proc/meminfo read, so a moment carrying only one of
-    // them is a bad read; pairing it with a neighbour would invent a reading
+    /* both come from one /proc/meminfo read, so a moment carrying only one of
+       them is a bad read; pairing it with a neighbour would invent a reading */
     const points = memoryUsedSeries({
       'mem.total_bytes': [
         [at(0), 8 * GB],
@@ -159,8 +168,8 @@ describe('gpuLoadSeries', () => {
   })
 
   it('clamps a card reporting past its own ceiling', () => {
-    // pegged is a real state worth seeing; dropping it would hide the one
-    // moment on the chart that mattered
+    /* pegged is a real state worth seeing; dropping it would hide the one
+       moment on the chart that mattered */
     const points = gpuLoadSeries({ 'gpu.freq_ratio': [[at(0), 1.4]] })
 
     expect(points).toEqual([[at(0), 100]] satisfies Series)
@@ -171,8 +180,8 @@ describe('gpuLoadSeries', () => {
   })
 
   it('is empty on a host with no render node', () => {
-    // three of the five boxes have no /dev/dri at all; an empty series draws a
-    // legend entry with no line rather than a flat line along the axis
+    /* three of the five boxes have no /dev/dri at all; an empty series draws a
+       legend entry with no line rather than a flat line along the axis */
     expect(gpuLoadSeries({})).toEqual([])
   })
 })
@@ -197,8 +206,8 @@ describe('networkThroughputSeries', () => {
   })
 
   it('drops the pair a reboot zeroed', () => {
-    // a counter that went backwards is a reset, and rendering the delta would
-    // be a spike that never happened
+    /* a counter that went backwards is a reset, and rendering the delta would
+       be a spike that never happened */
     const points = networkThroughputSeries({
       'net.eth0.rx_bytes': [
         [at(0), 5000],
@@ -232,8 +241,8 @@ describe('downsample', () => {
   })
 
   it('averages each bucket and dates it by its last reading', () => {
-    // 4 readings over 4 seconds into 2 buckets: each point keeps a real
-    // reading's timestamp, and its value is the mean of that bucket
+    /* 4 readings over 4 seconds into 2 buckets: each point keeps a real
+       reading's timestamp, and its value is the mean of that bucket */
     const points: Series = [
       [at(0), 10],
       [at(1), 20],
@@ -248,8 +257,8 @@ describe('downsample', () => {
   })
 
   it('drops empty buckets instead of filling them', () => {
-    // a hole wider than a bucket stays a hole: nothing is emitted for the
-    // seconds nothing was read, so the chart still breaks the line there
+    /* a hole wider than a bucket stays a hole: nothing is emitted for the
+       seconds nothing was read, so the chart still breaks the line there */
     const points: Series = [
       [at(0), 10],
       [at(1), 20],
@@ -264,8 +273,8 @@ describe('downsample', () => {
   })
 
   it("bounds a week's worth of ticks", () => {
-    // a week of 30s ticks is 20k points; whatever the window, the answer stays
-    // small enough for a browser to parse and an svg to draw
+    /* a week of 30s ticks is 20k points; whatever the window, the answer stays
+       small enough for a browser to parse and an svg to draw */
     const week = 7 * 24 * 3600
     const points: Series = Array.from(
       { length: week / 30 },
@@ -277,14 +286,14 @@ describe('downsample', () => {
     )
   })
 
-  // The two below have no Python counterpart. They pin the port to what the
-  // Python served where JS arithmetic alone would part from it; both expected
-  // answers were computed by running series.downsample itself.
+  /* The two below have no Python counterpart. They pin the port to what the
+     Python served where JS arithmetic alone would part from it; both expected
+     answers were computed by running series.downsample itself. */
 
   it('buckets a reading the way Python floor division does', () => {
-    // a 10 second window in 6 buckets is 1.6666666666666667 wide, and the
-    // reading at 5s is bucket 2 to Python's `//` but bucket 3 to Math.floor
-    // of the quotient, which would have averaged it with the one at 6s instead
+    /* a 10 second window in 6 buckets is 1.6666666666666667 wide, and the
+       reading at 5s is bucket 2 to Python's `//` but bucket 3 to Math.floor
+       of the quotient, which would have averaged it with the one at 6s instead */
     const points: Series = [
       [at(0), 10],
       [at(1), 20],
@@ -305,9 +314,9 @@ describe('downsample', () => {
   })
 
   it("averages a bucket with Python's compensated sum", () => {
-    // summed left to right these four come to 54.150000000000006 over four,
-    // which rounds to 54.2; Python's sum() carries the lost bits and lands on
-    // the side of the tie that rounds to 54.1
+    /* summed left to right these four come to 54.150000000000006 over four,
+       which rounds to 54.2; Python's sum() carries the lost bits and lands on
+       the side of the tie that rounds to 54.1 */
     const points: Series = [
       [at(0), 94.9],
       [at(1), 14.9],
@@ -321,10 +330,10 @@ describe('downsample', () => {
   })
 })
 
-// --- fleetHistory ------------------------------------------------------
-//
-// Python tested fleet_history only through its routes in test_api.py. These
-// exercise it directly on a seeded database, from those same cases.
+/* --- fleetHistory ------------------------------------------------------
+
+   Python tested fleet_history only through its routes in test_api.py. These
+   exercise it directly on a seeded database, from those same cases. */
 
 describe('fleetHistory', () => {
   let db: Connection
@@ -380,8 +389,8 @@ describe('fleetHistory', () => {
   })
 
   it('lists hosts in the same order as /fleet, for every kind', () => {
-    // one colour per host position, bound on the cards from /fleet and on every
-    // chart from these; a kind disagreeing would recolour a whole chart
+    /* one colour per host position, bound on the cards from /fleet and on every
+       chart from these; a kind disagreeing would recolour a whole chart */
     const names = fleetHosts().map((host) => host.name)
     const kinds = ['cpu', 'memory', 'gpu', 'network', 'disk'] as const
 
@@ -468,8 +477,8 @@ describe('fleetHistory', () => {
   })
 
   it('reads only this target and only net metrics for network', () => {
-    // the prefix read is a range scan over the metric column, so a neighbouring
-    // family (or another host's counters) must not fall inside it
+    /* the prefix read is a range scan over the metric column, so a neighbouring
+       family (or another host's counters) must not fall inside it */
     const ticks = [
       [40, 0],
       [30, 1000],
