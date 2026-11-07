@@ -3,6 +3,7 @@
 Reference for the media-automation containers that live alongside this repo's own
 services on the Synology boxes: what runs where, how to update it, and what will bite
 you. The runbook itself is automated — see the `arr-stack-update` skill.
+Vermithor's SABnzbd Complete folder is cleared nightly by the `sab-complete-cleanup` skill's script.
 
 This stack is **not built from this repo**. Every service tracks a floating upstream tag,
 so there is no version to bump here and nothing in `CHANGELOG.md` moves when it updates.
