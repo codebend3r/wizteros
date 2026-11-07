@@ -3,17 +3,19 @@ import {
   CPU_RANGES,
   DEFAULT_RANGE_MINUTES,
   DEFAULT_UPDATE_INTERVAL_MS,
+  NO_HIDDEN_HOSTS,
   rangeProse,
   UPDATE_INTERVAL_STOPS_MS,
   useFleetPrefsStore,
 } from '@/stores/fleetPrefsStore'
 
-// The store is a module singleton and the suite shares one localStorage, so
-// every test hands back the defaults it started from.
+/* The store is a module singleton and the suite shares one localStorage, so
+   every test hands back the defaults it started from. */
 afterEach(() => {
   useFleetPrefsStore.setState({
     updateIntervalMs: DEFAULT_UPDATE_INTERVAL_MS,
     rangeMinutes: DEFAULT_RANGE_MINUTES,
+    hiddenHosts: NO_HIDDEN_HOSTS,
   })
   localStorage.removeItem('wz-fleet-prefs')
 })
@@ -60,8 +62,8 @@ test('a stale persisted value rehydrates as the default, never an arbitrary rate
 })
 
 test('the ranges run from a week down to a quarter hour, widest first', () => {
-  // a week is the monitor's own ceiling: raw samples are pruned at seven days,
-  // so anything wider could only answer with less
+  /* a week is the monitor's own ceiling: raw samples are pruned at seven days,
+     so anything wider could only answer with less */
   expect(CPU_RANGES.map((range) => range.minutes)).toEqual([10_080, 4320, 1440, 720, 360, 60, 15])
   expect(DEFAULT_RANGE_MINUTES).toBe(60)
 })
@@ -94,4 +96,31 @@ test('a persisted range survives rehydration alongside the interval', async () =
 
   expect(useFleetPrefsStore.getState().rangeMinutes).toBe(720)
   expect(useFleetPrefsStore.getState().updateIntervalMs).toBe(2000)
+})
+
+test('a host is hidden on one chart only, and toggling again shows it', () => {
+  const { toggleHost } = useFleetPrefsStore.getState()
+
+  toggleHost({ kind: 'disk', name: 'vhagar' })
+  expect(useFleetPrefsStore.getState().hiddenHosts).toEqual({
+    ...NO_HIDDEN_HOSTS,
+    disk: ['vhagar'],
+  })
+
+  toggleHost({ kind: 'disk', name: 'vhagar' })
+  expect(useFleetPrefsStore.getState().hiddenHosts).toEqual(NO_HIDDEN_HOSTS)
+})
+
+test('hidden hosts survive rehydration, and a malformed entry is dropped', async () => {
+  localStorage.setItem(
+    'wz-fleet-prefs',
+    JSON.stringify({
+      state: { hiddenHosts: { cpu: ['meleys'], disk: 'vhagar', nonsense: ['syrax'] } },
+      version: 0,
+    }),
+  )
+
+  await useFleetPrefsStore.persist.rehydrate()
+
+  expect(useFleetPrefsStore.getState().hiddenHosts).toEqual({ ...NO_HIDDEN_HOSTS, cpu: ['meleys'] })
 })

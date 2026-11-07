@@ -40,7 +40,8 @@ export const METRIC_COPY: Record<MetricKind, MetricCopy> = {
   disk: {
     title: 'Disk',
     icon: 'disk',
-    measure: "Free space on each host's watched volume as a percent of its size",
+    measure:
+      "Used space on each host's watched volume as a percent of its size, read every fifteen minutes",
     reading: 'disk',
   },
   network: {
@@ -64,4 +65,4 @@ export const chartCaption = ({
   copy: MetricCopy
   windowMinutes: number
 }): string =>
-  `${copy.measure} over the last ${rangeProse(windowMinutes)}. The line advances a point every second and holds the last reading between collector ticks, so a flat run means no new reading rather than steady load. A gap in a line is a span nothing was observed. Wide ranges arrive averaged into buckets, so a hole shorter than one bucket is averaged over rather than drawn as a gap.`
+  `${copy.measure} over the last ${rangeProse(windowMinutes)}. The line advances a point every second and holds the last reading between collector ticks, so a flat run means no new reading rather than steady load. A gap in a line is a span nothing was observed. Wide ranges arrive averaged into buckets, so a hole shorter than one bucket is averaged over rather than drawn as a gap. Percent charts run from 0% to 100%; uncheck a host below to hide its line.`

@@ -33,10 +33,10 @@ export const AT_KEY = 'at'
 
 export const hostKey = (name: string): string => `host:${name}`
 
-// A missed reading must render as a gap in the line, not a straight bridge
-// pretending the host was observed. The collector's cadence is not hardcoded
-// here; it is inferred from the readings themselves, so a config change on the
-// monitor cannot silently turn real gaps into bridges.
+/* A missed reading must render as a gap in the line, not a straight bridge
+   pretending the host was observed. The collector's cadence is not hardcoded
+   here; it is inferred from the readings themselves, so a config change on the
+   monitor cannot silently turn real gaps into bridges. */
 const GAP_FACTOR = 2.5
 
 /** The typical spacing between readings, or null below two readings. */
@@ -101,8 +101,8 @@ export const stallLimit = (plots: readonly HostPlot[]): number | null => {
 const heldPoint = ({ plot, at }: { plot: HostPlot; at: number }): PlotPoint | null => {
   const newest = plot.points[plot.points.length - 1]
   if (newest === undefined || plot.holdLimitMs === null) return null
-  // strictly past the newest reading: a hold stands in for a reading that has
-  // not arrived and must never displace one that has
+  /* strictly past the newest reading: a hold stands in for a reading that has
+     not arrived and must never displace one that has */
   return at > newest.at && at - newest.at <= plot.holdLimitMs ? { at, value: newest.value } : null
 }
 
@@ -139,16 +139,16 @@ const carryForward = ({
   const byMoment = new Map(points.map((point) => [point.at, point]))
   /** What the host stands at for one moment of the run one reading opens. */
   const held = ({ point, at }: { point: PlotPoint; at: number }): number | null =>
-    // A reading always stands at its own moment, hold limit or not: a host with
-    // a single reading has no observed cadence to hold against, and returning
-    // null there dropped it off the chart entirely.
+    /* A reading always stands at its own moment, hold limit or not: a host with
+       a single reading has no observed cadence to hold against, and returning
+       null there dropped it off the chart entirely. */
     point.at === at || (limit !== null && at - point.at <= limit) ? point.value : null
   const runs = times.flatMap((at, index) => {
     const point = byMoment.get(at)
     return point === undefined ? [] : [{ index, point }]
   })
-  // Before the first reading the host has no value at all, which is not the
-  // same as a value of zero.
+  /* Before the first reading the host has no value at all, which is not the
+     same as a value of zero. */
   const unobserved = times.slice(0, runs[0]?.index ?? times.length).map(() => null)
   return [
     ...unobserved,
@@ -173,8 +173,8 @@ const gapBreaks = (plots: readonly HostPlot[]): readonly number[] =>
       ? []
       : plot.points.flatMap((point, index) => {
           const next = plot.points[index + 1]
-          // one past the limit, because the hold covers the limit itself: a
-          // break placed exactly on it still carries a value and joins the line
+          /* one past the limit, because the hold covers the limit itself: a
+             break placed exactly on it still carries a value and joins the line */
           const breakAt = point.at + limit + 1
           return next && next.at > breakAt ? [breakAt] : []
         })
@@ -212,10 +212,12 @@ export type DrawnFrame = {
   /** Mutable, because Recharts takes its data that way, and built here so the
       render does not have to copy it back out of a readonly one every pass. */
   readonly rows: ChartRow[]
-  /** The lines as drawn: readings plus each host's carried present. */
+  /** The lines as drawn: readings plus each host's carried present, for the
+      hosts the reader has left checked. */
   readonly lines: readonly HostPlot[]
-  /** The same hosts with observations only, which is what the legend names and
-      the freshness readout counts. A carried point is not a reading. */
+  /** Every host, hidden ones included, with observations only: what the
+      legend names and the freshness readout counts. A carried point is not a
+      reading. */
   readonly readings: readonly HostPlot[]
   readonly ticks: readonly number[]
   readonly scale: ChartScale
@@ -234,27 +236,31 @@ export const drawFrame = ({
   nowMs,
   span,
   unit,
+  hidden,
 }: {
   plots: readonly HostPlot[]
   nowMs: number
   span: number
   unit: MetricUnit
+  /** Hosts the reader unchecked: left off the plot and out of the axis
+      ceiling, but still named in the legend so they can be checked back on. */
+  hidden: readonly string[]
 }): DrawnFrame => {
-  // The drawn frame is [now - window, now]: a reading that ages past the window
-  // slides off the left edge, and the space between the newest reading and the
-  // right edge is the honest rendering of "nothing this recent yet".
+  /* The drawn frame is [now - window, now]: a reading that ages past the window
+     slides off the left edge, and the space between the newest reading and the
+     right edge is the honest rendering of "nothing this recent yet". */
   const first = nowMs - span
   const inFrame = (point: PlotPoint): boolean => point.at >= first && point.at <= nowMs
   const clipToFrame = (plot: HostPlot): HostPlot => ({
     ...plot,
     points: plot.points.filter(inFrame),
   })
-  // The newest reading before the left edge stays on the drawn line, so the
-  // stroke enters from the edge instead of starting at the first reading
-  // inside it: readings land a collector tick apart, and a line that began at
-  // the first one left up to a tick of empty plot on the left. The x axis
-  // allows overflow, so Recharts clips the stroke at the plot's edge and the
-  // reading itself is never shown.
+  /* The newest reading before the left edge stays on the drawn line, so the
+     stroke enters from the edge instead of starting at the first reading
+     inside it: readings land a collector tick apart, and a line that began at
+     the first one left up to a tick of empty plot on the left. The x axis
+     allows overflow, so Recharts clips the stroke at the plot's edge and the
+     reading itself is never shown. */
   const withLeadIn = (plot: HostPlot): HostPlot => {
     const before = plot.points.filter((point) => point.at < first)
     const lead = before[before.length - 1]
@@ -263,13 +269,20 @@ export const drawFrame = ({
       points: [...(lead === undefined ? [] : [lead]), ...plot.points.filter(inFrame)],
     }
   }
-  const lines = withHeld({ plots, at: nowMs }).map(withLeadIn)
+  const shown = plots.filter((plot) => !hidden.includes(plot.name))
+  const lines = withHeld({ plots: shown, at: nowMs }).map(withLeadIn)
+  /* every host, hidden or not: the legend names them all so a hidden one can
+     be checked back on */
   const readings = plots.map(clipToFrame)
-  // The axis is sized from what is on screen, not from the whole payload: a
-  // spike that has already slid off the left edge must not keep the ceiling
-  // high over a chart that no longer shows it, and the lead-in reading is off
-  // screen by definition. A fixed-scale unit ignores the peak entirely.
-  const peak = Math.max(0, ...readings.flatMap((plot) => plot.points.map((point) => point.value)))
+  /* The axis is sized from what is on screen, not from the whole payload: a
+     spike that has already slid off the left edge must not keep the ceiling
+     high over a chart that no longer shows it, the lead-in reading is off
+     screen by definition, and an unchecked line is not on screen at all. A
+     fixed-scale unit ignores the peak entirely. */
+  const peak = Math.max(
+    0,
+    ...shown.map(clipToFrame).flatMap((plot) => plot.points.map((point) => point.value)),
+  )
   return {
     rows: [...toRows(lines)],
     lines,

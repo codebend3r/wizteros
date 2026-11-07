@@ -1,36 +1,113 @@
-// Three bands, each owning its own padding so the rules between them run the
-// full width of the card. An inset rule reads as decoration; a full-bleed one
-// reads as a division, which is what these are: identity, readings, inventory.
+/* Three bands, each owning its own padding so the rules between them run the
+   full width of the card. An inset rule reads as decoration; a full-bleed one
+   reads as a division, which is what these are: identity, readings, inventory. */
 .card {
+  /* the positioning context for the name link's overlay, which is what makes
+     the whole card clickable */
+  position: relative;
   display: grid;
   overflow: hidden;
   grid-template-columns: minmax(0, 1fr);
 
-  // The readings band takes the slack, so the inventory band sits on the same
-  // baseline across a row of cards whatever each host reports. A third
-  // implicit row is created only when a footer is actually rendered, so a
-  // host with neither GPU nor Docker leaves no empty track behind.
+  /* The readings band takes the slack, so the inventory band sits on the same
+     baseline across a row of cards whatever each host reports. A third
+     implicit row is created only when a footer is actually rendered, so a
+     host with neither GPU nor Docker leaves no empty track behind. */
   grid-template-rows: auto 1fr;
   height: 100%;
 
-  // The border carries the host's identity, matching its line on the CPU
-  // chart; identity is still stated by the name, never by colour alone.
+  /* The border carries the host's identity, matching its line on the CPU
+     chart; identity is still stated by the name, never by colour alone. */
   border: 2px solid var(--series-color, var(--color-border));
   border-radius: var(--radius-md);
   background: var(--color-surface);
 
-  // Status keeps a non-colour cue now that the border colour means identity:
-  // dashed for never-collected, and the status word plus note text elsewhere.
+  /* Status keeps a non-colour cue now that the border colour means identity:
+     dashed for never-collected, and the status word plus note text elsewhere. */
   &[data-status='unknown'] {
     border-style: dashed;
   }
+
+  /* The card answers the pointer, or keyboard focus on its link, as one
+     target: the border brightens toward the host's colour, a soft glow in that
+     colour rises under it, and focus adds the accent ring. The lift is motion,
+     so it alone waits for the reduced-motion check; a transition listed for a
+     property that never changes costs nothing. */
+  transition:
+    box-shadow 180ms ease-out,
+    border-color 180ms ease-out,
+    translate 180ms ease-out;
+
+  &:hover,
+  &:has(.dsmLink:focus-visible) {
+    border-color: color-mix(
+      in oklab,
+      var(--series-color, var(--color-border)) 70%,
+      var(--color-text)
+    );
+    box-shadow: 0 var(--space-1) var(--space-3)
+      color-mix(in oklab, var(--series-color, transparent) 35%, transparent);
+
+    @media (prefers-reduced-motion: no-preference) {
+      translate: 0 calc(var(--space-0) * -1);
+    }
+  }
+
+  &:has(.dsmLink:focus-visible) {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
 }
 
-// The name band wears the host's colour at a tenth strength: enough to bind
-// the card to its chart line at a glance, faint enough that muted text still
-// clears 4.5:1 over every slot in the palette. Where color-mix is
-// unsupported the declaration drops and the band is plain surface, which is
-// the border-only card this replaced.
+/* The host name, and through its overlay the whole card. Inherits the name's
+   colour rather than link blue: the card's lift and the mark beside the name
+   are what say it opens something. */
+.dsmLink {
+  display: inline-grid;
+  align-items: center;
+  grid-auto-flow: column;
+  gap: var(--space-1);
+  justify-content: start;
+  color: inherit;
+  text-decoration: none;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+  }
+
+  /* the card draws the focus state, so the ring goes on the card's edge where
+     the overlay is, not around the name alone */
+  &:focus-visible {
+    outline: none;
+  }
+}
+
+// Says "opens elsewhere" without words; the words are in the hidden span.
+.dsmMark {
+  color: var(--color-muted);
+  transition: color 180ms ease-out;
+
+  .card:hover & {
+    color: var(--color-text);
+  }
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The name band wears the host's colour at a tenth strength: enough to bind
+   the card to its chart line at a glance, faint enough that muted text still
+   clears 4.5:1 over every slot in the palette. Where color-mix is
+   unsupported the declaration drops and the band is plain surface, which is
+   the border-only card this replaced. */
 .header {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -40,11 +117,11 @@
   background: color-mix(in oklab, var(--series-color, transparent) 10%, var(--color-surface));
 }
 
-// The name owns a full row at every width, and everything else sits under it.
-// It used to share a row with the status, where the status column sized to its
-// own content first: a qualified phrase took the whole card and left the name
-// a few characters wide, which `overflow-wrap: anywhere` then broke down the
-// middle of the hostname, one letter per line.
+/* The name owns a full row at every width, and everything else sits under it.
+   It used to share a row with the status, where the status column sized to its
+   own content first: a qualified phrase took the whole card and left the name
+   a few characters wide, which `overflow-wrap: anywhere` then broke down the
+   middle of the hostname, one letter per line. */
 .name {
   font-family: var(--font-display);
   font-size: var(--font-size-lg);
@@ -61,9 +138,9 @@
   overflow-wrap: anywhere;
 }
 
-// Hugs its own text rather than spanning the band, so a one-word status reads
-// as a token and a phrase can still wrap to a second line. The tile leads,
-// inset by the same hairline the text is, so pill and tile share one corner.
+/* Hugs its own text rather than spanning the band, so a one-word status reads
+   as a token and a phrase can still wrap to a second line. The tile leads,
+   inset by the same hairline the text is, so pill and tile share one corner. */
 .status {
   display: grid;
   align-items: center;
@@ -80,8 +157,8 @@
   text-transform: uppercase;
 }
 
-// The qualified form is a phrase, not a micro-label: uppercase tracking at
-// that length is unreadable, so drop it while keeping the same position.
+/* The qualified form is a phrase, not a micro-label: uppercase tracking at
+   that length is unreadable, so drop it while keeping the same position. */
 .statusStale {
   font-weight: 400;
   font-size: var(--font-size-sm);
@@ -97,9 +174,9 @@
   padding: var(--space-3);
 }
 
-// A rail rather than a filled box: these notes qualify the readings beside
-// them and should not outweigh them. The mark sits on the first line and the
-// sentence takes the rest of the width.
+/* A rail rather than a filled box: these notes qualify the readings beside
+   them and should not outweigh them. The mark sits on the first line and the
+   sentence takes the rest of the width. */
 .note {
   display: grid;
   align-items: start;
@@ -116,10 +193,10 @@
   color: var(--color-accent);
 }
 
-// One reading per row. Two to a line halved the card's height, but every
-// figure competed with the one beside it and the disk row had no room to
-// state its free space; a single column gives each reading the full width and
-// the figures a common right edge to line up on.
+/* One reading per row. Two to a line halved the card's height, but every
+   figure competed with the one beside it and the disk row had no room to
+   state its free space; a single column gives each reading the full width and
+   the figures a common right edge to line up on. */
 .stats {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -127,10 +204,10 @@
   margin: 0;
 }
 
-// The tile leads and spans the first two rows, so it sits beside the reading
-// as a whole rather than beside its first line. The label and figure share
-// the top row; the meter and context line hang under them, spanning both of
-// their columns, so the bar underlines the reading edge to edge.
+/* The tile leads and spans the first two rows, so it sits beside the reading
+   as a whole rather than beside its first line. The label and figure share
+   the top row; the meter and context line hang under them, spanning both of
+   their columns, so the bar underlines the reading edge to edge. */
 .stat {
   display: grid;
   align-items: center;
@@ -151,15 +228,15 @@
   text-transform: uppercase;
 }
 
-// The dd has to be an element for the definition-list semantics, but its
-// children are grid items of the row: the figure shares the label's line and
-// the meter and context span the columns beneath it.
+/* The dd has to be an element for the definition-list semantics, but its
+   children are grid items of the row: the figure shares the label's line and
+   the meter and context span the columns beneath it. */
 .statValue {
   display: contents;
 }
 
-// The figure is the thing the eye lands on, so it takes the weight, the size,
-// and the mono face every machine-reported number on this page is set in.
+/* The figure is the thing the eye lands on, so it takes the weight, the size,
+   and the mono face every machine-reported number on this page is set in. */
 .figure {
   font-family: var(--font-mono);
   font-size: var(--font-size-lg);
@@ -170,8 +247,8 @@
   text-align: right;
 }
 
-// The finding and the qualifier share one line, finding left and scope right,
-// wrapping into a stack when a narrow card cannot hold both.
+/* The finding and the qualifier share one line, finding left and scope right,
+   wrapping into a stack when a narrow card cannot hold both. */
 .contextRow {
   display: flex;
   flex-wrap: wrap;
@@ -183,8 +260,8 @@
   font-variant-numeric: tabular-nums;
 }
 
-// Body colour and label weight where the qualifier beside it is muted: "2.5 TB
-// free" is a finding, not a scoping.
+/* Body colour and label weight where the qualifier beside it is muted: "2.5 TB
+   free" is a finding, not a scoping. */
 .finding {
   font-weight: 600;
   overflow-wrap: anywhere;
@@ -210,9 +287,9 @@
   box-shadow: inset 0 0 0 1px var(--color-border);
 }
 
-// The host's own colour, the one its card border and chart line already wear:
-// the bar says how much, never what it means, so it needs no scale of its own.
-// Every series colour clears 3:1 against the track it sits in.
+/* The host's own colour, the one its card border and chart line already wear:
+   the bar says how much, never what it means, so it needs no scale of its own.
+   Every series colour clears 3:1 against the track it sits in. */
 .meterFill {
   display: block;
   height: 100%;
@@ -228,9 +305,9 @@
   border-block-start: 1px solid var(--color-border);
 }
 
-// The GPU line and the containers line are the same kind of statement - what
-// this host has - so they open on the same tile column and read as a pair,
-// with both labels starting at the same x.
+/* The GPU line and the containers line are the same kind of statement - what
+   this host has - so they open on the same tile column and read as a pair,
+   with both labels starting at the same x. */
 .meta {
   display: grid;
   align-items: center;
@@ -246,8 +323,8 @@
   text-transform: uppercase;
 }
 
-// Never colour alone: on the collapsed roster this is the whole finding, so it
-// is stated in words ("2 down", "not collected") and merely set quietly.
+/* Never colour alone: on the collapsed roster this is the whole finding, so it
+   is stated in words ("2 down", "not collected") and merely set quietly. */
 .metaValue {
   color: var(--color-muted);
   font-size: var(--font-size-xs);
@@ -256,15 +333,18 @@
 }
 
 .containers {
+  // above the card's link overlay, so opening the roster does not open DSM
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-1);
 }
 
-// Four columns - tile, label, tally, chevron - so the tally sits hard right
-// whatever the label wraps to, and the chevron past it is what tells this row
-// apart from the GPU line above: `display: grid` takes a summary's own marker
-// away, so the row that reads as expandable used to look just like that one.
+/* Four columns - tile, label, tally, chevron - so the tally sits hard right
+   whatever the label wraps to, and the chevron past it is what tells this row
+   apart from the GPU line above: `display: grid` takes a summary's own marker
+   away, so the row that reads as expandable used to look just like that one. */
 .containersSummary {
   display: grid;
   align-items: center;
@@ -283,8 +363,8 @@
   }
 }
 
-// Pointing down while shut, up while open. Snapped rather than tweened: a
-// 12px mark is too small for the motion to read as anything but flicker.
+/* Pointing down while shut, up while open. Snapped rather than tweened: a
+   12px mark is too small for the motion to read as anything but flicker. */
 .chevron {
   color: var(--color-muted);
 }

@@ -10,6 +10,7 @@ export type IconName =
   | 'cpu'
   | 'disk'
   | 'expand'
+  | 'external'
   | 'gauge'
   | 'gpu'
   | 'help'
@@ -23,9 +24,9 @@ export type IconName =
   | 'users'
   | 'warn'
 
-// One 16-unit grid, strokes only, round caps and joins: the geometry every
-// glyph shares, so the set reads as one hand whatever size it is shown at. The
-// single filled mark (the disk's indicator dot) says so inline.
+/* One 16-unit grid, strokes only, round caps and joins: the geometry every
+   glyph shares, so the set reads as one hand whatever size it is shown at. The
+   single filled mark (the disk's indicator dot) says so inline. */
 const GLYPHS: Record<IconName, ReactElement> = {
   box: (
     <>
@@ -57,6 +58,9 @@ const GLYPHS: Record<IconName, ReactElement> = {
     </>
   ),
   expand: <path d="M2.5 6V2.5H6M13.5 10v3.5H10M2.5 2.5l4 4M13.5 13.5l-4-4" />,
+  external: (
+    <path d="M9.5 2.5h4v4M13.5 2.5l-6 6M11.5 9.5v3a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3" />
+  ),
   gauge: (
     <>
       <path d="M2 12.5a6 6 0 1 1 12 0" />

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { CartesianGrid, Line, LineChart, Tooltip, XAxis, YAxis } from 'recharts'
-import { ChartLegend } from '@/components/Chart/ChartLegend'
+import { ChartLegend, type SeriesToggle } from '@/components/Chart/ChartLegend'
 import { CHART_MARGIN } from '@/components/Chart/chartFrame'
 import { ChartTooltip, type ChartKeyRow } from '@/components/Chart/ChartTooltip'
 import { useMeasuredBox } from '@/components/Chart/useMeasuredBox'
@@ -29,6 +29,10 @@ import { rangeProse } from '@/stores/fleetPrefsStore'
 import chrome from '@/components/Chart/chart.module.scss'
 import styles from '@/pages/Fleet/MetricChart.module.scss'
 
+/** Shared rather than a fresh `[]` per render, so the frame below is not
+    rebuilt when no toggle is given. */
+const NONE_HIDDEN: readonly string[] = []
+
 type MetricChartProps = {
   readonly hosts: readonly MetricHostSeries[]
   readonly windowMinutes: number
@@ -36,15 +40,18 @@ type MetricChartProps = {
       formatting. Comes from the same response as the numbers. */
   readonly unit: MetricUnit
   readonly copy: MetricCopy
+  /** Which host lines the reader unchecked, and how to flip one. Without it
+      every line is drawn and the legend is a plain key. */
+  readonly toggle?: SeriesToggle
   /** The clock, injectable so tests can pin the frame. */
   readonly now?: () => number
 }
 
-// The frame advances once a second, whatever cadence the page polls the monitor
-// at, and each host's newest reading is carried onto the new right edge with
-// it. The collector reads each host far more slowly than that, so the tip of
-// every line keeps moving between readings instead of freezing until the next
-// one lands.
+/* The frame advances once a second, whatever cadence the page polls the monitor
+   at, and each host's newest reading is carried onto the new right edge with
+   it. The collector reads each host far more slowly than that, so the tip of
+   every line keeps moving between readings instead of freezing until the next
+   one lands. */
 const FRAME_EVERY_MS = 1000
 
 /** The moving present: the frame's right edge, and the moment every line's tip
@@ -69,9 +76,9 @@ const useNow = (now: () => number): number => {
   return nowMs
 }
 
-// Module-level so the default is one stable reference: an inline default would
-// be a new function every render and reset the interval effect keyed on it each
-// time.
+/* Module-level so the default is one stable reference: an inline default would
+   be a new function every render and reset the interval effect keyed on it each
+   time. */
 const readClock = (): number => Date.now()
 
 type ReadingTooltipProps = {
@@ -118,28 +125,33 @@ export const MetricChart = ({
   windowMinutes,
   unit,
   copy,
+  toggle,
   now = readClock,
 }: MetricChartProps) => {
-  // The stylesheet sizes the plot box, never the chart inside it: a floor on
-  // the page, and whatever height is left in a container that has some to
-  // give, such as the full-screen view. The chart is drawn to what is measured.
+  /* The stylesheet sizes the plot box, never the chart inside it: a floor on
+     the page, and whatever height is left in a container that has some to
+     give, such as the full-screen view. The chart is drawn to what is measured. */
   const { ref, width, height } = useMeasuredBox()
 
   const plots = useMemo(() => toPlots(hosts), [hosts])
+  const hidden = toggle?.hidden ?? NONE_HIDDEN
   const span = windowMinutes * 60_000
   const nowMs = useNow(now)
   const {
     rows,
     lines: visiblePlots,
-    readings: visibleReadings,
+    readings,
     ticks,
     scale,
-  } = useMemo(() => drawFrame({ plots, nowMs, span, unit }), [plots, nowMs, span, unit])
+  } = useMemo(
+    () => drawFrame({ plots, nowMs, span, unit, hidden }),
+    [plots, nowMs, span, unit, hidden],
+  )
 
   const first = nowMs - span
-  // Labelled at round minutes rather than wherever the domain divides, so the
-  // ticks name round times and stay put while the frame slides under them. The
-  // spacing widens with the range and narrows with the box.
+  /* Labelled at round minutes rather than wherever the domain divides, so the
+     ticks name round times and stay put while the frame slides under them. The
+     spacing widens with the range and narrows with the box. */
   const dated = span > DAY_MS
   const axisMoments = labelledTicks({
     first,
@@ -149,17 +161,17 @@ export const MetricChart = ({
     cap: tickCap(span),
   })
 
-  // Only worth saying once the collector is late. Readings land every few
-  // seconds, so an always-on readout spends its life reporting the ordinary lag
-  // between a reading and the frame that drew it - a number that reads as a
-  // fault and is not one. Past the stall limit it is the opposite: the lines
-  // have stopped, and this is the only thing on the page that says so.
-  //
-  // Whole seconds, because the frame advances in whole seconds: a readout with
-  // more precision than the thing it measures reads as false precision.
+  /* Only worth saying once the collector is late. Readings land every few
+     seconds, so an always-on readout spends its life reporting the ordinary lag
+     between a reading and the frame that drew it - a number that reads as a
+     fault and is not one. Past the stall limit it is the opposite: the lines
+     have stopped, and this is the only thing on the page that says so.
+
+     Whole seconds, because the frame advances in whole seconds: a readout with
+     more precision than the thing it measures reads as false precision. */
   const newestTick = ticks[ticks.length - 1] ?? null
   const ageMs = newestTick === null ? null : Math.max(0, nowMs - newestTick)
-  const stallAfterMs = stallLimit(visibleReadings)
+  const stallAfterMs = stallLimit(readings)
   const ageLabel =
     ageMs !== null && stallAfterMs !== null && ageMs > stallAfterMs
       ? `${Math.round(ageMs / 1000)} s`
@@ -186,8 +198,8 @@ export const MetricChart = ({
             height={height}
             data={rows}
             margin={CHART_MARGIN}
-            // Recharts' own keyboard layer: the chart takes a tab stop and the
-            // arrow keys walk it, announcing each moment through the tooltip.
+            /* Recharts' own keyboard layer: the chart takes a tab stop and the
+               arrow keys walk it, announcing each moment through the tooltip. */
             accessibilityLayer
             role="img"
             aria-label={`${copy.title} by host over the last ${rangeProse(windowMinutes)}`}
@@ -197,21 +209,21 @@ export const MetricChart = ({
               dataKey={AT_KEY}
               type="number"
               scale="time"
-              // the frame is the window, not the extent of the data: a host that
-              // stopped reporting an hour ago leaves empty space to the right
-              // rather than stretching to fill it
+              /* the frame is the window, not the extent of the data: a host that
+                 stopped reporting an hour ago leaves empty space to the right
+                 rather than stretching to fill it */
               domain={[first, nowMs]}
               allowDataOverflow
               ticks={[...axisMoments]}
               tickFormatter={(at: number) => axisLabel({ at, dated })}
-              // the label class rides the tick itself: Recharts hoists tick
-              // text out of the axis group, where the axis class cannot
-              // reach it
+              /* the label class rides the tick itself: Recharts hoists tick
+                 text out of the axis group, where the axis class cannot
+                 reach it */
               tick={{ className: chrome.tickLabel }}
               tickLine={false}
-              // every tick handed over is drawn: the axis already picked as
-              // many as the box holds, and Recharts culling them again by its
-              // own measure thinned a scale that was sized to fit
+              /* every tick handed over is drawn: the axis already picked as
+                 many as the box holds, and Recharts culling them again by its
+                 own measure thinned a scale that was sized to fit */
               interval={0}
               className={chrome.axis}
             />
@@ -229,31 +241,33 @@ export const MetricChart = ({
             <Tooltip
               isAnimationActive={false}
               cursor={{ className: chrome.crosshair }}
-              content={<ReadingTooltip scale={scale} plots={plots} />}
+              /* the drawn lines, so a host the reader hid is not read out; their
+                 byTick is the observations alone, never the carried tip */
+              content={<ReadingTooltip scale={scale} plots={visiblePlots} />}
             />
             {visiblePlots.map((plot) => (
               <Line
                 key={plot.name}
-                // the class carries --series-color, which the stroke reads: one
-                // colour per host position, the same one its card wears
+                /* the class carries --series-color, which the stroke reads: one
+                   colour per host position, the same one its card wears */
                 className={seriesClass(plot.seriesIndex)}
                 dataKey={hostKey(plot.name)}
                 name={plot.name}
-                // monotone, so the curve cannot overshoot the range its own
-                // readings span: a smoothed monitor line may not draw a trough
-                // under two equal readings or a peak past a busy host's 100%
+                /* monotone, so the curve cannot overshoot the range its own
+                   readings span: a smoothed monitor line may not draw a trough
+                   under two equal readings or a peak past a busy host's 100% */
                 type="monotone"
                 stroke="var(--series-color, currentColor)"
                 strokeWidth={2}
-                // A stroke cannot show a reading with no neighbour to reach
-                // toward, so a host down to a point or two wears dots instead.
-                // Any host reporting normally has hundreds, and dots at that
-                // density would smear the line into a band.
+                /* A stroke cannot show a reading with no neighbour to reach
+                   toward, so a host down to a point or two wears dots instead.
+                   Any host reporting normally has hundreds, and dots at that
+                   density would smear the line into a band. */
                 dot={plot.points.length <= 2}
-                // The inspected reading wears its series colour ringed in the
-                // surface colour. The class comes along because the active dot
-                // is drawn outside the line's group: without it the colour
-                // variable never resolves and the dot renders bare white.
+                /* The inspected reading wears its series colour ringed in the
+                   surface colour. The class comes along because the active dot
+                   is drawn outside the line's group: without it the colour
+                   variable never resolves and the dot renders bare white. */
                 activeDot={{
                   r: 4,
                   className: seriesClass(plot.seriesIndex),
@@ -262,8 +276,8 @@ export const MetricChart = ({
                 }}
                 // a span nothing observed stays a hole
                 connectNulls={false}
-                // the chart redraws once a second; an entrance animation would
-                // restart on every one of them and never finish
+                /* the chart redraws once a second; an entrance animation would
+                   restart on every one of them and never finish */
                 isAnimationActive={false}
               />
             ))}
@@ -273,12 +287,18 @@ export const MetricChart = ({
 
       <ChartLegend
         mark="line"
-        items={visibleReadings.map((plot) => ({
+        items={readings.map((plot) => ({
           key: plot.name,
           name: plot.name,
           swatchClass: seriesClass(plot.seriesIndex),
           note: plot.points.length === 0 ? 'no readings' : undefined,
         }))}
+        toggle={
+          toggle && {
+            ...toggle,
+            label: `Hosts shown on the ${copy.title} chart`,
+          }
+        }
       />
     </div>
   )

@@ -53,6 +53,46 @@ const isRange = (value: unknown): value is number =>
 const isChartKind = (value: unknown): value is MetricKind =>
   CHART_KINDS.some((kind) => kind === value)
 
+/** The hosts each chart has been told to leave out, by host name. */
+export type HiddenHosts = Readonly<Record<MetricKind, readonly string[]>>
+
+/** Every chart showing every host. A list per chart from the start, so a
+    reader never has to tell "nothing hidden" from "never asked". */
+export const NO_HIDDEN_HOSTS: HiddenHosts = { cpu: [], memory: [], network: [], disk: [], gpu: [] }
+
+const isNameList = (value: unknown): value is readonly string[] =>
+  Array.isArray(value) && value.every((name) => typeof name === 'string')
+
+/** What came back from storage, kept only where it is a chart this build has
+    and a list of names. A host name that no longer exists is harmless: it
+    matches no line and is never drawn as hidden. */
+const storedHiddenHosts = (value: unknown): HiddenHosts =>
+  isRecord(value)
+    ? CHART_KINDS.reduce<HiddenHosts>((kept, kind) => {
+        const names = value[kind]
+        return isNameList(names) ? { ...kept, [kind]: names } : kept
+      }, NO_HIDDEN_HOSTS)
+    : NO_HIDDEN_HOSTS
+
+/** One host's line shown or hidden on one chart. */
+const toggled = ({
+  hidden,
+  kind,
+  name,
+}: {
+  hidden: HiddenHosts
+  kind: MetricKind
+  name: string
+}): HiddenHosts => {
+  const current = hidden[kind]
+  return {
+    ...hidden,
+    [kind]: current.includes(name)
+      ? current.filter((hiddenName) => hiddenName !== name)
+      : [...current, name],
+  }
+}
+
 type FleetPrefsState = {
   readonly updateIntervalMs: number
   readonly setUpdateIntervalMs: (intervalMs: number) => void
@@ -62,6 +102,11 @@ type FleetPrefsState = {
       one request per interval however many charts exist. */
   readonly chartKind: MetricKind
   readonly setChartKind: (kind: MetricKind) => void
+  /** Lines the reader unchecked, per chart. Per chart rather than one list for
+      all of them, because a host worth hiding on one (a GPU line pinned at its
+      floor) is often the one worth watching on another. */
+  readonly hiddenHosts: HiddenHosts
+  readonly toggleHost: (toggle: { kind: MetricKind; name: string }) => void
 }
 
 /** The fleet page's own knobs, persisted so a refresh keeps them.
@@ -82,6 +127,9 @@ export const useFleetPrefsStore = create<FleetPrefsState>()(
         set({ rangeMinutes: isRange(minutes) ? minutes : DEFAULT_RANGE_MINUTES }),
       chartKind: DEFAULT_CHART_KIND,
       setChartKind: (kind) => set({ chartKind: isChartKind(kind) ? kind : DEFAULT_CHART_KIND }),
+      hiddenHosts: NO_HIDDEN_HOSTS,
+      toggleHost: ({ kind, name }) =>
+        set((state) => ({ hiddenHosts: toggled({ hidden: state.hiddenHosts, kind, name }) })),
     }),
     {
       name: 'wz-fleet-prefs',
@@ -94,6 +142,7 @@ export const useFleetPrefsStore = create<FleetPrefsState>()(
             : current.updateIntervalMs,
           rangeMinutes: isRange(stored.rangeMinutes) ? stored.rangeMinutes : current.rangeMinutes,
           chartKind: isChartKind(stored.chartKind) ? stored.chartKind : current.chartKind,
+          hiddenHosts: storedHiddenHosts(stored.hiddenHosts),
         }
       },
     },

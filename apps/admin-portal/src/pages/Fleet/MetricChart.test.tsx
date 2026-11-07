@@ -36,8 +36,8 @@ const vermithor = series({
   ],
 })
 
-// A fixed present, injected so the sliding window is deterministic: the frame
-// is [NOW - 60min, NOW] and every fixture point sits inside it.
+/* A fixed present, injected so the sliding window is deterministic: the frame
+   is [NOW - 60min, NOW] and every fixture point sits inside it. */
 const NOW = T0 + 390_000
 
 // One sampling tick plus slack, for the cases that assert nothing was added.
@@ -78,8 +78,8 @@ test('MetricChart legend names every host, including one with nothing to draw', 
   const legend = screen.getByRole('list')
   expect(within(legend).getByText('meleys')).toBeInTheDocument()
   expect(within(legend).getByText('caraxes')).toBeInTheDocument()
-  // absent is absent: a host that reported nothing says so instead of drawing
-  // a flat line at zero
+  /* absent is absent: a host that reported nothing says so instead of drawing
+     a flat line at zero */
   expect(within(legend).getByText('no readings')).toBeInTheDocument()
 })
 
@@ -118,8 +118,8 @@ test('MetricChart curves between readings rather than joining them straight', ()
 })
 
 test('MetricChart breaks a line across a gap instead of bridging it', () => {
-  // readings every 30s, then a five-minute hole: drawing through it would
-  // claim the host was observed while it was not
+  /* readings every 30s, then a five-minute hole: drawing through it would
+     claim the host was observed while it was not */
   const gappy = series({
     name: 'meleys',
     points: [
@@ -146,15 +146,15 @@ test('MetricChart says nothing about freshness while the readings keep coming', 
     />,
   )
 
-  // the newest reading sits at T0+60s against a 30s cadence, so 30.5s of age is
-  // the ordinary lag between a reading and the frame that drew it, not news
+  /* the newest reading sits at T0+60s against a 30s cadence, so 30.5s of age is
+     the ordinary lag between a reading and the frame that drew it, not news */
   expect(screen.queryByText(/Newest reading/)).toBeNull()
 })
 
 test('MetricChart carries the newest reading up to the present', async () => {
-  // A present 10s past the newest reading, well inside the 30s cadence: the
-  // line has to reach the right edge, or every host reads as one that fell
-  // silent whenever the collector is mid-cycle.
+  /* A present 10s past the newest reading, well inside the 30s cadence: the
+     line has to reach the right edge, or every host reads as one that fell
+     silent whenever the collector is mid-cycle. */
   const held = render(
     <MetricChart
       hosts={[meleys]}
@@ -164,9 +164,9 @@ test('MetricChart carries the newest reading up to the present', async () => {
       now={() => T0 + 70_000}
     />,
   )
-  // the same frame with that present actually observed, which is the geometry
-  // the carried point has to land on: asserted against Recharts' own scale
-  // rather than against a pixel written out here
+  /* the same frame with that present actually observed, which is the geometry
+     the carried point has to land on: asserted against Recharts' own scale
+     rather than against a pixel written out here */
   const observed = render(
     <MetricChart
       hosts={[
@@ -205,18 +205,18 @@ test('MetricChart redraws on its own timer, not on a refetch', async () => {
   const drawn = (): string => curves(container)[0] ?? ''
   const before = drawn()
 
-  // nothing about this render changes except the clock, and the frame slides
-  // under the line anyway
+  /* nothing about this render changes except the clock, and the frame slides
+     under the line anyway */
   offset = 1000
   await waitFor(() => expect(drawn()).not.toBe(before), { timeout: 4000 })
 })
 
 test('MetricChart keeps its line whole as the held seconds pile up', async () => {
-  // The seconds carried between readings are a drawing device, not readings.
-  // Reading the collector's cadence back off a series that already holds them
-  // measures the drawing device: the cadence collapses to a second, every real
-  // 30s interval is reclassified as a gap, and the line shatters into points
-  // too sparse to draw. The chart went blank a few seconds after it painted.
+  /* The seconds carried between readings are a drawing device, not readings.
+     Reading the collector's cadence back off a series that already holds them
+     measures the drawing device: the cadence collapses to a second, every real
+     30s interval is reclassified as a gap, and the line shatters into points
+     too sparse to draw. The chart went blank a few seconds after it painted. */
   const started = Date.now()
   const { container } = render(
     <MetricChart
@@ -224,8 +224,8 @@ test('MetricChart keeps its line whole as the held seconds pile up', async () =>
       windowMinutes={60}
       unit="percent"
       copy={METRIC_COPY.cpu}
-      // 10s past the newest reading against a 30s cadence, advancing with the
-      // real clock so each sampling tick stamps a distinct second, as in a browser
+      /* 10s past the newest reading against a 30s cadence, advancing with the
+         real clock so each sampling tick stamps a distinct second, as in a browser */
       now={() => T0 + 70_000 + (Date.now() - started)}
     />,
   )
@@ -239,14 +239,14 @@ test('MetricChart keeps its line whole as the held seconds pile up', async () =>
 })
 
 test('MetricChart holds nothing once the newest reading has outlived the cadence', async () => {
-  // NOW is 330s past the last reading against a 30s cadence, so there is
-  // nothing fresh enough to carry: the line must end where the readings did
+  /* NOW is 330s past the last reading against a 30s cadence, so there is
+     nothing fresh enough to carry: the line must end where the readings did */
   const { container } = renderChart([meleys])
   const drawn = (): string => curves(container)[0] ?? ''
   const before = drawn()
 
-  // act, so the sampling tick that fires during the wait is flushed as React
-  // would flush it in the browser rather than warned about
+  /* act, so the sampling tick that fires during the wait is flushed as React
+     would flush it in the browser rather than warned about */
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, SAMPLE_WAIT_MS))
   })
@@ -255,9 +255,9 @@ test('MetricChart holds nothing once the newest reading has outlived the cadence
 })
 
 test('MetricChart reports the age of the newest reading once the collector is late', () => {
-  // 330s past the last reading against a 30s cadence, well past the point the
-  // lines stop advancing, which is the case the readout exists for. Counted in
-  // whole seconds, the rate the frame itself advances at.
+  /* 330s past the last reading against a 30s cadence, well past the point the
+     lines stop advancing, which is the case the readout exists for. Counted in
+     whole seconds, the rate the frame itself advances at. */
   renderChart([meleys, vermithor])
 
   expect(screen.getByText('Newest reading 330 s ago.')).toBeInTheDocument()
@@ -313,11 +313,11 @@ const renderChartWindow = ({
   return container
 }
 
-// Recharts divides the domain for its own ticks, which labels the present's
-// offset and reshuffles every second as the frame slides.
+/* Recharts divides the domain for its own ticks, which labels the present's
+   offset and reshuffles every second as the frame slides. */
 test('MetricChart labels the time axis on round minutes only', () => {
-  // an hour on a wide box takes the five-minute spacing; the frame itself
-  // starts at :06:30, which is where a domain-divided axis would label from
+  /* an hour on a wide box takes the five-minute spacing; the frame itself
+     starts at :06:30, which is where a domain-divided axis would label from */
   const container = renderChartWindow({ windowMinutes: 60, width: 1600 })
 
   const labels = axisLabels(container)
@@ -326,9 +326,9 @@ test('MetricChart labels the time axis on round minutes only', () => {
   expect(minutes.filter((minute) => minute % 5 !== 0)).toEqual([])
 })
 
-// The preset ranges span four orders of magnitude; the axis must carry a
-// readable number of labels at every one of them, not one label at fifteen
-// minutes and twenty-five at a day.
+/* The preset ranges span four orders of magnitude; the axis must carry a
+   readable number of labels at every one of them, not one label at fifteen
+   minutes and twenty-five at a day. */
 test.each([60, 6 * 60, 24 * 60, 3 * 24 * 60, 7 * 24 * 60])(
   'MetricChart draws between six and twelve labels over a %i minute window',
   (windowMinutes) => {
@@ -340,9 +340,9 @@ test.each([60, 6 * 60, 24 * 60, 3 * 24 * 60, 7 * 24 * 60])(
   },
 )
 
-// Readings land a collector tick apart, so the first one inside the frame can
-// sit a whole tick past the left edge. The line is drawn in from the reading
-// before the edge instead, and Recharts clips it at the plot's side.
+/* Readings land a collector tick apart, so the first one inside the frame can
+   sit a whole tick past the left edge. The line is drawn in from the reading
+   before the edge instead, and Recharts clips it at the plot's side. */
 test('MetricChart draws the line in from the reading before the frame edge', () => {
   // the frame is [NOW - 60 min, NOW]; -3300 s is 90 s before its left edge
   const insideOnly = series({
@@ -377,8 +377,8 @@ test('MetricChart sizes the axis from the readings on screen, not the lead-in', 
         series({
           name: 'meleys',
           points: [
-            // a 100 MB/s reading 90 s before the frame's left edge is drawn
-            // in from, not shown, so it must not lift the ceiling to 100
+            /* a 100 MB/s reading 90 s before the frame's left edge is drawn
+               in from, not shown, so it must not lift the ceiling to 100 */
             [-3300, 100 * MB],
             [0, 1 * MB],
             [30, 1.5 * MB],
@@ -401,8 +401,8 @@ test('MetricChart sizes the axis from the readings on screen, not the lead-in', 
   expect(labels).not.toContain('100.0 MB/s')
 })
 
-// A quarter hour is short enough to label every minute, so it does: fifteen
-// marks, one a minute, on any box that holds them.
+/* A quarter hour is short enough to label every minute, so it does: fifteen
+   marks, one a minute, on any box that holds them. */
 test('MetricChart labels every minute of a fifteen minute window', () => {
   const container = renderChartWindow({ windowMinutes: 15, width: 1600 })
 
@@ -415,8 +415,8 @@ test('MetricChart keeps the axis under twelve labels on a narrow box', () => {
   expect(axisLabels(container).length).toBeLessThanOrEqual(12)
 })
 
-// A week holds seven midnights; "12:00 AM" seven times over names none of
-// them. Every label past a day carries its date, so no two can read the same.
+/* A week holds seven midnights; "12:00 AM" seven times over names none of
+   them. Every label past a day carries its date, so no two can read the same. */
 test('MetricChart dates the axis labels once the window passes a day', () => {
   const container = renderChartWindow({ windowMinutes: 3 * 24 * 60, width: 1600 })
 
@@ -443,14 +443,14 @@ test('MetricChart dates the inspected moment, not just its time', () => {
   fireEvent.focus(plot)
   fireEvent.keyDown(plot, { key: 'ArrowRight' })
 
-  // derived rather than written out: the suite runs in whatever zone and locale
-  // the machine is set to, and the assertion is that a date is there at all
+  /* derived rather than written out: the suite runs in whatever zone and locale
+     the machine is set to, and the assertion is that a date is there at all */
   const day = new Date(T0 + 30_000).toLocaleDateString([], { month: 'short', day: 'numeric' })
   expect(container.querySelector('.recharts-tooltip-wrapper')).toHaveTextContent(day)
 })
 
-// Recharts' accessibility layer puts the plot on the tab order and walks it
-// with the arrow keys; the tooltip is what it announces at each stop.
+/* Recharts' accessibility layer puts the plot on the tab order and walks it
+   with the arrow keys; the tooltip is what it announces at each stop. */
 test('MetricChart reads out every host at the focused moment, stepped by arrow keys', () => {
   const { container } = renderChart([meleys, vermithor])
 
@@ -474,8 +474,8 @@ test('MetricChart names the plot for a screen reader', () => {
   expect(screen.getByRole('img', { name: 'CPU by host over the last hour' })).toBeInTheDocument()
 })
 
-// The four charts share this component, so what makes them different has to be
-// the unit and the copy rather than four near-copies of the drawing code.
+/* The four charts share this component, so what makes them different has to be
+   the unit and the copy rather than four near-copies of the drawing code. */
 test('MetricChart prints a throughput in bytes per second, not as a percentage', () => {
   const traffic = series({
     name: 'meleys',
@@ -504,9 +504,9 @@ test('MetricChart prints a throughput in bytes per second, not as a percentage',
 })
 
 test('MetricChart scales a throughput axis to the readings in view', () => {
-  // a rate has no natural ceiling, so the axis takes one from the data; a
-  // 2 MB/s peak makes a 2 MB/s ceiling whose quarters print round, because the
-  // ceiling was rounded inside the unit the label prints in
+  /* a rate has no natural ceiling, so the axis takes one from the data; a
+     2 MB/s peak makes a 2 MB/s ceiling whose quarters print round, because the
+     ceiling was rounded inside the unit the label prints in */
   const traffic = series({ name: 'meleys', points: [[0, 2_097_152]] })
   const { container } = render(
     <MetricChart
@@ -526,4 +526,92 @@ test('MetricChart scales a throughput axis to the readings in view', () => {
   expect(axis).toContain('1.5 MB/s')
   // the origin carries no unit
   expect(axis).toContain('0')
+})
+
+/** The y axis labels as drawn, bottom first. */
+const yLabels = (container: HTMLElement): readonly string[] =>
+  [
+    ...container.querySelectorAll(
+      '.recharts-yAxis-tick-labels .recharts-cartesian-axis-tick-value',
+    ),
+  ].map((tick) => tick.textContent ?? '')
+
+test('MetricChart draws a percent axis from 0% to 100%, whatever band the lines sit in', () => {
+  const { container } = render(
+    <MetricChart
+      hosts={[
+        series({
+          name: 'meleys',
+          points: [
+            [0, 89.2],
+            [30, 89.6],
+          ],
+        }),
+        series({
+          name: 'vhagar',
+          points: [
+            [0, 93.1],
+            [30, 93.4],
+          ],
+        }),
+      ]}
+      windowMinutes={60}
+      unit="percent"
+      copy={METRIC_COPY.disk}
+      now={() => NOW}
+    />,
+  )
+
+  expect(yLabels(container)).toEqual(['0%', '25%', '50%', '75%', '100%'])
+})
+
+test('MetricChart legend checkboxes hide a line and keep the 0-100 axis', () => {
+  const toggled: string[] = []
+  const hosts = [
+    series({
+      name: 'meleys',
+      points: [
+        [0, 89.2],
+        [30, 89.6],
+      ],
+    }),
+    series({
+      name: 'vhagar',
+      points: [
+        [0, 93.1],
+        [30, 93.4],
+      ],
+    }),
+  ]
+  const { container, rerender } = render(
+    <MetricChart
+      hosts={hosts}
+      windowMinutes={60}
+      unit="percent"
+      copy={METRIC_COPY.disk}
+      toggle={{ hidden: [], onToggle: (name) => toggled.push(name) }}
+      now={() => NOW}
+    />,
+  )
+
+  const vhagar = screen.getByRole('checkbox', { name: 'vhagar' })
+  expect(vhagar).toBeChecked()
+  fireEvent.click(vhagar)
+  expect(toggled).toEqual(['vhagar'])
+
+  rerender(
+    <MetricChart
+      hosts={hosts}
+      windowMinutes={60}
+      unit="percent"
+      copy={METRIC_COPY.disk}
+      toggle={{ hidden: ['vhagar'], onToggle: (name) => toggled.push(name) }}
+      now={() => NOW}
+    />,
+  )
+
+  expect(screen.getByRole('checkbox', { name: 'vhagar' })).not.toBeChecked()
+  expect(curves(container)).toHaveLength(1)
+  // hiding a line never moves a percent axis off 0-100
+  expect(yLabels(container)).toEqual(['0%', '25%', '50%', '75%', '100%'])
 })
