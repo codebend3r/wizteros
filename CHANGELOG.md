@@ -12,6 +12,21 @@ the version recorded in the tree at that commit. That was not always true; the
 history was rewritten on 2026-08-08 to make it so. See
 [The 2026-08-08 history rewrite](#the-2026-08-08-history-rewrite).
 
+## v0.5.2 (2026-11-07)
+
+- Add disk and storage charts to the Fleet page, backed by a new
+  `GET /fleet/disk`, and open any chart full screen in a native dialog
+- Plot disk usage as used space rather than free, keep percent charts on a
+  fixed 0 to 100% axis, and let each legend's checkboxes hide host lines
+- Link each host card to its DSM login page in a new tab
+- Add a dry-run-by-default cleanup script for SABnzbd's Complete folder on
+  Vermithor, deleting only releases the arr apps already hold
+- Update every dependency to latest (nx 24, stylelint 18, happy-dom 21),
+  pin shared versions through Bun catalogs, and fail `check:repo` on any
+  ranged version; stripe stays on the release for the bridge's API version
+- Deploy note: the fleet-monitor changes were hand-copied to the NAS ahead
+  of main. Run `deploy-nas` so the NAS matches this tag
+
 ## v0.5.1 (2026-10-25)
 
 - Apply subscription tier rules across eligible, non-retired NAS servers,
