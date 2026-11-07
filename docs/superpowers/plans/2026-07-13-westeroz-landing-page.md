@@ -191,12 +191,7 @@ body {
   margin: 0;
   background: var(--color-bg);
   color: var(--color-text);
-  font-family:
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    Roboto,
-    sans-serif;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   font-size: var(--font-size-md);
   line-height: 1.5;
 }
@@ -852,12 +847,12 @@ Note: with `base = "web"`, Netlify installs from `web/package.json` and resolves
 
 ```toml
 [build]
-  base = "web"
-  command = "npm run build"
-  publish = "dist"
+base = "web"
+command = "npm run build"
+publish = "dist"
 
 [build.environment]
-  NODE_VERSION = "20"
+NODE_VERSION = "20"
 ```
 
 - [ ] **Step 2: Create `web/.env.example`**

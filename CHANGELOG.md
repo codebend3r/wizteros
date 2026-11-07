@@ -104,7 +104,7 @@ history was rewritten on 2026-08-08 to make it so. See
 ## v0.4.1 (2026-10-09)
 
 - Answer a wrong method on a known route with 405, `{"detail": "Method Not
-Allowed"}` and an `Allow` header in both servers, as the FastAPI services
+  Allowed"}` and an `Allow` header in both servers, as the FastAPI services
   did, where the NestJS port had fallen through to 404. Lives in
   `libs/server-common` as `starletteMethodNotAllowed`
 - Version every workspace package in lockstep: `fleet-monitor` and

@@ -331,7 +331,7 @@ steps, and steps 3 and 5 are the only writes anywhere in this whole path:
    spam filtering.
 4. The operator reviews it inside Gmail itself and sends it by hand.
 5. Only after that send actually happens does the main session run `--record <email>
-<play>` for each recipient (and `--opt-out <email>` for anyone whose reply asks to
+   <play>` for each recipient (and `--opt-out <email>` for anyone whose reply asks to
    stop). Recording before a send actually goes out would start a cooldown clock for
    outreach that never happened.
 

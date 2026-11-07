@@ -25,25 +25,25 @@
   },
   "dependencies": {
     "better-sqlite3": "13.0.3",
-    "jose": "6.2.12"
+    "jose": "catalog:"
   },
   "devDependencies": {
-    "@nestjs/common": "12.1.0",
-    "@nestjs/core": "12.1.0",
-    "@nestjs/platform-fastify": "12.1.0",
-    "@nestjs/testing": "12.1.0",
+    "@nestjs/common": "catalog:",
+    "@nestjs/core": "catalog:",
+    "@nestjs/platform-fastify": "catalog:",
+    "@nestjs/testing": "catalog:",
     "@types/better-sqlite3": "9.6.0",
-    "@types/node": "24.19.0",
-    "@typescript/native-preview": "7.0.0-dev.20260707.2",
-    "oxfmt": "0.68.0",
-    "oxlint": "1.83.0",
-    "reflect-metadata": "0.2.2",
-    "rxjs": "7.8.2",
-    "typescript": "6.0.3",
-    "vitest": "5.0.2"
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "oxfmt": "catalog:",
+    "oxlint": "catalog:",
+    "reflect-metadata": "catalog:",
+    "rxjs": "catalog:",
+    "typescript": "catalog:server",
+    "vitest": "catalog:"
   },
   "peerDependencies": {
-    "@nestjs/common": "12.1.0"
+    "@nestjs/common": "catalog:"
   },
   "nx": {
     "projectType": "library",

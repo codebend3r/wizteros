@@ -3,10 +3,33 @@
   "version": "0.5.1",
   "private": true,
   "description": "Nx monorepo for the wizteros paid-access stack: the admin-portal SPA and the stripe-bridge and fleet-monitor NestJS servers",
-  "workspaces": [
-    "apps/*",
-    "libs/*"
-  ],
+  "workspaces": {
+    "packages": [
+      "apps/*",
+      "libs/*"
+    ],
+    "catalog": {
+      "@nestjs/cli": "12.0.12",
+      "@nestjs/common": "12.4.0",
+      "@nestjs/core": "12.4.0",
+      "@nestjs/platform-fastify": "12.4.0",
+      "@nestjs/testing": "12.4.0",
+      "@types/node": "24.19.2",
+      "@typescript/native-preview": "7.0.0-dev.20260707.2",
+      "jose": "6.2.15",
+      "oxfmt": "0.77.0",
+      "oxlint": "1.92.0",
+      "reflect-metadata": "0.2.2",
+      "rxjs": "7.8.2",
+      "vitest": "5.1.0",
+      "zod": "4.6.7"
+    },
+    "catalogs": {
+      "server": {
+        "typescript": "6.0.3"
+      }
+    }
+  },
   "type": "module",
   "scripts": {
     "preinstall": "node scripts/only-bun.mjs",
@@ -17,8 +40,9 @@
     "system-check": "nx run-many -t lint:ts lint:css format:check typecheck test -p admin-portal",
     "system-check:no-cache": "nx run-many -t lint:ts lint:css format:check typecheck test -p admin-portal --skip-nx-cache",
     "verify": "bun run check:repo && nx run-many -t lint:ts lint:css format:check typecheck test build",
-    "check:repo": "bun run lint:root && bun run format:check:root && bun run test:tooling && bun run check:versions && bun run security:scan",
+    "check:repo": "bun run lint:root && bun run format:check:root && bun run test:tooling && bun run check:versions && bun run check:exact && bun run security:scan",
     "check:versions": "node scripts/version-markers.mjs --check",
+    "check:exact": "node scripts/exact-versions.mjs",
     "test:tooling": "node --test '.claude/skills/**/*.test.mjs' 'scripts/**/*.test.mjs' && PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s .claude/skills/sab-complete-cleanup/scripts",
     "ci:smoke": "bash scripts/ci/smoke-container.sh",
     "affected": "nx affected -t lint:ts lint:css format:check typecheck test build",
@@ -26,9 +50,9 @@
     "typecheck": "nx run-many -t typecheck",
     "lint": "bun run lint:root && nx run-many -t lint:ts lint:css",
     "lint:fix": "bun run lint:root:fix && nx run-many -t lint:ts:fix lint:css:fix",
-    "lint:root": "oxlint",
+    "lint:root": "oxlint --disable-nested-config",
     "security:scan": "node .claude/skills/security-audit/scripts/scan.mjs",
-    "lint:root:fix": "oxlint --fix",
+    "lint:root:fix": "oxlint --disable-nested-config --fix",
     "lint:ts": "nx run-many -t lint:ts",
     "lint:ts:fix": "nx run-many -t lint:ts:fix",
     "lint:css": "nx run-many -t lint:css",
@@ -56,11 +80,11 @@
     "deploy:nas": "bash .claude/skills/deploy-nas/scripts/deploy-nas.sh"
   },
   "devDependencies": {
-    "lefthook": "2.1.14",
-    "lint-staged": "17.5.1",
-    "nx": "^23.2.1",
-    "oxfmt": "0.68.0",
-    "oxlint": "1.83.0"
+    "lefthook": "2.2.2",
+    "lint-staged": "17.6.0",
+    "nx": "24.0.5",
+    "oxfmt": "catalog:",
+    "oxlint": "catalog:"
   },
   "packageManager": "bun@1.4.3",
   "nx": {

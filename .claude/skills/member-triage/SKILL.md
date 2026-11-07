@@ -163,7 +163,7 @@ Expect Wizarr `records: none found`. There is no "disabled" record to look at.
   still `pending`, `subscribed=1`. A tier change that dropped one of their servers forces
   disable-first, because Wizarr has no per-server unshare. They are mid-migration, not
   disabled. Resend the pending link. Only the checkout path logs this (`reset N existing
-record(s) for <email> pending re-join`); an admin reissue disables silently and reports
+  record(s) for <email> pending re-join`); an admin reissue disables silently and reports
   the count as `disabled: N` in its own response, so the store event is the evidence, not
   the log.
 - **Window lapsed.** That shows up as a record with a past `expires`, not as a missing
@@ -232,7 +232,7 @@ a `subscription_update` or a one-off invoice renews too.
   touching anything. A missing expiry usually heals itself; a wrong one never does. It
   will not heal for a VIP, for a member with no `invited_at`, or when `invited_at` plus 35
   days is already past, which logs `reconcile: computed expiry ... is already past;
-skipping` rather than letting a background job revoke anyone. Those are the ones that
+  skipping` rather than letting a background job revoke anyone. Those are the ones that
   need Set expiry.
 
 **Remedy.** `/user`, **Set expiry** to the paid date plus 35 days

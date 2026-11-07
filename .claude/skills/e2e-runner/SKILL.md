@@ -119,7 +119,7 @@ Per tier, in order `bronze, silver, gold, youth`:
 5. Asserts, also only over returned ids: bronze was granted no 4K library, and no tier was
    granted a `9X.` private library.
 6. **Downloads is printed, never asserted.** `EXPECT_DOWNLOADS` (`bronze:false, silver:false,
-gold:true, youth:true`) only appears in the `ok` line; the invite's real `allow_downloads` is
+   gold:true, youth:true`) only appears in the `ok` line; the invite's real `allow_downloads` is
    never read back. Do not report the tiers suite as proof the downloads flag is right.
 7. **Cleanup**: `DELETE /api/invitations/<id>` for every invite found, in a `finally`, so it runs
    after failed POSTs, failed assertions and a thrown error alike, then "Cleaned up N test
