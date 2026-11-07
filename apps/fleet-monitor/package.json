@@ -15,25 +15,25 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@nestjs/common": "12.1.0",
-    "@nestjs/core": "12.1.0",
-    "@nestjs/platform-fastify": "12.1.0",
+    "@nestjs/common": "catalog:",
+    "@nestjs/core": "catalog:",
+    "@nestjs/platform-fastify": "catalog:",
     "@wizteros/server-common": "workspace:*",
     "@wizteros/wire": "workspace:*",
-    "reflect-metadata": "0.2.2",
-    "rxjs": "7.8.2",
-    "zod": "4.6.5"
+    "reflect-metadata": "catalog:",
+    "rxjs": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
-    "@nestjs/cli": "12.0.7",
-    "@nestjs/testing": "12.1.0",
-    "@types/node": "24.19.0",
-    "@typescript/native-preview": "7.0.0-dev.20260707.2",
-    "jose": "6.2.12",
-    "oxfmt": "0.68.0",
-    "oxlint": "1.83.0",
-    "typescript": "6.0.3",
-    "vitest": "5.0.2"
+    "@nestjs/cli": "catalog:",
+    "@nestjs/testing": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "jose": "catalog:",
+    "oxfmt": "catalog:",
+    "oxlint": "catalog:",
+    "typescript": "catalog:server",
+    "vitest": "catalog:"
   },
   "nx": {
     "includedScripts": [

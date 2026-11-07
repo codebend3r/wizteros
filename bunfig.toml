@@ -1,0 +1,4 @@
+[install]
+# `bun add` writes the exact version it resolved rather than a ^range;
+# scripts/exact-versions.mjs fails check:repo on any range that slips in.
+exact = true

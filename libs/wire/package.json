@@ -20,15 +20,15 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "zod": "4.6.5"
+    "zod": "catalog:"
   },
   "devDependencies": {
-    "@types/node": "24.19.0",
-    "@typescript/native-preview": "7.0.0-dev.20260707.2",
-    "oxfmt": "0.68.0",
-    "oxlint": "1.83.0",
-    "typescript": "6.0.3",
-    "vitest": "5.0.2"
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "oxfmt": "catalog:",
+    "oxlint": "catalog:",
+    "typescript": "catalog:server",
+    "vitest": "catalog:"
   },
   "nx": {
     "projectType": "library",

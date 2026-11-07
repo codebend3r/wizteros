@@ -26,10 +26,14 @@ const expandWorkspace = (pattern) => {
     .sort()
 }
 
+/** The `workspaces` globs, whether listed bare or under `packages` beside Bun's catalogs. */
+const workspacePatterns = ({ workspaces }) =>
+  Array.isArray(workspaces) ? workspaces : (workspaces?.packages ?? [])
+
 /** Every manifest that carries the release version, the root's first. */
 const markers = () => [
   'package.json',
-  ...(readManifest('package.json').workspaces ?? [])
+  ...workspacePatterns(readManifest('package.json'))
     .flatMap(expandWorkspace)
     .map((dir) => `${dir}/package.json`)
     .filter((path) => existsSync(join(repoRoot, path))),
