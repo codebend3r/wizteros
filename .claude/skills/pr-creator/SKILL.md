@@ -50,37 +50,51 @@ Use equivalent GitHub tooling when `gh` is unavailable.
 
 - Start the title with exactly `WZ: `, followed by a short, specific description of the
   branch's logical change.
-- Structure the body as two short sections, in this order:
-  - `## Problem` — one plain sentence naming the problem or gap this PR addresses. State
-    it from the user/system's perspective, not as a restatement of the diff (e.g. "Renewal
-    webhooks weren't updating member expiry" rather than "Add webhook handler").
-  - `## Changes` — concise `- ` bullet points describing what the PR actually does.
-- Keep the body minimal overall: one sentence under `Problem`, and only as many bullets
-  under `Changes` as there are distinct logical changes.
-- Describe only changes present in the committed branch diff.
-- Mention verification only when it actually ran; never imply that unrun checks passed.
-- Omit boilerplate, repeated title text, empty headings, and speculative follow-up work.
-- If the branch is a pure refactor, chore, or tooling change with no user-facing problem
-  to name, state that plainly under `Problem` (e.g. "No behavior change; simplifies X for
-  maintainability") rather than inventing a problem.
+- Structure the body as bullet sections, in this order:
+  - `## What` — required. One `- ` bullet per change, one concept per bullet.
+  - `## Why` — one bullet per reason: the problem or gap behind the change, stated from
+    the user/system's perspective rather than as a restatement of the diff. Omit the
+    section when the title already says it.
+  - `## Verified` — one bullet per check that actually ran, with its result
+    (`` `bun run verify` green ``, a manual run and what it showed). Include it whenever
+    anything was run; omit it otherwise, and never imply that unrun checks passed.
+- Add another section only when the PR genuinely needs one (`## Behaviour to note` for a
+  change a reader would trip over, `## After merge` for steps such as `bun run deploy:nas`,
+  `## Screenshots` for portal changes). It goes between `## Why` and `## Verified`.
+- The body is bullets, never prose. Use `-`, not `*`. Keep each bullet to one line with no
+  trailing period, and to roughly eight per section; more means rolling bullets up or
+  splitting the PR.
+- Backtick anything that reads as code in the body: commands, flags, paths, identifiers,
+  env vars. A multi-area PR may lead a bullet with its scope (`` `loops.ts`: … `` or
+  `**admin-portal**: …`).
+- Describe only changes present in the committed branch diff, and do not restate the diff.
+- Omit boilerplate, repeated title text, empty headings, footers, and speculative
+  follow-up work.
 
 Example:
 
 ```text
 WZ: Add subscription renewal handling
 
-## Problem
-Renewal webhooks were received but never updated a member's expiry, so paid renewals
-silently lapsed.
+## What
 
-## Changes
-- process successful renewal webhooks
-- add regression coverage for renewal state changes
+- `webhook/handlers.ts`: handle `invoice.paid` and extend the member's expiry
+- regression coverage for renewal state changes
+
+## Why
+
+- renewal webhooks were received but never updated a member's expiry
+- so paid renewals silently lapsed
+
+## Verified
+
+- `bun run verify` green
+- `bun run test:e2e` renews a test-mode subscription and the expiry moves
 ```
 
-Before creation, validate that the title matches `WZ: <short title>` and that the body
-has exactly the `## Problem` / `## Changes` structure above, staying minimal under the
-current `CLAUDE.md` rules.
+Before creation, validate that the title matches `WZ: <short title>`, that the body opens
+with `## What`, that every section is bullets, and that `## Verified` lists only checks
+that ran, staying minimal under the current `CLAUDE.md` rules.
 
 ## Create and verify
 

@@ -209,7 +209,7 @@ Everything else here is convention, and the import-alias rule in particular has 
 ## Pull Requests
 
 - Should follow the same naming convention as commits and every PR title should start with `WZ: a short title`
-- The body of the PR should be minimal and favour bullet points
+- The body of the PR should be minimal and favour bullet points, under `## What`, `## Why` and `## Verified` headings (the `pr-creator` skill has the template)
 
 ## Skills
 
