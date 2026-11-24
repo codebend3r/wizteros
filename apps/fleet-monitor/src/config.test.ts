@@ -3,6 +3,7 @@ import {
   dbPath,
   fleetHosts,
   host,
+  hostConsole,
   hostIps,
   MAX_ROUND_SECONDS,
   PLEX_HISTORY_INTERVAL,
@@ -30,11 +31,11 @@ describe('config', () => {
   })
 
   it('configures every fleet host', () => {
-    expect(names(HOSTS)).toEqual(['caraxes', 'meleys', 'syrax', 'vermithor', 'vhagar'])
+    expect(names(HOSTS)).toEqual(['balerion', 'caraxes', 'meleys', 'syrax', 'vermithor', 'vhagar'])
   })
 
   it('gives only vermithor and vhagar a render node', () => {
-    // measured 2026-08-10: meleys is AMD, syrax is Atom, caraxes is ARM
+    // measured 2026-08-10: meleys is AMD, syrax is Atom, caraxes is ARM; balerion is unprobed
     expect(names(HOSTS.filter(({ has_gpu }) => has_gpu))).toEqual(['vermithor', 'vhagar'])
   })
 
@@ -56,30 +57,38 @@ describe('config', () => {
       caraxes: '192.0.2.4',
       syrax: '192.0.2.5',
       vhagar: '192.0.2.6',
+      balerion: '192.0.2.7',
     })
   })
 
   it.each([
     ['is unset', undefined],
     ['is empty', ''],
-    ['is one address short', '192.0.2.2,192.0.2.3,192.0.2.4,192.0.2.5'],
-    ['has one address too many', '192.0.2.2,192.0.2.3,192.0.2.4,192.0.2.5,192.0.2.6,192.0.2.7'],
-    ['holds a hostname', '192.0.2.2,192.0.2.3,192.0.2.4,192.0.2.5,nas.example.com'],
-    ['holds an octet over 255', '192.0.2.2,192.0.2.3,192.0.2.4,192.0.2.5,192.0.2.256'],
+    ['is one address short', '192.0.2.2,192.0.2.3,192.0.2.4,192.0.2.5,192.0.2.6'],
+    [
+      'has one address too many',
+      '192.0.2.2,192.0.2.3,192.0.2.4,192.0.2.5,192.0.2.6,192.0.2.7,192.0.2.8',
+    ],
+    ['holds a hostname', '192.0.2.2,192.0.2.3,192.0.2.4,192.0.2.5,192.0.2.6,nas.example.com'],
+    ['holds an octet over 255', '192.0.2.2,192.0.2.3,192.0.2.4,192.0.2.5,192.0.2.6,192.0.2.256'],
   ])('refuses a fleet list that %s', (_label, value) => {
     vi.stubEnv('FM_HOST_IPS', value)
-    expect(() => hostIps()).toThrow(/FM_HOST_IPS must list 5/)
+    expect(() => hostIps()).toThrow(/FM_HOST_IPS must list 6/)
     expect(() => fleetHosts()).toThrow(/FM_HOST_IPS/)
   })
 
   it('trims whitespace around each address', () => {
-    vi.stubEnv('FM_HOST_IPS', ' 192.0.2.12 , 192.0.2.13,192.0.2.14 ,192.0.2.15,192.0.2.16')
+    vi.stubEnv(
+      'FM_HOST_IPS',
+      ' 192.0.2.12 , 192.0.2.13,192.0.2.14 ,192.0.2.15,192.0.2.16,192.0.2.17',
+    )
     expect(fleetHosts().map(({ ip }) => ip)).toEqual([
       '192.0.2.12',
       '192.0.2.13',
       '192.0.2.14',
       '192.0.2.15',
       '192.0.2.16',
+      '192.0.2.17',
     ])
   })
 
@@ -125,14 +134,32 @@ describe('config', () => {
     expect(MAX_ROUND_SECONDS).toBe((VITALS_TIMEOUT + SLOW_TIMEOUT) * CAPTURE_FACTOR)
   })
 
-  it('gives every host a plex url', () => {
-    // Plex runs natively on all five boxes (measured 2026-09-18), so an empty
-    // url here would silently drop a server from every play-history view
+  it('links balerion to UGOS and every other host to DSM', () => {
+    expect(Object.fromEntries(fleetHosts().map((each) => [each.name, hostConsole(each)]))).toEqual({
+      meleys: { name: 'DiskStation Manager', url: 'http://192.0.2.2:5000/' },
+      vermithor: { name: 'DiskStation Manager', url: 'http://192.0.2.3:5000/' },
+      caraxes: { name: 'DiskStation Manager', url: 'http://192.0.2.4:5000/' },
+      syrax: { name: 'DiskStation Manager', url: 'http://192.0.2.5:5000/' },
+      vhagar: { name: 'DiskStation Manager', url: 'http://192.0.2.6:5000/' },
+      balerion: { name: 'UGOS', url: 'http://192.0.2.7:9999/' },
+    })
+  })
+
+  it('gives every host that runs plex a plex url', () => {
+    /* Plex runs natively on the five Synology boxes (measured 2026-09-18), so an
+       empty url here would silently drop a server from every play-history view;
+       balerion is the media store and runs none */
     expect(names(plexHosts())).toEqual(['caraxes', 'meleys', 'syrax', 'vermithor', 'vhagar'])
   })
 
   it('keeps plex hosts in config order', () => {
-    expect(plexHosts().map(({ name }) => name)).toEqual(HOSTS.map(({ name }) => name))
+    expect(plexHosts().map(({ name }) => name)).toEqual([
+      'meleys',
+      'vermithor',
+      'caraxes',
+      'syrax',
+      'vhagar',
+    ])
   })
 
   it('addresses the two secure-only servers over https', () => {
@@ -145,6 +172,7 @@ describe('config', () => {
       caraxes: 'http://192.0.2.4:32400',
       syrax: 'http://192.0.2.5:32400',
       vhagar: 'https://192.0.2.6:32400',
+      balerion: '',
     })
   })
 

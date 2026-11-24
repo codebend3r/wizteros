@@ -2,13 +2,13 @@
 # Prints the ssh target (user@ip) of one fleet host, built from the gitignored
 # .env so no address or account name is ever committed.
 #
-#   scripts/nas-host.sh [meleys|vermithor|caraxes|syrax|vhagar]   (default meleys)
+#   scripts/nas-host.sh [meleys|vermithor|caraxes|syrax|vhagar|balerion]   (default meleys)
 #
 # Resolution, first hit wins:
 #   1. the host's override: WZ_NAS_HOST for meleys, WZ_<HOST>_SSH for any host
 #   2. FM_SSH_USER plus the host's position in FM_HOST_IPS, the same
 #      comma-separated list the fleet monitor reads (meleys, vermithor,
-#      caraxes, syrax, vhagar order)
+#      caraxes, syrax, vhagar, balerion order)
 # Values come from the environment, then from the .env at the repo root
 # (WZ_ENV_FILE points at another one). Fails, naming what is missing, rather
 # than guessing a target.
@@ -24,7 +24,8 @@ case "$host" in
   caraxes) index=3 ;;
   syrax) index=4 ;;
   vhagar) index=5 ;;
-  *) echo "nas-host: unknown host '$host' (meleys, vermithor, caraxes, syrax, vhagar)" >&2; exit 2 ;;
+  balerion) index=6 ;;
+  *) echo "nas-host: unknown host '$host' (meleys, vermithor, caraxes, syrax, vhagar, balerion)" >&2; exit 2 ;;
 esac
 
 # The value of a variable: the environment wins, then the last assignment in the env file.

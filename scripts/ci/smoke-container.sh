@@ -27,7 +27,7 @@ case "$app" in
     port=8010
     ready=/health
     config=(
-      -e 'FM_HOST_IPS=192.0.2.10,192.0.2.11,192.0.2.12,192.0.2.13,192.0.2.14'
+      -e 'FM_HOST_IPS=192.0.2.10,192.0.2.11,192.0.2.12,192.0.2.13,192.0.2.14,192.0.2.15'
       -e FM_SSH_USER=sanity
       -e FM_DB_PATH=/tmp/sanity.db
     )

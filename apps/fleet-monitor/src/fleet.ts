@@ -9,7 +9,7 @@
 // Nothing here opens a session. Every function takes the connection the route
 // already has, so answering for the whole fleet costs one.
 
-import { fleetHosts, type Host, SLOW_INTERVAL, VITALS_INTERVAL } from '@/config.js'
+import { fleetHosts, type Host, hostConsole, SLOW_INTERVAL, VITALS_INTERVAL } from '@/config.js'
 import type { Connection } from '@/db.js'
 import { observedRun, uptimePercent } from '@/incidents.js'
 import { type ContainerView, fromSamples } from '@/probes/docker.js'
@@ -89,6 +89,8 @@ export type HostView = Readonly<{
   ip: string
   has_gpu: boolean
   has_docker: boolean
+  // the vendor UI the portal's card links to, which only the fleet config knows
+  console: ReturnType<typeof hostConsole>
   collected: boolean
   status: HostState
   cores: number | null
@@ -293,6 +295,7 @@ export const hostView = ({
     ip: host.ip,
     has_gpu: host.has_gpu,
     has_docker: !!host.docker_url,
+    console: hostConsole(host),
     collected,
     status: hostState({ collected, diskPercent, loadPerCore }),
     cores,

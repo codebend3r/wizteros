@@ -62,15 +62,6 @@ export const plural = ({ count, unit }: { count: number; unit: string }): string
 
 /** A metric age in words. "unknown" for an absent age, because a host that was
     never measured has no age at all, and rendering it as 0 would read as fresh. */
-/* DiskStation Manager's own port. Every box answers on both 5000 (http) and
-   5001 (https, self-signed), checked 2026-11-07; the plain port opens straight
-   to the login page instead of behind a certificate warning, and DSM encrypts
-   the password itself before it leaves the browser. */
-const DSM_PORT = 5000
-
-/** A host's DSM login page, which its card on the Fleet page links to. */
-export const dsmUrl = ({ ip }: { ip: string }): string => `http://${ip}:${DSM_PORT}/`
-
 export const formatAge = (seconds: number | null): string => {
   if (seconds === null || !Number.isFinite(seconds) || seconds < 0) return 'unknown'
   const unit = AGE_UNITS.find((candidate) => seconds >= candidate.seconds)

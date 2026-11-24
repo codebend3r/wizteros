@@ -410,7 +410,7 @@ describe('fleetHistory', () => {
     const narrow = fleetHistory({ connection: db, kind: 'cpu', minutes: 5, now: NOW })
 
     expect(narrow.window_minutes).toBe(5)
-    expect(narrow.hosts.map((host) => host.points)).toEqual([[], [], [], [], []])
+    expect(narrow.hosts.map((host) => host.points)).toEqual([[], [], [], [], [], []])
     expect(valuesByHost({ kind: 'cpu', minutes: 30 }).meleys).toEqual([25])
   })
 
