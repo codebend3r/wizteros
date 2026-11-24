@@ -58,22 +58,26 @@ export type Host = Readonly<{
   docker_url: string
   // Empty means "no Plex here", the same contract docker_url follows.
   plex_url: string
+  console: ConsoleKind
 }>
 
-/** A host, frozen, with `plex_url` defaulting to empty like the Python dataclass. */
+/** A host, frozen, with `plex_url` defaulting to empty like the Python
+    dataclass and `console` to DSM, which every box but balerion runs. */
 export const host = ({
   name,
   ip,
   has_gpu,
   docker_url,
   plex_url = '',
+  console = 'dsm',
 }: {
   name: string
   ip: string
   has_gpu: boolean
   docker_url: string
   plex_url?: string
-}): Host => Object.freeze({ name, ip, has_gpu, docker_url, plex_url })
+  console?: ConsoleKind
+}): Host => Object.freeze({ name, ip, has_gpu, docker_url, plex_url, console })
 
 // Measured 2026-08-10, GPU absence re-verified 2026-08-11.
 //
@@ -100,39 +104,65 @@ export const host = ({
 // against the docker: target only; the containers behind it are never
 // observed, so no container result is recorded either way. See collector.
 //
-// plex_url: Plex Media Server runs natively on all five (measured 2026-09-18,
-// all on 1.43.4). vermithor and vhagar require secure connections and close a
-// plain-http socket without a response, so they are addressed over https;
-// the certificate they present is Plex's *.plex.direct wildcard, which cannot
+// plex_url: Plex Media Server runs natively on all five Synology boxes
+// (measured 2026-09-18, all on 1.43.4). vermithor and vhagar require secure
+// connections and close a plain-http socket without a response, so they are
+// addressed over https; the certificate they present is Plex's *.plex.direct wildcard, which cannot
 // verify against a LAN ip, so plex sync connects to an https url with
 // verification off. The owner token still authorizes every request.
+//
+// balerion is a UGreen NAS (UGOS, not DSM) added 2026-11-23 as the media store
+// Meleys mounts over CIFS. Plex stays on Meleys, so it has no plex_url; Docker
+// and GPU are unprobed until ssh is enabled there and they can be measured.
 const DOCKER_PORT = 2375
 const PLEX_PORT = 32400
+
+/* Each NAS vendor's management console, over plain http. DSM answers on both
+   5000 and 5001 (https, self-signed), checked 2026-11-07; the plain port opens
+   straight to the login page instead of behind a certificate warning, and DSM
+   encrypts the password itself before it leaves the browser. UGOS answers on
+   9999, checked 2026-11-23. */
+const CONSOLES = {
+  dsm: { name: 'DiskStation Manager', port: 5000 },
+  ugos: { name: 'UGOS', port: 9999 },
+} as const
+
+type ConsoleKind = keyof typeof CONSOLES
+
+/** A host's management console: the login page its Fleet card links to, and
+    the product's name for the link's description. */
+export const hostConsole = ({ ip, console }: Pick<Host, 'ip' | 'console'>) => {
+  const { name, port } = CONSOLES[console]
+  return { name, url: `http://${ip}:${port}/` }
+}
 
 /**
  * What the fleet is, minus where it lives: the address of each box comes from
  * FM_HOST_IPS, in this order, so no ip is ever committed.
  *
  * `docker` marks a host that exposes Docker over TCP; `plex` is the scheme its
- * Plex answers on.
+ * Plex answers on; `console` is the vendor management UI it runs.
  */
 const FLEET: readonly Readonly<{
   name: string
   has_gpu: boolean
   docker: boolean
-  plex: 'http' | 'https'
+  // null where no Plex runs: the host is monitored but has no play history.
+  plex: 'http' | 'https' | null
+  console: ConsoleKind
 }>[] = [
-  { name: 'meleys', has_gpu: false, docker: true, plex: 'http' },
-  { name: 'vermithor', has_gpu: true, docker: true, plex: 'https' },
-  { name: 'caraxes', has_gpu: false, docker: false, plex: 'http' },
-  { name: 'syrax', has_gpu: false, docker: false, plex: 'http' },
-  { name: 'vhagar', has_gpu: true, docker: true, plex: 'https' },
+  { name: 'meleys', has_gpu: false, docker: true, plex: 'http', console: 'dsm' },
+  { name: 'vermithor', has_gpu: true, docker: true, plex: 'https', console: 'dsm' },
+  { name: 'caraxes', has_gpu: false, docker: false, plex: 'http', console: 'dsm' },
+  { name: 'syrax', has_gpu: false, docker: false, plex: 'http', console: 'dsm' },
+  { name: 'vhagar', has_gpu: true, docker: true, plex: 'https', console: 'dsm' },
+  { name: 'balerion', has_gpu: false, docker: false, plex: null, console: 'ugos' },
 ]
 
 /**
  * The fleet's addresses from FM_HOST_IPS, a comma-separated list of IPv4
  * addresses in the order FLEET names the hosts (meleys, vermithor, caraxes,
- * syrax, vhagar).
+ * syrax, vhagar, balerion).
  *
  * Throws, naming the variable and the expected order but never echoing a
  * value, when the list is missing, the wrong length, or holds anything that is
@@ -158,15 +188,17 @@ export const hostIps = (): readonly string[] => {
 export const fleetHosts = (): readonly Host[] => {
   const ips = hostIps()
   return Object.freeze(
-    FLEET.map(({ name, has_gpu, docker, plex }, index) =>
-      host({
+    FLEET.map(({ name, has_gpu, docker, plex, console }, index) => {
+      const ip = ips[index] ?? ''
+      return host({
         name,
-        ip: ips[index] ?? '',
+        ip,
         has_gpu,
-        docker_url: docker ? `http://${ips[index] ?? ''}:${DOCKER_PORT}` : '',
-        plex_url: `${plex}://${ips[index] ?? ''}:${PLEX_PORT}`,
-      }),
-    ),
+        docker_url: docker ? `http://${ip}:${DOCKER_PORT}` : '',
+        plex_url: plex ? `${plex}://${ip}:${PLEX_PORT}` : '',
+        console,
+      })
+    }),
   )
 }
 
@@ -182,7 +214,7 @@ export const plexHosts = (hosts: readonly Host[] = fleetHosts()): readonly Host[
 export const dbPath = (): string => process.env.FM_DB_PATH ?? '/data/fleet.db'
 
 /**
- * The unprivileged account that holds the shared key on all five boxes.
+ * The unprivileged account that holds the shared key on every fleet host.
  * Throws when FM_SSH_USER is unset, so a missing account fails loudly instead
  * of probing as a guessed one.
  */

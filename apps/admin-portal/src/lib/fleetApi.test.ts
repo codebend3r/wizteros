@@ -33,11 +33,15 @@ vi.mock('@/lib/supabaseClient', () => ({
 // percent, dividing load by a hardcoded four, comparing disk against a warn
 // threshold, regex-parsing container names out of metric keys - moved to the
 // side that owns those facts, and is tested there.
+// A TEST-NET-1 address (RFC 5737): reserved for examples, never a real host.
+const HOST_IP = '192.0.2.3'
+
 const host: FleetHost = {
   name: 'vermithor',
-  ip: '192.0.2.3',
+  ip: HOST_IP,
   has_gpu: true,
   has_docker: true,
+  console: { name: 'DiskStation Manager', url: `http://${HOST_IP}:5000/` },
   collected: true,
   status: 'ok',
   cores: 4,

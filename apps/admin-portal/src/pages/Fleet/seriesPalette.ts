@@ -10,6 +10,7 @@ const SERIES_CLASSES = [
   styles.series3,
   styles.series4,
   styles.series5,
+  styles.series6,
 ] as const
 
 /** The class binding one host position to its colour, or '' past the palette. */

@@ -49,7 +49,7 @@ both probe it without a session, and it reports only liveness and staleness.
 
 ### 1. Mint an ssh key for the collector
 
-The collector reaches all five hosts over ssh. It needs its own key, **not** a
+The collector reaches all six hosts over ssh. It needs its own key, **not** a
 copy of a human's: revoking the monitor should be deleting one
 `authorized_keys` line. As of this writing `<ssh-user>` on meleys has no private
 key at all, so this step is required, not a check.
@@ -64,7 +64,7 @@ chmod 700 /volume1/docker/stripe-bridge/fleet-monitor-ssh
 chmod 600 /volume1/docker/stripe-bridge/fleet-monitor-ssh/id_ed25519
 ```
 
-Then append that public key to `~<ssh-user>/.ssh/authorized_keys` on **all five**
+Then append that public key to `~<ssh-user>/.ssh/authorized_keys` on **all six**
 hosts — meleys included, since the collector ssh-es to the box it runs on:
 
 ```bash

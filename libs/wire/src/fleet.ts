@@ -43,6 +43,9 @@ export const fleetHostSchema = z.object({
   ip: z.string(),
   has_gpu: z.boolean(),
   has_docker: z.boolean(),
+  /** The vendor management UI the card links to: DSM on the Synology boxes,
+      UGOS on balerion. Fleet knowledge, so the monitor names it. */
+  console: z.object({ name: z.string(), url: z.string() }),
   collected: z.boolean(),
   status: hostStatusSchema,
   cores: z.number().nullable(),

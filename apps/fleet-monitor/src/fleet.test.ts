@@ -144,7 +144,7 @@ describe('fleetView', () => {
     const fleet = view()
 
     expect(new Set(fleet.hosts.map((host) => host.name))).toEqual(
-      new Set(['vermithor', 'meleys', 'syrax', 'vhagar', 'caraxes']),
+      new Set(['vermithor', 'meleys', 'syrax', 'vhagar', 'caraxes', 'balerion']),
     )
     const vermithor = hostNamed('vermithor')
     expect(vermithor.metrics['load.1m']).toBe(0.46)

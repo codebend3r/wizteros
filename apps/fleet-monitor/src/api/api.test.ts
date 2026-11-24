@@ -250,7 +250,7 @@ describe('the fleet API', () => {
     const body = await fleet()
 
     expect(new Set(body.hosts.map((host) => host.name))).toEqual(
-      new Set(['vermithor', 'meleys', 'syrax', 'vhagar', 'caraxes']),
+      new Set(['vermithor', 'meleys', 'syrax', 'vhagar', 'caraxes', 'balerion']),
     )
     const vermithor = hostNamed(body, 'vermithor')
     expect(vermithor.metrics['load.1m']).toBe(0.46)
@@ -761,7 +761,7 @@ describe('the fleet API', () => {
     const wide = await history('/fleet/cpu?minutes=30')
 
     expect(narrow.window_minutes).toBe(5)
-    expect(narrow.hosts.map((host) => host.points)).toEqual([[], [], [], [], []])
+    expect(narrow.hosts.map((host) => host.points)).toEqual([[], [], [], [], [], []])
     expect(values(wide.hosts[0].points)).toEqual([25.0])
   })
 

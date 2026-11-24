@@ -99,11 +99,11 @@ warn about them.
 
 The fleet's hosts are not in the code. They come from the gitignored `.env`:
 
-| Variable      | Holds                                                                                      |
-| ------------- | ------------------------------------------------------------------------------------------ |
-| `FM_HOST_IPS` | one comma-separated list of five IPv4 addresses: meleys, vermithor, caraxes, syrax, vhagar |
-| `FM_SSH_USER` | the ssh account on those hosts                                                             |
-| `WZ_NAS_HOST` | optional `user@host` override for the NAS; otherwise built from the two above              |
+| Variable      | Holds                                                                                               |
+| ------------- | --------------------------------------------------------------------------------------------------- |
+| `FM_HOST_IPS` | one comma-separated list of six IPv4 addresses: meleys, vermithor, caraxes, syrax, vhagar, balerion |
+| `FM_SSH_USER` | the ssh account on those hosts                                                                      |
+| `WZ_NAS_HOST` | optional `user@host` override for the NAS; otherwise built from the two above                       |
 
 `scripts/nas-host.sh [host]` turns those into an ssh target for the skills' scripts, and
 the fleet monitor refuses to boot if `FM_HOST_IPS` is missing, the wrong length, or holds

@@ -3,7 +3,6 @@ import { Icon, type IconName } from '@/components/Icon/Icon'
 import { IconTile, type IconTileTone } from '@/components/IconTile/IconTile'
 import {
   formatAge,
-  dsmUrl,
   formatBytes,
   type FleetContainer,
   type FleetHost,
@@ -239,7 +238,7 @@ export const HostCard = ({ host, className }: HostCardProps) => {
   const coreContext =
     host.cores === null ? '' : `${host.cores} ${host.cores === 1 ? 'core' : 'cores'}`
   const hasFooter = host.has_gpu || host.has_docker
-  const dsmHintId = useId()
+  const consoleHintId = useId()
 
   return (
     <article
@@ -249,24 +248,24 @@ export const HostCard = ({ host, className }: HostCardProps) => {
       <header className={styles.header}>
         <h3 className={styles.name}>
           {/* The whole card is the link: the anchor's overlay stretches over the
-            card, so a click anywhere opens DSM, while the name stays the one
-            focusable, announced element. The containers disclosure sits above
-            the overlay and keeps its own click. */}
+            card, so a click anywhere opens the host's console, while the name
+            stays the one focusable, announced element. The containers
+            disclosure sits above the overlay and keeps its own click. */}
           <a
-            className={styles.dsmLink}
-            href={dsmUrl({ ip: host.ip })}
+            className={styles.consoleLink}
+            href={host.console.url}
             target="_blank"
             rel="noopener noreferrer"
             /* a description rather than part of the name, so the heading and
                the link are both still called just the host's name */
-            aria-describedby={dsmHintId}
+            aria-describedby={consoleHintId}
           >
             {host.name}
-            <Icon name="external" size={14} className={styles.dsmMark} />
+            <Icon name="external" size={14} className={styles.consoleMark} />
           </a>
         </h3>
-        <span id={dsmHintId} className={styles.srOnly}>
-          Opens DiskStation Manager in a new tab
+        <span id={consoleHintId} className={styles.srOnly}>
+          Opens {host.console.name} in a new tab
         </span>
         <p className={styles.ip}>{host.ip}</p>
         {/* status is stated in text, never by color alone: the tile restates

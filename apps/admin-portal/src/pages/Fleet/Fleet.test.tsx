@@ -13,12 +13,16 @@ import {
   useFleetPrefsStore,
 } from '@/stores/fleetPrefsStore'
 
+// A TEST-NET-1 address (RFC 5737): reserved for examples, never a real host.
+const HOST_IP = '192.0.2.3'
+
 // What a card is rendered from: one /fleet host, read as the wire sends it.
 const card: FleetHost = {
   name: 'vermithor',
-  ip: '192.0.2.3',
+  ip: HOST_IP,
   has_gpu: true,
   has_docker: true,
+  console: { name: 'DiskStation Manager', url: `http://${HOST_IP}:5000/` },
   collected: true,
   status: 'warn',
   cores: 4,
@@ -38,9 +42,10 @@ const card: FleetHost = {
 
 const host: FleetHost = {
   name: 'vermithor',
-  ip: '192.0.2.3',
+  ip: HOST_IP,
   has_gpu: true,
   has_docker: true,
+  console: { name: 'DiskStation Manager', url: `http://${HOST_IP}:5000/` },
   collected: true,
   status: 'ok',
   cores: 4,
@@ -256,6 +261,15 @@ test('HostCard opens its DSM login page in a new tab', () => {
   expect(link).toHaveAttribute('href', `http://${card.ip}:5000/`)
   expect(link).toHaveAttribute('target', '_blank')
   expect(link).toHaveAccessibleDescription('Opens DiskStation Manager in a new tab')
+})
+
+test('HostCard links to whichever console the monitor names', () => {
+  const ugos = { name: 'UGOS', url: 'http://192.0.2.7:9999/' }
+  render(<HostCard host={{ ...card, name: 'balerion', status: 'ok', console: ugos }} />)
+
+  const link = screen.getByRole('link', { name: 'balerion' })
+  expect(link).toHaveAttribute('href', ugos.url)
+  expect(link).toHaveAccessibleDescription('Opens UGOS in a new tab')
 })
 
 /* A warn host prints no status word at all: the finding is the disk and load
