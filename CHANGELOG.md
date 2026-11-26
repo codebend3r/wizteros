@@ -12,6 +12,18 @@ the version recorded in the tree at that commit. That was not always true; the
 history was rewritten on 2026-08-08 to make it so. See
 [The 2026-08-08 history rewrite](#the-2026-08-08-history-rewrite).
 
+## v0.5.3 (2026-11-26)
+
+- Add Balerion to the fleet as a sixth monitored host, with its own series
+  colour on the Fleet charts
+- Cap the Fleet host grid at three columns, so six hosts lay out 3 by 2,
+  then 2 by 3, then one
+- `arr-stack-update` skips whole non-media compose projects (`stripe-bridge`,
+  `raven`) by project label, so Meleys updates again now that raven runs there
+- PR bodies use `## What`, `## Why` and `## Verified` headings
+- Deploy note: fleet-monitor changed. Run `deploy-nas` so the NAS matches
+  this tag
+
 ## v0.5.2 (2026-11-07)
 
 - Add disk and storage charts to the Fleet page, backed by a new
