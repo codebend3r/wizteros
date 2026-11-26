@@ -25,10 +25,12 @@ REPO="${WZ_REPO:-$(cd "$(dirname "$0")/../../../.." && pwd)}"
 # project, discovered at runtime from container labels rather than hardcoded.
 ALL_HOSTS="meleys vermithor vhagar"
 STATEFUL="wizarr tautulli"
-# Built from this repo, not pulled. compose pull has nothing to fetch for them,
-# and they sit in a second compose project (/volume1/docker/stripe-bridge) whose
-# dir would otherwise clobber the media project's. deploy-nas owns their lifecycle.
-NEVER="stripe-bridge fleet-monitor fleet-collector"
+# Compose projects that share a host with the media stack but are not it, matched
+# on the project label so a container added to one needs no edit here.
+# stripe-bridge (bridge, fleet monitor and collector, on Meleys) is built from this
+# repo, so compose pull has nothing to fetch and deploy-nas owns it; raven (Meleys
+# and Vhagar) is a separate app. Either one left in trips the one-project check.
+OTHER_PROJECTS="stripe-bridge raven"
 
 # A service is "up" if it answers at all — some *arr UIs 200, some redirect to a
 # login, some 401. Only a connection failure or a 5xx means broken.
@@ -170,13 +172,13 @@ update_host() {
   # no compose labels then yields svc="<image name>", which compose rejects with
   # "no such service" and the whole pull aborts having fetched nothing. The label
   # filter drops those containers at the source; '|' keeps the rest aligned anyway.
-  inventory="$(docker_on "$host" "ps -a --filter 'label=com.docker.compose.service' --format '{{.Names}}|{{.Label \"com.docker.compose.service\"}}|{{.Label \"com.docker.compose.project.working_dir\"}}|{{.Image}}|{{.Ports}}'")"
+  inventory="$(docker_on "$host" "ps -a --filter 'label=com.docker.compose.service' --format '{{.Names}}|{{.Label \"com.docker.compose.service\"}}|{{.Label \"com.docker.compose.project\"}}|{{.Label \"com.docker.compose.project.working_dir\"}}|{{.Image}}|{{.Ports}}'")"
 
   names=(); services=(); images=(); ports=(); workdir=""
-  while IFS='|' read -r name svc dir image portspec; do
+  while IFS='|' read -r name svc project dir image portspec; do
     [ -n "${svc:-}" ] && [ -n "${dir:-}" ] || continue
-    if in_list "$name" $NEVER; then
-      say "  · skipping $svc (built from this repo — deploy-nas owns it)"
+    if in_list "${project:-}" $OTHER_PROJECTS; then
+      say "  · skipping $svc (in the $project project, not the media stack)"
       continue
     fi
     if [ -n "$ONLY_SERVICES" ]; then
@@ -188,7 +190,7 @@ update_host() {
     # One compose project per run. Meleys really does host two, so a stray service
     # from the other one would silently send the pull to the wrong directory.
     if [ -n "$workdir" ] && [ "$dir" != "$workdir" ]; then
-      die "$host: selected services span two compose projects ($workdir and $dir). Narrow with --services, or add the other project's services to NEVER."
+      die "$host: selected services span two compose projects ($workdir and $dir). Narrow with --services, or add the other project to OTHER_PROJECTS."
     fi
     workdir="$dir"
     port="$(printf '%s' "${portspec:-}" | sed -n 's/.*0\.0\.0\.0:\([0-9]*\)->.*/\1/p' | head -1)"

@@ -33,9 +33,10 @@ from container labels — never hardcode the paths, they have moved before.
 Meleys and Vermithor both run a `sonarr`, a `radarr` and a `sabnzbd`. **Always name the host** — never
 say "the sonarr container".
 
-**Vhagar hosts two compose projects**, `jellyfin` and `raven` (`/volume1/docker/raven`, not part
-of the media stack), so `vhagar` and `all` stop at discovery unless narrowed: run it as
-`vhagar --services jellyfin`. Its docker sudo uses the stored keychain password, like Vermithor.
+**Meleys and Vhagar both also run `raven`** (`/volume1/docker/raven`), its own compose project and
+not part of the media stack. The script skips it through `OTHER_PROJECTS`; without that, the
+one-project check stops both hosts at discovery. Vhagar's docker sudo uses the stored keychain
+password, like Vermithor.
 
 **Jellyfin's bind mounts are CIFS remote folders** (`/volume1/Vhagar/{Caraxes,Meleys,Syrax,Vermithor}`).
 After a fleet-wide reboot (a DSM update) Vhagar mounts them before the other boxes serve SMB, the
@@ -99,10 +100,10 @@ Before ever passing `--include-stateful`:
 - For Wizarr specifically, prefer the `wizarr-upgrade` skill, which judges whether a
   given release is safe to take and knows the rollback shape.
 
-`stripe-bridge`, `fleet-monitor` and `fleet-collector` are filtered out unconditionally.
-They are built from this repo, `compose pull` has nothing to fetch for them, `deploy-nas`
-owns their lifecycle, and on meleys they sit in a second compose project whose directory
-would otherwise clobber the media project's.
+`stripe-bridge`, `fleet-monitor` and `fleet-collector` are filtered out unconditionally, as
+their whole `stripe-bridge` compose project is in `OTHER_PROJECTS`. They are built from this
+repo, `compose pull` has nothing to fetch for them, `deploy-nas` owns their lifecycle, and on
+meleys their project directory would otherwise clobber the media project's.
 
 ## Hard-Won Details (do not "simplify" these away)
 
@@ -126,9 +127,9 @@ would otherwise clobber the media project's.
   if a label is empty. Do not "tidy" either back to tabs.
 - **Meleys hosts two compose projects, not one.** `westeroz` is the media stack;
   `stripe-bridge`, `fleet-monitor` and `fleet-collector` live in `/volume1/docker/stripe-bridge`,
-  are built from this repo rather than pulled, and belong to `deploy-nas`. All three are in
-  `NEVER`. They were not always, and the loop's last-wins `workdir` assignment then pointed
-  the pull at the wrong directory. The script now `die`s if the selected services span two
+  are built from this repo rather than pulled, and belong to `deploy-nas`. Their project is in
+  `OTHER_PROJECTS`, matched on the compose project label. It was not always, and the loop's
+  last-wins `workdir` assignment then pointed the pull at the wrong directory. The script now `die`s if the selected services span two
   project dirs rather than guessing.
 - **`sudo` needs the literal path `/usr/local/bin/docker`.** Docker is not on the
   non-interactive `PATH`, so a plain `ssh host docker ps` returns `command not found`,
