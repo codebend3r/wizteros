@@ -79,11 +79,24 @@
   font-size: var(--font-size-sm);
 }
 
+/* Never more than three host columns: each track takes at least its share of a
+   three-wide row, so the six hosts land 3 by 2 rather than 5 and 1. Narrower than
+   three 18rem tracks it falls to two columns, then one, and min(100%, ...) keeps a
+   320px screen from scrolling sideways. */
+$gridMaxColumns: 3;
+
 .grid {
-  // min(100%, 18rem) keeps the track from demanding 18rem on a 320px screen,
-  // which is what would push the page into a sideways scroll.
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  grid-template-columns: repeat(
+    auto-fit,
+    minmax(
+      min(
+        100%,
+        max(18rem, calc((100% - #{$gridMaxColumns - 1} * var(--space-2)) / #{$gridMaxColumns}))
+      ),
+      1fr
+    )
+  );
   gap: var(--space-2);
   padding: 0;
   list-style: none;
