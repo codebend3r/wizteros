@@ -33,9 +33,10 @@ from container labels — never hardcode the paths, they have moved before.
 Meleys and Vermithor both run a `sonarr`, a `radarr` and a `sabnzbd`. **Always name the host** — never
 say "the sonarr container".
 
-**Vhagar hosts two compose projects**, `jellyfin` and `raven` (`/volume1/docker/raven`, not part
-of the media stack), so `vhagar` and `all` stop at discovery unless narrowed: run it as
-`vhagar --services jellyfin`. Its docker sudo uses the stored keychain password, like Vermithor.
+**Meleys and Vhagar both also run `raven`** (`/volume1/docker/raven`), its own compose project and
+not part of the media stack. The script skips it through `UNRELATED`; without that, the
+one-project check stops both hosts at discovery. Vhagar's docker sudo uses the stored keychain
+password, like Vermithor.
 
 **Jellyfin's bind mounts are CIFS remote folders** (`/volume1/Vhagar/{Caraxes,Meleys,Syrax,Vermithor}`).
 After a fleet-wide reboot (a DSM update) Vhagar mounts them before the other boxes serve SMB, the

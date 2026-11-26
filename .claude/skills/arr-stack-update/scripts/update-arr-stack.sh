@@ -29,6 +29,9 @@ STATEFUL="wizarr tautulli"
 # and they sit in a second compose project (/volume1/docker/stripe-bridge) whose
 # dir would otherwise clobber the media project's. deploy-nas owns their lifecycle.
 NEVER="stripe-bridge fleet-monitor fleet-collector"
+# Not part of the media stack at all, and its own compose project on Meleys and
+# Vhagar alike, so leaving it in would trip the one-project check on both boxes.
+UNRELATED="raven"
 
 # A service is "up" if it answers at all — some *arr UIs 200, some redirect to a
 # login, some 401. Only a connection failure or a 5xx means broken.
@@ -177,6 +180,10 @@ update_host() {
     [ -n "${svc:-}" ] && [ -n "${dir:-}" ] || continue
     if in_list "$name" $NEVER; then
       say "  · skipping $svc (built from this repo — deploy-nas owns it)"
+      continue
+    fi
+    if in_list "$name" $UNRELATED; then
+      say "  · skipping $svc (not part of the media stack)"
       continue
     fi
     if [ -n "$ONLY_SERVICES" ]; then
