@@ -81,8 +81,9 @@ export const host = ({
 
 // Measured 2026-08-10, GPU absence re-verified 2026-08-11.
 //
-// has_gpu is a permanent property, not a pending driver fix. Only vermithor
-// (Celeron J3455) and vhagar (Celeron J4125) expose a render node. meleys has
+// has_gpu is a permanent property, not a pending driver fix. Of the Synology
+// boxes only vermithor (Celeron J3455) and vhagar (Celeron J4125) expose a
+// render node; balerion's is covered below. meleys has
 // no /dev/dri, an empty /sys/class/drm and no amdgpu module because Synology
 // does not enable the R1600's Vega iGPU; syrax is an Atom C3538 with no iGPU;
 // caraxes is ARMv8 with 1.6 GB.
@@ -112,8 +113,11 @@ export const host = ({
 // verification off. The owner token still authorizes every request.
 //
 // balerion is a UGreen NAS (UGOS, not DSM) added 2026-11-23 as the media store
-// Meleys mounts over CIFS. Plex stays on Meleys, so it has no plex_url; Docker
-// and GPU are unprobed until ssh is enabled there and they can be measured.
+// Meleys mounts over CIFS. Plex stays on Meleys, so it has no plex_url.
+// Measured 2026-11-26, once ssh was enabled there: a Pentium Gold 8505 whose
+// Intel iGPU exposes a render node, so has_gpu is true. Docker is installed
+// but listens on its local unix socket only, nothing on :2375, so docker
+// stays false until a socket proxy is deployed, as on the other hosts.
 const DOCKER_PORT = 2375
 const PLEX_PORT = 32400
 
@@ -156,7 +160,7 @@ const FLEET: readonly Readonly<{
   { name: 'caraxes', has_gpu: false, docker: false, plex: 'http', console: 'dsm' },
   { name: 'syrax', has_gpu: false, docker: false, plex: 'http', console: 'dsm' },
   { name: 'vhagar', has_gpu: true, docker: true, plex: 'https', console: 'dsm' },
-  { name: 'balerion', has_gpu: false, docker: false, plex: null, console: 'ugos' },
+  { name: 'balerion', has_gpu: true, docker: false, plex: null, console: 'ugos' },
 ]
 
 /**

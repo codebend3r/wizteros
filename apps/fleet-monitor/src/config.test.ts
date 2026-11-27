@@ -34,9 +34,13 @@ describe('config', () => {
     expect(names(HOSTS)).toEqual(['balerion', 'caraxes', 'meleys', 'syrax', 'vermithor', 'vhagar'])
   })
 
-  it('gives only vermithor and vhagar a render node', () => {
-    // measured 2026-08-10: meleys is AMD, syrax is Atom, caraxes is ARM; balerion is unprobed
-    expect(names(HOSTS.filter(({ has_gpu }) => has_gpu))).toEqual(['vermithor', 'vhagar'])
+  it('gives only balerion, vermithor and vhagar a render node', () => {
+    // measured 2026-08-10: meleys is AMD, syrax is Atom, caraxes is ARM; balerion's iGPU measured 2026-11-26
+    expect(names(HOSTS.filter(({ has_gpu }) => has_gpu))).toEqual([
+      'balerion',
+      'vermithor',
+      'vhagar',
+    ])
   })
 
   it('configures the three docker hosts', () => {
