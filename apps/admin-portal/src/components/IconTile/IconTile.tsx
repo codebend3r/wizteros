@@ -2,8 +2,9 @@ import { Icon, type IconName } from '@/components/Icon/Icon'
 import styles from '@/components/IconTile/IconTile.module.scss'
 
 /** Whose colour the tile wears: the host's series colour beside a reading,
-    the healthy green on a status, muted on inventory and toolbar marks. */
-export type IconTileTone = 'muted' | 'ok' | 'series'
+    the healthy green or the warning amber on a status, muted on inventory and
+    toolbar marks. */
+export type IconTileTone = 'muted' | 'ok' | 'series' | 'warn'
 
 /** Inventory rows and the status pill, the toolbar marks, the readings. */
 export type IconTileSize = 'sm' | 'md' | 'lg'
@@ -19,6 +20,7 @@ const TONE_CLASS: Record<IconTileTone, string> = {
   muted: styles.muted,
   ok: styles.ok,
   series: styles.series,
+  warn: styles.warn,
 }
 
 const SIZE_CLASS: Record<IconTileSize, string> = {

@@ -37,6 +37,11 @@
   --tile-color: var(--color-state-shared);
 }
 
+// The same amber the warning mark on a card's note wears.
+.warn {
+  --tile-color: var(--color-accent);
+}
+
 // The series colour is set by the card the tile sits in. Outside one, the
 // accent stands in rather than an unset variable dropping the declaration.
 .series {

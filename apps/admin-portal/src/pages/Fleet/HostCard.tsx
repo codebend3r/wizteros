@@ -18,22 +18,22 @@ type HostCardProps = {
   readonly className?: string
 }
 
-/* null is "print no status line", not "no status": a warn host states its case
-   through the disk and load figures below and the stale note beside them,
-   which are the readings the monitor judged, rather than through a summary
-   word sitting over them. */
-const STATUS_LABEL: Record<HostStatus, string | null> = {
+/* Every card carries a status word, so a missing pill never has to be read as
+   a verdict. A warn host says only that it needs attention: which reading
+   crossed the line is the monitor's call, and the disk and load figures below
+   are where it shows. */
+const STATUS_LABEL: Record<HostStatus, string> = {
   ok: 'Healthy',
-  warn: null,
+  warn: 'Needs attention',
   unknown: 'Not collected',
 }
 
 /* The tile beside the status word. Never collected is an absence, not a
    health, so it wears the muted tone: a green tile on it would let a reader's
    eye file the card as fine before the word beside it said otherwise. */
-const STATUS_MARK: Record<HostStatus, { name: IconName; tone: IconTileTone } | null> = {
+const STATUS_MARK: Record<HostStatus, { name: IconName; tone: IconTileTone }> = {
   ok: { name: 'check', tone: 'ok' },
-  warn: null,
+  warn: { name: 'warn', tone: 'warn' },
   unknown: { name: 'help', tone: 'muted' },
 }
 
@@ -232,7 +232,7 @@ export const HostCard = ({ host, className }: HostCardProps) => {
   const mark = STATUS_MARK[host.status]
   /* One text node, not a word plus a decorative span: the qualification has to
      be part of the status itself, not something a reader can visually skip. */
-  const statusText = label === null ? null : `${label}${staleStatus ? STALE_STATUS_SUFFIX : ''}`
+  const statusText = `${label}${staleStatus ? STALE_STATUS_SUFFIX : ''}`
   /* The core count is observed, not assumed, so it is worth showing: it is
      what the load figure above it was divided by. */
   const coreContext =
@@ -270,12 +270,10 @@ export const HostCard = ({ host, className }: HostCardProps) => {
         <p className={styles.ip}>{host.ip}</p>
         {/* status is stated in text, never by color alone: the tile restates
           the word beside it and is hidden from the accessibility tree */}
-        {!!statusText && (
-          <p className={staleStatus ? `${styles.status} ${styles.statusStale}` : styles.status}>
-            {!!mark && <IconTile name={mark.name} tone={mark.tone} size="sm" />}
-            {statusText}
-          </p>
-        )}
+        <p className={staleStatus ? `${styles.status} ${styles.statusStale}` : styles.status}>
+          <IconTile name={mark.name} tone={mark.tone} size="sm" />
+          {statusText}
+        </p>
       </header>
 
       <div className={styles.body}>
