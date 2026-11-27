@@ -397,6 +397,25 @@ test('HostCard never presents an unqualified ok status when metrics are stale', 
   expect(screen.getByText('Healthy as of the last reading')).toBeInTheDocument()
 })
 
+/* A warn verdict is computed from the same slow-tier disk reading, so it takes
+   the same qualification a healthy one does. */
+test('HostCard never presents an unqualified warn status when metrics are stale', () => {
+  render(
+    <HostCard
+      host={{
+        ...card,
+        status: 'warn',
+        metrics_stale: true,
+        stalest_family: 'disk',
+        stalest_family_age_seconds: 604_800,
+      }}
+    />,
+  )
+
+  expect(screen.queryByText('Needs attention')).toBeNull()
+  expect(screen.getByText('Needs attention as of the last reading')).toBeInTheDocument()
+})
+
 test('HostCard leaves the status unqualified when every metric is fresh', () => {
   render(<HostCard host={{ ...card, status: 'ok', metrics_stale: false }} />)
 

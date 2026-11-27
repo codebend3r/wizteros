@@ -83,10 +83,10 @@ export const host = ({
 //
 // has_gpu is a permanent property, not a pending driver fix. Of the Synology
 // boxes only vermithor (Celeron J3455) and vhagar (Celeron J4125) expose a
-// render node; balerion's is covered below. meleys has
-// no /dev/dri, an empty /sys/class/drm and no amdgpu module because Synology
-// does not enable the R1600's Vega iGPU; syrax is an Atom C3538 with no iGPU;
-// caraxes is ARMv8 with 1.6 GB.
+// render node; balerion's is covered below. meleys has no /dev/dri, an empty
+// /sys/class/drm and no amdgpu module because Synology does not enable the
+// R1600's Vega iGPU; syrax is an Atom C3538 with no iGPU; caraxes is ARMv8
+// with 1.6 GB.
 //
 // Core count is deliberately not a field here. /proc/stat already reports one
 // row per cpu on every tick, so the collector observes it; declaring it as well
