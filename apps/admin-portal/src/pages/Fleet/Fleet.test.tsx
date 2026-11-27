@@ -272,13 +272,16 @@ test('HostCard links to whichever console the monitor names', () => {
   expect(link).toHaveAccessibleDescription('Opens UGOS in a new tab')
 })
 
-/* A warn host prints no status word at all: the finding is the disk and load
-   figures the monitor judged, not a phrase summarising them over the name. */
-test('HostCard prints no status line on a warn host', () => {
+/* Every card carries a status pill, so a warn host states its case in a word
+   too, in the warning tone and never the healthy one. */
+test('HostCard marks a warn host as needing attention, never as healthy', () => {
   render(<HostCard host={card} />)
 
   expect(screen.getByRole('heading', { name: 'vermithor' })).toBeInTheDocument()
-  expect(screen.queryByText(/Needs attention/)).toBeNull()
+  const tile = screen.getByText('Needs attention').closest('p')?.querySelector('.tile')
+  expect(tile).toHaveAttribute('aria-hidden', 'true')
+  expect(tile).toHaveClass('warn')
+  expect(tile).not.toHaveClass('ok')
   expect(screen.queryByText('Healthy')).toBeNull()
 })
 
@@ -392,6 +395,25 @@ test('HostCard never presents an unqualified ok status when metrics are stale', 
 
   expect(screen.queryByText('Healthy')).toBeNull()
   expect(screen.getByText('Healthy as of the last reading')).toBeInTheDocument()
+})
+
+/* A warn verdict is computed from the same slow-tier disk reading, so it takes
+   the same qualification a healthy one does. */
+test('HostCard never presents an unqualified warn status when metrics are stale', () => {
+  render(
+    <HostCard
+      host={{
+        ...card,
+        status: 'warn',
+        metrics_stale: true,
+        stalest_family: 'disk',
+        stalest_family_age_seconds: 604_800,
+      }}
+    />,
+  )
+
+  expect(screen.queryByText('Needs attention')).toBeNull()
+  expect(screen.getByText('Needs attention as of the last reading')).toBeInTheDocument()
 })
 
 test('HostCard leaves the status unqualified when every metric is fresh', () => {
